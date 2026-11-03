@@ -82,7 +82,8 @@ class _DashboardPageState extends State<DashboardPage> {
       iconActions: [if (!_editing) IconButtonData(glyph: AppGlyphs.edit, tooltip: context.tr('Dashboard cards'),
         onPressed: () => setState(() => _editing = true))],
       body: LayoutBuilder(builder: (context, constraints) {
-        final side = math.max(16.0, (constraints.maxWidth - 560) / 2), gap = context.isMobileView ? 8.0 : 12.0;
+        final maxContentWidth = context.isMobileView ? 560.0 : 900.0;
+        final side = math.max(16.0, (constraints.maxWidth - maxContentWidth) / 2), gap = context.isMobileView ? 8.0 : 12.0;
         final padding = EdgeInsets.fromLTRB(side, context.contentTopPadding, side, 16 + context.bottomInset);
         return CustomScrollView(key: const PageStorageKey('dashboard'), controller: _scroll,
           scrollCacheExtent: _editing ? ScrollCacheExtent.viewport(dashboardCards.length.toDouble()) : null,

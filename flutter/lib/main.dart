@@ -114,13 +114,52 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
           },
           home: widget.controller.ready ? const HomePage() : Scaffold(
             body: SafeArea(child: Center(child: widget.controller.startupError == null
-                ? const CircularProgressIndicator()
+                ? const SplashScreen()
                 : ErrorState(widget.controller.startupError!, retry: widget.controller.initialize))),
           ),
         );
       },
     ),
   );
+}
+
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({super.key});
+  @override State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+
+  @override void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
+    _opacity = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
+    _controller.forward();
+  }
+
+  @override void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _opacity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Image.asset('assets/images/icon.png', width: 96, height: 96),
+          const SizedBox(height: 16),
+          const Text('Flbox', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+          const SizedBox(height: 32),
+          const SizedBox(width: 120, child: LinearProgressIndicator()),
+        ],
+      ),
+    );
+  }
 }
 
 class HomePage extends StatefulWidget {
