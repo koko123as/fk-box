@@ -77,7 +77,7 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
       builder: (context) {
         final prefs = BoxScope.of(context, aspect: BoxAspect.appearance).preferences;
         return MaterialApp(
-          title: 'B-box',
+          title: 'Flbox',
           debugShowCheckedModeBanner: false,
           scaffoldMessengerKey: _messenger,
           theme: _theme(Brightness.light),

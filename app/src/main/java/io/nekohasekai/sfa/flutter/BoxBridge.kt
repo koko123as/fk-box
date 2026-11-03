@@ -47,8 +47,8 @@ import java.io.Closeable
 
 class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) : Closeable {
     private val scope = activity.lifecycleScope
-    private val channel = MethodChannel(messenger, "io.ericlee.bfa/box")
-    private val events = EventChannel(messenger, "io.ericlee.bfa/events")
+    private val channel = MethodChannel(messenger, "io.koko123as.flbox/box")
+    private val events = EventChannel(messenger, "io.koko123as.flbox/events")
     private var sink: EventChannel.EventSink? = null
     private var streamJob: Job? = null
     private val queuedErrors = ArrayDeque<String>()

@@ -17,8 +17,8 @@ enum BoxData { memory, logs }
 
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
-      : _channel = channel ?? const MethodChannel('io.ericlee.bfa/box'),
-        _events = events ?? const EventChannel('io.ericlee.bfa/events').receiveBroadcastStream();
+      : _channel = channel ?? const MethodChannel('io.koko123as.flbox/box'),
+        _events = events ?? const EventChannel('io.koko123as.flbox/events').receiveBroadcastStream();
 
   final MethodChannel _channel;
   final Stream<dynamic> _events;

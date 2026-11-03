@@ -31,7 +31,7 @@ internal class BoxTerminalFactory(private val messenger: BinaryMessenger) : Plat
 
 private class TerminalSurface(context: Context, id: Int, args: Any?, messenger: BinaryMessenger) : PlatformView {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val channel = MethodChannel(messenger, "io.ericlee.bfa/terminal/$id")
+    private val channel = MethodChannel(messenger, "io.koko123as.flbox/terminal/$id")
     private val view = GhosttyTerminalView(context)
     private val modifiers = GhosttyExtraKeysState()
     private val pending = mutableSetOf<(Any?) -> Unit>()

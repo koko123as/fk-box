@@ -70,7 +70,7 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.ericlee.bfa"
+        applicationId = "io.koko123as.flbox"
         minSdk = 24
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
