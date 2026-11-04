@@ -31,23 +31,23 @@ const _descriptions = <String, String>{
   'Outbound mode': 'Available routing modes',
 };
 
-/// 平板多列布局下各卡片的固定宽度（内容宽 900，间距 12）。
-/// 444+12+444=900；292+12+292+12+292=900。
-double tabletCardWidth(String card) {
+/// 平板多列布局下各卡片的宽度，按实际内容宽按比例算（避免窄屏溢出）。
+/// 2 列卡：(宽-12)/2；3 列卡：(宽-24)/3；通栏：整宽。
+double tabletCardWidth(String card, double contentWidth) {
   switch (card) {
     case 'Status':
     case 'Network speed':
     case 'Current profile':
     case 'Memory':
-      return 444.0;
+      return (contentWidth - 12) / 2;
     case 'Outbound mode':
     case 'System HTTP proxy':
     case 'Intranet IP':
-      return 292.0;
+      return (contentWidth - 24) / 3;
     case 'Proxy groups':
-      return 900.0;
+      return contentWidth;
     default:
-      return 444.0;
+      return (contentWidth - 12) / 2;
   }
 }
 
@@ -70,8 +70,8 @@ double? tabletCardHeight(String card) {
 }
 
 /// 平板卡片外框：固定宽高，内容超出时裁剪；高度为 null 时自适应。
-Widget tabletCardBox(String card, Widget child) {
-  final w = tabletCardWidth(card);
+Widget tabletCardBox(String card, Widget child, double contentWidth) {
+  final w = tabletCardWidth(card, contentWidth);
   final h = tabletCardHeight(card);
   if (h == null) return SizedBox(width: w, child: child);
   return SizedBox(width: w, height: h, child: ClipRect(child: child));
@@ -179,12 +179,16 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
     return BackLayerScope(onBack: finish, child: SliverPadding(padding: widget.padding, sliver: SliverMainAxisGroup(slivers: [
       if (tablet)
         // 平板：多列网格，长按拖到目标卡片上换位，所见即所得。
-        SliverToBoxAdapter(child: Wrap(spacing: 12, runSpacing: 12, children: [
-          for (final entry in _cards.asMap().entries)
-            _Presence(key: ValueKey(entry.value), entering: _entering.contains(entry.value), leaving: _leaving.contains(entry.value),
-              revealPadding: revealPadding, onSettled: () => _settle(entry.value),
-              child: _tabletGridItem(entry.key, sway)),
-        ]))
+        // LayoutBuilder 取 SliverPadding 之后的实际内容宽，按比例算卡片宽，避免窄屏溢出。
+        SliverToBoxAdapter(child: LayoutBuilder(builder: (context, boxConstraints) {
+          final contentWidth = boxConstraints.maxWidth;
+          return Wrap(spacing: 12, runSpacing: 12, children: [
+            for (final entry in _cards.asMap().entries)
+              _Presence(key: ValueKey(entry.value), entering: _entering.contains(entry.value), leaving: _leaving.contains(entry.value),
+                revealPadding: revealPadding, onSettled: () => _settle(entry.value),
+                child: _tabletGridItem(entry.key, sway, contentWidth)),
+          ]);
+        }))
       else
         SliverReorderableList(itemCount: _cards.length, itemBuilder: (context, index) {
           final card = _cards[index];
@@ -208,20 +212,20 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
   }
 
   /// 平板网格中的单个卡片外框（含编辑态的删除按钮与摇摆动画）。
-  Widget _tabletCard(int index, GlobalKey key, Animation<double>? sway) {
+  Widget _tabletCard(int index, GlobalKey key, Animation<double>? sway, double contentWidth) {
     final card = _cards[index];
     return tabletCardBox(card, _EditableCard(
       name: card, card: widget.cardBuilder(card), cardKey: key, index: index,
       seed: dashboardGlyphs.keys.toList().indexOf(card), sway: sway,
       onRemove: _saving || card == 'Status' ? null : () => _remove(card),
       dragListener: false,
-    ));
+    ), contentWidth);
   }
 
   /// 平板网格中的单个可拖拽卡片：长按拖起，放到目标卡片上换位。
-  Widget _tabletGridItem(int index, Animation<double>? sway) {
+  Widget _tabletGridItem(int index, Animation<double>? sway, double contentWidth) {
     final card = _cards[index];
-    final box = _tabletCard(index, widget.cardKeyOf(card), sway);
+    final box = _tabletCard(index, widget.cardKeyOf(card), sway, contentWidth);
     return DragTarget<int>(
       onAcceptWithDetails: (details) => _reorderGrid(details.data, index),
       builder: (context, candidateData, rejectedData) {
@@ -238,11 +242,11 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
               type: MaterialType.transparency,
               child: ConstrainedBox(
                 constraints: BoxConstraints(
-                  maxWidth: tabletCardWidth(card),
+                  maxWidth: tabletCardWidth(card, contentWidth),
                   maxHeight: tabletCardHeight(card) ?? 400,
                 ),
                 // 反馈用独立实例，避免 GlobalKey 复用冲突。
-                child: _tabletCard(index, GlobalKey(), null),
+                child: _tabletCard(index, GlobalKey(), null, contentWidth),
               ),
             ),
             childWhenDragging: Opacity(opacity: .25, child: box),
