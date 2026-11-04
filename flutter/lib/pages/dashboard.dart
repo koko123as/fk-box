@@ -17,26 +17,6 @@ const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current pro
 const defaultDashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups'];
 const defaultHiddenCards = ['Memory', 'Intranet IP'];
 
-/// 平板多列布局下各卡片的固定宽度（内容宽 900，间距 12）。
-/// 444+12+444=900；292+12+292+12+292=900。
-double tabletCardWidth(String card) {
-  switch (card) {
-    case 'Status':
-    case 'Network speed':
-    case 'Current profile':
-    case 'Memory':
-      return 444.0;
-    case 'Outbound mode':
-    case 'System HTTP proxy':
-    case 'Intranet IP':
-      return 292.0;
-    case 'Proxy groups':
-      return 900.0;
-    default:
-      return 444.0;
-  }
-}
-
 List<String> dashboardOrder(Json prefs) {
   final saved = (prefs['dashboardCards'] as List? ?? defaultDashboardCards).whereType<String>().where(dashboardCards.contains).toList();
   return {...saved, ...dashboardCards}.toList();
@@ -132,7 +112,7 @@ class _DashboardPageState extends State<DashboardPage> {
                 child: Text(context.tr('Apply')))),
               Wrap(spacing: 12, runSpacing: 12, children: [
                 for (final card in shown) RepaintBoundary(key: _keyOf(card),
-                  child: SizedBox(width: tabletCardWidth(card), child: cards[card])),
+                  child: tabletCardBox(card, cards[card]!)),
               ]),
               for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
                 onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']})),
