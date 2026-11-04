@@ -31,52 +31,6 @@ const _descriptions = <String, String>{
   'Outbound mode': 'Available routing modes',
 };
 
-/// 平板多列布局下各卡片的宽度，按实际内容宽按比例算（避免窄屏溢出）。
-/// 2 列卡：(宽-12)/2；3 列卡：(宽-24)/3；通栏：整宽。
-double tabletCardWidth(String card, double contentWidth) {
-  switch (card) {
-    case 'Status':
-    case 'Network speed':
-    case 'Current profile':
-    case 'Memory':
-      return (contentWidth - 12) / 2;
-    case 'Outbound mode':
-    case 'System HTTP proxy':
-    case 'Intranet IP':
-      return (contentWidth - 24) / 3;
-    case 'Proxy groups':
-      return contentWidth;
-    default:
-      return (contentWidth - 12) / 2;
-  }
-}
-
-/// 平板多列布局下各卡片的固定高度；返回 null 表示高度自适应。
-double? tabletCardHeight(String card) {
-  switch (card) {
-    case 'Status':
-    case 'Network speed':
-      return 210.0;
-    case 'Outbound mode':
-    case 'System HTTP proxy':
-    case 'Intranet IP':
-      return 170.0;
-    case 'Current profile':
-    case 'Memory':
-      return 190.0;
-    default:
-      return null;
-  }
-}
-
-/// 平板卡片外框：固定宽高，内容超出时裁剪；高度为 null 时自适应。
-Widget tabletCardBox(String card, Widget child, double contentWidth) {
-  final w = tabletCardWidth(card, contentWidth);
-  final h = tabletCardHeight(card);
-  if (h == null) return SizedBox(width: w, child: child);
-  return SizedBox(width: w, height: h, child: ClipRect(child: child));
-}
-
 class DashboardEditor extends StatefulWidget {
   const DashboardEditor({super.key, required this.shown, required this.available, required this.cardKeyOf,
     required this.cardBuilder, required this.padding, required this.gap,
@@ -154,17 +108,6 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
     });
     unawaited(_save());
   }
-  /// 平板 Wrap 网格的拖放换位：把 from 的卡片放到 to 的位置（顶掉目标）。
-  void _reorderGrid(int from, int to) {
-    if (_saving || from == to || from < 0 || to < 0 || from >= _cards.length || to >= _cards.length) return;
-    setState(() {
-      final reordered = List<String>.of(_cards);
-      final item = reordered.removeAt(from);
-      reordered.insert(from < to ? to - 1 : to, item);
-      _cards = reordered; _dirty = true;
-    });
-    unawaited(_save());
-  }
   void _settle(String card) {
     _entering.remove(card);
     if (mounted && _leaving.remove(card)) setState(() => _cards = [..._cards]..remove(card));
@@ -174,34 +117,20 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
     final addable = [for (final card in widget.available) if (!_shown.contains(card)) card];
     final sway = context.disableAnimations ? null : _sway;
     final revealPadding = EdgeInsets.only(top: widget.padding.top, bottom: widget.padding.bottom);
-    final tablet = !context.isMobileView;
     Widget spaced(Widget child) => Padding(padding: EdgeInsets.only(bottom: widget.gap), child: child);
     return BackLayerScope(onBack: finish, child: SliverPadding(padding: widget.padding, sliver: SliverMainAxisGroup(slivers: [
-      if (tablet)
-        // 平板：多列网格，长按拖到目标卡片上换位，所见即所得。
-        // LayoutBuilder 取 SliverPadding 之后的实际内容宽，按比例算卡片宽，避免窄屏溢出。
-        SliverToBoxAdapter(child: LayoutBuilder(builder: (context, boxConstraints) {
-          final contentWidth = boxConstraints.maxWidth;
-          return Wrap(spacing: 12, runSpacing: 12, children: [
-            for (final entry in _cards.asMap().entries)
-              _Presence(key: ValueKey(entry.value), entering: _entering.contains(entry.value), leaving: _leaving.contains(entry.value),
-                revealPadding: revealPadding, onSettled: () => _settle(entry.value),
-                child: _tabletGridItem(entry.key, sway, contentWidth)),
-          ]);
-        }))
-      else
-        SliverReorderableList(itemCount: _cards.length, itemBuilder: (context, index) {
-          final card = _cards[index];
-          return _Presence(key: ValueKey(card), entering: _entering.contains(card), leaving: _leaving.contains(card),
-            revealPadding: revealPadding, onSettled: () => _settle(card), child: spaced(_EditableCard(
-              name: card, card: widget.cardBuilder(card), cardKey: widget.cardKeyOf(card), index: index,
-              seed: dashboardGlyphs.keys.toList().indexOf(card), sway: sway,
-              onRemove: _saving || card == 'Status' ? null : () => _remove(card),
-            )));
-        }, proxyDecorator: (child, index, animation) => spaced(_LiftedCard(key: const ValueKey('dashboard-drag-proxy'), animation: animation,
-          child: AbsorbPointer(child: RepaintBoundary(key: widget.cardKeyOf(_cards[index]), child: widget.cardBuilder(_cards[index]))))),
-          onReorderItem: _reorder,
-        ),
+      SliverReorderableList(itemCount: _cards.length, itemBuilder: (context, index) {
+        final card = _cards[index];
+        return _Presence(key: ValueKey(card), entering: _entering.contains(card), leaving: _leaving.contains(card),
+          revealPadding: revealPadding, onSettled: () => _settle(card), child: spaced(_EditableCard(
+            name: card, card: widget.cardBuilder(card), cardKey: widget.cardKeyOf(card), index: index,
+            seed: dashboardGlyphs.keys.toList().indexOf(card), sway: sway,
+            onRemove: _saving || card == 'Status' ? null : () => _remove(card),
+          )));
+      }, proxyDecorator: (child, index, animation) => spaced(_LiftedCard(key: const ValueKey('dashboard-drag-proxy'), animation: animation,
+        child: AbsorbPointer(child: RepaintBoundary(key: widget.cardKeyOf(_cards[index]), child: widget.cardBuilder(_cards[index]))))),
+        onReorderItem: _reorder,
+      ),
       if (addable.isNotEmpty) SliverPadding(padding: const EdgeInsets.only(top: _addableTop), sliver: SliverList.list(children: [
         _SectionLabel(context.tr('Available cards')),
         for (final card in addable) Padding(padding: const EdgeInsets.only(bottom: _rowGap), child: _AddRow(
@@ -209,52 +138,6 @@ class DashboardEditorState extends State<DashboardEditor> with SingleTickerProvi
           onAdd: _saving ? null : () => _add(card))),
       ])),
     ])));
-  }
-
-  /// 平板网格中的单个卡片外框（含编辑态的删除按钮与摇摆动画）。
-  Widget _tabletCard(int index, GlobalKey key, Animation<double>? sway, double contentWidth) {
-    final card = _cards[index];
-    return tabletCardBox(card, _EditableCard(
-      name: card, card: widget.cardBuilder(card), cardKey: key, index: index,
-      seed: dashboardGlyphs.keys.toList().indexOf(card), sway: sway,
-      onRemove: _saving || card == 'Status' ? null : () => _remove(card),
-      dragListener: false,
-    ), contentWidth);
-  }
-
-  /// 平板网格中的单个可拖拽卡片：长按拖起，放到目标卡片上换位。
-  Widget _tabletGridItem(int index, Animation<double>? sway, double contentWidth) {
-    final card = _cards[index];
-    final box = _tabletCard(index, widget.cardKeyOf(card), sway, contentWidth);
-    return DragTarget<int>(
-      onAcceptWithDetails: (details) => _reorderGrid(details.data, index),
-      builder: (context, candidateData, rejectedData) {
-        final hovering = candidateData.isNotEmpty;
-        final colors = context.colorScheme;
-        return Container(
-          decoration: hovering ? BoxDecoration(
-            border: Border.all(color: colors.primary, width: 2),
-            borderRadius: BorderRadius.circular(22),
-          ) : null,
-          child: LongPressDraggable<int>(
-            data: index,
-            feedback: Material(
-              type: MaterialType.transparency,
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: tabletCardWidth(card, contentWidth),
-                  maxHeight: tabletCardHeight(card) ?? 400,
-                ),
-                // 反馈用独立实例，避免 GlobalKey 复用冲突。
-                child: _tabletCard(index, GlobalKey(), null, contentWidth),
-              ),
-            ),
-            childWhenDragging: Opacity(opacity: .25, child: box),
-            child: box,
-          ),
-        );
-      },
-    );
   }
 }
 
@@ -422,7 +305,6 @@ class _EditableCard extends StatelessWidget {
     required this.index,
     required this.sway,
     required this.onRemove,
-    this.dragListener = true,
   });
 
   final String name;
@@ -432,9 +314,6 @@ class _EditableCard extends StatelessWidget {
   final int index;
   final Animation<double>? sway;
   final VoidCallback? onRemove;
-  /// 为 true 时用 ReorderableDelayedDragStartListener（手机单列）；
-  /// 为 false 时由外部拖拽控件接管（平板网格）。
-  final bool dragListener;
 
   @override
   Widget build(BuildContext context) {
@@ -446,10 +325,7 @@ class _EditableCard extends StatelessWidget {
     final content = Stack(
       fit: StackFit.passthrough,
       children: [
-        if (dragListener)
-          ReorderableDelayedDragStartListener(index: index, child: card)
-        else
-          card,
+        ReorderableDelayedDragStartListener(index: index, child: card),
         if (onRemove != null)
           PositionedDirectional(
             top: 0,

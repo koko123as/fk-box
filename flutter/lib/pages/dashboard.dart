@@ -84,7 +84,6 @@ class _DashboardPageState extends State<DashboardPage> {
       body: LayoutBuilder(builder: (context, constraints) {
         final maxContentWidth = context.isMobileView ? 560.0 : 900.0;
         final side = math.max(16.0, (constraints.maxWidth - maxContentWidth) / 2), gap = context.isMobileView ? 8.0 : 12.0;
-        final contentWidth = constraints.maxWidth - 2 * side;
         final padding = EdgeInsets.fromLTRB(side, context.contentTopPadding, side, 16 + context.bottomInset);
         return CustomScrollView(key: const PageStorageKey('dashboard'), controller: _scroll,
           scrollCacheExtent: _editing ? ScrollCacheExtent.viewport(dashboardCards.length.toDouble()) : null,
@@ -94,27 +93,13 @@ class _DashboardPageState extends State<DashboardPage> {
               cardKeyOf: _keyOf, cardBuilder: (card) => cards[card]!, padding: padding, gap: gap,
               onChanged: _saveLayout, onBusyChanged: (busy) { if (mounted) setState(() => _saving = busy); },
               onDone: () { if (mounted) setState(() => _editing = false); })
-            else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: context.isMobileView
-              ? Column(spacing: gap, children: [
+            else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: Column(spacing: gap, children: [
               if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
                 trailing: TextButton(onPressed: () => box.act('remote.disconnect'), child: Text(context.tr('Disconnect')))),
               if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
                 onPressed: () async { if (await box.act('service.reload', {'restart': true})) box.clearApplyRequired(); },
                 child: Text(context.tr('Apply')))),
               for (final card in shown) RepaintBoundary(key: _keyOf(card), child: cards[card]),
-              for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
-                onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']})),
-            ])
-              : Column(spacing: gap, children: [
-              if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
-                trailing: TextButton(onPressed: () => box.act('remote.disconnect'), child: Text(context.tr('Disconnect')))),
-              if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
-                onPressed: () async { if (await box.act('service.reload', {'restart': true})) box.clearApplyRequired(); },
-                child: Text(context.tr('Apply')))),
-              Wrap(spacing: 12, runSpacing: 12, children: [
-                for (final card in shown) RepaintBoundary(key: _keyOf(card),
-                  child: tabletCardBox(card, cards[card]!, contentWidth)),
-              ]),
               for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
                 onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']})),
             ]))),
