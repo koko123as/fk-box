@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.matchParentSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -94,8 +93,6 @@ private const val ROOM_MS = 260
 private const val APPEAR_MS = 200
 private const val APPEAR_SCALE = .92f
 private const val LIFT_GROWTH = .03f
-private val EaseOutCubic = CubicBezierEasing(.215f, .61f, .355f, 1f)
-private val EaseInCubic = CubicBezierEasing(.55f, .055f, .675f, .19f)
 private val EaseOut = CubicBezierEasing(0f, 0f, .58f, 1f)
 
 private val dashboardDescriptions = mapOf(
