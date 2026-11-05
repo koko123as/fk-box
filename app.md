@@ -23,6 +23,12 @@
 - namespace、Kotlin/Java 类路径、AIDL 描述符及 RootServer 反射类名继续使用 `io.nekohasekai.sfa`。Provider authorities 使用 `${applicationId}`，服务控制和 USB/Taildrop 等广播使用 `BuildConfig.APPLICATION_ID` 或运行时包名。
 - 可与原版 SFA 并行安装，私有配置和数据相互独立；原版数据需导出/导入。Flutter 迁移沿用 B-box 既有安装身份、数据库及配置，不以换 UI 为由清空数据。
 
+## FK-box（fk-box 分支）
+
+- 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `FK-box-*` 发布资产。
+- 界面从 Flutter 迁移到 Kotlin + Jetpack Compose，分 4 期。第 1 期：主题、FlClash UI 套件基础组件、浮动导航坞、应用外壳和完整仪表盘；代理、配置、工具页及仪表盘打开的其他页面暂为占位，后续各期按 `flutter/lib` 翻译。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
+- [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Compose 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 fk-box 推送时仍验证核心与保留的 Flutter 参考模块。
+
 ## 界面替换与 Android 桥接
 
 上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 Flutter 提供。`compose/` 只保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。

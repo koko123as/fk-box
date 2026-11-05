@@ -25,7 +25,7 @@
 
 ## 架构与兼容性约束
 
-1. Flutter 负责全部应用页面和导航。`compose.MainActivity` 与 `compose.ShareActivity` 仅保留稳定组件名，进入 `BoxActivity`；不要恢复旧 Compose 页面或导航作为备用入口。原生状态模型在 `backend/`，平台能力通过 `flutter/` 下的 Android 桥接提供。
+1. （fk-box 分支）界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），按 `flutter/lib` 的 FlClash 界面逐项翻译，外观与行为以 Flutter 版为准；`flutter/` 目录仅作参考保留，应用不再依赖 Flutter AAR。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `flutter/BoxBridge.kt`（原通道协议不变的 Kotlin 门面）提供给 `compose/BoxController.kt`。
 2. Room 与 libbox 是配置、服务和会话数据的来源。配置为 sing-box JSON，保存前经过 `Libbox.checkConfig`；不能静默转换 Clash YAML，不能引入 Mihomo 核心、提供者、覆写脚本或不受 sing-box 支持的开关。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
