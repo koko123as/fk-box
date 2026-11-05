@@ -10,11 +10,10 @@ concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: false
 
+# FK-box builds the Kotlin + Jetpack Compose app; it no longer consumes the
+# Flutter AAR, so the debug APK only needs the patched core.
 jobs:
-  validation:
-    uses: ./.github/workflows/newui.yml
   build:
-    needs: validation
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     defaults:
@@ -40,11 +39,8 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Download validated Flutter libraries
-        uses: actions/download-artifact@v5
-        with:
-          name: flutter-aar-arm64
-          path: flutter/build/host/outputs/repo
+      - name: Source guards
+        run: python3 tools/verify_newui.py
 
       - name: Build debug APK
         run: |
@@ -57,7 +53,7 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: B-box-${{ steps.core.outputs.version }}-arm64-v8a-debug
+          name: FK-box-${{ steps.core.outputs.version }}-arm64-v8a-debug
           path: app/build/outputs/apk/other/debug/*.apk
           if-no-files-found: error
           compression-level: 0

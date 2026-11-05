@@ -19,30 +19,28 @@ for path in frontend.rglob("*.dart"):
     for target in re.findall(r"import ['\"]([^'\"]+)", source):
         if ":" not in target and not (path.parent / target).is_file():
             errors.append(f"{path.relative_to(ROOT)}: missing import {target}")
+# FK-box: the app UI is Kotlin + Jetpack Compose hosted by BoxActivity; the
+# Flutter module stays in the repository only as the visual reference.
 for name in ("MainActivity", "ShareActivity"):
     source = (native / f"compose/{name}.kt").read_text()
-    if f"class {name} : BoxActivity()" not in source or "setContent" in source:
-        errors.append(f"{name} must enter the Flutter host")
+    if f"class {name} : BoxActivity()" not in source:
+        errors.append(f"{name} must enter BoxActivity")
+if "setContent" not in (native / "flutter/BoxActivity.kt").read_text():
+    errors.append("BoxActivity must host the Compose UI")
 for path in (ROOT / "app/src").rglob("*.kt"):
     source = path.read_text()
-    if re.search(r"(?:androidx\.compose|androidx\.navigation|sfa\.compose\.(?:screen|navigation|component)|sfa\.update)\b", source):
-        errors.append(f"{path.relative_to(ROOT)}: retired UI/update dependency")
+    if re.search(r"\bio\.flutter\.|sfa\.compose\.(?:screen|navigation|component)\b|sfa\.update\b", source):
+        errors.append(f"{path.relative_to(ROOT)}: Flutter embedding or retired UI/update dependency")
 for path in (ROOT / "app/build.gradle.kts", ROOT / "build.gradle.kts"):
-    if re.search(r"plugin\.compose|androidx\.compose|navigation-(?:compose|fragment|ui)|sora-editor|libghostty-android-compose|app-update-ktx", path.read_text()):
-        errors.append(f"{path.name}: retired UI/update build dependency")
+    if re.search(r"flutter_(?:debug|release)|navigation-fragment|sora-editor|app-update-ktx", path.read_text()):
+        errors.append(f"{path.name}: Flutter AAR or retired UI/update build dependency")
 for path in (ROOT / "app/src").rglob("AndroidManifest.xml"):
     if re.search(r"REQUEST_INSTALL_PACKAGES|UPDATE_PACKAGES_WITHOUT_USER_ACTION|InstallResultReceiver|WRITE_EXTERNAL_STORAGE", path.read_text()):
         errors.append(f"{path.relative_to(ROOT)}: retired installer/QR export permission")
-for directory in (native / "compose", native / "update", native / "compat", ROOT / "app/src/github"):
+for directory in (native / "update", native / "compat", ROOT / "app/src/github"):
     for path in directory.rglob("*"):
-        if path.is_file() and path.name not in ("MainActivity.kt", "ShareActivity.kt"):
+        if path.is_file():
             errors.append(f"{path.relative_to(ROOT)}: retired source remains")
-for path in (native / "flutter").glob("*.kt"):
-    source = path.read_text()
-    if re.search(r"(?:Screen|Dialog|ComposeView)\(", source):
-        errors.append(f"{path.name}: legacy UI fallback is not allowed")
-    if "NavController" in source or "navController.navigate" in source:
-        errors.append(f"{path.name}: legacy navigation is not allowed")
 for retired in ("flutter/lib/pages/capture_rules.dart", "libbox/option/httpdebug.go", "tools/ebpf",
                 "libbox/httpdebug/wire.go", "flutter/lib/pages/tls_offsets.dart",
                 "app/src/main/java/io/nekohasekai/sfa/bg/RootCaptureSession.kt"):
@@ -64,4 +62,4 @@ for reference in manifest.get("supplementalReferences", []):
                 errors.append(f"Changed verbatim supplemental import: {local}")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Flutter imports, glyphs, Android entry points and capture removal guards passed")
+print("Flutter reference imports, glyphs, Compose entry points and capture removal guards passed")

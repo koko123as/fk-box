@@ -2,7 +2,7 @@ name: Core and Flutter validation
 
 on:
   push:
-    branches: [dev, newui, "feat/mitm-requests"]
+    branches: [dev, newui, "feat/mitm-requests", fk-box]
     paths-ignore: ['**/*.md']
   pull_request:
     branches: [dev, newui]
