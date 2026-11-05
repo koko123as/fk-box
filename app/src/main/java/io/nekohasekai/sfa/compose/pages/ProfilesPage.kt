@@ -741,3 +741,6 @@ fun ScanPage(box: BoxController) {
         }
     }
 }
+
+/** Whether a profile (as the profile list sends it) runs on sing-box, whose options the structured pages edit. */
+fun Json.runsSingBox(): Boolean = (this["resolvedCore"] as? String ?: "sing-box") == "sing-box"

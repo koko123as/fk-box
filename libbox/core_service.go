@@ -58,6 +58,23 @@ type runningCore struct {
 	mihomoLog chan struct{}
 	tunFd     int
 	startedAt time.Time
+
+	access           sync.Mutex
+	xrayBalancers    []xrayBalancer
+	xrayOutboundTags []string
+	xrayProtocols    map[string]string
+	xrayDelays       map[string]coreDelay
+}
+
+type xrayBalancer struct {
+	tag      string
+	strategy string
+	members  []string
+}
+
+type coreDelay struct {
+	delay int32
+	at    time.Time
 }
 
 var (
@@ -171,6 +188,7 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	running.startedAt = time.Now()
 	activeCore = running
 	s.StartedService.WriteMessage(log.LevelInfo, core+" started")
+	go notifyCoreChange()
 	return nil
 }
 
@@ -203,6 +221,7 @@ func (s *CommandServer) stopOtherCore() {
 	// VpnService descriptor, which the app closes itself.
 	_ = syscall.Close(running.tunFd)
 	s.StartedService.WriteMessage(log.LevelInfo, running.core+" stopped")
+	go notifyCoreChange()
 }
 
 func (s *CommandServer) openCoreTun(options *OverrideOptions) (int, error) {
@@ -290,7 +309,53 @@ func startXrayCore(running *runningCore, content string) error {
 		return err
 	}
 	running.xray = instance
+	readXrayLayout(running, root)
 	return nil
+}
+
+// readXrayLayout records outbound tags and balancers (selectors are tag
+// prefixes, as Xray matches them) for the groups view.
+func readXrayLayout(running *runningCore, root map[string]any) {
+	running.xrayProtocols = map[string]string{}
+	outbounds, _ := root["outbounds"].([]any)
+	for _, item := range outbounds {
+		outbound, _ := item.(map[string]any)
+		tag, _ := outbound["tag"].(string)
+		protocol, _ := outbound["protocol"].(string)
+		if tag == "" {
+			continue
+		}
+		running.xrayProtocols[tag] = protocol
+		if protocol != "dns" && protocol != "blackhole" && protocol != "freedom" {
+			running.xrayOutboundTags = append(running.xrayOutboundTags, tag)
+		}
+	}
+	routing, _ := root["routing"].(map[string]any)
+	balancers, _ := routing["balancers"].([]any)
+	for _, item := range balancers {
+		balancer, _ := item.(map[string]any)
+		tag, _ := balancer["tag"].(string)
+		if tag == "" {
+			continue
+		}
+		strategy := "random"
+		if config, ok := balancer["strategy"].(map[string]any); ok {
+			if kind, ok := config["type"].(string); ok && kind != "" {
+				strategy = kind
+			}
+		}
+		selectors, _ := balancer["selector"].([]any)
+		var members []string
+		for _, outboundTag := range running.xrayOutboundTags {
+			for _, selector := range selectors {
+				if prefix, ok := selector.(string); ok && strings.HasPrefix(outboundTag, prefix) {
+					members = append(members, outboundTag)
+					break
+				}
+			}
+		}
+		running.xrayBalancers = append(running.xrayBalancers, xrayBalancer{tag: tag, strategy: strategy, members: members})
+	}
 }
 
 // mihomo: the profile's tun section is replaced by an fd TUN without

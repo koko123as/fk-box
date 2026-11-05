@@ -87,12 +87,21 @@ private val reportKinds = listOf("crash", "oom", "power")
 @Composable
 fun ToolsPage(box: BoxController) {
     BoxPage("Tools") {
-        Section(count = 5) { index, position ->
-            when (index) {
-                0 -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.filter) { RequestsPage(box) }
-                1 -> ListItemOpen(tr("Connections"), position, leading = AppGlyphs.connections) { ConnectionsPage(box) }
-                2 -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
-                3 -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
+        // Requests (HTTP capture) is sing-box only; Xray has no connection tracker.
+        val core = box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box"
+        val entries = buildList {
+            if (core == "sing-box") add("Requests")
+            if (core != "xray") add("Connections")
+            add("Logs")
+            add("Terminal")
+            add("Remote control")
+        }
+        Section(count = entries.size) { index, position ->
+            when (entries[index]) {
+                "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.filter) { RequestsPage(box) }
+                "Connections" -> ListItemOpen(tr("Connections"), position, leading = AppGlyphs.connections) { ConnectionsPage(box) }
+                "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
+                "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppGlyphs.proxies) { RemotePage(box) }
             }
         }

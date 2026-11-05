@@ -218,6 +218,18 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     }
 }
 
+/** The core each profile file resolves to, cached by path, size and modification time. */
+private val resolvedCores = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
+
+internal fun Profile.resolvedCore(): String {
+    val file = File(typed.path)
+    val stamp = "${typed.core}:${file.length()}:${file.lastModified()}"
+    resolvedCores[typed.path]?.let { if (it.first == stamp) return it.second }
+    val core = runCatching { ProfileContent.coreOf(this, file.readText()) }.getOrDefault(TypedProfile.CORE_SING_BOX)
+    resolvedCores[typed.path] = stamp to core
+    return core
+}
+
 internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "id" to id,
     "name" to name,
@@ -227,4 +239,5 @@ internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "autoUpdate" to typed.autoUpdate,
     "interval" to typed.autoUpdateInterval,
     "core" to typed.core,
+    "resolvedCore" to resolvedCore(),
 )

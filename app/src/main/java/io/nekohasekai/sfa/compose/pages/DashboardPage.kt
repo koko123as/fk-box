@@ -817,7 +817,9 @@ private fun IntranetDetails(box: BoxController) {
             val selected = box.selectedProfile
             if (selected != null) {
                 Section(count = 1) { _, position ->
-                    io.nekohasekai.sfa.compose.ui.ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) { ProfileConfigurationPage(box, selected) }
+                    io.nekohasekai.sfa.compose.ui.ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) {
+                        if (selected.runsSingBox()) ProfileConfigurationPage(box, selected) else ProfileEditor(box, selected)
+                    }
                 }
             }
         }

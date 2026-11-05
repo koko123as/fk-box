@@ -156,8 +156,10 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
             }
         }
         Section(rows = rows)
-        Section(count = 2) { index, position ->
-            if (index == 0) {
+        // The structured editor understands sing-box options only.
+        val structured = p.runsSingBox()
+        Section(count = if (structured) 2 else 1) { index, position ->
+            if (structured && index == 0) {
                 ListItemOpen(tr("Advanced configuration"), position, leading = AppGlyphs.customize) { ProfileConfigurationPage(box, p) }
             } else {
                 ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) { ProfileEditor(box, p) }
@@ -190,6 +192,30 @@ fun highlightJson(text: String, scheme: BoxScheme): AnnotatedString {
 
 private class JsonHighlight(private val scheme: BoxScheme) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText = TransformedText(highlightJson(text.text, scheme), OffsetMapping.Identity)
+}
+
+/** Clash YAML for mihomo profiles: keys in primary, strings in tertiary, comments dimmed, literals and numbers in secondary. */
+private val yamlTokens = Regex("(?m)(#.*$)|^(\\s*-?\\s*[^\\s#:'\"\\[\\]{},][^#:]*?)(:)(?=\\s|$)|(\"(?:\\\\.|[^\"\\\\])*\"|'[^']*')|\\b(true|false|null|~)\\b|(?<![\\w.])-?\\d+(?:\\.\\d+)?(?![\\w.])")
+
+fun highlightYaml(text: String, scheme: BoxScheme): AnnotatedString {
+    if (text.length > 150000) return AnnotatedString(text)
+    return buildAnnotatedString {
+        append(text)
+        for (token in yamlTokens.findAll(text)) {
+            val comment = token.groups[1]
+            val key = token.groups[2]
+            when {
+                comment != null -> addStyle(SpanStyle(color = scheme.onSurface.copy(alpha = .5f)), comment.range.first, comment.range.last + 1)
+                key != null -> addStyle(SpanStyle(color = scheme.primary), key.range.first, key.range.last + 1)
+                token.groups[4] != null -> addStyle(SpanStyle(color = scheme.tertiary), token.range.first, token.range.last + 1)
+                else -> addStyle(SpanStyle(color = scheme.secondary), token.range.first, token.range.last + 1)
+            }
+        }
+    }
+}
+
+private class YamlHighlight(private val scheme: BoxScheme) : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText = TransformedText(highlightYaml(text.text, scheme), OffsetMapping.Identity)
 }
 
 /** UndoHistoryController for the editor: edits coalesce while typing within a second. */
@@ -229,14 +255,14 @@ private fun codeStyle(scheme: BoxScheme) = TextStyle(
 
 /** code_editor.dart's CodeEditor: a JSON field with a gutter of logical line numbers, wrapped lines included. */
 @Composable
-fun CodeEditor(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, readOnly: Boolean, modifier: Modifier = Modifier, scroll: ScrollState = rememberScrollState()) {
+fun CodeEditor(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, readOnly: Boolean, modifier: Modifier = Modifier, scroll: ScrollState = rememberScrollState(), language: String = "json") {
     val scheme = BoxTheme.scheme
     val style = codeStyle(scheme)
     val density = LocalDensity.current
     var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
     val lineCount = value.text.count { it == '\n' } + 1
     val gutterWidth = with(density) { (lineCount.toString().length * 13 * 0.6f).sp.toDp() } + 24.dp
-    val transformation = remember(scheme) { JsonHighlight(scheme) }
+    val transformation = remember(scheme, language) { if (language == "yaml") YamlHighlight(scheme) else JsonHighlight(scheme) }
     var viewport by remember { mutableStateOf(0) }
     Row(modifier.fillMaxSize().onSizeChanged { viewport = it.height }) {
         Box(Modifier.width(gutterWidth).fillMaxHeight().background(scheme.surfaceContainerLow).clipToBounds()) {
@@ -291,6 +317,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
     var original by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     var revision by remember { mutableStateOf<String?>(null) }
+    var language by remember { mutableStateOf("json") }
     var saving by remember { mutableStateOf(false) }
     var checking by remember { mutableStateOf(false) }
     var loading by remember { mutableStateOf(false) }
@@ -316,6 +343,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
                 history.reset()
                 original = content
                 revision = data["revision"] as String
+                language = data["language"] as? String ?: "json"
             } catch (failure: CancellationException) {
                 throw failure
             } catch (failure: Exception) {
@@ -406,7 +434,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
                     when {
                         original == null && error == null -> Spacer(Modifier)
                         original == null -> ErrorState(error!!) { load() }
-                        else -> CodeEditor(text, setText, readOnly = busy)
+                        else -> CodeEditor(text, setText, readOnly = busy, language = language)
                     }
                 }
             }
