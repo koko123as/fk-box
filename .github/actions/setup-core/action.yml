@@ -15,14 +15,17 @@ runs:
       run: |
         version=$(sed -n 's/^VERSION_NAME=//p' version.properties | tr -d '\r')
         go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')
+        core_version=$(sed -n 's/^CORE_VERSION=//p' version.properties | tr -d '\r')
+        core_version=${core_version:-$version}
         [[ "$version" =~ ^[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$go_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "go_version=$go_version" >> "$GITHUB_OUTPUT"
+        echo "core_version=$core_version" >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@v5
       with:
         repository: SagerNet/sing-box
-        ref: v${{ steps.versions.outputs.version }}
+        ref: v${{ steps.versions.outputs.core_version }}
         path: .core
         persist-credentials: false
     - uses: actions/setup-go@v5
