@@ -17,6 +17,8 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import io.nekohasekai.sfa.compose.theme.LocalSurfaceLevel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -372,20 +374,30 @@ fun ListItem(
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
     position: ItemPosition? = null,
+    invalid: Boolean = false,
+    minVerticalPadding: Dp = 10.dp,
+    startPadding: Dp = 16.dp,
     onClick: (() -> Unit)? = null,
 ) {
     val scheme = BoxTheme.scheme
     val start = position == ItemPosition.Start || position == ItemPosition.StartAndEnd
     val end = position == ItemPosition.End || position == ItemPosition.StartAndEnd
     val shape = AppShape.vertical(if (start) AppCorner.XL else 0f, if (end) AppCorner.XL else 0f)
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val sorting = LocalSorting.current
+    val level = LocalSurfaceLevel.current.next
+    val background = if (invalid) scheme.errorContainer else level.colorOf(scheme)
+    val foreground = if (invalid) scheme.onErrorContainer else scheme.onSurfaceVariant
     Column(
         modifier
             .fillMaxWidth()
-            .then(if (position != null) Modifier.background(SurfaceLevel.Card.colorOf(scheme), shape).clip(shape) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier),
+            .then(if (position != null) Modifier.background(background, shape).clip(shape) else Modifier)
+            .then(if (onClick != null && !sorting) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
+            .pressOverlay(pressed && onClick != null && position != null, foreground, shape),
     ) {
         Row(
-            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = startPadding, end = 16.dp, top = minVerticalPadding, bottom = minVerticalPadding),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (leading != null) {
@@ -393,25 +405,31 @@ fun ListItem(
                 Spacer(Modifier.width(16.dp))
             }
             Column(Modifier.weight(1f)) {
-                androidx.compose.material3.ProvideTextStyle(ListStyles.title) { title() }
-                if (subtitle != null) androidx.compose.material3.ProvideTextStyle(ListStyles.subtitle) { subtitle() }
+                CompositionLocalProvider(LocalSurfaceLevel provides level) {
+                    androidx.compose.material3.ProvideTextStyle(ListStyles.title) { title() }
+                    if (subtitle != null) androidx.compose.material3.ProvideTextStyle(ListStyles.subtitle) { subtitle() }
+                }
             }
             if (trailing != null) {
                 Spacer(Modifier.width(16.dp))
-                CompositionLocalProvider(LocalContentColor provides scheme.onSurfaceVariant) {
+                CompositionLocalProvider(LocalContentColor provides scheme.onSurfaceVariant, LocalSurfaceLevel provides level) {
                     androidx.compose.material3.ProvideTextStyle(ListStyles.subtitle) { trailing() }
                 }
             }
         }
         if (position != null && !end) {
-            HorizontalDivider(Modifier.padding(start = if (leading != null) 56.dp else 16.dp, end = 14.dp), thickness = 0.5.dp, color = scheme.onSurface.copy(alpha = 0.14f))
+            HorizontalDivider(
+                Modifier.padding(start = if (leading != null) 56.dp else 16.dp, end = 14.dp),
+                thickness = 0.5.dp,
+                color = if (invalid) scheme.error else scheme.onSurface.copy(alpha = 0.14f),
+            )
         }
     }
 }
 
-/** list.dart's generateSection: an optional header, then [count] rows grouped on one card. */
+/** list.dart's generateSection: an optional header, the rows grouped on one card, an optional footer. */
 @Composable
-fun Section(title: String? = null, count: Int, item: @Composable (index: Int, position: ItemPosition) -> Unit) {
+fun Section(title: String? = null, count: Int, footer: String? = null, item: @Composable (index: Int, position: ItemPosition) -> Unit) {
     if (count <= 0) return
     if (title != null) {
         Text(
@@ -425,6 +443,19 @@ fun Section(title: String? = null, count: Int, item: @Composable (index: Int, po
     Column(Modifier.fillMaxWidth()) {
         for (index in 0 until count) item(index, ItemPosition.of(index, count))
     }
+    if (footer != null) ListFooter(footer)
+}
+
+/** list.dart's generateSection over a list of rows, each told its position. */
+@Composable
+fun Section(title: String? = null, footer: String? = null, rows: List<@Composable (ItemPosition) -> Unit>) {
+    Section(title, rows.size, footer) { index, position -> rows[index](position) }
+}
+
+/** list.dart's ListFooter. */
+@Composable
+fun ListFooter(text: String) {
+    Text(text, Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 8.dp), style = ListStyles.caption)
 }
 
 // ---------------------------------------------------------------------------

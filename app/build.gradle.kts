@@ -209,6 +209,13 @@ dependencies {
 
     implementation("androidx.activity:activity-ktx:1.13.0")
 
+    // QR scan and QR code (CameraX + ZXing, as at 84e71e4^; shared by both flavors)
+    val cameraVersion = "1.6.1"
+    implementation("androidx.camera:camera-camera2:$cameraVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
+    implementation("androidx.camera:camera-view:$cameraVersion")
+    implementation("com.google.zxing:core:3.5.4")
+
     // Compose UI (dependencies as at 84e71e4^, before the Flutter switch)
     val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
