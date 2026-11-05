@@ -31,7 +31,15 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     suspend fun config(id: Long): Map<String, Any?> = mutex.withLock { configLocked(id) }
 
     private suspend fun configLocked(id: Long): Map<String, Any?> {
-        val content = File(get(id).typed.path).readText()
+        val profile = get(id)
+        val content = File(profile.typed.path).readText()
+        val core = ProfileContent.coreOf(profile, content)
+        if (core != TypedProfile.CORE_SING_BOX) {
+            // Xray JSON and Clash YAML are edited as text; sing-box-only stats do not apply.
+            val formatted = Libbox.formatCoreConfig(core, content).value
+            return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
+                "core" to core, "language" to if (core == TypedProfile.CORE_MIHOMO) "yaml" else "json", "stats" to null)
+        }
         val formatted = Libbox.formatConfig(content).value
         val root = JSONObject(formatted)
         val outbounds = root.optJSONArray("outbounds")
@@ -40,7 +48,8 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             if (outbounds?.optJSONObject(index)?.optString("type") in setOf("selector", "urltest")) groupCount++
         }
         val route = root.optJSONObject("route")
-        return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content), "stats" to mapOf(
+        return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
+            "core" to core, "language" to "json", "stats" to mapOf(
             "groups" to groupCount, "outbounds" to (outbounds?.length() ?: 0),
             "rules" to (route?.optJSONArray("rules")?.length() ?: 0),
             "ruleSets" to (route?.optJSONArray("rule_set")?.length() ?: 0),
@@ -62,6 +71,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         require(id == Settings.selectedProfile) { "Selected profile changed; reload it before saving" }
         val previous = File(get(id).typed.path).readText()
         require(revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
+        require(ProfileContent.coreOf(get(id), previous) == TypedProfile.CORE_SING_BOX) { "LAN proxy switch is only available for sing-box profiles" }
         val content = Libbox.setUILANProxyEnabled(previous, enabled, initialPort).value
         val saved = writeContentLocked(id, content, expectedRevision)
         if (previous == content && id == Settings.selectedProfile) applySelected(false)
@@ -103,23 +113,27 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         if (url.isNotEmpty()) validateUrl(url)
         val interval = (args["interval"] as? Number)?.toInt() ?: 60
         require(interval >= 15) { "Update interval must be at least 15 minutes" }
+        val declaredCore = (args["core"] as? String) ?: profile.typed.core
+        require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
         val incomingContent = args["content"] as? String ?: if (id == 0L && url.isNotEmpty()) {
-            HTTPClient().use { it.getString(url) }
+            HTTPClient().use { it.getString(url, declaredCore) }
         } else if (id != 0L) {
             File(profile.typed.path).readText()
         } else {
             "{}"
         }
-        val content = Libbox.removeUIRetiredCaptureOptions(incomingContent)
-        validate(content)
+        val prepared = ProfileContent.prepare(declaredCore, incomingContent)
+        val content = prepared.content
         val file = if (id == 0L) {
-            File(Application.application.filesDir, "configs/${UUID.randomUUID()}.json").also { it.parentFile!!.mkdirs() }
+            val extension = if (prepared.core == TypedProfile.CORE_MIHOMO) "yaml" else "json"
+            File(Application.application.filesDir, "configs/${UUID.randomUUID()}.$extension").also { it.parentFile!!.mkdirs() }
         } else {
             File(profile.typed.path)
         }
         val oldContent = if (file.exists()) file.readText() else null
         write(file, content)
         profile.name = name
+        profile.typed.core = declaredCore
         profile.typed.path = file.path
         profile.typed.type = if (url.isEmpty()) TypedProfile.Type.Local else TypedProfile.Type.Remote
         profile.typed.remoteURL = url
@@ -148,7 +162,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     suspend fun update(id: Long) = mutex.withLock {
         val profile = get(id)
         require(profile.typed.type == TypedProfile.Type.Remote) { "Only remote profiles can be updated" }
-        val content = HTTPClient().use { it.getString(validateUrl(profile.typed.remoteURL)) }
+        val content = HTTPClient().use { it.getString(validateUrl(profile.typed.remoteURL), profile.typed.core) }
         ProfileContent.replaceLocked(profile, content, updatedAt = Date(), applySelected = applySelected)
     }
 
@@ -173,9 +187,11 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     fun decode(data: ByteArray, name: String): Map<String, Any?> {
         val text = data.toString(Charsets.UTF_8)
-        if (text.trimStart().startsWith("{")) {
-            validate(text)
-            return mapOf("name" to name.substringBeforeLast('.'), "content" to text)
+        val detected = Libbox.detectCoreConfig(text)
+        if (text.trimStart().startsWith("{") || detected == Libbox.CoreMihomo || detected == Libbox.CoreLinks) {
+            val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
+            return mapOf("name" to name.substringBeforeLast('.'), "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
+                "detectedCore" to prepared.core)
         }
         val profile = Libbox.decodeProfileContent(data)
         validate(profile.config)
@@ -194,7 +210,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
         fun validateUrl(value: String): String {
             val uri = URI(value)
-            require(uri.scheme in listOf("https", "http") && !uri.host.isNullOrBlank()) { "Enter an HTTP or HTTPS URL serving sing-box JSON" }
+            require(uri.scheme in listOf("https", "http") && !uri.host.isNullOrBlank()) { "Enter an HTTP or HTTPS subscription URL" }
             return value
         }
 
@@ -210,4 +226,5 @@ internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "updatedAt" to typed.lastUpdated.time,
     "autoUpdate" to typed.autoUpdate,
     "interval" to typed.autoUpdateInterval,
+    "core" to typed.core,
 )

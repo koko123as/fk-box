@@ -15,6 +15,11 @@ class HTTPClient : Closeable {
             userAgent += ")"
             userAgent
         }
+
+        fun userAgentFor(core: String): String = when (core) {
+            "xray", "mihomo" -> Libbox.coreSubscriptionUserAgent(core, "")
+            else -> userAgent
+        }
     }
 
     private val client = Libbox.newHTTPClient()
@@ -23,9 +28,10 @@ class HTTPClient : Closeable {
         client.modernTLS()
     }
 
-    fun getString(url: String): String {
+    /** [core] picks the User-Agent so the provider answers in that core's format. */
+    fun getString(url: String, core: String = "sing-box"): String {
         val request = client.newRequest()
-        request.setUserAgent(userAgent)
+        request.setUserAgent(userAgentFor(core))
         request.setURL(url)
         val response = request.execute()
         return response.content.unwrap

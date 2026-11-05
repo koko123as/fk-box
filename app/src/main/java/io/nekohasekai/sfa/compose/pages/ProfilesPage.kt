@@ -372,9 +372,18 @@ suspend fun decodeImport(box: BoxController, text: String): Json {
     if (text.startsWith("https://") || text.startsWith("http://") || text.startsWith("sing-box://")) {
         return json(box.call("profiles.decodeIntent", mapOf("uri" to text)))
     }
-    box.call("config.check", mapOf("content" to text))
-    return mapOf("name" to "Imported profile", "content" to text)
+    val prepared = json(box.call("config.prepare", mapOf("content" to text, "core" to "auto")))
+    return mapOf("name" to "Imported profile", "content" to prepared["content"], "core" to "auto")
 }
+
+/** The cores a profile can run on, "auto" first. */
+@Composable
+fun coreLabels(): List<Pair<String, String>> = listOf(
+    "auto" to tr("Automatic"),
+    "sing-box" to "sing-box",
+    "xray" to "Xray",
+    "mihomo" to "mihomo",
+)
 
 private suspend fun importProfile(box: BoxController, context: Context, source: String, navigator: io.nekohasekai.sfa.compose.ui.BoxNavigator?, emptyClipboard: String) {
     try {
@@ -454,7 +463,7 @@ fun AddProfilePage(box: BoxController) {
     }
     BoxPage("Add profile", loading = loading) {
         val sources = listOf("File" to AppGlyphs.profiles, "Clipboard" to AppGlyphs.copy, "Scan QR code" to AppGlyphs.qrCode)
-        Section(count = 5, footer = tr("This URL must serve a sing-box JSON configuration.")) { index, position ->
+        Section(count = 5, footer = tr("Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content.")) { index, position ->
             when (index) {
                 0 -> ListItemOpen(tr("Import from URL"), position, leading = AppGlyphs.link) { ProfileForm(box, mapOf("url" to "", "remote" to true)) }
                 4 -> ListItemOpen(tr("New profile"), position, leading = AppGlyphs.add) { ProfileForm(box, mapOf("content" to "{}")) }
@@ -482,10 +491,11 @@ fun ProfileForm(box: BoxController, initial: Json) {
     var interval by remember { mutableStateOf((initial["interval"] ?: 60).toString().removeSuffix(".0")) }
     var remote by remember { mutableStateOf(initial["remote"] == true || url.isNotEmpty()) }
     var auto by remember { mutableStateOf(initial["autoUpdate"] != false) }
+    var core by remember { mutableStateOf(initial["core"] as? String ?: "auto") }
     var saving by remember { mutableStateOf(false) }
     var attempted by remember { mutableStateOf(false) }
     val nameRequired = tr("Name") + ": " + tr("Required")
-    val urlInvalid = tr("sing-box JSON URL")
+    val urlInvalid = tr("Subscription URL")
     val intervalShort = tr("At least 15 minutes")
     fun issue(): Pair<String, String>? {
         if (name.trim().isEmpty()) return "name" to nameRequired
@@ -514,6 +524,7 @@ fun ProfileForm(box: BoxController, initial: Json) {
                         "url" to if (remote) url.trim() else "",
                         "autoUpdate" to (remote && auto),
                         "interval" to if (parsed != null && parsed >= 15) parsed else if (previous >= 15) previous else 60,
+                        "core" to core,
                     ),
                 )
                 navigator?.pop()
@@ -535,6 +546,13 @@ fun ProfileForm(box: BoxController, initial: Json) {
             add { p ->
                 FormRow(tr("Remote"), p, onPressed = { remote = !remote }) { CommonSwitch(remote, { remote = it }) }
             }
+            add { p ->
+                val labels = coreLabels()
+                val items = labels.map { (value, label) -> PopupMenuItem(label, checked = core == value, onPressed = { core = value }) }
+                CommonPopupBox(items) { open ->
+                    FormRow(tr("Core"), p, onPressed = open) { Text(labels.first { it.first == core }.second) }
+                }
+            }
             if (remote) {
                 add { p ->
                     FormRow(tr("URL"), p, invalid = shown?.first == "url") {
@@ -543,7 +561,7 @@ fun ProfileForm(box: BoxController, initial: Json) {
                 }
             }
         }
-        Section(footer = if (remote) tr("This URL must serve a sing-box JSON configuration.") else null, rows = rows)
+        Section(footer = tr(if (remote) "Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content." else "Automatic picks the core from the content."), rows = rows)
         if (remote) {
             val updateRows = buildList<@Composable (ItemPosition) -> Unit> {
                 add { p -> FormRow(tr("Auto update"), p, onPressed = { auto = !auto }) { CommonSwitch(auto, { auto = it }) } }

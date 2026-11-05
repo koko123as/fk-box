@@ -350,7 +350,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
         error = null
         scope.launch {
             try {
-                val result = box.call(if (format) "config.format" else "config.check", mapOf("content" to text.text))
+                val result = box.call(if (format) "config.format" else "config.check", mapOf("content" to text.text, "core" to (profile["core"] ?: "auto")))
                 if (format) setText(TextFieldValue(result as String)) else box.message(valid)
             } catch (failure: CancellationException) {
                 throw failure

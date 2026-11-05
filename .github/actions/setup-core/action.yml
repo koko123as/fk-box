@@ -52,11 +52,15 @@ runs:
       run: |
         xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
         mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
+        libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
+        [[ "$libxray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$xray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$mihomo" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
         cp go.mod ../core-go.mod.before
-        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/metacubex/mihomo@v"$mihomo"
+        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/metacubex/mihomo@v"$mihomo" -require=github.com/xtls/libxray@"$libxray"
         go mod tidy
+        # libXray's share converter must be built against the same Xray commit.
+        test "$(go list -m -f '{{.Version}}' github.com/xtls/xray-core)" = "$xray"
         # The core must stay on the sing-box module versions it was released with;
         # report every shared module the extra cores raised.
         diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \

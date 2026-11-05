@@ -32,6 +32,7 @@ import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
+import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.flutter.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
@@ -159,7 +160,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             DefaultNetworkMonitor.start()
 
             try {
-                startOrReloadCore(content)
+                startOrReloadCore(content, profile.typed.core)
             } catch (e: Exception) {
                 stopAndAlert(Alert.CreateService, e.message)
                 return
@@ -229,7 +230,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         lastProfileName = profile.name
         try {
-            startOrReloadCore(content)
+            startOrReloadCore(content, profile.typed.core)
         } catch (e: Exception) {
             stopAndAlert(Alert.CreateService, e.message)
             // Return reload failures to the command client so configuration
@@ -253,7 +254,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    private fun startOrReloadCore(content: String) = synchronized(MitmCertificate.accessLock) {
+    private fun startOrReloadCore(content: String, declaredCore: String) = synchronized(MitmCertificate.accessLock) {
+        val core = Libbox.resolveProfileCore(declaredCore, content)
+        check(core == TypedProfile.CORE_SING_BOX) { "The $core core can be imported and edited, but starting it is not wired up yet" }
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {

@@ -19,10 +19,37 @@ internal object ProfileContent {
     fun revision(content: String): String = MessageDigest.getInstance("SHA-256")
         .digest(content.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
-    fun validate(content: String) {
+    /** Content ready to save, with the core that will run it. */
+    data class Prepared(val core: String, val content: String)
+
+    /**
+     * Turns what a user imported or a subscription returned into a profile for [declaredCore]
+     * ("auto" detects): share links / Base64 node lists are converted, sing-box JSON drops the
+     * retired capture options, and every result is checked by its own core's parser.
+     */
+    fun prepare(declaredCore: String, content: String): Prepared {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
-        Libbox.checkConfig(content)
+        val prepared = if (Libbox.detectCoreConfig(content) == Libbox.CoreLinks) {
+            val converted = Libbox.convertCoreShareLinksFor(declaredCore, content)
+            Prepared(converted.core, converted.content)
+        } else {
+            val core = Libbox.resolveProfileCore(declaredCore, content)
+            Prepared(core, if (core == TypedProfile.CORE_SING_BOX) Libbox.removeUIRetiredCaptureOptions(content) else content)
+        }
+        validate(prepared.core, prepared.content)
+        return prepared
     }
+
+    fun validate(core: String, content: String) {
+        require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
+        Libbox.checkCoreConfig(core, content)
+    }
+
+    /** sing-box-only callers (LAN proxy toggle, backups of sing-box profiles). */
+    fun validate(content: String) = validate(Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content), content)
+
+    /** The core that runs [profile] with its saved [content]. */
+    fun coreOf(profile: Profile, content: String): String = Libbox.resolveProfileCore(profile.typed.core, content)
 
     /** Caller holds [mutex] until the save, service application and any recovery finish. */
     suspend fun replaceLocked(
@@ -37,8 +64,7 @@ internal object ProfileContent {
         if (expectedRevision != null) {
             require(previous != null && revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
         }
-        val cleaned = Libbox.removeUIRetiredCaptureOptions(content)
-        validate(cleaned)
+        val cleaned = prepare(profile.typed.core, content).content
         val changed = previous != cleaned
         if (!changed && updatedAt == null) return
         val savedAt = updatedAt ?: if (changed && profile.typed.type == TypedProfile.Type.Local) Date() else null

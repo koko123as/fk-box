@@ -16,6 +16,7 @@ import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.RemoteServer
 import io.nekohasekai.sfa.database.RemoteServerManager
@@ -303,8 +304,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 }
             }
             "intent.take" -> activity.takeIntent()
-            "config.check" -> withContext(Dispatchers.IO) { BoxProfiles.validate(string("content")); true }
-            "config.format" -> withContext(Dispatchers.IO) { Libbox.formatConfig(string("content")).value }
+            "config.check" -> withContext(Dispatchers.IO) { ProfileContent.prepare(args["core"] as? String ?: "auto", string("content")); true }
+            "config.prepare" -> withContext(Dispatchers.IO) {
+                val prepared = ProfileContent.prepare(args["core"] as? String ?: "auto", string("content"))
+                mapOf("content" to prepared.content, "core" to prepared.core)
+            }
+            "config.format" -> withContext(Dispatchers.IO) {
+                val content = string("content")
+                val core = Libbox.resolveProfileCore(args["core"] as? String ?: "auto", content)
+                Libbox.formatCoreConfig(core, content).value
+            }
             "document.save" -> {
                 val uri = activity.pickDocument(string("name")) ?: return false
                 withContext(Dispatchers.IO) {

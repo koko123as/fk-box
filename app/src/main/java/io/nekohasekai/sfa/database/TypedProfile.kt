@@ -40,6 +40,9 @@ class TypedProfile() : Parcelable {
     var autoUpdate: Boolean = false
     var autoUpdateInterval = 60
 
+    /** Core that runs this profile: "auto" (detect from content), "sing-box", "xray" or "mihomo". */
+    var core: String = CORE_AUTO
+
     constructor(reader: Parcel) : this() {
         val version = reader.readInt()
         path = reader.readString() ?: ""
@@ -50,21 +53,31 @@ class TypedProfile() : Parcelable {
         if (version >= 1) {
             autoUpdateInterval = reader.readInt()
         }
+        if (version >= 2) {
+            core = reader.readString()?.takeIf { it in CORES } ?: CORE_AUTO
+        }
     }
 
     override fun writeToParcel(writer: Parcel, flags: Int) {
-        writer.writeInt(1)
+        writer.writeInt(2)
         writer.writeString(path)
         writer.writeInt(type.ordinal)
         writer.writeString(remoteURL)
         writer.writeInt(if (autoUpdate) 1 else 0)
         writer.writeLong(lastUpdated.time)
         writer.writeInt(autoUpdateInterval)
+        writer.writeString(core)
     }
 
     override fun describeContents(): Int = 0
 
     companion object CREATOR : Parcelable.Creator<TypedProfile> {
+        const val CORE_AUTO = "auto"
+        const val CORE_SING_BOX = "sing-box"
+        const val CORE_XRAY = "xray"
+        const val CORE_MIHOMO = "mihomo"
+        val CORES = setOf(CORE_AUTO, CORE_SING_BOX, CORE_XRAY, CORE_MIHOMO)
+
         override fun createFromParcel(parcel: Parcel): TypedProfile = TypedProfile(parcel)
 
         override fun newArray(size: Int): Array<TypedProfile?> = arrayOfNulls(size)

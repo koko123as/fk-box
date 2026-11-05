@@ -43,6 +43,23 @@ Xray 选 v26.7.28：之后的版本要求 Go 1.27，当前构建使用 `GO_VERSI
 - 被抬高的共用模块：`metacubex/utls` v1.8.7→v1.8.8、`google.golang.org/grpc` v1.79.1→v1.82.1、`genproto/googleapis/rpc`、`pires/go-proxyproto` v0.8.1→v0.15.0（sing-box 未使用）、`go4.org/netipx`、`lukechampine.com/blake3` v1.3.0→v1.4.1、`klauspost/cpuid/v2`、`andybalholm/brotli`、`ajg/form`、`coreos/go-iptables`、`go-jose/v4`、`pierrec/lz4/v4`、`testify` 及 Windows 专用的 `wireguard/windows`。`golang.org/x/*` 未被抬高。暂无需 `replace`；实际结果以 Actions 中的 `core-module-bumps.txt` 为准，升级任一内核时重新核查。
 - 各内核的 gVisor、quic-go 均为不同模块路径（`sagernet/gvisor`、`gvisor.dev/gvisor`、`metacubex/gvisor`；`sagernet/quic-go`、`apernet/quic-go`、`metacubex/quic-go`），互不覆盖，但会增加体积。
 
+### 订阅识别与配置（第 1 阶段）
+
+[core_profile.go](libbox/core_profile.go) 提供：
+
+| 接口 | 作用 |
+| --- | --- |
+| `DetectCoreConfig` | Clash YAML → `mihomo`；JSON 的 inbounds/outbounds 带 `protocol` → `xray`；其余 JSON → `sing-box`；分享链接或 Base64 节点列表 → `links`。裸 `http(s)://` 视为订阅地址，不当作 HTTP 代理节点 |
+| `ResolveProfileCore` | 配置文件的 `core`（`auto` 或指定内核）解析为实际运行的内核 |
+| `CheckCoreConfig` | sing-box 走 `CheckConfig`；Xray 用 Xray 自带 JSON 解析并逐个构建 outbound/inbound，路由与 DNS 仅在 geo 文件存在时构建；mihomo 用 mihomo 的原始配置解析、逐个 `adapter.ParseProxy` 并检查策略组成员。mihomo 规则与 provider 要到启动时完整解析（会读取/下载 geo 数据库），导入时不做 |
+| `FormatCoreConfig` | sing-box 走 `FormatConfig`；Xray 只做 JSON 缩进；mihomo 只规范换行，保留注释与键顺序 |
+| `ConvertCoreShareLinks(For)` | 链接经 mihomo `common/convert` 解析；默认生成 sing-box 配置（字段映射参照 SagerNet/serenity 的 clash 解析器）；含 xhttp 时改用 libXray `share` 生成 Xray 配置；用户指定 mihomo 时生成 Clash YAML。生成结果都会再经对应内核校验 |
+| `CoreSubscriptionUserAgent` | 按内核发送订阅 UA：mihomo 为 `clash.meta`，Xray 为 `v2rayN/<Xray 版本>`，sing-box 沿用原 UA |
+
+libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，并把未设置的 `json.RawMessage` 序列化成 `null`（Xray 会把 `"dest": null` 当成已设置，按服务端构建 REALITY）。转换后统一改为 `tag` 并清除 `null`。
+
+应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 统一负责链接转换、sing-box 退役捕获选项清理与分内核校验。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
+
 ## 新增接口与行为
 
 ### 运行时内存
