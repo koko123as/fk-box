@@ -248,6 +248,55 @@ class BoxController(private val bridge: BoxBridge) {
 
     suspend fun setPreference(key: String, value: Any?): Boolean = setPreferences(mapOf(key to value))
 
+    /** box.dart's setSetting: an auto-restart setting restarts a running local service itself. */
+    suspend fun setSetting(key: String, value: Any?, restart: Boolean = true, autoRestart: Boolean = false) {
+        if (serviceSettingsChanging || autoRestart && transitioning && !remote) return
+        val restartService = autoRestart && running && !remote
+        if (autoRestart) serviceSettingsChanging = true
+        try {
+            val saved = json(call("settings.set", buildMap { put("key", key); put("value", value); if (restartService) put("restart", true) }))
+            if (!disposed) {
+                settings = saved
+                if (restartService) {
+                    applyRequired = null
+                } else if (restart && !autoRestart && running && !remote) {
+                    applyRequired = "Restart"
+                }
+            }
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            report(error)
+        } finally {
+            if (autoRestart) serviceSettingsChanging = false
+        }
+    }
+
+    suspend fun setSettings(values: Map<String, Any?>, restart: Boolean = true): Boolean = try {
+        settings = json(call("settings.patch", mapOf("value" to values)))
+        if (restart && running && !remote) applyRequired = "Restart"
+        true
+    } catch (error: CancellationException) {
+        throw error
+    } catch (error: Exception) {
+        report(error)
+        false
+    }
+
+    val appIcons = HashMap<String, Deferred<ByteArray?>>()
+
+    fun appIcon(packageName: String): Deferred<ByteArray?> = appIcons.getOrPut(packageName) {
+        scope.async {
+            try {
+                call("apps.icon", mapOf("package" to packageName)) as? ByteArray
+            } catch (error: CancellationException) {
+                throw error
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
     fun report(error: Throwable) {
         if (!disposed) _messages.tryEmit(describe(error))
     }

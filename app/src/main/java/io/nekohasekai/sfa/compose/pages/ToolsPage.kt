@@ -98,10 +98,10 @@ fun ToolsPage(box: BoxController) {
         }
         Section(title = tr("Settings"), count = 4) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Appearance"), position, leading = AppGlyphs.paintbrush) { PendingPage("Appearance") }
-                1 -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { PendingPage("General") }
-                2 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { PendingPage("Access control") }
-                else -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { PendingPage("Backup and restore") }
+                0 -> ListItemOpen(tr("Appearance"), position, leading = AppGlyphs.paintbrush) { AppearancePage(box) }
+                1 -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { GeneralSettingsPage(box) }
+                2 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { AccessPage(box) }
+                else -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { BackupPage(box) }
             }
         }
         Section(title = tr("Network diagnostics"), count = 2) { index, position ->
@@ -123,16 +123,8 @@ fun ToolsPage(box: BoxController) {
             }
         }
         Section(title = tr("Other"), count = 1) { _, position ->
-            ListItemOpen(tr("About"), position, leading = AppGlyphs.info) { PendingPage("About") }
+            ListItemOpen(tr("About"), position, leading = AppGlyphs.info) { AboutPage(box) }
         }
-    }
-}
-
-/** TODO(phase 4): settings, appearance, access, backup and about. */
-@Composable
-private fun PendingPage(title: String) {
-    BoxPage(title) {
-        EmptyState(title, message = "This page moves to Compose in the next phase.", glyph = AppGlyphs.tools)
     }
 }
 
