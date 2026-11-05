@@ -43,6 +43,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -145,8 +146,7 @@ fun NavigationDock(destinations: List<DockDestination>, selectedIndex: Int, onSe
                     translationX = stretch.value
                 }
                 .boxShadows(AppShape.full, dockShadows(scheme))
-                .clip(AppShape.full)
-                .background(floating.colorOf(scheme))
+                .background(floating.colorOf(scheme), AppShape.full)
                 .padding(BAR_PADDING.dp),
         ) {
             FloatingBar(destinations, selectedIndex, onSelected, floating, swell, stretch)
@@ -250,23 +250,38 @@ private fun FloatingBar(
                 drawPath(Path().apply { addRoundRect(lensRect()) }, lensColor)
             },
         )
-        // Destinations, then their copy in the primary color cut to the lens, magnified as it lifts.
-        DockItems(destinations, layout, scheme.onSurfaceVariant, labelStyle, Modifier)
-        DockItems(
-            destinations,
-            layout,
-            scheme.primary,
-            labelStyle,
+        // _LensTint: each destination paints as it is outside the lens and, cut
+        // to the lens, in the primary color magnified about its own center, so
+        // a destination the lens passes over turns part by part and is never
+        // drawn twice.
+        DockItems(destinations, layout, scheme.onSurfaceVariant, labelStyle) { index ->
             Modifier.drawWithContent {
-                val rect = lensRect()
+                val px = density.density
+                val bar = lensRect()
+                val shift = (layout.inset + index * layout.pitch) * px
+                val rect = RoundRect(bar.left - shift, bar.top, bar.right - shift, bar.bottom, bar.topLeftCornerRadius)
+                val lensPath = Path().apply { addRoundRect(rect) }
+                val reached = androidx.compose.ui.geometry.Rect(rect.left + BAR_PADDING * px, rect.top, rect.right - BAR_PADDING * px, rect.bottom)
+                if (!reached.overlaps(androidx.compose.ui.geometry.Rect(0f, 0f, size.width, size.height).inflate(LABEL_INSET * px))) {
+                    drawContent()
+                    return@drawWithContent
+                }
+                clipPath(lensPath, androidx.compose.ui.graphics.ClipOp.Difference) { this@drawWithContent.drawContent() }
                 val magnify = 1 + LENS_MAGNIFY * lift.value.coerceIn(0f, 1f)
-                clipPath(Path().apply { addRoundRect(rect) }) {
-                    scale(magnify, magnify, pivot = Offset((rect.left + rect.right) / 2, (rect.top + rect.bottom) / 2)) {
-                        this@drawWithContent.drawContent()
+                clipPath(lensPath) {
+                    drawIntoCanvas { canvas ->
+                        canvas.saveLayer(
+                            androidx.compose.ui.geometry.Rect(rect.left, rect.top, rect.right, rect.bottom),
+                            androidx.compose.ui.graphics.Paint().apply {
+                                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(scheme.primary, androidx.compose.ui.graphics.BlendMode.SrcIn)
+                            },
+                        )
+                        scale(magnify, magnify, pivot = center) { this@drawWithContent.drawContent() }
+                        canvas.restore()
                     }
                 }
-            },
-        )
+            }
+        }
         // Raw pointers: a press lifts the lens under the finger, a drag slides
         // it (rubber-banding past the ends), a flick carries it one further,
         // and letting go selects where it rests.
@@ -345,11 +360,17 @@ private fun FloatingBar(
 }
 
 @Composable
-private fun DockItems(destinations: List<DockDestination>, layout: DockLayout, color: Color, labelStyle: androidx.compose.ui.text.TextStyle, modifier: Modifier) {
-    Row(modifier.fillMaxSize().padding(horizontal = layout.inset.dp)) {
-        for (destination in destinations) {
+private fun DockItems(
+    destinations: List<DockDestination>,
+    layout: DockLayout,
+    color: Color,
+    labelStyle: androidx.compose.ui.text.TextStyle,
+    itemModifier: (Int) -> Modifier,
+) {
+    Row(Modifier.fillMaxSize().padding(horizontal = layout.inset.dp)) {
+        destinations.forEachIndexed { index, destination ->
             Column(
-                Modifier.weight(1f).fillMaxHeight().padding(horizontal = LABEL_INSET.dp),
+                Modifier.weight(1f).fillMaxHeight().then(itemModifier(index)).padding(horizontal = LABEL_INSET.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center,
             ) {

@@ -41,6 +41,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
@@ -157,7 +159,9 @@ fun DashboardPage(box: BoxController) {
         },
         iconActions = if (editing == null) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
     ) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        val pageScroll = rememberScrollState()
+        var viewportBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
+        BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { viewportBounds = it.boundsInRoot() }) {
             val mobile = maxWidth < 600.dp
             val maxContent = if (mobile) 560.dp else 900.dp
             val side = max(16f, (maxWidth.value - maxContent.value) / 2).dp
@@ -165,7 +169,7 @@ fun DashboardPage(box: BoxController) {
             Column(
                 Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(pageScroll)
                     .padding(PaddingValues(start = side, end = side, top = contentTopPadding(), bottom = 16.dp + bottomInset())),
                 verticalArrangement = Arrangement.spacedBy(if (editing != null) 0.dp else gap),
             ) {
@@ -179,6 +183,8 @@ fun DashboardPage(box: BoxController) {
                     onChanged = { saveLayout(it) },
                     onBusyChanged = { saving = it },
                     onDone = { editor = null },
+                    scrollState = pageScroll,
+                    viewport = { viewportBounds },
                 )
               } else {
                 if (box.remote) {

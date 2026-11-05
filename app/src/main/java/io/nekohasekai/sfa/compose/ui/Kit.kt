@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import io.nekohasekai.sfa.compose.theme.LocalSurfaceLevel
@@ -46,6 +47,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -274,13 +276,41 @@ fun DashboardChip(label: String, modifier: Modifier = Modifier, tone: ChipTone =
 const val SWITCH_TRACK_WIDTH = 52f
 const val SWITCH_TRACK_HEIGHT = 32f
 
+private val SwitchEaseOutBack = androidx.compose.animation.core.CubicBezierEasing(.175f, .885f, .32f, 1.275f)
+private val SwitchEaseOutCubic = androidx.compose.animation.core.CubicBezierEasing(.215f, .61f, .355f, 1f)
+
 @Composable
 fun CommonSwitch(value: Boolean, onChanged: ((Boolean) -> Unit)?, modifier: Modifier = Modifier) {
     val scheme = BoxTheme.scheme
     val enabled = onChanged != null
-    val on by animateFloatAsState(if (value) 1f else 0f, tween(300), label = "switch")
-    var pressed by remember { mutableStateOf(false) }
-    val press by animateFloatAsState(if (pressed) 1f else 0f, tween(150), label = "press")
+    // ui/switch.dart: the thumb follows a horizontal drag and flips past
+    // halfway; a tap flips it and lifts the thumb for 200 ms.
+    val toggle = remember { Animatable(if (value) 1f else 0f) }
+    val pressA = remember { Animatable(0f) }
+    var dragging by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val currentValue by rememberUpdatedState(value)
+    val currentOnChanged by rememberUpdatedState(onChanged)
+    var liftJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    fun pressIn() {
+        liftJob?.cancel()
+        scope.launch { pressA.animateTo(1f, tween(150, easing = SwitchEaseOutCubic)) }
+    }
+    fun pressOut() { scope.launch { pressA.animateTo(0f, tween(150, easing = SwitchEaseOutCubic)) } }
+    fun liftAcross() {
+        pressIn()
+        liftJob = scope.launch { kotlinx.coroutines.delay(200); pressOut() }
+    }
+    LaunchedEffect(value) {
+        if (dragging) return@LaunchedEffect
+        val target = if (value) 1f else 0f
+        if (toggle.value == target) return@LaunchedEffect
+        // A drag hands over its flip with the thumb already past halfway.
+        if (kotlin.math.abs(toggle.value - target) > .5f && currentOnChanged != null) liftAcross()
+        toggle.animateTo(target, tween(300, easing = SwitchEaseOutBack))
+    }
+    val on = toggle.value.coerceIn(0f, 1f)
+    val press = pressA.value
     val trackColor = if (enabled) {
         androidx.compose.ui.graphics.lerp(scheme.surfaceContainerHighest, scheme.primary, on)
     } else {
@@ -295,24 +325,69 @@ fun CommonSwitch(value: Boolean, onChanged: ((Boolean) -> Unit)?, modifier: Modi
     Box(
         modifier
             .size(SWITCH_TRACK_WIDTH.dp, SWITCH_TRACK_HEIGHT.dp)
-            .pointerInput(enabled, value) {
+            .pointerInput(enabled) {
                 if (!enabled) return@pointerInput
+                val travel = (SWITCH_TRACK_WIDTH - SWITCH_TRACK_HEIGHT).dp.toPx()
                 awaitEachGesture {
-                    awaitFirstDown()
-                    pressed = true
-                    val up = waitForUpOrCancellation()
-                    pressed = false
-                    if (up != null) onChanged?.invoke(!value)
+                    val down = awaitFirstDown()
+                    pressIn()
+                    var moved = 0f
+                    var cancelled = false
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull { it.id == down.id }
+                        if (change == null) { cancelled = true; break }
+                        if (!change.pressed) break
+                        val dx = change.positionChange().x
+                        if (dx == 0f) continue
+                        moved += dx
+                        if (!dragging && kotlin.math.abs(moved) > viewConfiguration.touchSlop) {
+                            dragging = true
+                        }
+                        if (dragging) {
+                            change.consume()
+                            val rtl = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl
+                            val next = (toggle.value + (if (rtl) -dx else dx) / travel).coerceIn(0f, 1f)
+                            scope.launch { toggle.snapTo(next) }
+                        }
+                    }
+                    if (cancelled) {
+                        pressOut()
+                        if (dragging) {
+                            dragging = false
+                            scope.launch { toggle.animateTo(if (currentValue) 1f else 0f, tween(300, easing = SwitchEaseOutBack)) }
+                        }
+                        return@awaitEachGesture
+                    }
+                    if (!dragging) {
+                        currentOnChanged?.invoke(!currentValue)
+                        liftAcross()
+                        return@awaitEachGesture
+                    }
+                    pressOut()
+                    dragging = false
+                    if ((toggle.value >= .5f) == currentValue) {
+                        scope.launch { toggle.animateTo(if (currentValue) 1f else 0f, tween(300, easing = SwitchEaseOutBack)) }
+                    } else {
+                        currentOnChanged?.invoke(!currentValue)
+                        // The flipped value arrives with the next composition, if the owner takes it.
+                        scope.launch {
+                            kotlinx.coroutines.yield()
+                            androidx.compose.runtime.withFrameNanos { }
+                            toggle.animateTo(if (currentValue) 1f else 0f, tween(300, easing = SwitchEaseOutBack))
+                        }
+                    }
                 }
             },
     ) {
         Box(Modifier.fillMaxSize().background(trackColor, AppShape.full))
         val stretch = sin(Math.PI * on).toFloat()
+        val position = toggle.value
         val baseW = 24f + (34f - 24f) * stretch
         val baseH = 24f + (22f - 24f) * stretch
         val w = baseW + (40f + 10f * stretch - baseW) * press
         val h = baseH + (40f - 2f * stretch - baseH) * press
-        val along = SWITCH_TRACK_HEIGHT / 2 + (SWITCH_TRACK_WIDTH - SWITCH_TRACK_HEIGHT) * on
+        val along = SWITCH_TRACK_HEIGHT / 2 + (SWITCH_TRACK_WIDTH - SWITCH_TRACK_HEIGHT) * position
         Box(
             Modifier
                 .offset((along - w / 2).dp, ((SWITCH_TRACK_HEIGHT - h) / 2).dp)

@@ -21,6 +21,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -48,6 +49,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -93,6 +95,8 @@ private const val ROOM_MS = 260
 private const val APPEAR_MS = 200
 private const val APPEAR_SCALE = .92f
 private const val LIFT_GROWTH = .03f
+private const val AUTO_SCROLL_EDGE = 72
+private const val AUTO_SCROLL_STEP = 14
 private val EaseOut = CubicBezierEasing(0f, 0f, .58f, 1f)
 
 private val dashboardDescriptions = mapOf(
@@ -159,6 +163,8 @@ fun DashboardEditor(
     onChanged: suspend (List<String>) -> Boolean,
     onBusyChanged: (Boolean) -> Unit,
     onDone: () -> Unit,
+    scrollState: androidx.compose.foundation.ScrollState? = null,
+    viewport: () -> androidx.compose.ui.geometry.Rect? = { null },
 ) {
     state.onChanged = onChanged
     state.onBusyChanged = onBusyChanged
@@ -200,6 +206,10 @@ fun DashboardEditor(
     val haptics = LocalHapticFeedback.current
     val gapPx = with(LocalDensity.current) { gap.toPx() }
     val cards by rememberUpdatedState(state.cards.toList())
+    val cardCoordinates = remember { HashMap<String, androidx.compose.ui.layout.LayoutCoordinates>() }
+    var pointerY by remember { mutableStateOf<Float?>(null) }
+    val edgePx = with(LocalDensity.current) { AUTO_SCROLL_EDGE.dp.toPx() }
+    val stepPx = with(LocalDensity.current) { AUTO_SCROLL_STEP.dp.toPx() }
 
     fun dragBy(delta: Float) {
         val card = dragging ?: return
@@ -222,6 +232,26 @@ fun DashboardEditor(
             dragging = null
         }
         if (state.dirty) save()
+    }
+
+    // A card held near the top or bottom of the page scrolls it, faster the
+    // closer it is, as Flutter's reorderable list does while dragging.
+    androidx.compose.runtime.LaunchedEffect(dragging, scrollState) {
+        val scroll = scrollState ?: return@LaunchedEffect
+        if (dragging == null) return@LaunchedEffect
+        while (dragging != null) {
+            androidx.compose.runtime.withFrameNanos { }
+            val y = pointerY ?: continue
+            val bounds = viewport() ?: continue
+            val speed = when {
+                y < bounds.top + edgePx -> -stepPx * ((bounds.top + edgePx - y) / edgePx).coerceIn(0f, 1f)
+                y > bounds.bottom - edgePx -> stepPx * ((y - (bounds.bottom - edgePx)) / edgePx).coerceIn(0f, 1f)
+                else -> 0f
+            }
+            if (speed == 0f) continue
+            val moved = scroll.scrollBy(speed)
+            if (moved != 0f) dragBy(moved)
+        }
     }
 
     val addable = available.filter { it !in state.shown }
@@ -257,6 +287,7 @@ fun DashboardEditor(
                             onRemove = if (state.saving || card == "Status") null else ({ remove(card) }),
                             modifier = Modifier
                                 .onSizeChanged { heights[card] = it.height }
+                                .then(Modifier.onGloballyPositioned { cardCoordinates[card] = it })
                                 .pointerInput(card) {
                                     detectDragGesturesAfterLongPress(
                                         onDragStart = {
@@ -266,9 +297,13 @@ fun DashboardEditor(
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                                             scope.launch { lift.animateTo(1f, tween(200)) }
                                         },
-                                        onDrag = { change, amount -> change.consume(); dragBy(amount.y) },
-                                        onDragEnd = { dragEnd() },
-                                        onDragCancel = { dragEnd() },
+                                        onDrag = { change, amount ->
+                                            change.consume()
+                                            pointerY = cardCoordinates[card]?.takeIf { it.isAttached }?.localToRoot(change.position)?.y
+                                            dragBy(amount.y)
+                                        },
+                                        onDragEnd = { pointerY = null; dragEnd() },
+                                        onDragCancel = { pointerY = null; dragEnd() },
                                     )
                                 },
                         ) { cardContent(card)?.invoke() }
