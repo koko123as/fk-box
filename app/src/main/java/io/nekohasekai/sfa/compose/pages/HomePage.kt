@@ -94,7 +94,7 @@ fun HomePage(box: BoxController) {
                 try {
                     if (uri.startsWith("bbox-share:")) {
                         // TODO(phase 3): pages/taildrop.dart's SharePage for shared files.
-                        navigator?.push { SharePlaceholder(uri.removePrefix("bbox-share:")) }
+                        navigator?.push { SharePage(box, uri.removePrefix("bbox-share:")) }
                         continue
                     }
                     val data = io.nekohasekai.sfa.compose.json(box.call("profiles.decodeIntent", mapOf("uri" to uri)))
@@ -159,7 +159,7 @@ fun HomePage(box: BoxController) {
                                         0 -> DashboardPage(box)
                                         1 -> ProxiesPage(box)
                                         2 -> ProfilesPage(box)
-                                        else -> TopLevelPlaceholder("Tools", AppGlyphs.tools)
+                                        else -> ToolsPage(box)
                                     }
                                 }
                             }
@@ -203,22 +203,5 @@ private fun Modifier.blockInput(): Modifier = pointerInput(Unit) {
         while (true) {
             awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
         }
-    }
-}
-
-/** TODO(phase 3): pages/tools.dart. */
-@Composable
-private fun TopLevelPlaceholder(title: String, glyph: io.nekohasekai.sfa.compose.ui.Glyph) {
-    CommonScaffold(title = tr(title)) {
-        Box(Modifier.fillMaxSize().padding(top = contentTopPadding(), bottom = bottomInset()), contentAlignment = Alignment.Center) {
-            EmptyState(title, message = "This page moves to Compose in the next phase.", glyph = glyph)
-        }
-    }
-}
-
-@Composable
-private fun SharePlaceholder(token: String) {
-    BoxPage("Share") {
-        EmptyState("Share", message = token)
     }
 }

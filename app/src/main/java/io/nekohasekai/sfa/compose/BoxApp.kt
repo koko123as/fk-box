@@ -75,7 +75,7 @@ fun BoxApp(box: BoxController) {
         val navigator = rememberBoxNavigator()
         Box(Modifier.fillMaxSize().background(SurfaceLevel.Page.colorOf(scheme))) {
             when {
-                box.ready -> NavigatorHost(navigator) { HomePage(box) }
+                box.ready -> androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalBoxController provides box) { NavigatorHost(navigator) { HomePage(box) } }
                 box.startupError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ErrorState(box.startupError!!) { box.retryInitialize() }
                 }

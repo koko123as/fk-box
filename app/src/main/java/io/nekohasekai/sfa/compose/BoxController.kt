@@ -206,6 +206,14 @@ class BoxController(private val bridge: BoxBridge) {
 
     fun retryInitialize() = initialize()
 
+    /** The OpenConnect sign-in browser, formerly the io.koko123as.flbox/openconnect platform view. */
+    internal fun browserView(context: android.content.Context, args: Map<String, Any?>): io.nekohasekai.sfa.flutter.PlatformView =
+        io.nekohasekai.sfa.flutter.BoxBrowserFactory(bridge).create(context, 0, args)
+
+    /** The Ghostty surface, formerly the io.koko123as.flbox/ghostty platform view. */
+    internal fun terminalView(context: android.content.Context, args: Map<String, Any?>, channel: io.nekohasekai.sfa.flutter.TerminalChannel): io.nekohasekai.sfa.flutter.TerminalSurface =
+        io.nekohasekai.sfa.flutter.BoxTerminalFactory().create(context, 0, args, channel)
+
     suspend fun call(method: String, args: Map<String, Any?> = emptyMap()): Any? = bridge.call(method, args)
 
     fun clearApplyRequired() {

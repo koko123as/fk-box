@@ -92,6 +92,18 @@ class DialogHost {
         }
     }
 
+    /** An alert with its own actions: the picked action's value, or null when dismissed. */
+    suspend fun choose(title: String, message: String?, actions: List<Pair<String, String?>>): String? {
+        val result = CompletableDeferred<Any?>()
+        val request = DialogRequest.Choice(t(title), message, actions.map { t(it.first) to it.second }, result)
+        requests.add(request)
+        return try {
+            result.await() as? String
+        } finally {
+            requests.remove(request)
+        }
+    }
+
     /** input.dart's InputDialog in showFloatingDialog: the text, or null when cancelled. */
     suspend fun input(
         title: String,
@@ -113,6 +125,7 @@ class DialogHost {
 }
 
 internal sealed class DialogRequest(val result: CompletableDeferred<Any?>) {
+    class Choice(val title: String, val message: String?, val actions: List<Pair<String, String?>>, result: CompletableDeferred<Any?>) : DialogRequest(result)
     class Confirm(val title: String, val message: String?, val action: String, result: CompletableDeferred<Any?>) : DialogRequest(result)
     class Input(
         val title: String,
@@ -143,6 +156,13 @@ internal fun DialogLayer(host: DialogHost) {
                 dismissButton = { TextButton(onClick = { request.result.complete(false) }) { Text(tr("Cancel")) } },
                 confirmButton = { TextButton(onClick = { request.result.complete(true) }) { Text(request.action) } },
             )
+            is DialogRequest.Choice -> FloatingDialog(onDismiss = { request.result.complete(null) }) {
+                CommonDialog(
+                    title = request.title,
+                    actions = request.actions.map { (label, value) -> DialogAction(label, { request.result.complete(value); Unit }) },
+                    content = request.message?.let { message -> { androidx.compose.foundation.text.selection.SelectionContainer { Text(message) } } },
+                )
+            }
             is DialogRequest.Input -> FloatingDialog(onDismiss = { request.result.complete(null) }) { InputDialog(request) }
         }
     }
