@@ -83,9 +83,10 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
             val p = progress.value
             val path = morphPathOf(startMorph, p)
             val turn = Math.toDegrees(p * 2 * PI / 9).toFloat()
+            val shadowDy = 6.dp.toPx()
             if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
                 withTransform({
-                    translate(0f, 6.dp.toPx())
+                    translate(0f, shadowDy)
                     rotate(turn)
                     scale(this@Canvas.size.width, this@Canvas.size.height, pivot = Offset.Zero)
                 }) {

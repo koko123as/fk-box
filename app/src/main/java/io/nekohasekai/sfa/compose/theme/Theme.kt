@@ -3,7 +3,6 @@ package io.nekohasekai.sfa.compose.theme
 import android.app.Activity
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -134,9 +133,6 @@ fun Theme(
             labelSmall = AppTextStyle.Caption2.style(fontFamily, emphasized = true),
         )
     }
-    val shapes = remember {
-        Shapes(extraSmall = AppShape.xs, small = AppShape.sm, medium = AppShape.md, large = AppShape.lg, extraLarge = AppShape.xxl)
-    }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -153,7 +149,7 @@ fun Theme(
         LocalAppFontFamily provides fontFamily,
         LocalDensity provides Density(density.density, textScale),
     ) {
-        MaterialTheme(colorScheme = materialScheme, typography = typography, shapes = shapes) {
+        MaterialTheme(colorScheme = materialScheme, typography = typography) {
             CompositionLocalProvider(LocalContentColor provides scheme.onSurface, content = content)
         }
     }

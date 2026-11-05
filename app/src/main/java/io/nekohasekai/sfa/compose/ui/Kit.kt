@@ -460,7 +460,11 @@ fun TextPillButton(text: String, onClick: (() -> Unit)?, modifier: Modifier = Mo
 
 @Composable
 fun ErrorState(error: String, retry: (() -> Unit)? = null) {
-    EmptyState("Error", message = error, action = retry?.let { { FilledPillButton(tr("Retry"), it) } })
+    if (retry == null) {
+        EmptyState("Error", message = error)
+    } else {
+        EmptyState("Error", message = error, action = { FilledPillButton(tr("Retry"), retry) })
+    }
 }
 
 /** A small round icon button (Material IconButton with the pill shape). */
