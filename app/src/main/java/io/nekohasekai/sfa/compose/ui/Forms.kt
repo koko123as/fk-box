@@ -263,10 +263,11 @@ fun FormRow(
     ListItem(
         title = {
             BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val rowWidth = maxWidth
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     Text(
                         title,
-                        Modifier.then(if (trailing != null) Modifier.widthIn(max = (maxWidth - 16.dp) * 0.5f) else Modifier),
+                        Modifier.then(if (trailing != null) Modifier.widthIn(max = (rowWidth - 16.dp) * 0.5f) else Modifier),
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )

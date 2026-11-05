@@ -1,5 +1,3 @@
-@file:OptIn(androidx.compose.material3.ExperimentalMaterial3ExpressiveApi::class)
-
 package io.nekohasekai.sfa.compose.ui
 
 import androidx.compose.animation.AnimatedContent
@@ -56,7 +54,6 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
 import kotlin.math.sin
-import androidx.compose.material3.MaterialShapes as M3Shapes
 
 /** null_status.dart's NullStatusIllustration. */
 enum class NullStatusIllustration {

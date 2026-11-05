@@ -73,7 +73,7 @@ import kotlin.math.min
  */
 
 /** sheet.dart's SheetType, as the scaffold reads it. */
-enum SheetType { Page, BottomSheet, FormSheet }
+enum class SheetType { Page, BottomSheet, FormSheet }
 
 /** One route: a page, or a sheet with the pages pushed inside it. */
 @Stable

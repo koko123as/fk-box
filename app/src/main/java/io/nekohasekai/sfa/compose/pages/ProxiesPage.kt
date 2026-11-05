@@ -106,8 +106,6 @@ import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
 
-private val EaseOutCubic = CubicBezierEasing(0.215f, 0.61f, 0.355f, 1f)
-private val EaseInCubic = CubicBezierEasing(0.55f, 0.055f, 0.675f, 0.19f)
 
 // ---------------------------------------------------------------------------
 // proxy_card.dart: metrics and the node card (FlClash v0.9.2 proxies/common.dart and card.dart)

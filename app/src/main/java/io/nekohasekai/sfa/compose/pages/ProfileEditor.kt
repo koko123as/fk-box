@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -382,7 +383,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
                 IconAction(AppGlyphs.redo, tr("Redo"), if (busy) null else ({ history.redo(text)?.let { text = it } })),
             ),
         ) {
-            Column(Modifier.fillMaxSize().padding(top = appBarInset()).padding(bottom = androidx.compose.foundation.layout.WindowInsets.navigationBars.let { insets -> with(LocalDensity.current) { insets.getBottom(this).toDp() } })) {
+            Column(Modifier.fillMaxSize().padding(top = appBarInset()).navigationBarsPadding()) {
                 if (search) {
                     Box(Modifier.padding(12.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {

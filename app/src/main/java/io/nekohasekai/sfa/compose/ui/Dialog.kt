@@ -302,9 +302,9 @@ private fun InputDialog(request: DialogRequest.Input) {
         hasFields = true,
         actions = listOf(
             if (reset != null && value.text != reset) {
-                DialogAction(tr("Reset")) { request.result.complete(reset) }
+                DialogAction(tr("Reset"), { request.result.complete(reset); Unit })
             } else {
-                DialogAction(tr("Cancel")) { request.result.complete(null) }
+                DialogAction(tr("Cancel"), { request.result.complete(null); Unit })
             },
             DialogAction(tr("Confirm"), submit),
         ),
