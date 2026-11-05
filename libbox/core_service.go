@@ -153,7 +153,7 @@ func (s *CommandServer) RunningCore() string {
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
 	if core == CoreSingBox || core == "" {
 		s.stopOtherCore()
-		return s.StartOrReloadService(configContent, options)
+		return s.StartOrReloadService(dropUnbuiltTunStack(configContent), options)
 	}
 	if core != CoreXray && core != CoreMihomo {
 		return fmt.Errorf("unknown core: %s", core)

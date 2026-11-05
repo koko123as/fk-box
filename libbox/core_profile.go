@@ -484,7 +484,6 @@ func convertLinksToSingBox(proxies []map[string]any) (*UICoreProfile, error) {
 			"type": "tun", "tag": "tun-in",
 			"address":    []string{"172.19.0.1/30", "fdfe:dcba:9876::1/126"},
 			"auto_route": true,
-			"stack":      "system",
 		}},
 		"outbounds": outbounds,
 		"route": map[string]any{
