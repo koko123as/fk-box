@@ -325,6 +325,8 @@ private fun MenuStack(
         contentAlignment = Alignment.TopEnd,
     ) {
         val topIndex = levels.lastIndex
+        val glassMenu = LocalLiquidGlass.current.shaded && LocalGlassBackdrop.current != null
+        val menuGlass = remember(scheme) { LiquidGlassStyle.menu(scheme) }
         levels.forEachIndexed { index, level ->
             androidx.compose.runtime.key(level) {
                 LaunchedEffect(level) { if (level.owner != null) level.unfold.animateTo(1f, unfoldSpring) }
@@ -343,9 +345,11 @@ private fun MenuStack(
                         }
                         .boxShadows(AppShape.all(CARD_RADIUS), menuShadows(scheme, shadowDepth))
                         .clip(AppShape.all(CARD_RADIUS))
-                        .background(SurfaceLevel.floatingOf(scheme).colorOf(scheme))
+                        .then(if (glassMenu) Modifier else Modifier.background(SurfaceLevel.floatingOf(scheme).colorOf(scheme)))
                         .then(if (receding) Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onPop() } else Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}),
                 ) {
+                    // On glass a menu stands on LiquidGlassStyle.menu over what it opened from.
+                    if (glassMenu) LiquidGlassPane(menuGlass, Modifier.matchParentSize(), cornerRadius = CARD_RADIUS)
                     CompositionLocalProvider(LocalSurfaceLevel provides SurfaceLevel.floatingOf(scheme)) {
                         MenuCard(level, active = !receding, maxVisibleItems = maxVisibleItems, onPick = onPick, onPush = onPush, onPop = onPop)
                     }

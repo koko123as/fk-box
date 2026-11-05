@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.pages
 
+import io.nekohasekai.sfa.compose.ui.glassBackdropSource
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.tween
@@ -36,6 +37,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.nekohasekai.sfa.compose.BoxController
+import androidx.compose.foundation.background
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.ui.AnimatedGlyph
@@ -127,6 +129,9 @@ fun HomePage(box: BoxController) {
             Column(Modifier.weight(1f).fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     val inset = if (mobile && floating) NavigationDock.inset() else 0.dp
+                    val pageBackdrop = io.nekohasekai.sfa.compose.ui.rememberGlassBackdrop()
+                    val glassOn = io.nekohasekai.sfa.compose.ui.LocalLiquidGlass.current.shaded && mobile && floating
+                    Box(Modifier.fillMaxSize().glassBackdropSource(pageBackdrop, glassOn).then(if (glassOn) Modifier.background(SurfaceLevel.Page.colorOf(BoxTheme.scheme)) else Modifier)) {
                     CompositionLocalProvider(LocalBottomInset provides inset) {
                         val progress = motion.value
                         val direction = if (previous == null || index >= (previous ?: 0)) 1f else -1f
@@ -164,8 +169,10 @@ fun HomePage(box: BoxController) {
                             }
                         }
                     }
+                    }
                     if (mobile && floating) {
                         NavigationDock(
+                            backdrop = if (glassOn) pageBackdrop else null,
                             destinations = items.map { DockDestination(it.second, tr(it.first)) },
                             selectedIndex = index,
                             onSelected = select,

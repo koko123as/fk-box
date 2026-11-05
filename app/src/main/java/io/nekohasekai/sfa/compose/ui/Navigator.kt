@@ -243,6 +243,10 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
             navigator.mobile = maxWidth < 600.dp
             BackHandler(enabled = navigator.canPop) { navigator.maybePop() }
             val entries = navigator.entries.toList()
+            // What a popup's or an alert's glass bends: everything under them.
+            val glassOn = LocalLiquidGlass.current.shaded
+            val appBackdrop = rememberGlassBackdrop()
+            Box(Modifier.fillMaxSize().glassBackdropSource(appBackdrop, glassOn)) {
             // A page over the home page covers it; sheets leave it in view.
             Box(Modifier.fillMaxSize().coveredBy(entries.firstOrNull()?.takeIf { it.sheet == null })) { home() }
             entries.forEachIndexed { index, level ->
@@ -257,8 +261,11 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
                     }
                 }
             }
-            PopupLayer(popups)
-            DialogLayer(dialogs)
+            }
+            CompositionLocalProvider(LocalGlassBackdrop provides if (glassOn) appBackdrop else null) {
+                PopupLayer(popups)
+                DialogLayer(dialogs)
+            }
         }
     }
 }

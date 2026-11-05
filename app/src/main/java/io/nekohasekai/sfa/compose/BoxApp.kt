@@ -63,7 +63,13 @@ fun BoxApp(box: BoxController) {
     val accent = if (prefs["systemColor"] == true) box.systemAccentColor else (prefs["color"] as? Number)?.toLong()?.toInt() ?: 0xff007aff.toInt()
     val scheme = seededColorScheme(accent, dark, ColorStyle.of(prefs["colorStyle"])).toPureBlack(prefs["pureBlack"] == true)
     val systemScale = LocalConfiguration.current.fontScale
-    // TODO(phase 3): liquid glass (prefs["liquidGlass"]) — AGSL RuntimeShader on API 33+, blur below.
+    // main.dart's LiquidGlassScope: glass for the dock, popups and alerts; RuntimeShader needs Android 13.
+    val glassMode = prefs["liquidGlass"] as? String ?: "none"
+    val glass = io.nekohasekai.sfa.compose.ui.LiquidGlassSettings(
+        enabled = glassMode != "none",
+        quality = if (glassMode == "ultra") io.nekohasekai.sfa.compose.ui.LiquidGlassQuality.Ultra else io.nekohasekai.sfa.compose.ui.LiquidGlassQuality.Standard,
+    )
+    androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalLiquidGlass provides glass) {
     Theme(scheme = scheme, fontFamily = appFontFamily(prefs["fontFamily"]), textScale = appTextScale(prefs, systemScale)) {
         val snackbar = remember { SnackbarHostState() }
         val chinese = LocalConfiguration.current.locales.let { !it.isEmpty && it[0].language == "zh" }
@@ -84,6 +90,7 @@ fun BoxApp(box: BoxController) {
             val bottom = if (navigator.pages.isEmpty()) NavigationDock.inset() else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottom))
         }
+    }
     }
 }
 

@@ -207,12 +207,26 @@ fun CommonDialog(
 ) {
     val scheme = BoxTheme.scheme
     val contentInset = if (hasFields) ACTION_INSET else TEXT_INSET
-    Column(
+    // On glass an alert stands on LiquidGlassStyle.alert, casting menuShadows.
+    val glass = LocalLiquidGlass.current.shaded && LocalGlassBackdrop.current != null
+    val alertGlass = remember(scheme) { LiquidGlassStyle.alert(scheme) }
+    Box(
         Modifier
             .width(ALERT_WIDTH.dp)
             .padding(horizontal = 24.dp)
-            .background(SurfaceLevel.floatingOf(scheme).colorOf(scheme), AppShape.all(AppCorner.ALERT))
             .elasticPress(maxGrowth = 4f),
+    ) {
+    if (glass) {
+        LiquidGlassPane(
+            alertGlass,
+            Modifier.matchParentSize().boxShadows(AppShape.all(AppCorner.ALERT), menuShadows(scheme)),
+            cornerRadius = AppCorner.ALERT,
+        )
+    }
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .then(if (glass) Modifier else Modifier.background(SurfaceLevel.floatingOf(scheme).colorOf(scheme), AppShape.all(AppCorner.ALERT))),
     ) {
         Text(
             title,
@@ -236,6 +250,7 @@ fun CommonDialog(
             Spacer(Modifier.height(20.dp))
         }
         if (actions.isNotEmpty()) AlertActions(actions, destructive, Modifier.padding(start = ACTION_INSET.dp, end = ACTION_INSET.dp, bottom = ACTION_INSET.dp))
+    }
     }
 }
 

@@ -53,6 +53,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.nekohasekai.sfa.compose.theme.AppShape
@@ -68,8 +70,9 @@ import kotlin.math.roundToInt
  * flutter/lib/ui/navigation_dock.dart (FlClash UI kit, GPL-3.0): the floating
  * pill of destinations whose selection is a lens that springs between them,
  * after iOS's tab bar. Same metrics, colors, springs, press swell, drag with
- * rubber-banding, fling, jelly and lift timing. Pointer hover (highlight and
- * parallax), touch glow and the liquid glass lens are not translated yet.
+ * rubber-banding, fling, jelly and lift timing, and on liquid glass the pill
+ * pane, its touch glow and the clear lens. Pointer hover (highlight and
+ * parallax) and the warped copy under an ultra lens are not translated.
  */
 
 private const val BAR_HEIGHT = 62f
@@ -117,15 +120,22 @@ private fun dockLayout(span: Float, count: Int): DockLayout {
 }
 
 @Composable
-fun NavigationDock(destinations: List<DockDestination>, selectedIndex: Int, onSelected: (Int) -> Unit, modifier: Modifier = Modifier) {
+fun NavigationDock(destinations: List<DockDestination>, selectedIndex: Int, onSelected: (Int) -> Unit, modifier: Modifier = Modifier, backdrop: GlassBackdrop? = null) {
     val scheme = BoxTheme.scheme
     val fontScale = LocalDensity.current.fontScale
     val height = NavigationDock.height(fontScale)
     val bottom = NavigationDock.bottomMargin()
     val maxWidth = if (destinations.size >= FULL_WIDTH_COUNT) Dp.Infinity else (destinations.size * MAX_ITEM_EXTENT + BAR_PADDING * 4).dp
     val floating = SurfaceLevel.floatingOf(scheme)
+    // _DockSurface: on glass the bar is a pill pane over the page, lit from the finger.
+    val glass = LocalLiquidGlass.current.shaded && backdrop != null
+    val barBackdrop = rememberGlassBackdrop()
+    val glowAt = remember { mutableStateOf(Offset.Zero) }
+    val glowLevel = remember { Animatable(0f) }
+    val glowSpread = remember { Animatable(0f) }
     val swell = remember { Animatable(0f) }
     val stretch = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
     val pxDensity = LocalDensity.current.density
     Box(
         modifier.fillMaxWidth().height(SHADOW_ROOM.dp + height + bottom)
@@ -145,11 +155,45 @@ fun NavigationDock(destinations: List<DockDestination>, selectedIndex: Int, onSe
                     scaleY = grow
                     translationX = stretch.value
                 }
-                .boxShadows(AppShape.full, dockShadows(scheme))
-                .background(floating.colorOf(scheme), AppShape.full)
-                .padding(BAR_PADDING.dp),
+                .then(if (glass) Modifier else Modifier.boxShadows(AppShape.full, dockShadows(scheme)).background(floating.colorOf(scheme), AppShape.full)),
         ) {
-            FloatingBar(destinations, selectedIndex, onSelected, floating, swell, stretch)
+            if (glass) {
+                val pill = LiquidGlassStyle.pill(scheme)
+                LiquidGlassPane(
+                    pill,
+                    Modifier.matchParentSize().glassBackdropSource(barBackdrop),
+                    backdrop = backdrop,
+                    glow = {
+                        // _shine: UIKit lights the bar from the finger and spreads the light as it fades.
+                        val level = glowLevel.value
+                        val at = glowAt.value
+                        LiquidGlassGlow(
+                            center = Offset(at.x / pxDensity, at.y / pxDensity),
+                            reach = GLOW_REACH * (1 + GLOW_GROWTH * glowSpread.value),
+                            strength = GLOW_PEAK * level * level,
+                            wash = GLOW_WASH,
+                        )
+                    },
+                )
+            }
+            Box(Modifier.matchParentSize().padding(BAR_PADDING.dp)) {
+                FloatingBar(
+                    destinations, selectedIndex, onSelected, floating, swell, stretch,
+                    glass = glass,
+                    barBackdrop = barBackdrop,
+                    onTouch = { position, down ->
+                        glowAt.value = position + Offset(BAR_PADDING * pxDensity, BAR_PADDING * pxDensity)
+                        if (down) {
+                            scope.launch { glowSpread.snapTo(0f) }
+                            scope.launch { glowLevel.animateTo(1f, glowInSpring) }
+                        }
+                    },
+                    onRelease = {
+                        scope.launch { glowLevel.animateTo(0f, glowOutSpring) }
+                        scope.launch { glowSpread.animateTo(1f, glowOutSpring) }
+                    },
+                )
+            }
         }
     }
 }
@@ -167,6 +211,18 @@ private const val PULL_STRETCH = 0.5f
 private const val FLING_PROJECTION = 0.1f
 private const val PRESS_GROWTH_DOCK = 1f / 8
 private const val MAX_PRESS_GROWTH_DOCK = 16f
+
+private const val GLOW_REACH = 28f
+private const val GLOW_GROWTH = 3f
+private const val GLOW_PEAK = .06f
+private const val GLOW_WASH = .7f
+private val glowInSpring = spring<Float>(dampingRatio = 1f, stiffness = 3947.8f)
+private val glowOutSpring = spring<Float>(dampingRatio = 1f, stiffness = 157.9f)
+
+private fun lensShadows(scheme: io.nekohasekai.sfa.compose.theme.BoxScheme, lift: Float): List<BoxShadowSpec> {
+    val strength = if (scheme.dark) 3f else 1f
+    return listOf(BoxShadowSpec(scheme.shadow.copy(alpha = min(1f, .055f * strength * lift.coerceIn(0f, 1f))), 8f, 5f, flutterRadius = true))
+}
 
 private val trackSpring = spring<Float>(dampingRatio = 1f, stiffness = 2741.6f)
 private val pressSpringDock = spring<Float>(dampingRatio = 0.593f, stiffness = 311f)
@@ -187,6 +243,10 @@ private fun FloatingBar(
     floating: SurfaceLevel,
     swell: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
     stretch: Animatable<Float, androidx.compose.animation.core.AnimationVector1D>,
+    glass: Boolean = false,
+    barBackdrop: GlassBackdrop? = null,
+    onTouch: (Offset, Boolean) -> Unit = { _, _ -> },
+    onRelease: () -> Unit = {},
 ) {
     val scheme = BoxTheme.scheme
     val count = destinations.size
@@ -243,13 +303,39 @@ private fun FloatingBar(
             val px = density.density
             return RoundRect(left * px, top * px, (left + width) * px, (top + h) * px, CornerRadius(h * px / 2))
         }
-        val lensColor = scheme.onSurface.copy(alpha = 0.08f * lift.value.coerceIn(0f, 1f)).compositeOver(floating.next.colorOf(scheme))
+        val lifted = lift.value.coerceIn(0f, 1f)
+        // _Lens: on glass a platter in the secondary hue, sunk in dark mode, that clears as it lifts into the glass lens.
+        val platter = remember(scheme) { io.nekohasekai.sfa.compose.theme.toneOf(scheme.secondary, if (scheme.dark) 4.0 else 90.0).copy(alpha = .85f) }
+        val lensColor = if (glass) {
+            platter.copy(alpha = platter.alpha * (1 - lifted))
+        } else {
+            scheme.onSurface.copy(alpha = 0.08f * lifted).compositeOver(floating.next.colorOf(scheme))
+        }
         // The lens: a pill one surface level up, swelling as it lifts.
         Box(
             Modifier.fillMaxSize().drawWithContent {
                 drawPath(Path().apply { addRoundRect(lensRect()) }, lensColor)
             },
         )
+        // _GlassLens: the clear lens a lifted selection becomes on glass, bending only the bar.
+        if (glass && count > 0 && lift.value > 0f) {
+            val lensStyle = remember(scheme) { LiquidGlassStyle.lens(scheme) }
+            Box(
+                Modifier.layout { measurable, constraints ->
+                    val rect = lensRect()
+                    val placeable = measurable.measure(
+                        Constraints.fixed(max(1, (rect.right - rect.left).roundToInt()), max(1, (rect.bottom - rect.top).roundToInt())),
+                    )
+                    layout(constraints.maxWidth, constraints.maxHeight) { placeable.place(rect.left.roundToInt(), rect.top.roundToInt()) }
+                },
+            ) {
+                LiquidGlassPane(
+                    style = { lensStyle.scale(lift.value) },
+                    modifier = Modifier.fillMaxSize().boxShadows(AppShape.full, lensShadows(scheme, lift.value)),
+                    backdrop = barBackdrop,
+                )
+            }
+        }
         // _LensTint: each destination paints as it is outside the lens and, cut
         // to the lens, in the primary color magnified about its own center, so
         // a destination the lens passes over turns part by part and is never
@@ -299,6 +385,7 @@ private fun FloatingBar(
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     if (count == 0) return@awaitEachGesture
+                    onTouch(down.position, true)
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
                     scope.launch { swell.animateTo(1f, pressSpringDock) }
@@ -317,6 +404,7 @@ private fun FloatingBar(
                             break
                         }
                         tracker.addPosition(change.uptimeMillis, change.position)
+                        onTouch(change.position, false)
                         if (change.positionChange() == Offset.Zero) continue
                         val x = change.position.x
                         if (!dragging) {
@@ -352,6 +440,7 @@ private fun FloatingBar(
                     scope.launch { lens.animateTo((if (committed) index else currentSelected).toFloat(), travelSpring) }
                     scope.launch { stretch.animateTo(0f, pressSpringDock) }
                     scope.launch { swell.animateTo(0f, pressSpringDock) }
+                    onRelease()
                     if (committed && index != currentSelected) currentOnSelected(index)
                 }
             },
