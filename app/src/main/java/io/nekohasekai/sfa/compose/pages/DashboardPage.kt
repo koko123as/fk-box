@@ -1,0 +1,853 @@
+package io.nekohasekai.sfa.compose.pages
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import io.nekohasekai.sfa.compose.BoxController
+import io.nekohasekai.sfa.compose.BoxData
+import io.nekohasekai.sfa.compose.Json
+import io.nekohasekai.sfa.compose.asLong
+import io.nekohasekai.sfa.compose.bytes
+import io.nekohasekai.sfa.compose.rows
+import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.AppTextStyle
+import io.nekohasekai.sfa.compose.theme.BoxTheme
+import io.nekohasekai.sfa.compose.theme.SurfaceLevel
+import io.nekohasekai.sfa.compose.theme.alphaBlend
+import io.nekohasekai.sfa.compose.theme.tabular
+import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.BoxPage
+import io.nekohasekai.sfa.compose.ui.BoxPanel
+import io.nekohasekai.sfa.compose.ui.ChipTone
+import io.nekohasekai.sfa.compose.ui.CommonScaffold
+import io.nekohasekai.sfa.compose.ui.CommonSwitch
+import io.nekohasekai.sfa.compose.ui.DashboardChip
+import io.nekohasekai.sfa.compose.ui.ErrorState
+import io.nekohasekai.sfa.compose.ui.GlyphButton
+import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.IconAction
+import io.nekohasekai.sfa.compose.ui.ListItem
+import io.nekohasekai.sfa.compose.ui.ListStyles
+import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
+import io.nekohasekai.sfa.compose.ui.MaterialShapes
+import io.nekohasekai.sfa.compose.ui.PanelTitle
+import io.nekohasekai.sfa.compose.ui.SWITCH_TRACK_HEIGHT
+import io.nekohasekai.sfa.compose.ui.SWITCH_TRACK_WIDTH
+import io.nekohasekai.sfa.compose.ui.Section
+import io.nekohasekai.sfa.compose.ui.ShapeBadge
+import io.nekohasekai.sfa.compose.ui.SkeletonText
+import io.nekohasekai.sfa.compose.ui.TextPillButton
+import io.nekohasekai.sfa.compose.ui.bottomInset
+import io.nekohasekai.sfa.compose.ui.contentTopPadding
+import io.nekohasekai.sfa.compose.ui.isChinese
+import io.nekohasekai.sfa.compose.ui.tr
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.max
+
+/*
+ * pages/dashboard.dart and the dashboard panels in components/ (FlClash
+ * v0.9.2 adaptations, GPL-3.0), over the native state BoxController carries.
+ */
+
+val dashboardCards = listOf("Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy")
+private val defaultDashboardCards = listOf("Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups")
+private val defaultHiddenCards = listOf("Memory", "Intranet IP")
+
+fun dashboardOrder(prefs: Json): List<String> {
+    val saved = ((prefs["dashboardCards"] as? List<*>) ?: defaultDashboardCards).filterIsInstance<String>().filter { it in dashboardCards }
+    return LinkedHashSet(saved + dashboardCards).toList()
+}
+
+@Composable
+fun DashboardPage(box: BoxController) {
+    val available = buildMap<String, @Composable () -> Unit> {
+        put("Status") { StatusPanel(box) }
+        put("Intranet IP") { IntranetPanel(box) }
+        put("Network speed") { SpeedPanel(box) }
+        if ((box.dashboard["modes"] as? List<*>).orEmpty().isNotEmpty()) put("Outbound mode") { ModePanel(box) }
+        put("Current profile") { ProfilePanel(box) }
+        put("Proxy groups") { ProxyGroupsPanel(box) }
+        put("Memory") { MemoryPanel(box) }
+        if (box.dashboard["systemProxyAvailable"] == true) put("System HTTP proxy") { SystemProxyPanel(box) }
+    }
+    val hidden = (box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards
+    val shown = dashboardOrder(box.preferences).filter { available.containsKey(it) && (it == "Status" || it !in hidden) }
+    // TODO(phase 2): the dashboard card editor (components/dashboard_editor.dart) behind the edit action.
+    CommonScaffold(title = tr("Dashboard"), backgroundColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme)) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
+            val mobile = maxWidth < 600.dp
+            val maxContent = if (mobile) 560.dp else 900.dp
+            val side = max(16f, (maxWidth.value - maxContent.value) / 2).dp
+            val gap = if (mobile) 8.dp else 12.dp
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(PaddingValues(start = side, end = side, top = contentTopPadding(), bottom = 16.dp + bottomInset())),
+                verticalArrangement = Arrangement.spacedBy(gap),
+            ) {
+                if (box.remote) {
+                    ListItem(
+                        title = { Text(box.dashboard["remote"].toString()) },
+                        subtitle = { Text(tr("Remote control")) },
+                        trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
+                    )
+                }
+                if (box.applyRequired != null) {
+                    ListItem(
+                        title = { Text(tr("Restart required")) },
+                        trailing = {
+                            TextPillButton(tr("Apply"), {
+                                box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
+                            })
+                        },
+                    )
+                }
+                for (card in shown) available[card]?.invoke()
+                for (note in rows(box.dashboard["deprecated"])) {
+                    ListItem(
+                        title = { Text(note["message"].toString()) },
+                        onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
+                    )
+                }
+            }
+        }
+    }
+}
+
+// Adapted from FlClash v0.9.2 dashboard/widgets/traffic.dart.
+@Composable
+private fun SpeedPanel(box: BoxController) {
+    BoxPanel {
+        Column {
+            PanelTitle("Network speed", AppGlyphs.speed)
+            Spacer(Modifier.height(12.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                for (upload in listOf(true, false)) Box(Modifier.weight(1f)) { SpeedTile(box, upload) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SpeedTile(box: BoxController, upload: Boolean) {
+    val scheme = BoxTheme.scheme
+    val color = if (upload) scheme.onSurfaceVariant else scheme.primary
+    val show = bytes(box.rates[if (upload) "upload" else "download"] as? Number ?: 0).split(" ")
+    val scale = max(1f, LocalDensity.current.fontScale)
+    val textHeight = 14 + 4 + (AppTextStyle.Footnote.leading + AppTextStyle.Title1.leading + AppTextStyle.Caption1.leading) * scale
+    val shape = AppShape.all(22f)
+    BoxWithConstraints(Modifier.fillMaxWidth().clip(shape).background(SurfaceLevel.Block.colorOf(scheme), shape)) {
+        val chartHeight = max(36f, maxWidth.value / 1.06f - textHeight - 12 + 2)
+        Box(Modifier.fillMaxWidth().height((chartHeight - 2 + 12 + textHeight).dp)) {
+            io.nekohasekai.sfa.compose.ui.LineChart(
+                values = if (upload) box.uploadHistory else box.downloadHistory,
+                revision = box.sampleRevision,
+                capacity = 30,
+                minScale = 8.0 * 1024,
+                color = if (upload) alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme)) else scheme.primary,
+                baselineRatio = 1f,
+                modifier = Modifier.align(Alignment.BottomStart).fillMaxWidth().height(chartHeight.dp),
+            )
+            Column(Modifier.padding(start = 16.dp, top = 14.dp, end = 16.dp, bottom = (chartHeight - 2 + 12).dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+                    GlyphIcon(if (upload) AppGlyphs.arrowUp else AppGlyphs.arrowDown, size = 16.dp, color = color)
+                    Text(tr(if (upload) "Upload" else "Download"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Footnote.of(true).copy(color = scheme.onSurfaceVariant))
+                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    buildAnnotatedString {
+                        withStyle(AppTextStyle.Title1.of(true).tabular.copy(letterSpacing = (-.02f * AppTextStyle.Title1.size).sp, color = scheme.onSurface).toSpanStyle()) { append(show.first()) }
+                        withStyle(AppTextStyle.Footnote.of(true).copy(color = scheme.onSurfaceVariant).toSpanStyle()) { append(" ${show.last()}/s") }
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    style = AppTextStyle.Title1.of(true),
+                )
+                Text(
+                    "${tr("Total")} ${box.dashboard[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = AppTextStyle.Caption1.of().tabular.copy(color = scheme.onSurfaceVariant),
+                )
+            }
+        }
+    }
+}
+
+// FlClash Android's outbound_mode.dart, using sing-box's case-insensitive modes.
+@Composable
+private fun ModePanel(box: BoxController) {
+    val scheme = BoxTheme.scheme
+    val modes = (box.dashboard["modes"] as? List<*>).orEmpty().filterIsInstance<String>()
+    val selected = (box.dashboard["mode"] as? String ?: "").lowercase()
+    val labels = mapOf("rule" to "Rule", "global" to "Global", "direct" to "Direct")
+    val glyphs = mapOf("rule" to AppGlyphs.rules, "global" to AppGlyphs.proxies, "direct" to AppGlyphs.target)
+    BoxPanel {
+        Column {
+            PanelTitle("Outbound mode", AppGlyphs.split)
+            Spacer(Modifier.height(12.dp))
+            ConnectedGroup {
+                modes.forEachIndexed { index, mode ->
+                    val key = mode.lowercase()
+                    val label = tr(labels[key] ?: mode)
+                    ConnectedButton(
+                        selected = key == selected,
+                        first = index == 0,
+                        last = index == modes.lastIndex,
+                        outer = 26f,
+                        inner = 12f,
+                        background = SurfaceLevel.Block.colorOf(scheme),
+                        label = label,
+                        onTap = { if (key != selected) box.launchAct("mode.set", mapOf("mode" to mode)) },
+                        modifier = Modifier.weight(1f),
+                    ) { foreground ->
+                        Column(Modifier.fillMaxWidth().height(52.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
+                            GlyphIcon(glyphs[key] ?: AppGlyphs.split, size = 18.dp, color = foreground)
+                            Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Footnote.of(true).copy(color = foreground))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// components/profile_panel.dart
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ProfilePanel(box: BoxController) {
+    val scheme = BoxTheme.scheme
+    val navigator = LocalBoxNavigator.current
+    val profile = if (box.remote) null else box.selectedProfile
+    val name = if (box.remote) tr("Remote configuration") else profile?.get("name")?.toString()
+    val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
+    var updating by remember { mutableStateOf(false) }
+    BoxPanel(onClick = {
+        // TODO(phase 2): ProfileDetailsPage / AddProfilePage (pages/profile_details.dart, profiles.dart).
+        navigator?.push { if (profile == null && !box.remote) AddProfilePlaceholder() else ProfileDetailsPlaceholder() }
+    }) {
+        Column {
+            PanelTitle("Profile", AppGlyphs.profiles, trailing = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (profile?.get("remote") == true) {
+                        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
+                            if (updating) {
+                                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                            } else {
+                                GlyphButton(AppGlyphs.sync, tr("Update"), {
+                                    updating = true
+                                    box.launchAct("profiles.update", mapOf("id" to profile?.get("id"))) { updating = false }
+                                }, size = 26.dp, iconSize = 18.dp)
+                            }
+                        }
+                    }
+                    GlyphIcon(AppGlyphs.chevronForward, size = 18.dp)
+                }
+            })
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Headline.of(true).copy(color = scheme.onSurface))
+                if (!box.remote && box.profiles.size > 1) {
+                    // TODO(phase 2): ProfilesPage(picker: true) as the switch sheet.
+                    GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.push { ProfilesPlaceholder() } }), size = 32.dp, iconSize = 18.dp)
+                }
+            }
+            if (profile != null || box.remote) {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Box(Modifier.weight(1f)) {
+                        if (profile != null) ProfileUpdateTime(profile["updatedAt"].asLong(), label, showLabel = true)
+                    }
+                    Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), style = label)
+                }
+                Spacer(Modifier.height(14.dp))
+                ProfileStats(box, profile)
+            }
+        }
+    }
+}
+
+/** components/profile_card.dart's profileUpdateLabel. */
+fun profileUpdateLabel(milliseconds: Long?, now: Long, chinese: Boolean): String {
+    if (milliseconds == null || milliseconds <= 0) return if (chinese) "未知" else "Unknown"
+    val elapsed = now - milliseconds
+    val days = elapsed / 86_400_000
+    for ((count, en, zh) in listOf(
+        Triple(days / 365, "y", "年"), Triple(days / 30, "mo", "个月"), Triple(days, "d", "天"),
+        Triple(elapsed / 3_600_000, "h", "小时"), Triple(elapsed / 60_000, "m", "分钟"),
+    )) {
+        if (count > 0) return if (chinese) "$count ${zh}前" else "$count$en ago"
+    }
+    return if (chinese) "刚刚" else "Just now"
+}
+
+@Composable
+private fun ProfileUpdateTime(milliseconds: Long?, style: androidx.compose.ui.text.TextStyle, showLabel: Boolean) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            now = System.currentTimeMillis()
+        }
+    }
+    val age = profileUpdateLabel(milliseconds, now, isChinese())
+    Text(if (showLabel) "${tr("Last updated")} $age" else age, maxLines = 1, overflow = TextOverflow.Ellipsis, style = style)
+}
+
+@Composable
+private fun ProfileStats(box: BoxController, profile: Json?) {
+    val scheme = BoxTheme.scheme
+    var stats by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf<Json?>(null) }
+    var waiting by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf(profile != null) }
+    LaunchedEffect(profile?.get("id"), box.profilesRevision) {
+        val id = profile?.get("id").asLong() ?: return@LaunchedEffect
+        stats = runCatching { box.profileStats(id).await() }.getOrNull()
+        waiting = false
+    }
+    val figure = AppTextStyle.Title3.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
+    val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        for ((key, name) in listOf("groups" to "Proxy groups", "outbounds" to "Outbounds", "rules" to "Routing rules")) {
+            Column {
+                if (waiting) SkeletonText(34.dp, figure) else Text(stats?.get(key)?.toString() ?: "—", maxLines = 1, style = figure)
+                Text(tr(name), maxLines = 1, style = label)
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// components/proxy_groups_panel.dart
+// ---------------------------------------------------------------------------
+
+@Composable
+private fun ProxyGroupsPanel(box: BoxController) {
+    val scheme = BoxTheme.scheme
+    val navigator = LocalBoxNavigator.current
+    val groups = box.groups
+    val timeout = groups.flatMap { rows(it["items"]) }
+        .filter { (it["testedAt"].asLong() ?: 0) > 0 && (it["delay"].asLong() ?: 0) <= 0 }
+        .map { it["tag"].toString() }.toSet()
+    BoxPanel(onClick = if (groups.isEmpty()) null else ({ navigator?.push { ProxiesPlaceholder() } })) {
+        Column {
+            PanelTitle("Proxy groups", AppGlyphs.layers, trailing = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (timeout.isNotEmpty()) DashboardChip("${tr("Timeout")} ${timeout.size}", tone = ChipTone.Warn)
+                    if (groups.isNotEmpty()) GlyphIcon(AppGlyphs.chevronForward, size = 18.dp)
+                }
+            })
+            Spacer(Modifier.height(12.dp))
+            if (groups.isEmpty()) {
+                Column(Modifier.fillMaxWidth().padding(start = 24.dp, top = 12.dp, end = 24.dp, bottom = 24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    ShapeBadge(MaterialShapes.Cookie9Sided, SurfaceLevel.Block.colorOf(scheme), 64.dp) {
+                        GlyphIcon(AppGlyphs.layers, size = 26.dp, color = scheme.onSurfaceVariant)
+                    }
+                    Text(
+                        tr(if (box.running) "No proxy groups in this configuration" else "Start the service to view proxy groups"),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface),
+                    )
+                }
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        buildAnnotatedString {
+                            withStyle(AppTextStyle.Display.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface).toSpanStyle()) { append("${groups.size}") }
+                            withStyle(AppTextStyle.Subheadline.of().copy(color = scheme.onSurfaceVariant).toSpanStyle()) { append(" ${tr("Groups")}") }
+                        },
+                        Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                        style = AppTextStyle.Display.of(true),
+                    )
+                    GroupIconStack(groups)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupIconStack(groups: List<Json>) {
+    val scheme = BoxTheme.scheme
+    val shown = groups.take(4)
+    val rest = groups.size - shown.size
+    val count = shown.size + if (rest > 0) 1 else 0
+    val tile = AppShape.all(14f)
+    val ring = AppShape.all(14f + 3f)
+    Box(Modifier.width((count * 40 - (count - 1) * 8).dp).height(40.dp)) {
+        shown.forEachIndexed { index, group ->
+            // The 3 dp ring outside the tile in the card color.
+            Box(Modifier.offset(x = (index * 32 - 3).dp, y = (-3).dp).requiredSize(46.dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
+            Box(
+                Modifier.offset(x = (index * 32).dp).size(40.dp).background(SurfaceLevel.Inset.colorOf(scheme), tile).padding(6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val tag = group["tag"].toString()
+                val letters = tag.codePoints().limit(2).toArray().let { String(it, 0, it.size) }.uppercase()
+                Text(letters, maxLines = 1, style = AppTextStyle.Caption1.of(true).copy(color = scheme.onSurfaceVariant))
+            }
+        }
+        if (rest > 0) {
+            Box(Modifier.offset(x = (shown.size * 32 - 3).dp, y = (-3).dp).requiredSize(46.dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
+            Box(Modifier.offset(x = (shown.size * 32).dp).size(40.dp).background(SurfaceLevel.Block.colorOf(scheme), tile), contentAlignment = Alignment.Center) {
+                Text("+$rest", style = AppTextStyle.Caption1.of(true).tabular.copy(color = scheme.onSurfaceVariant))
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// components/memory_panel.dart and data_subscription.dart
+// ---------------------------------------------------------------------------
+
+/** Shares native sampling between visible consumers of the same data. */
+@Composable
+fun BoxDataSubscription(box: BoxController, data: BoxData) {
+    val owner = remember { Any() }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(lifecycle, data) {
+        val observer = LifecycleEventObserver { _, _ ->
+            box.setDataVisible(data, owner, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        }
+        lifecycle.addObserver(observer)
+        box.setDataVisible(data, owner, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED))
+        onDispose {
+            lifecycle.removeObserver(observer)
+            box.setDataVisible(data, owner, false)
+        }
+    }
+}
+
+@Composable
+private fun MemoryPanel(box: BoxController) {
+    val navigator = LocalBoxNavigator.current
+    if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Memory)
+    BoxPanel(onClick = { navigator?.push { MemoryDetails(box) } }) {
+        Column(Modifier.fillMaxWidth()) {
+            PanelTitle("Memory", AppGlyphs.memory, trailing = { GlyphIcon(AppGlyphs.chevronForward, size = 18.dp) })
+            Spacer(Modifier.height(12.dp))
+            MemorySummary(box.memory)
+        }
+    }
+}
+
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun MemorySummary(snapshot: Json) {
+    val scheme = BoxTheme.scheme
+    val total = bytes(snapshot["total"] as? Number ?: 0).split(" ")
+    val parts = buildList {
+        if (snapshot["remote"] != true) add(Triple("App", snapshot["app"] as? Number ?: 0, scheme.primary))
+        add(Triple("Core", snapshot["core"] as? Number ?: 0, alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme))))
+    }
+    Column {
+        Text(
+            buildAnnotatedString {
+                withStyle(AppTextStyle.Title1.of(true).tabular.copy(color = scheme.onSurface).toSpanStyle()) { append(if (snapshot.isEmpty()) "—" else total.first()) }
+                if (snapshot.isNotEmpty()) withStyle(AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant).toSpanStyle()) { append(" ${total.last()}") }
+            },
+            maxLines = 1,
+            style = AppTextStyle.Title1.of(true),
+        )
+        Spacer(Modifier.height(14.dp))
+        MemoryBar(parts)
+        Spacer(Modifier.height(10.dp))
+        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            for ((name, value, color) in parts) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(Modifier.size(8.dp).background(color, androidx.compose.foundation.shape.CircleShape))
+                    Text(tr(name), style = ListStyles.caption)
+                    Text(if (snapshot.isEmpty()) "—" else bytes(value), style = AppTextStyle.Footnote.of(true).tabular.copy(color = scheme.onSurface))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryBar(parts: List<Triple<String, Number, androidx.compose.ui.graphics.Color>>) {
+    val total = parts.sumOf { max(0.0, it.second.toDouble()) }
+    val positive = parts.filter { it.second.toDouble() > 0 }
+    Row(Modifier.fillMaxWidth().height(8.dp).clip(AppShape.full)) {
+        if (total == 0.0) {
+            Box(Modifier.fillMaxSize().background(SurfaceLevel.Inset.colorOf(BoxTheme.scheme)))
+        } else {
+            positive.forEachIndexed { index, part ->
+                if (index > 0) Spacer(Modifier.width(2.dp))
+                val percent by animateFloatAsState(Math.round(part.second.toDouble() * 100 / total).toFloat(), tween(300), label = "memory")
+                Box(Modifier.weight(max(1f, percent * 100)).fillMaxSize().background(part.third))
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemoryDetails(box: BoxController) {
+    BoxDataSubscription(box, BoxData.Memory)
+    val memory = box.memory
+    val total = memory["core"].let { (it as? Number)?.toDouble() } ?: 0.0
+    var releasing by remember { mutableStateOf(false) }
+    val actions = if (memory["remote"] != true && memory["running"] == true) {
+        listOf(IconAction(AppGlyphs.broom, tr("Release memory"), if (releasing) null else ({
+            releasing = true
+            box.launchAct("dashboard.releaseMemory") { ok ->
+                if (ok) box.message("Memory released")
+                releasing = false
+            }
+        })))
+    } else {
+        emptyList()
+    }
+    BoxPage("Memory", actions = actions, loading = releasing) {
+        Spacer(Modifier.height(8.dp))
+        Text(tr("Total"), style = AppTextStyle.Headline.of().copy(color = BoxTheme.scheme.onSurface))
+        Spacer(Modifier.height(4.dp))
+        MemorySummary(memory)
+        Spacer(Modifier.height(12.dp))
+        Text(
+            tr(
+                if (memory["remote"] == true) {
+                    "Memory reported by the remote core. Detailed accounting is unavailable."
+                } else {
+                    "App and core share one process. Core runtime memory is separated from process RSS, not added twice."
+                },
+            ),
+            style = ListStyles.caption,
+        )
+        if (memory["remote"] != true) {
+            val appRows = listOf("Process RSS" to (memory["rss"] as? Number ?: 0), "App and shared memory" to (memory["app"] as? Number ?: 0))
+            Section(title = tr("App"), count = appRows.size) { index, position ->
+                ListItem(title = { Text(tr(appRows[index].first)) }, trailing = { Text(bytes(appRows[index].second)) }, position = position)
+            }
+        }
+        val coreRows = mutableListOf<@Composable (io.nekohasekai.sfa.compose.ui.ItemPosition) -> Unit>()
+        if (memory["running"] != true && memory["remote"] != true) coreRows += { p -> ListItem(title = { Text(tr("Not running")) }, position = p) }
+        for ((key, label) in listOf("heapInuse" to "Heap in use", "heapIdle" to "Retained idle heap", "stack" to "Stack", "runtimeOther" to "Other runtime memory")) {
+            val value = memory[key] as? Number ?: continue
+            coreRows += { p ->
+                ListItem(
+                    title = { Text(tr(label)) },
+                    subtitle = { Text(bytes(value)) },
+                    trailing = { Text("${if (total == 0.0) "0.0" else String.format(java.util.Locale.ROOT, "%.1f", value.toDouble() * 100 / total)}%") },
+                    position = p,
+                )
+            }
+        }
+        memory["goroutines"]?.let { g -> coreRows += { p -> ListItem(title = { Text(tr("Goroutines")) }, trailing = { Text(g.toString()) }, position = p) } }
+        Section(title = tr("Core"), count = coreRows.size) { index, position -> coreRows[index](position) }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// components/intranet_panel.dart
+// ---------------------------------------------------------------------------
+
+private fun copyText(context: android.content.Context, text: String) {
+    context.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(null, text))
+}
+
+@Composable
+private fun lanSubtitle(box: BoxController): String {
+    if (box.selectedProfileId == -1L) return tr("No profile")
+    if (box.lan["error"] != null) return tr("Unavailable")
+    val active = box.running && box.lan["running"] == true
+    val bindings = rows(box.lan[if (active) "activeBindings" else "bindings"])
+    if (bindings.isEmpty()) return tr("Add proxy listener")
+    if (box.lan["enabled"] != true) return tr("Disabled")
+    val ports = "${tr("Port")}: " + bindings.filter { it["lan"] == true }.map { it["port"].asLong() }.distinct()
+        .map { port -> if (port == 0L) tr("Automatic port") else port.toString() }.joinToString(", ")
+    if (!active) return "$ports · ${tr("Not running")}"
+    if (box.lanProxyEndpoints.isEmpty()) return "$ports · ${tr("Unavailable")}"
+    return ports
+}
+
+private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.ui.BoxNavigator?, enabled: Boolean) {
+    if (!box.canSetLanProxy) return
+    if (enabled && rows(box.lan["bindings"]).isEmpty()) {
+        val revision = box.lan["revision"] as? String ?: ""
+        val profileId = box.selectedProfileId
+        navigator?.push { NewLANProxy(box, profileId, revision) }
+    } else {
+        box.launch { box.setLanProxy(enabled) }
+    }
+}
+
+@Composable
+private fun IntranetPanel(box: BoxController) {
+    val scheme = BoxTheme.scheme
+    val context = LocalContext.current
+    val navigator = LocalBoxNavigator.current
+    val addresses = box.lanAddresses
+    val copy = box.lanCopyText
+    val figure = AppTextStyle.Title1.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
+    val copied = tr("Copied")
+    BoxPanel {
+        Column(Modifier.fillMaxWidth()) {
+            PanelTitle("Intranet IP", AppGlyphs.devices, trailing = {
+                Box(Modifier.offset(x = 8.dp)) {
+                    GlyphButton(AppGlyphs.copy, tr("Copy"), if (copy == null) null else ({
+                        box.lanCopyText?.let {
+                            copyText(context, it)
+                            box.message(copied)
+                        }
+                    }), size = 32.dp, iconSize = 18.dp, color = scheme.onSurfaceVariant)
+                }
+            })
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier.fillMaxWidth().height((AppTextStyle.Title1.leading * LocalDensity.current.fontScale).dp)
+                    .clickable { navigator?.push { IntranetDetails(box) } },
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                when {
+                    box.lan["addresses"] !is List<*> -> SkeletonText(120.dp, figure)
+                    addresses.isEmpty() -> Text(tr("No network"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = figure.copy(color = scheme.onSurfaceVariant))
+                    else -> androidx.compose.foundation.text.BasicText(
+                        addresses.first(),
+                        style = figure,
+                        maxLines = 1,
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = AppTextStyle.Title1.size.sp, stepSize = 0.5.sp),
+                    )
+                }
+            }
+            Spacer(Modifier.height(14.dp))
+            if (box.remote) {
+                Box(Modifier.fillMaxWidth().clip(AppShape.all(20f)).background(SurfaceLevel.Block.colorOf(scheme))) {
+                    ListItem(
+                        leading = { GlyphIcon(AppGlyphs.wifi, size = 32.dp) },
+                        title = { Text(tr("This device")) },
+                        subtitle = { Text(tr("Device network addresses")) },
+                    )
+                }
+            } else {
+                LanProxyRow(box.lan["enabled"] == true, lanSubtitle(box), if (box.canSetLanProxy) ({ value: Boolean -> changeLan(box, navigator, value) }) else null)
+            }
+        }
+    }
+}
+
+/** FlClash's mobile switch row: an enabled cookie badge, disabled circle and a compact switch. */
+@Composable
+private fun LanProxyRow(value: Boolean, subtitle: String, onChanged: ((Boolean) -> Unit)?) {
+    val scheme = BoxTheme.scheme
+    val title = tr("LAN proxy")
+    val shape = AppShape.all(20f)
+    BoxWithConstraints(Modifier.fillMaxWidth().clip(shape).background(SurfaceLevel.Block.colorOf(scheme)).clickable(enabled = onChanged != null) { onChanged?.invoke(!value) }) {
+        // The icon yields its room to larger text.
+        val showIcon = title.length * 15 * LocalDensity.current.fontScale * .6f <= maxWidth.value - 22 - 38 - 24 - SWITCH_TRACK_WIDTH
+        Row(
+            Modifier.padding(start = if (showIcon) 10.dp else 14.dp, top = 10.dp, end = 12.dp, bottom = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (showIcon) {
+                AnimatedContent(value, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "lan") { on ->
+                    ShapeBadge(if (on) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (on) scheme.primary else SurfaceLevel.Card.colorOf(scheme), 38.dp) {
+                        GlyphIcon(AppGlyphs.wifi, size = 19.dp, color = if (on) scheme.onPrimary else scheme.onSurfaceVariant)
+                    }
+                }
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
+                Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = ListStyles.caption)
+            }
+            Box(Modifier.width(SWITCH_TRACK_WIDTH.dp).height(SWITCH_TRACK_HEIGHT.dp)) { CommonSwitch(value, onChanged) }
+        }
+    }
+}
+
+private fun protocol(binding: Json, tr: (String) -> String): String = when (binding["type"]) {
+    "mixed" -> tr(if (binding["tls"] == true) "HTTP / SOCKS over TLS" else "HTTP / SOCKS")
+    "http" -> if (binding["tls"] == true) "HTTPS" else "HTTP"
+    else -> "SOCKS"
+}
+
+@Composable
+private fun IntranetDetails(box: BoxController) {
+    val context = LocalContext.current
+    val navigator = LocalBoxNavigator.current
+    val active = !box.remote && box.running && box.lan["running"] == true
+    val bindings = rows(box.lan[if (active) "activeBindings" else "bindings"])
+    val strings = io.nekohasekai.sfa.compose.BoxStrings.zh
+    val chinese = isChinese()
+    val t: (String) -> String = { if (chinese) strings[it] ?: it else it }
+    BoxPage("Intranet IP", actions = listOf(IconAction(AppGlyphs.refresh, tr("Reload"), if (box.lanChanging) null else ({ box.refreshLan() })))) {
+        val addresses = box.lanAddresses
+        Section(title = tr("This device"), count = max(1, addresses.size)) { index, position ->
+            if (addresses.isEmpty()) {
+                ListItem(title = { Text(tr("No network")) }, position = position)
+            } else {
+                val address = addresses[index]
+                ListItem(
+                    title = { Text(address) },
+                    trailing = { GlyphButton(AppGlyphs.copy, tr("Copy"), { copyText(context, address); box.message(t("Copied")) }) },
+                    position = position,
+                )
+            }
+        }
+        if (!box.remote) {
+            Spacer(Modifier.height(24.dp))
+            LanProxyRow(box.lan["enabled"] == true, lanSubtitle(box), if (box.canSetLanProxy) ({ value: Boolean -> changeLan(box, navigator, value) }) else null)
+            box.lan["error"]?.let { ErrorState(it.toString()) { box.refreshLan() } }
+            val listenerRows = mutableListOf<@Composable (io.nekohasekai.sfa.compose.ui.ItemPosition) -> Unit>()
+            if (!active) listenerRows += { p -> ListItem(title = { Text(tr("Not running")) }, position = p) }
+            for (binding in bindings) {
+                val tag = (binding["tag"] as? String)?.takeIf { it.isNotEmpty() } ?: protocol(binding, t)
+                val port = binding["port"].asLong()
+                val subtitle = "${protocol(binding, t)} · ${if (port == 0L) t("Automatic port") else "${t("Port")}: $port"}" +
+                    if (binding["authentication"] == true) " · ${t("Authentication required")}" else ""
+                listenerRows += { p -> ListItem(title = { Text(tag) }, subtitle = { Text(subtitle) }, position = p) }
+                if (active) {
+                    for (endpoint in (binding["endpoints"] as? List<*>).orEmpty().filterIsInstance<String>()) {
+                        listenerRows += { p ->
+                            ListItem(
+                                title = { Text(endpoint) },
+                                trailing = { GlyphButton(AppGlyphs.copy, tr("Copy"), { copyText(context, endpoint); box.message(t("Copied")) }) },
+                                position = p,
+                            )
+                        }
+                    }
+                }
+            }
+            if (bindings.isEmpty()) listenerRows += { p -> ListItem(title = { Text(tr("No local proxy listener")) }, position = p) }
+            Section(title = tr("Local proxy listeners"), count = listenerRows.size) { index, position -> listenerRows[index](position) }
+            // TODO(phase 2): "Open configuration" (ProfileConfigurationPage, pages/configuration.dart).
+        }
+    }
+}
+
+@Composable
+private fun NewLANProxy(box: BoxController, profileId: Long, revision: String) {
+    val navigator = LocalBoxNavigator.current
+    val scope = rememberCoroutineScope()
+    var port by remember { mutableStateOf("2080") }
+    var invalid by remember { mutableStateOf(false) }
+    BoxPage(
+        "Add proxy listener",
+        loading = box.lanChanging,
+        actions = listOf(
+            IconAction(AppGlyphs.check, tr("Save"), if (!box.canSetLanProxy) null else ({
+                val value = port.toIntOrNull()
+                if (value == null || value !in 1..65535) {
+                    invalid = true
+                } else {
+                    scope.launch {
+                        if (box.setLanProxy(true, port = value, profileId = profileId, revision = revision)) navigator?.pop()
+                    }
+                }
+            })),
+        ),
+    ) {
+        OutlinedTextField(
+            value = port,
+            onValueChange = {
+                port = it
+                invalid = false
+            },
+            label = { Text(tr("Port")) },
+            isError = invalid,
+            supportingText = { if (invalid) Text(tr("Invalid proxy port")) },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            shape = AppShape.md,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(16.dp))
+        Text(tr("Adds an HTTP and SOCKS proxy to the selected profile."), style = ListStyles.caption)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// components/system_proxy_panel.dart
+// ---------------------------------------------------------------------------
+
+private val systemProxyGlyph by lazy {
+    io.nekohasekai.sfa.compose.ui.Glyph(
+        listOf(
+            io.nekohasekai.sfa.compose.ui.GlyphCircle(12.0, 12.0, 8.8),
+            io.nekohasekai.sfa.compose.ui.GlyphPath(
+                "M8.2 4.1L9.3 6.1Q9.8 7 9 7.7L7.5 9.1Q7 9.5 7.6 10.1" +
+                    "L9.1 11.5Q9.4 11.8 10.1 11.8H11.8Q13.2 11.8 13.2 13.2" +
+                    "V14.6Q13.2 15.3 12.6 15.7L11.6 16.3V18.6Q11.6 19.3 10.5 20.7",
+                role = io.nekohasekai.sfa.compose.ui.GlyphRole.Detail,
+            ),
+            io.nekohasekai.sfa.compose.ui.GlyphPath(
+                "M17.3 5L15.6 7Q15 7.8 15.6 8.5L17 10.2Q17.5 10.8 18.4 10.8H20.7",
+                role = io.nekohasekai.sfa.compose.ui.GlyphRole.Detail,
+            ),
+        ),
+    )
+}
+
+@Composable
+private fun SystemProxyPanel(box: BoxController) {
+    val scheme = BoxTheme.scheme
+    val enabled = box.dashboard["systemProxy"] == true
+    val title = tr("System HTTP proxy")
+    val change: (Boolean) -> Unit = { box.launchAct("systemProxy.set", mapOf("enabled" to it)) }
+    BoxPanel(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), clip = false, onClick = { change(!enabled) }) {
+        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            ShapeBadge(if (enabled) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (enabled) scheme.primary else SurfaceLevel.Block.colorOf(scheme), 48.dp) {
+                GlyphIcon(systemProxyGlyph, size = 22.dp, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)
+            }
+            Column(Modifier.weight(1f)) {
+                Text(title, style = AppTextStyle.Callout.of(true).copy(color = scheme.onSurface))
+                Text(tr(if (enabled) "Enabled" else "Disabled"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant))
+            }
+            Box(Modifier.width(SWITCH_TRACK_WIDTH.dp).height(SWITCH_TRACK_HEIGHT.dp)) { CommonSwitch(enabled, change) }
+        }
+    }
+}
