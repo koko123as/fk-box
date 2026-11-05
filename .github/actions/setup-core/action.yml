@@ -58,6 +58,10 @@ runs:
         GOTOOLCHAIN: local
       run: |
         cp ../libbox/core_*.go experimental/libbox/
+        # mihomo is embedded the way ClashMetaForAndroid embeds it (cmfa tag):
+        # the app supplies system DNS, and no package-list reader needs root.
+        grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go
+        sed -i 's/"tfogo_checklinkname0")/"tfogo_checklinkname0", "cmfa")/' cmd/internal/build_libbox/main.go
         xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
         mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
         libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')

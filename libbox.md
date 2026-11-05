@@ -60,6 +60,16 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 统一负责链接转换、sing-box 退役捕获选项清理与分内核校验。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
 
+### 服务层（第 2 阶段）
+
+[core_service.go](libbox/core_service.go) 在同一个 `CommandServer` 里运行 Xray 或 mihomo，同一时间只运行一个内核：
+
+- `StartOrReloadCoreService(core, content, options)`：sing-box 照旧走 `StartOrReloadService`；Xray/mihomo 先停掉 sing-box 和上一个内核，再经 `PlatformInterface.OpenTun`（即 VpnService.Builder）建 TUN（`172.19.0.1/30`、`fdfe:dcba:9876::1/126`、MTU 9000、DNS `172.19.0.2`，分应用代理沿用设置），把 dup 后的 fd 直接交给内核，不经本地转发。`CloseCoreService` 停止当前内核。
+- 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到 `AutoDetectInterfaceControl`（`VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取当前平台接口。
+- Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；geo 文件目录为 `<工作目录>/cores/xray`。
+- mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。
+- 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 规则在 cmfa 模式下取不到进程名；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
+
 ## 新增接口与行为
 
 ### 运行时内存

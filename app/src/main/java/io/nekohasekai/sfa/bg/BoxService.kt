@@ -256,7 +256,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private fun startOrReloadCore(content: String, declaredCore: String) = synchronized(MitmCertificate.accessLock) {
         val core = Libbox.resolveProfileCore(declaredCore, content)
-        check(core == TypedProfile.CORE_SING_BOX) { "The $core core can be imported and edited, but starting it is not wired up yet" }
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
@@ -268,7 +267,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 }
             }
             rewriteDirectory = File(service.noBackupFilesDir, "http-debug/captures").absolutePath
-            if (Libbox.needsUIHTTPRewriteCA(content)) {
+            if (core == TypedProfile.CORE_SING_BOX && Libbox.needsUIHTTPRewriteCA(content)) {
                 val material = MitmCertificate(service).material()
                 rewriteCertificate = material.first
                 rewriteSigner = material.second
@@ -276,7 +275,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         // The libbox lifecycle prepares the rules/CA, starts the core, then
         // activates profile processing before reporting startup success.
-        commandServer.startOrReloadService(content, overrides)
+        // Xray and mihomo get the VpnService TUN fd directly (CommandServer.startOrReloadCoreService).
+        if (core != TypedProfile.CORE_SING_BOX) DefaultNetworkMonitor.pushSystemDNS()
+        commandServer.startOrReloadCoreService(core, content, overrides)
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {
@@ -336,7 +337,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         if (dashboardConfig.value?.server === commandServer) _dashboardConfig.value = null
         if (dashboardServer === commandServer) dashboardServer = null
         runCatching {
-            commandServer.closeService()
+            commandServer.closeCoreService()
         }.onFailure {
             commandServer.setError("android: close service: ${it.message}")
         }
