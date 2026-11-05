@@ -21,5 +21,5 @@ dependencyResolutionManagement {
         }
     }
 }
-rootProject.name = "B-box"
+rootProject.name = "FK-box"
 include(":app")

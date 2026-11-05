@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- App -->
-    <string name="app_name" translatable="false">Flbox</string>
+    <string name="app_name" translatable="false">FK-box</string>
 
     <!-- Common Actions -->
     <string name="stop">Stop</string>

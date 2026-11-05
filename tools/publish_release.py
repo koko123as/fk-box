@@ -54,17 +54,17 @@ def main():
             'Existing release tags are never moved.'
         )
 
-    apk = Path('app/build/outputs/apk/other/release') / f'B-box-{version}-arm64-v8a.apk'
-    metadata = apk.parent / 'B-box-version-metadata.json'
+    apk = Path('app/build/outputs/apk/other/release') / f'FK-box-{version}-arm64-v8a.apk'
+    metadata = apk.parent / 'FK-box-version-metadata.json'
     metadata.write_text(json.dumps({
         'version_code': int(properties['VERSION_CODE']),
         'version_name': version,
-        'application_id': 'io.ericlee.bfa',
+        'application_id': 'io.fkbox.app',
     }, indent=2) + '\n')
     prerelease = bool(re.search(r'(alpha|beta|rc)', version, re.IGNORECASE))
     release_options = [
         '--repo', repository,
-        '--title', f'B-box {version}',
+        '--title', f'FK-box {version}',
         f'--prerelease={str(prerelease).lower()}',
         f'--latest={str(not prerelease).lower()}',
     ]

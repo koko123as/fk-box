@@ -70,13 +70,13 @@ android {
     }
 
     defaultConfig {
-        applicationId = "io.koko123as.flbox"
+        applicationId = "io.fkbox.app"
         minSdk = 24
         targetSdk = 37
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
-        base.archivesName.set("B-box-${versionName}")
+        base.archivesName.set("FK-box-${versionName}")
     }
 
     signingConfigs {

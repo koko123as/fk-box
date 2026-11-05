@@ -17,7 +17,7 @@ import urllib.parse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-PACKAGE = "io.ericlee.bfa"
+PACKAGE = "io.fkbox.app"
 COMPONENT = PACKAGE + "/io.nekohasekai.sfa.compose.MainActivity"
 OUT = Path("build/android-smoke")
 

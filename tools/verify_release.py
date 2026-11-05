@@ -14,7 +14,7 @@ def main():
         if line.strip() and not line.lstrip().startswith('#') and '=' in line
     )
     apks = list(Path('app/build/outputs/apk/other/release').glob('*.apk'))
-    expected_name = f"B-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
+    expected_name = f"FK-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
     if len(apks) != 1 or apks[0].name != expected_name:
         raise SystemExit(f'Expected exactly one {expected_name}, found: {apks}')
     with ZipFile(apks[0]) as apk:
@@ -44,7 +44,7 @@ def main():
     )
     package = dict(re.findall(r"(\w+)='([^']*)'", package_line))
     expected_package = {
-        'name': 'io.koko123as.flbox',
+        'name': 'io.fkbox.app',
         'versionName': properties['VERSION_NAME'],
         'versionCode': properties['VERSION_CODE'],
     }
@@ -58,7 +58,7 @@ def main():
     if launcher.get('name') != 'io.nekohasekai.sfa.compose.MainActivity':
         raise SystemExit(f'Unexpected launcher activity: {launcher.get("name")!r}')
     labels = dict(re.findall(r"^(application-label(?:-[^:]+)?):'(.*)'$", badging, re.MULTILINE))
-    if 'application-label' not in labels or any(label != 'Flbox' for label in labels.values()):
+    if 'application-label' not in labels or any(label != 'FK-box' for label in labels.values()):
         raise SystemExit(f'Unexpected application labels: {labels}')
     print(f'Verified ARM64 APK identity, minimum SDK 24 and {len(labels)} application labels: {apks[0]}')
     subprocess.run([str(aapt2.with_name('apksigner')), 'verify', '--verbose', str(apks[0])], check=True)
