@@ -123,8 +123,40 @@ fun DashboardPage(box: BoxController) {
     }
     val hidden = (box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards
     val shown = dashboardOrder(box.preferences).filter { available.containsKey(it) && (it == "Status" || it !in hidden) }
-    // Not yet translated: the dashboard card editor (components/dashboard_editor.dart) behind the edit action.
-    CommonScaffold(title = tr("Dashboard"), backgroundColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme)) {
+    var editor by remember { mutableStateOf<DashboardEditorState?>(null) }
+    var saving by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    // pages/dashboard.dart's _saveLayout: cards this device cannot show keep their place.
+    suspend fun saveLayout(next: List<String>): Boolean {
+        val availableKeys = available.keys
+        val order = dashboardOrder(box.preferences)
+        val result = next.toMutableList()
+        val hiddenSet = ((box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards)
+            .filterIsInstance<String>().filter { it in dashboardCards }.toMutableSet()
+        var at = 0
+        for (card in order) {
+            if (card in availableKeys) {
+                val index = result.indexOf(card)
+                if (index >= 0) at = index + 1
+            } else {
+                result.add(at++, card)
+            }
+        }
+        for (card in order) if (card !in result) result.add(card)
+        for (card in availableKeys) if (card in next) hiddenSet.remove(card) else hiddenSet.add(card)
+        hiddenSet.remove("Status")
+        return box.setPreferences(mapOf("dashboardCards" to result, "hiddenCards" to hiddenSet.toList()))
+    }
+    val editing = editor
+    CommonScaffold(
+        title = tr(if (editing != null) "Edit dashboard" else "Dashboard"),
+        backgroundColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme),
+        loading = saving,
+        confirmationAction = editing?.let { state ->
+            IconAction(AppGlyphs.check, tr("Done"), if (saving) null else ({ scope.launch { state.finish() } }))
+        },
+        iconActions = if (editing == null) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
+    ) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val mobile = maxWidth < 600.dp
             val maxContent = if (mobile) 560.dp else 900.dp
@@ -135,8 +167,20 @@ fun DashboardPage(box: BoxController) {
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(PaddingValues(start = side, end = side, top = contentTopPadding(), bottom = 16.dp + bottomInset())),
-                verticalArrangement = Arrangement.spacedBy(gap),
+                verticalArrangement = Arrangement.spacedBy(if (editing != null) 0.dp else gap),
             ) {
+              if (editing != null) {
+                DashboardEditor(
+                    state = editing,
+                    shown = shown,
+                    available = dashboardCards.filter { available.containsKey(it) },
+                    cardContent = { available[it] },
+                    gap = gap,
+                    onChanged = { saveLayout(it) },
+                    onBusyChanged = { saving = it },
+                    onDone = { editor = null },
+                )
+              } else {
                 if (box.remote) {
                     ListItem(
                         title = { Text(box.dashboard["remote"].toString()) },
@@ -161,6 +205,7 @@ fun DashboardPage(box: BoxController) {
                         onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
                     )
                 }
+              }
             }
         }
     }
@@ -817,7 +862,7 @@ private fun NewLANProxy(box: BoxController, profileId: Long, revision: String) {
 // components/system_proxy_panel.dart
 // ---------------------------------------------------------------------------
 
-private val systemProxyGlyph by lazy {
+internal val dashboardSystemProxyGlyph by lazy {
     io.nekohasekai.sfa.compose.ui.Glyph(
         listOf(
             io.nekohasekai.sfa.compose.ui.GlyphCircle(12.0, 12.0, 8.8),
@@ -844,7 +889,7 @@ private fun SystemProxyPanel(box: BoxController) {
     BoxPanel(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), clip = false, onClick = { change(!enabled) }) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             ShapeBadge(if (enabled) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (enabled) scheme.primary else SurfaceLevel.Block.colorOf(scheme), 48.dp) {
-                GlyphIcon(systemProxyGlyph, size = 22.dp, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)
+                GlyphIcon(dashboardSystemProxyGlyph, size = 22.dp, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)
             }
             Column(Modifier.weight(1f)) {
                 Text(title, style = AppTextStyle.Callout.of(true).copy(color = scheme.onSurface))

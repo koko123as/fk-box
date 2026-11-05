@@ -19,7 +19,7 @@ fk-box 分支已把下文列出的全部 Flutter 页面和组件翻译为 Kotlin
 | appearance、theme_preview、palette、segmented_control | `pages/AppearancePage.kt` |
 | record.dart、data_subscription.dart | `ui/Records.kt`、`DashboardPage.kt` 的 `BoxDataSubscription` |
 
-已知与 Flutter 版的差异：搜索水滴变形和液态玻璃弹窗以弹簧缩放近似；列表行展开用侧滑；抽屉不随内容变短，宽屏列表单列；开关不支持拖动；导航坞和外观预览没有液态玻璃模糊（预览只画色调和高光边）；仪表盘卡片编辑器尚未翻译；记录卡片标签点击不追加搜索关键词；开源许可页改为列出主要组件及其许可和源码链接。
+已知与 Flutter 版的差异：搜索水滴变形和液态玻璃弹窗以弹簧缩放近似；列表行展开用侧滑；抽屉不随内容变短，宽屏列表单列；开关不支持拖动；导航坞和外观预览没有液态玻璃模糊（预览只画色调和高光边）；仪表盘卡片编辑器的进出场用 Compose 展开动画近似，拖动时不自动滚动；记录卡片标签点击不追加搜索关键词；开源许可页改为列出主要组件及其许可和源码链接。
 
 ## 参考版本与来源清单
 
@@ -50,7 +50,7 @@ Flutter 承担仪表盘、代理、配置、工具及所有子页面的导航。
 | 配置卡与分组概览 | `profile_panel.dart`、`proxy_groups_panel.dart` | 使用真实配置元数据和内核分组，远端未知数量保持未知 |
 | 代理 | `proxies.dart`、`proxy_card.dart`、`proxy_list.dart` | 卡片与列表都使用 libbox 分组；只有可选择的组显示选择操作 |
 | 配置管理 | `profiles.dart`、`profile_card.dart`、`profile_details.dart` | 复用行高、选中态、相对更新时间、添加菜单、分组表单及排序样式，编辑和导入 sing-box JSON |
-| 首页编辑 | `dashboard_editor.dart` | 原地编辑卡片、摇摆、长按排序、移除徽章及添加列表 |
+| 首页编辑 | `dashboard_editor.dart` → `DashboardEditor.kt` | 原地编辑卡片、摇摆、长按排序、移除徽章及添加列表 |
 | 内存与局域网 | `memory_panel.dart`、`intranet_panel.dart` | 分别使用 Go/进程内存和 sing-box 监听配置，不虚构 Mihomo 内存或全局代理端口 |
 | 系统 HTTP 代理 | `system_proxy_panel.dart` | 采用参考版 VPN 卡片的布局、状态徽章和紧凑开关，使用 B-box 自有的大陆轮廓地球字形；开关接入内核上报状态及既有 Android 桥接 |
 | 外观与关于 | `appearance.dart`、`about.dart` | 复用主题预览、调色和版本/许可布局，保持 B-box 品牌及其 Release 来源 |
