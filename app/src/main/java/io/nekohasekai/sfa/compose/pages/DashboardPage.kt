@@ -277,8 +277,7 @@ private fun ProfilePanel(box: BoxController) {
     val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
     var updating by remember { mutableStateOf(false) }
     BoxPanel(onClick = {
-        // TODO(phase 2): ProfileDetailsPage / AddProfilePage (pages/profile_details.dart, profiles.dart).
-        navigator?.push { if (profile == null && !box.remote) AddProfilePlaceholder() else ProfileDetailsPlaceholder() }
+        navigator?.openForm { if (box.remote) ProfileDetailsPage(box, null) else if (profile == null) AddProfilePage(box) else ProfileDetailsPage(box, profile) }
     }) {
         Column {
             PanelTitle("Profile", AppGlyphs.profiles, trailing = {
@@ -302,8 +301,7 @@ private fun ProfilePanel(box: BoxController) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Headline.of(true).copy(color = scheme.onSurface))
                 if (!box.remote && box.profiles.size > 1) {
-                    // TODO(phase 2): ProfilesPage(picker: true) as the switch sheet.
-                    GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.push { ProfilesPlaceholder() } }), size = 32.dp, iconSize = 18.dp)
+                    GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.openForm { ProfilesPage(box, picker = true) } }), size = 32.dp, iconSize = 18.dp)
                 }
             }
             if (profile != null || box.remote) {
@@ -335,7 +333,7 @@ fun profileUpdateLabel(milliseconds: Long?, now: Long, chinese: Boolean): String
 }
 
 @Composable
-private fun ProfileUpdateTime(milliseconds: Long?, style: androidx.compose.ui.text.TextStyle, showLabel: Boolean) {
+internal fun ProfileUpdateTime(milliseconds: Long?, style: androidx.compose.ui.text.TextStyle, showLabel: Boolean) {
     var now by remember { mutableStateOf(System.currentTimeMillis()) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -348,7 +346,7 @@ private fun ProfileUpdateTime(milliseconds: Long?, style: androidx.compose.ui.te
 }
 
 @Composable
-private fun ProfileStats(box: BoxController, profile: Json?) {
+internal fun ProfileStats(box: BoxController, profile: Json?) {
     val scheme = BoxTheme.scheme
     var stats by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf<Json?>(null) }
     var waiting by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf(profile != null) }
@@ -381,7 +379,7 @@ private fun ProxyGroupsPanel(box: BoxController) {
     val timeout = groups.flatMap { rows(it["items"]) }
         .filter { (it["testedAt"].asLong() ?: 0) > 0 && (it["delay"].asLong() ?: 0) <= 0 }
         .map { it["tag"].toString() }.toSet()
-    BoxPanel(onClick = if (groups.isEmpty()) null else ({ navigator?.push { ProxiesPlaceholder() } })) {
+    BoxPanel(onClick = if (groups.isEmpty()) null else ({ navigator?.openForm { ProxiesPage(box) } })) {
         Column {
             PanelTitle("Proxy groups", AppGlyphs.layers, trailing = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -476,7 +474,7 @@ fun BoxDataSubscription(box: BoxController, data: BoxData) {
 private fun MemoryPanel(box: BoxController) {
     val navigator = LocalBoxNavigator.current
     if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Memory)
-    BoxPanel(onClick = { navigator?.push { MemoryDetails(box) } }) {
+    BoxPanel(onClick = { navigator?.openForm { MemoryDetails(box) } }) {
         Column(Modifier.fillMaxWidth()) {
             PanelTitle("Memory", AppGlyphs.memory, trailing = { GlyphIcon(AppGlyphs.chevronForward, size = 18.dp) })
             Spacer(Modifier.height(12.dp))
@@ -620,7 +618,7 @@ private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.
     if (enabled && rows(box.lan["bindings"]).isEmpty()) {
         val revision = box.lan["revision"] as? String ?: ""
         val profileId = box.selectedProfileId
-        navigator?.push { NewLANProxy(box, profileId, revision) }
+        navigator?.openForm { NewLANProxy(box, profileId, revision) }
     } else {
         box.launch { box.setLanProxy(enabled) }
     }
@@ -650,7 +648,7 @@ private fun IntranetPanel(box: BoxController) {
             Spacer(Modifier.height(12.dp))
             Box(
                 Modifier.fillMaxWidth().height((AppTextStyle.Title1.leading * LocalDensity.current.fontScale).dp)
-                    .clickable { navigator?.push { IntranetDetails(box) } },
+                    .clickable { navigator?.openForm { IntranetDetails(box) } },
                 contentAlignment = Alignment.CenterStart,
             ) {
                 when {
@@ -765,7 +763,12 @@ private fun IntranetDetails(box: BoxController) {
             }
             if (bindings.isEmpty()) listenerRows += { p -> ListItem(title = { Text(tr("No local proxy listener")) }, position = p) }
             Section(title = tr("Local proxy listeners"), count = listenerRows.size) { index, position -> listenerRows[index](position) }
-            // TODO(phase 2): "Open configuration" (ProfileConfigurationPage, pages/configuration.dart).
+            val selected = box.selectedProfile
+            if (selected != null) {
+                Section(count = 1) { _, position ->
+                    io.nekohasekai.sfa.compose.ui.ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) { ProfileConfigurationPage(box, selected) }
+                }
+            }
         }
     }
 }

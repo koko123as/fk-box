@@ -349,7 +349,7 @@ fun StatusPanel(box: BoxController) {
                                     ip != null -> BasicText(
                                         ip,
                                         Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                            navigator?.push { EgressDetails(model) }
+                                            navigator?.openForm { EgressDetails(model) }
                                         },
                                         style = ipStyle,
                                         maxLines = 1,
@@ -421,7 +421,7 @@ fun StatusPanel(box: BoxController) {
                         ) {
                             if (model.busy || box.transitioning) return@StartToggle
                             if (!box.running && box.selectedProfile == null) {
-                                navigator?.push { AddProfilePlaceholder() }
+                                navigator?.openForm { AddProfilePage(box) }
                                 return@StartToggle
                             }
                             model.busy = true

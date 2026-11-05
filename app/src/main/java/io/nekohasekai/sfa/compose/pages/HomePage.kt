@@ -88,17 +88,26 @@ fun HomePage(box: BoxController) {
     // Drains imports and shares (main.dart _drainIntents).
     LaunchedEffect(box.ready) {
         if (!box.ready) return@LaunchedEffect
-        while (box.pendingIntents.isNotEmpty()) {
-            val uri = box.pendingIntents.removeFirst()
-            // TODO(phase 2): ProfileForm / SharePage for imported profiles and shares.
-            navigator?.push { ImportPlaceholder(uri) }
-        }
-        box.intents.collect {
+        suspend fun drain() {
             while (box.pendingIntents.isNotEmpty()) {
                 val uri = box.pendingIntents.removeFirst()
-                navigator?.push { ImportPlaceholder(uri) }
+                try {
+                    if (uri.startsWith("bbox-share:")) {
+                        // TODO(phase 3): pages/taildrop.dart's SharePage for shared files.
+                        navigator?.push { SharePlaceholder(uri.removePrefix("bbox-share:")) }
+                        continue
+                    }
+                    val data = io.nekohasekai.sfa.compose.json(box.call("profiles.decodeIntent", mapOf("uri" to uri)))
+                    navigator?.openForm { ProfileForm(box, data) }
+                } catch (error: kotlinx.coroutines.CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    box.report(error)
+                }
             }
         }
+        drain()
+        box.intents.collect { drain() }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val mobile = maxWidth < 600.dp
@@ -148,8 +157,8 @@ fun HomePage(box: BoxController) {
                                 CompositionLocalProvider(LocalPageActive provides active) {
                                     when (i) {
                                         0 -> DashboardPage(box)
-                                        1 -> TopLevelPlaceholder("Proxies", AppGlyphs.proxies)
-                                        2 -> TopLevelPlaceholder("Profiles", AppGlyphs.profiles)
+                                        1 -> ProxiesPage(box)
+                                        2 -> ProfilesPage(box)
                                         else -> TopLevelPlaceholder("Tools", AppGlyphs.tools)
                                     }
                                 }
@@ -197,7 +206,7 @@ private fun Modifier.blockInput(): Modifier = pointerInput(Unit) {
     }
 }
 
-/** TODO(phase 2): pages/proxies.dart, pages/profiles.dart and pages/tools.dart. */
+/** TODO(phase 3): pages/tools.dart. */
 @Composable
 private fun TopLevelPlaceholder(title: String, glyph: io.nekohasekai.sfa.compose.ui.Glyph) {
     CommonScaffold(title = tr(title)) {
@@ -208,28 +217,8 @@ private fun TopLevelPlaceholder(title: String, glyph: io.nekohasekai.sfa.compose
 }
 
 @Composable
-fun AddProfilePlaceholder() = PushedPlaceholder("Add profile")
-
-@Composable
-fun ProfileDetailsPlaceholder() = PushedPlaceholder("Profile")
-
-@Composable
-fun ProxiesPlaceholder() = PushedPlaceholder("Proxies")
-
-@Composable
-fun ProfilesPlaceholder() = PushedPlaceholder("Profiles")
-
-@Composable
-private fun ImportPlaceholder(uri: String) {
-    BoxPage("Import") {
-        EmptyState("Import", message = uri)
-    }
-}
-
-/** TODO(phase 2): the pushed pages the dashboard opens. */
-@Composable
-private fun PushedPlaceholder(title: String) {
-    BoxPage(title) {
-        EmptyState(title, message = "This page moves to Compose in the next phase.")
+private fun SharePlaceholder(token: String) {
+    BoxPage("Share") {
+        EmptyState("Share", message = token)
     }
 }
