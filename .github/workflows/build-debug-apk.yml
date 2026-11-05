@@ -50,6 +50,12 @@ jobs:
             '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
+      - name: Report APK size
+        run: |
+          for apk in app/build/outputs/apk/other/debug/*.apk; do
+            echo "- $(basename "$apk"): $(stat -c %s "$apk") bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:

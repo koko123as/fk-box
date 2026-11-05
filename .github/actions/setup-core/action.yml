@@ -39,10 +39,29 @@ runs:
         git -C .core apply ../libbox/libbox-no-legacy.patch
         python3 tools/patch_sing_tun.py .core
         python3 tools/patch_httpdebug.py .core
-        cp libbox/ui_*.go .core/experimental/libbox/
+        cp libbox/ui_*.go libbox/core_*.go .core/experimental/libbox/
     - name: Resolve the pinned HTTP rewrite runtime
       shell: bash
       working-directory: .core
       run: |
         go mod edit -go=1.26.0 -require=github.com/dop251/goja@v0.0.0-20261102223426-a177d211bf60
         go mod tidy
+    - name: Resolve the pinned Xray and mihomo cores
+      shell: bash
+      working-directory: .core
+      run: |
+        xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
+        mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
+        [[ "$xray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
+        [[ "$mihomo" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        cp go.mod ../core-go.mod.before
+        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/metacubex/mihomo@v"$mihomo"
+        go mod tidy
+        # The core must stay on the sing-box module versions it was released with;
+        # report every shared module the extra cores raised.
+        diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             <(go mod edit -json go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             | sed -n 's/^> //p' > ../core-module-bumps.txt || true
+        echo "Shared or new modules after adding Xray $xray and mihomo v$mihomo:"
+        wc -l < ../core-module-bumps.txt
+        test "$(go list -m -f '{{.Version}}' github.com/sagernet/sing)" = "$(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing") | .Version')"

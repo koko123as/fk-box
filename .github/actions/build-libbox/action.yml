@@ -3,7 +3,7 @@ description: Build the patched Android core with the upstream Java and NDK versi
 
 inputs:
   platform:
-    description: Android target platform (android/arm64 or android/amd64).
+    description: Android target platform (android/arm64 only).
     required: true
 
 outputs:
@@ -39,7 +39,7 @@ runs:
         LIBBOX_PLATFORM: ${{ inputs.platform }}
       run: |
         case "$LIBBOX_PLATFORM" in
-          android/arm64|android/amd64) ;;
+          android/arm64) ;;
           *) echo "Unsupported Android platform: $LIBBOX_PLATFORM" >&2; exit 1 ;;
         esac
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
@@ -50,3 +50,11 @@ runs:
         test ! -e libbox-legacy.aar
         mkdir -p ../app/libs
         cp libbox.aar ../app/libs/libbox.aar
+        size=$(stat -c %s libbox.aar)
+        so=$(unzip -l libbox.aar | awk '/libbox\.so/ {print $1}')
+        echo "libbox.aar: $size bytes, jni/arm64-v8a/libbox.so: $so bytes"
+        {
+          echo "### libbox (sing-box + Xray + mihomo)"
+          echo "- libbox.aar: $size bytes"
+          echo "- libbox.so (arm64-v8a): $so bytes"
+        } >> "$GITHUB_STEP_SUMMARY"

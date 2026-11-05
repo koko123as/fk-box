@@ -19,6 +19,30 @@
 | HTTP/HTTPS 请求抓取 | [httpdebug.patch](libbox/httpdebug.patch)、[httpdebug/](libbox/httpdebug/)、[route/](libbox/route/)、[ui_capture.go](libbox/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
 | JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](libbox/http_rewrite.patch)、[rewrite_config.go](libbox/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](libbox/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
 
+## 多内核：Xray 与 mihomo
+
+三个内核编进同一个 `libbox.aar`，同一时间只运行一个。版本固定在 [version.properties](version.properties)：
+
+| 内核 | 版本 | Go 模块版本 |
+| --- | --- | --- |
+| sing-box | `CORE_VERSION` | 上游标签 |
+| Xray | `XRAY_VERSION`（v26.7.28） | `XRAY_MODULE_VERSION`：xray-core 的 `v26.x` 标签不是该模块路径可用的语义版本，使用指向标签提交 `5ca6f4b7` 的伪版本 |
+| mihomo | `MIHOMO_VERSION`（v1.19.33） | 同标签 |
+
+Xray 选 v26.7.28：之后的版本要求 Go 1.27，当前构建使用 `GO_VERSION`。只编译 arm64，不再构建 amd64。
+
+[setup-core](.github/actions/setup-core/action.yml) 在 sing-box 自身依赖整理完后再加入两个内核并 `go mod tidy`，把被抬高或新增的模块写入 `core-module-bumps.txt`，并断言 `github.com/sagernet/sing` 未被改变。[core_link.go](libbox/core_link.go) 以空导入把两个内核真正链接进 libbox。
+
+### 依赖冲突核查（第 0 阶段）
+
+以 `v1.15.0-alpha.13` + 本仓库全部补丁为基线，按 libbox 的 Android 标签（不含需 cgo 的 `with_naive_outbound`）在 Go 1.26.10 下核查：
+
+- `GOOS=android GOARCH=arm64` 编译 `experimental/libbox` 通过；同一组导入的测试二进制可以运行，所有包的 `init` 无冲突（protobuf 全名分别在 `xray.*`、`mihomo.*` 下，无注册冲突）。
+- mihomo 对 `google.golang.org/protobuf` 的 `replace`（metacubex/protobuf-go，仅为降到 go1.20 兼容旧系统）作为依赖时不生效，使用 sing-box 已有的 v1.36.11。
+- Xray 要求的 `sagernet/sing v0.5.1`、`sing-shadowsocks v0.2.7` 低于 sing-box 现用版本，最小版本选择保持 sing-box 版本，Xray 对应代码可编译。
+- 被抬高的共用模块：`metacubex/utls` v1.8.7→v1.8.8、`google.golang.org/grpc` v1.79.1→v1.82.1、`genproto/googleapis/rpc`、`pires/go-proxyproto` v0.8.1→v0.15.0（sing-box 未使用）、`go4.org/netipx`、`lukechampine.com/blake3` v1.3.0→v1.4.1、`klauspost/cpuid/v2`、`andybalholm/brotli`、`ajg/form`、`coreos/go-iptables`、`go-jose/v4`、`pierrec/lz4/v4`、`testify` 及 Windows 专用的 `wireguard/windows`。`golang.org/x/*` 未被抬高。暂无需 `replace`；实际结果以 Actions 中的 `core-module-bumps.txt` 为准，升级任一内核时重新核查。
+- 各内核的 gVisor、quic-go 均为不同模块路径（`sagernet/gvisor`、`gvisor.dev/gvisor`、`metacubex/gvisor`；`sagernet/quic-go`、`apernet/quic-go`、`metacubex/quic-go`），互不覆盖，但会增加体积。
+
 ## 新增接口与行为
 
 ### 运行时内存
