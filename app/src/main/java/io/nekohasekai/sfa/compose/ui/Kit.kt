@@ -291,6 +291,8 @@ fun CommonSwitch(value: Boolean, onChanged: ((Boolean) -> Unit)?, modifier: Modi
     val scope = rememberCoroutineScope()
     val currentValue by rememberUpdatedState(value)
     val currentOnChanged by rememberUpdatedState(onChanged)
+    val switchRtl = androidx.compose.ui.platform.LocalLayoutDirection.current == androidx.compose.ui.unit.LayoutDirection.Rtl
+    val rtlNow by rememberUpdatedState(switchRtl)
     var liftJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     fun pressIn() {
         liftJob?.cancel()
@@ -346,8 +348,7 @@ fun CommonSwitch(value: Boolean, onChanged: ((Boolean) -> Unit)?, modifier: Modi
                         }
                         if (dragging) {
                             change.consume()
-                            val rtl = layoutDirection == androidx.compose.ui.unit.LayoutDirection.Rtl
-                            val next = (toggle.value + (if (rtl) -dx else dx) / travel).coerceIn(0f, 1f)
+                            val next = (toggle.value + (if (rtlNow) -dx else dx) / travel).coerceIn(0f, 1f)
                             scope.launch { toggle.snapTo(next) }
                         }
                     }
