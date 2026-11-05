@@ -93,7 +93,6 @@ fun HomePage(box: BoxController) {
                 val uri = box.pendingIntents.removeFirst()
                 try {
                     if (uri.startsWith("bbox-share:")) {
-                        // TODO(phase 3): pages/taildrop.dart's SharePage for shared files.
                         navigator?.push { SharePage(box, uri.removePrefix("bbox-share:")) }
                         continue
                     }

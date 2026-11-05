@@ -438,7 +438,7 @@
           "sourceSHA256": "9230a6d8efa32e5d672fa4b5e8d448c9c417155fb22168d5575381a917086d24",
           "usage": "design",
           "localPaths": [
-            "flutter/lib/pages/mitm_certificate.dart"
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
           ],
           "changes": "Distinguish user/system trust and refresh after returning from settings. B-box queries its local Android bridge and isolates remote sessions."
         },
@@ -447,8 +447,7 @@
           "sourceSHA256": "44ab8149f393a7c4be5bbae25bddfc8084e3e3c117b56c5b5079e82835946f3c",
           "usage": "design",
           "localPaths": [
-            "flutter/lib/pages/request_settings.dart",
-            "flutter/lib/pages/mitm_certificate.dart"
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
           ],
           "changes": "Reference for explicit CA operations, HTTPS inclusion/exclusion and certificate setup. B-box uses private capture settings and shared components; profile HTTP rewriting is a separate B-box implementation documented in libbox.md. Certificate rotation is blocked while either capture or profile processing uses it; no Mihomo configuration."
         },
@@ -457,7 +456,7 @@
           "sourceSHA256": "78f44bbe580b2dea58f93ae5754ecd5abb7a1ee2f94cee06915c52ed893bb5de",
           "usage": "design",
           "localPaths": [
-            "flutter/lib/pages/requests.dart"
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
           ],
           "changes": "Reference for HTTP exchange information. B-box keeps bounded libbox records and its independent live Connections page."
         },
@@ -466,7 +465,7 @@
           "sourceSHA256": "b989c3b61cfedf37253c9c61d6f5e66b3b9f8ceb7520f574fe3d6bac1ea17612",
           "usage": "design",
           "localPaths": [
-            "flutter/lib/pages/requests.dart"
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
           ],
           "changes": "Reference for per-message detail navigation; B-box retains its record menu and copyable rows with actual route/TLS metadata and trailers."
         },
@@ -479,5 +478,6 @@
         }
       ]
     }
-  ]
+  ],
+  "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation. Local paths under files/adaptedFiles name the former flutter/ tree (see Git history before the removal); their Compose translations live in app/src/main/java/io/nekohasekai/sfa/compose."
 }

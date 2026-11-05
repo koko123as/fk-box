@@ -336,12 +336,13 @@ private fun AccentColors(box: BoxController) {
                 },
             )
             val styles = ColorStyle.entries.map { it.name.lowercase() }
+            val styleLabels = styles.associateWith { name -> trOrSelf(name.replaceFirstChar { it.uppercase() }) }
             ListItemOptions(
                 tr("Color style"),
                 styles,
                 (prefs["colorStyle"] as? String)?.lowercase() ?: "vivid",
                 ItemPosition.StartAndEnd,
-                { name -> trOrSelf(name.replaceFirstChar { it.uppercase() }) },
+                { name -> styleLabels[name] ?: name },
             ) { value -> scope.launch { box.setPreference("colorStyle", value) } }
         }
     }

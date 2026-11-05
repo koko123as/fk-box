@@ -45,12 +45,6 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Download validated Flutter libraries
-        uses: actions/download-artifact@v5
-        with:
-          name: flutter-aar-arm64
-          path: flutter/build/host/outputs/repo
-
       - name: Run unit tests
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"

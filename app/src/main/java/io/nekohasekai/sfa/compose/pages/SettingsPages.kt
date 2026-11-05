@@ -345,7 +345,7 @@ fun backupFileIssue(value: String?): String? =
     }
 
 /** jsonEncode for the backup the bridge returns as maps and lists. */
-private fun encodeJson(value: Any?): String = when (value) {
+private fun encodeBackupJson(value: Any?): String = when (value) {
     null -> "null"
     is Map<*, *> -> JSONObject(value.mapKeys { it.key.toString() }.mapValues { toJsonValue(it.value) }).toString()
     is List<*> -> JSONArray(value.map(::toJsonValue)).toString()
@@ -440,7 +440,7 @@ fun BackupPage(box: BoxController) {
                     box.call("webdav.upload") == true
                 } else {
                     val data = box.call("backup.create")
-                    box.call("document.save", mapOf("name" to DEFAULT_BACKUP_FILE_NAME, "content" to encodeJson(data))) == true
+                    box.call("document.save", mapOf("name" to DEFAULT_BACKUP_FILE_NAME, "content" to encodeBackupJson(data))) == true
                 }
                 loading = false
                 if (saved) dialog = BackupDialog.Done("Backup", "Backup complete")
@@ -532,13 +532,14 @@ fun BackupPage(box: BoxController) {
                                 add { p ->
                                     val fileName = current["fileName"] as? String ?: DEFAULT_BACKUP_FILE_NAME
                                     val invalid = tr("Invalid backup file name")
+                                    val fileTitle = tr("File")
                                     ListItem(
                                         title = { Text(tr("File")) },
                                         subtitle = { Text(fileName) },
                                         position = p,
                                         onClick = {
                                             scope.launch {
-                                                val value = dialogs?.input(tr("File"), fileName, resetValue = DEFAULT_BACKUP_FILE_NAME, validator = { if (backupFileIssue(it) == null) null else invalid })
+                                                val value = dialogs?.input(fileTitle, fileName, resetValue = DEFAULT_BACKUP_FILE_NAME, validator = { if (backupFileIssue(it) == null) null else invalid })
                                                 if (value == null || account == null || locked) return@launch
                                                 locked = true
                                                 try {
@@ -737,9 +738,9 @@ fun AccessPage(box: BoxController) {
     val dialogs = LocalDialogs.current
     val level = LocalNavLevel.current
     val scope = rememberCoroutineScope()
-    val initialDraft = remember {
+    val initialDraft: Map<String, Any?> = remember {
         val settings = box.settings
-        mapOf(
+        mapOf<String, Any?>(
             "perAppEnabled" to (settings["perAppEnabled"] == true),
             "perAppManaged" to (settings["perAppManaged"] == true),
             "perAppMode" to (if ((settings["perAppMode"].asDouble() ?: 1.0).toInt() == 2) 2 else 1),

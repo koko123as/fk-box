@@ -123,7 +123,7 @@ fun DashboardPage(box: BoxController) {
     }
     val hidden = (box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards
     val shown = dashboardOrder(box.preferences).filter { available.containsKey(it) && (it == "Status" || it !in hidden) }
-    // TODO(phase 2): the dashboard card editor (components/dashboard_editor.dart) behind the edit action.
+    // Not yet translated: the dashboard card editor (components/dashboard_editor.dart) behind the edit action.
     CommonScaffold(title = tr("Dashboard"), backgroundColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme)) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val mobile = maxWidth < 600.dp
