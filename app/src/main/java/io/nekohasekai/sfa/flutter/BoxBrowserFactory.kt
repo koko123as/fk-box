@@ -4,14 +4,17 @@ import android.content.Context
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.TextView
-import io.flutter.plugin.common.StandardMessageCodec
-import io.flutter.plugin.platform.PlatformView
-import io.flutter.plugin.platform.PlatformViewFactory
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.backend.tools.OpenConnectWebViewBrowser
 
-internal class BoxBrowserFactory(private val bridge: BoxBridge) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
-    override fun create(context: Context, viewId: Int, args: Any?): PlatformView {
+/** A native view hosted by Compose (formerly a Flutter platform view). */
+interface PlatformView {
+    fun getView(): View
+    fun dispose()
+}
+
+internal class BoxBrowserFactory(private val bridge: BoxBridge) {
+    fun create(context: Context, viewId: Int, args: Any?): PlatformView {
         val params = args as? Map<*, *> ?: emptyMap<String, Any?>()
         val endpoint = params["endpoint"] as? String ?: ""
         val challengeID = params["challenge"] as? String ?: ""

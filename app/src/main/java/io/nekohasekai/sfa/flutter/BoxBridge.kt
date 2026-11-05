@@ -5,10 +5,6 @@ import android.net.Uri
 import android.os.PowerManager
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.EventChannel
-import io.flutter.plugin.common.MethodCall
-import io.flutter.plugin.common.MethodChannel
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.Application
@@ -45,11 +41,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.Closeable
 
-class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) : Closeable {
+/**
+ * Native facade for the Compose UI. It keeps the former MethodChannel commands
+ * ([call]) and EventChannel messages ([listen]) unchanged, so every backend
+ * implementation behind them is reused as it was under Flutter.
+ */
+class BoxBridge(private val activity: BoxActivity) : Closeable {
+    fun interface EventSink {
+        fun success(event: Map<String, Any?>)
+    }
+
     private val scope = activity.lifecycleScope
-    private val channel = MethodChannel(messenger, "io.koko123as.flbox/box")
-    private val events = EventChannel(messenger, "io.koko123as.flbox/events")
-    private var sink: EventChannel.EventSink? = null
+    private var sink: EventSink? = null
     private var streamJob: Job? = null
     private val queuedErrors = ArrayDeque<String>()
     private lateinit var dashboard: DashboardViewModel
@@ -124,75 +127,65 @@ class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) :
         }
     }
 
-    init {
-        channel.setMethodCallHandler { call, result ->
-            scope.launch {
-                try {
-                    initialize.await()
-                    result.success(invoke(call))
-                } catch (e: CancellationException) {
-                    result.error("cancelled", "Operation cancelled", null)
-                } catch (e: Exception) {
-                    result.error("box_error", e.message ?: e.toString(), null)
-                }
-            }
-        }
-        events.setStreamHandler(object : EventChannel.StreamHandler {
-            override fun onListen(arguments: Any?, eventSink: EventChannel.EventSink) {
-                sink = eventSink
-                streamJob?.cancel()
-                streamJob = scope.launch {
-                    try {
-                        initialize.await()
-                        while (queuedErrors.isNotEmpty()) emit("error", queuedErrors.removeFirst())
-                        coroutineScope {
-                            launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
-                            launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
-                            launch { connections.uiState.collect { state ->
-                                if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { state.allConnections.map { it.toWire() } })
-                            } }
-                            launch {
-                                val stream = LogStream()
-                                combine(logs.uiState, logsVisible, AppLifecycleObserver.isForeground) { state, visible, foreground ->
-                                    state.takeIf { visible && foreground }
-                                }.collect { state ->
-                                    if (state == null) stream.reset()
-                                    else {
-                                        val update = withContext(Dispatchers.Default) { stream.update(state) }
-                                        if (update != null) emit("logs", update)
-                                    }
-                                }
-                            }
-                            launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
-                            launch { RemoteControlManager.isConnected.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
-                        }
-                    } catch (e: CancellationException) {
-                        throw e
-                    } catch (e: Exception) {
-                        reportError(e.message ?: e.toString())
-                    }
-                }
-            }
-
-            override fun onCancel(arguments: Any?) {
-                sink = null
-                streamJob?.cancel()
-                logsVisible.value = false
-                if (::dashboardDetails.isInitialized) dashboardDetails.setMemoryVisible(false)
-                if (::connections.isInitialized && connectionsVisible) {
-                    connectionsVisible = false
-                    connections.setVisible(false)
-                }
-            }
-        })
+    /** Former MethodChannel entry: runs one command after initialization. */
+    suspend fun call(method: String, args: Map<String, Any?> = emptyMap()): Any? {
+        initialize.await()
+        return invoke(method, args)
     }
 
-    private suspend fun invoke(call: MethodCall): Any? {
-        @Suppress("UNCHECKED_CAST")
-        val args = (call.arguments as? Map<String, Any?>).orEmpty()
+    /** Former EventChannel onListen: starts streaming state to [eventSink]. */
+    fun listen(eventSink: EventSink) {
+        sink = eventSink
+        streamJob?.cancel()
+        streamJob = scope.launch {
+            try {
+                initialize.await()
+                while (queuedErrors.isNotEmpty()) emit("error", queuedErrors.removeFirst())
+                coroutineScope {
+                    launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
+                    launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
+                    launch { connections.uiState.collect { state ->
+                        if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { state.allConnections.map { it.toWire() } })
+                    } }
+                    launch {
+                        val stream = LogStream()
+                        combine(logs.uiState, logsVisible, AppLifecycleObserver.isForeground) { state, visible, foreground ->
+                            state.takeIf { visible && foreground }
+                        }.collect { state ->
+                            if (state == null) stream.reset()
+                            else {
+                                val update = withContext(Dispatchers.Default) { stream.update(state) }
+                                if (update != null) emit("logs", update)
+                            }
+                        }
+                    }
+                    launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
+                    launch { RemoteControlManager.isConnected.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                reportError(e.message ?: e.toString())
+            }
+        }
+    }
+
+    /** Former EventChannel onCancel. */
+    fun cancel() {
+        sink = null
+        streamJob?.cancel()
+        logsVisible.value = false
+        if (::dashboardDetails.isInitialized) dashboardDetails.setMemoryVisible(false)
+        if (::connections.isInitialized && connectionsVisible) {
+            connectionsVisible = false
+            connections.setVisible(false)
+        }
+    }
+
+    private suspend fun invoke(method: String, args: Map<String, Any?>): Any? {
         fun string(key: String): String = args[key] as? String ?: error("Missing argument: " + key)
         fun id(key: String = "id"): Long = (args[key] as? Number)?.toLong() ?: error("Missing argument: " + key)
-        return when (call.method) {
+        return when (method) {
             "updates.check" -> withContext(Dispatchers.IO) { BoxUpdates.check() }
             "dashboard.egress" -> dashboardDetails.egress(string("id"))
             "dashboard.probe.open" -> { dashboardDetails.openProbe(string("id")); null }
@@ -254,11 +247,11 @@ class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) :
                 saved
             }
             "capture.configure" -> localProfiles {
-                val saved = capture.invoke(call.method, args)
+                val saved = capture.invoke(method, args)
                 publishProfiles()
                 saved
             }
-            "capture.start", "capture.stop" -> operations.withLock { capture.invoke(call.method, args) }
+            "capture.start", "capture.stop" -> operations.withLock { capture.invoke(method, args) }
             "profiles.select" -> localProfiles {
                 profiles.select(id()) { activity.serviceStatus.value }
                 publishProfiles()
@@ -475,11 +468,11 @@ class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) :
                 true
             } }
             "webdav.read" -> withContext(Dispatchers.IO) { backups.read(webdav.download(), args["scope"] as? String ?: "all") }
-            "terminal.set", "terminal.importFont", "terminal.deleteFont" -> operations.withLock { toolBridge.invoke(call.method, args) }
+            "terminal.set", "terminal.importFont", "terminal.deleteFont" -> operations.withLock { toolBridge.invoke(method, args) }
             else -> when {
-                call.method.startsWith("capture.") -> capture.invoke(call.method, args)
-                call.method.startsWith("reports.") -> reports.invoke(call.method, args)
-                else -> toolBridge.invoke(call.method, args)
+                method.startsWith("capture.") -> capture.invoke(method, args)
+                method.startsWith("reports.") -> reports.invoke(method, args)
+                else -> toolBridge.invoke(method, args)
             }
         }
     }
@@ -625,8 +618,6 @@ class BoxBridge(private val activity: BoxActivity, messenger: BinaryMessenger) :
 
     override fun close() {
         qrScanner.close()
-        channel.setMethodCallHandler(null)
-        events.setStreamHandler(null)
         streamJob?.cancel()
         sink = null
         if (::dashboard.isInitialized) {

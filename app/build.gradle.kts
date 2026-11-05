@@ -10,6 +10,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
@@ -142,6 +143,7 @@ android {
 
     buildFeatures {
         aidl = true
+        compose = true
         buildConfig = true
     }
 
@@ -167,8 +169,6 @@ android {
 }
 
 dependencies {
-    debugImplementation("io.ericlee.bbox_ui:flutter_debug:1.0")
-    releaseImplementation("io.ericlee.bbox_ui:flutter_release:1.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // libbox
@@ -208,6 +208,22 @@ dependencies {
     implementation("com.github.topjohnwu.libsu:service:$libsuVersion")
 
     implementation("androidx.activity:activity-ktx:1.13.0")
+
+    // Compose UI (dependencies as at 84e71e4^, before the Flutter switch)
+    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
+    implementation(composeBom)
+    implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.ui:ui")
+    implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("androidx.compose.foundation:foundation")
+    implementation("androidx.compose.animation:animation")
+    implementation("androidx.activity:activity-compose:1.13.0")
+    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:$lifecycleVersion")
+    implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
+    implementation("androidx.compose.runtime:runtime-livedata")
+    // M3 Expressive shapes and morphs (the Kotlin original of FlClash's material_new_shapes)
+    implementation("androidx.graphics:graphics-shapes:1.1.0")
+    debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

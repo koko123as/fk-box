@@ -12,14 +12,17 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import io.flutter.embedding.android.FlutterFragmentActivity
-import io.flutter.embedding.engine.FlutterEngine
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
+import io.nekohasekai.sfa.compose.BoxApp
+import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -36,10 +39,11 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 
-open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
+open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
     val serviceStatus = MutableStateFlow(Status.Stopped)
     private val connection = ServiceConnection(this, this)
     private var bridge: BoxBridge? = null
+    private var controller: BoxController? = null
     private var notificationPermissionRequested = false
     private var localNetworkPermissionRequested = false
     private var startPending = false
@@ -94,17 +98,21 @@ open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
         documentRequest = null
     }
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
-        super.configureFlutterEngine(flutterEngine)
-        bridge = BoxBridge(this, flutterEngine.dartExecutor.binaryMessenger)
-        flutterEngine.platformViewsController.registry.registerViewFactory("io.koko123as.flbox/openconnect", BoxBrowserFactory(bridge!!))
-        flutterEngine.platformViewsController.registry.registerViewFactory("io.koko123as.flbox/ghostty", BoxTerminalFactory(flutterEngine.dartExecutor.binaryMessenger))
+    /** Hosts the Compose UI over the same native facade the Flutter engine used. */
+    private fun attachUi() {
+        val facade = BoxBridge(this)
+        bridge = facade
+        val box = BoxController(facade)
+        controller = box
+        box.initialize()
+        setContent { BoxApp(box) }
     }
 
-    override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+    private fun detachUi() {
+        controller?.dispose()
+        controller = null
         bridge?.close()
         bridge = null
-        super.cleanUpFlutterEngine(flutterEngine)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -120,6 +128,8 @@ open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
             }
         }
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
+        attachUi()
         lifecycleScope.launch {
             Settings.dataStore.initialize()
             connection.reconnect()
@@ -364,6 +374,7 @@ open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
         documentRequest?.cancel()
         startResult.failed(IllegalStateException("Activity closed during service start"))
         connection.disconnect()
+        detachUi()
         super.onDestroy()
     }
 }

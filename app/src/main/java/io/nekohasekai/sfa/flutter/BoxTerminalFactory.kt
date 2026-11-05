@@ -4,11 +4,6 @@ import android.content.Context
 import android.graphics.Typeface
 import android.view.KeyEvent
 import android.view.View
-import io.flutter.plugin.common.BinaryMessenger
-import io.flutter.plugin.common.MethodChannel
-import io.flutter.plugin.common.StandardMessageCodec
-import io.flutter.plugin.platform.PlatformView
-import io.flutter.plugin.platform.PlatformViewFactory
 import io.github.sagernet.libghostty.GhosttyExtraKeysState
 import io.github.sagernet.libghostty.GhosttyTerminalView
 import io.github.sagernet.libghostty.GhosttyTerminalSession
@@ -24,14 +19,23 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
-/** Only the terminal surface is native. Navigation, settings and prompts are Flutter. */
-internal class BoxTerminalFactory(private val messenger: BinaryMessenger) : PlatformViewFactory(StandardMessageCodec.INSTANCE) {
-    override fun create(context: Context, viewId: Int, args: Any?): PlatformView = TerminalSurface(context, viewId, args, messenger)
+/**
+ * The per-view message link that replaced the terminal's MethodChannel: the
+ * surface asks the UI ([request]) and the UI drives the surface ([TerminalSurface.invoke]).
+ */
+interface TerminalChannel {
+    /** Asks the UI; [respond] receives its answer or null. */
+    fun request(method: String, value: Any?, respond: (Any?) -> Unit)
+    fun notify(method: String, value: Any?)
 }
 
-private class TerminalSurface(context: Context, id: Int, args: Any?, messenger: BinaryMessenger) : PlatformView {
+/** Only the terminal surface is native. Navigation, settings and prompts are Compose. */
+internal class BoxTerminalFactory {
+    fun create(context: Context, viewId: Int, args: Any?, channel: TerminalChannel): TerminalSurface = TerminalSurface(context, viewId, args, channel)
+}
+
+internal class TerminalSurface(context: Context, id: Int, args: Any?, private val channel: TerminalChannel) : PlatformView {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val channel = MethodChannel(messenger, "io.koko123as.flbox/terminal/$id")
     private val view = GhosttyTerminalView(context)
     private val modifiers = GhosttyExtraKeysState()
     private val pending = mutableSetOf<(Any?) -> Unit>()
@@ -65,25 +69,6 @@ private class TerminalSurface(context: Context, id: Int, args: Any?, messenger: 
                 sessionId?.let(TailscaleSSHSessionStore::removeSession)
             }
         }
-        channel.setMethodCallHandler { call, result ->
-            try {
-                val values = call.arguments as? Map<*, *> ?: emptyMap<String, Any?>()
-                when (call.method) {
-                    "update" -> update(values)
-                    "key" -> {
-                        when (values["key"]) {
-                            "Ctrl" -> modifiers.toggleCtrl()
-                            "Alt" -> modifiers.toggleAlt()
-                            "Paste" -> view.pasteFromClipboard()
-                            "Keyboard" -> view.showIme()
-                            else -> view.sendKey(keyCodes[values["key"]] ?: error("Unknown terminal key"))
-                        }
-                    }
-                    else -> error("Unknown terminal view operation")
-                }
-                result.success(null)
-            } catch (e: Exception) { result.error("terminal", e.message, null) }
-        }
         update(args as? Map<*, *> ?: emptyMap<String, Any?>())
         scope.launch { modifiers.ctrl.collect { publishModifiers() } }
         scope.launch { modifiers.alt.collect { publishModifiers() } }
@@ -95,7 +80,25 @@ private class TerminalSurface(context: Context, id: Int, args: Any?, messenger: 
         if (!preview) view.post { if (!disposed) view.showIme() }
     }
 
-    private fun publishModifiers() = channel.invokeMethod("modifiers", mapOf("ctrl" to modifiers.ctrl.value.name, "alt" to modifiers.alt.value.name))
+    /** Former MethodChannel handler for operations sent from the UI. */
+    fun invoke(method: String, arguments: Any?) {
+        val values = arguments as? Map<*, *> ?: emptyMap<String, Any?>()
+        when (method) {
+            "update" -> update(values)
+            "key" -> {
+                when (values["key"]) {
+                    "Ctrl" -> modifiers.toggleCtrl()
+                    "Alt" -> modifiers.toggleAlt()
+                    "Paste" -> view.pasteFromClipboard()
+                    "Keyboard" -> view.showIme()
+                    else -> view.sendKey(keyCodes[values["key"]] ?: error("Unknown terminal key"))
+                }
+            }
+            else -> error("Unknown terminal view operation")
+        }
+    }
+
+    private fun publishModifiers() = channel.notify("modifiers", mapOf("ctrl" to modifiers.ctrl.value.name, "alt" to modifiers.alt.value.name))
 
     private fun update(args: Map<*, *>) {
         sessionId = args["id"] as? String
@@ -118,18 +121,13 @@ private class TerminalSurface(context: Context, id: Int, args: Any?, messenger: 
         lateinit var finish: (Any?) -> Unit
         finish = { response -> if (pending.remove(finish)) respond(response) }
         pending.add(finish)
-        channel.invokeMethod(method, value, object : MethodChannel.Result {
-            override fun success(result: Any?) = finish(result)
-            override fun error(code: String, message: String?, details: Any?) = finish(null)
-            override fun notImplemented() = finish(null)
-        })
+        channel.request(method, value) { finish(it) }
     }
 
     override fun getView(): View = view
     override fun dispose() {
         disposed = true
         pending.toList().forEach { it(null) }
-        channel.setMethodCallHandler(null)
         view.session = null
         previewSession?.close()
         view.listener = null
