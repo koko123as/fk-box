@@ -294,7 +294,7 @@ func uiTestRoutedProbe(t *testing.T, current func() bool) *UIEgressProbe {
 		conn.Close()
 		<-done
 		onClose(err)
-	})
+	}, nil)
 	t.Cleanup(probe.Close)
 	return probe
 }
@@ -360,7 +360,7 @@ func TestUIEgressDeadlineAndCloseCancelRoutedDial(t *testing.T) {
 					<-ctx.Done()
 					onClose(ctx.Err())
 					close(stopped)
-				})
+				}, nil)
 			defer probe.Close()
 			completed := make(chan error, 1)
 			timeout := int64(40)
@@ -399,7 +399,7 @@ func TestUIEgressNeverFallsBackToDirect(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { reached.Store(true) }))
 	defer server.Close()
 	probe := newUIEgressProbe(func() bool { return true },
-		func(ctx context.Context, conn net.Conn, address string, onClose func(error)) { onClose(errors.New("route rejected")) })
+		func(ctx context.Context, conn net.Conn, address string, onClose func(error)) { onClose(errors.New("route rejected")) }, nil)
 	defer probe.Close()
 	if _, err := probe.Get(server.URL, 1000); err == nil || reached.Load() {
 		t.Fatal("failed routing must not use the device's direct network")

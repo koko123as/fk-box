@@ -43,3 +43,16 @@ func TestConvertCoreShareLinksEnabled(t *testing.T) {
 		t.Fatal("xhttp must need Xray")
 	}
 }
+
+func TestCoreProfileStats(t *testing.T) {
+	yaml := "proxies:\n  - {name: a, type: ss, server: 1.1.1.1, port: 1, cipher: aes-128-gcm, password: x}\n  - {name: b, type: ss, server: 1.1.1.1, port: 2, cipher: aes-128-gcm, password: x}\nproxy-groups:\n  - {name: g, type: select, proxies: [a, b]}\nrules:\n  - MATCH,g\n"
+	stats, err := CoreProfileStats(CoreMihomo, yaml)
+	if err != nil || stats != `{"groups":1,"outbounds":2,"rules":1}` {
+		t.Fatal(stats, err)
+	}
+	xray := `{"outbounds":[{"protocol":"freedom","tag":"direct"},{"protocol":"blackhole","tag":"block"}],"routing":{"balancers":[{"tag":"b","selector":["d"]}],"rules":[{"outboundTag":"direct"},{"balancerTag":"b"}]}}`
+	stats, err = CoreProfileStats(CoreXray, xray)
+	if err != nil || stats != `{"groups":1,"outbounds":2,"rules":2}` {
+		t.Fatal(stats, err)
+	}
+}

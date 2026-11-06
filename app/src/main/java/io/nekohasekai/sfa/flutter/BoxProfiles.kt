@@ -38,7 +38,10 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             // Xray JSON and Clash YAML are edited as text; sing-box-only stats do not apply.
             val formatted = Libbox.formatCoreConfig(core, content).value
             return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
-                "core" to core, "language" to if (core == TypedProfile.CORE_MIHOMO) "yaml" else "json", "stats" to null)
+                "core" to core, "language" to if (core == TypedProfile.CORE_MIHOMO) "yaml" else "json",
+                "stats" to runCatching { JSONObject(Libbox.coreProfileStats(core, content)).let { stats ->
+                    mapOf("groups" to stats.optInt("groups"), "outbounds" to stats.optInt("outbounds"), "rules" to stats.optInt("rules"))
+                } }.getOrNull())
         }
         val formatted = Libbox.formatConfig(content).value
         val root = JSONObject(formatted)

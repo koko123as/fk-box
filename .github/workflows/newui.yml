@@ -33,7 +33,7 @@ jobs:
       - name: Multi-core profile detection, conversion and validation tests
         working-directory: .core
         # with_quic: converted sing-box profiles carry Hysteria2 nodes.
-        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(DetectCoreConfig|Convert|CheckMihomo|CheckXray|ResolveProfileCore|SubscriptionURL|DropUnbuiltTunStack|ConvertCoreShareLinksEnabled)' -count=1 -v
+        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(DetectCoreConfig|Convert|CheckMihomo|CheckXray|ResolveProfileCore|SubscriptionURL|DropUnbuiltTunStack|ConvertCoreShareLinksEnabled|CoreProfileStats)' -count=1 -v
       - name: HTTP/MITM, profile rewrite, JavaScript, storage and route tests
         working-directory: .core
         run: |

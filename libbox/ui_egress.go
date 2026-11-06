@@ -59,10 +59,17 @@ type uiEgressRequestContextKey struct{}
 // NewUIDirectEgressProbe checks the device's current network without starting
 // sing-box. The Android host permits it only while the local service is stopped.
 func NewUIDirectEgressProbe() *UIEgressProbe {
-	return newUIEgressProbe(func() bool { return true }, nil)
+	return newUIEgressProbe(func() bool { return true }, nil, nil)
 }
 
 func (s *CommandServer) NewUIEgressProbe() (*UIEgressProbe, error) {
+	// Xray and mihomo have no sing-box instance: probe through their own routing.
+	if running := otherCore(); running != nil {
+		return newUIEgressProbe(func() bool { return otherCore() == running }, nil,
+			func(ctx context.Context, network, address string) (net.Conn, error) {
+				return dialThroughCore(ctx, running, network, address)
+			}), nil
+	}
 	instance := s.Instance()
 	if instance == nil {
 		return nil, fmt.Errorf("service is not running")
@@ -72,10 +79,10 @@ func (s *CommandServer) NewUIEgressProbe() (*UIEgressProbe, error) {
 			instance.Box().Router().RouteConnectionEx(ctx, conn, adapter.InboundContext{
 				Inbound: "b-box-dashboard", Network: "tcp", Source: M.ParseSocksaddr("127.0.0.1:0"), Destination: M.ParseSocksaddr(address),
 			}, onClose)
-		}), nil
+		}, nil), nil
 }
 
-func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn, string, func(error))) *UIEgressProbe {
+func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn, string, func(error)), dial func(context.Context, string, string) (net.Conn, error)) *UIEgressProbe {
 	ctx, cancel := context.WithCancel(context.Background())
 	wrapped := NewHTTPClient().(*httpClient)
 	wrapped.ModernTLS()
@@ -100,6 +107,9 @@ func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn,
 		}
 		if err := requestContext.Err(); err != nil {
 			return nil, err
+		}
+		if dial != nil {
+			return dial(requestContext, network, address)
 		}
 		// Direct is an explicit session mode, never a fallback after route failure.
 		if route == nil {
