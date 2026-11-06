@@ -53,8 +53,9 @@ runs:
       shell: bash
       working-directory: .core
       # The multi-core files are copied only now: if the tidy above saw their
-      # imports it would resolve the newest Xray/libXray (which want Go 1.27)
-      # and minimal version selection would keep the newer xtls/reality.
+      # imports it would resolve the newest Xray/libXray instead of the pinned
+      # ones, and minimal version selection would keep a newer xtls/reality.
+      # Xray >= 26.9 raises the go directive to 1.27 here (GO_VERSION covers it).
       env:
         GOTOOLCHAIN: local
       run: |
@@ -85,4 +86,5 @@ runs:
              | sed -n 's/^> //p' > ../core-module-bumps.txt || true
         echo "Shared or new modules after adding Xray $xray and mihomo v$mihomo:"
         wc -l < ../core-module-bumps.txt
+        cat ../core-module-bumps.txt
         test "$(go list -m -f '{{.Version}}' github.com/sagernet/sing)" = "$(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing") | .Version')"
