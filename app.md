@@ -1,6 +1,6 @@
 # 与 sing-box-for-android 的差异
 
-本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，Flutter 界面的来源及使用情况见 [flclash.md](flclash.md)。
+本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，FlClash 界面的来源及 Compose 翻译情况见 [flclash.md](flclash.md)。
 
 ## 比较基线与应用身份
 
@@ -37,14 +37,14 @@
 
 | 区域 | 路径 | 当前职责 |
 | --- | --- | --- |
-| Flutter 宿主 | `flutter/BoxActivity.kt` | 启动器/分享入口、文档选择、权限、服务状态及配置应用 |
+| 界面宿主 | `flutter/BoxActivity.kt`（包名沿用 `flutter`，承载 Compose） | 启动器/分享入口、文档选择、权限、服务状态及配置应用 |
 | 通道与命令 | `flutter/BoxBridge.kt` | `io.ericlee.bfa/box` MethodChannel 与 `io.ericlee.bfa/events` EventChannel，对接配置、工具和设置 |
 | 原生状态 | `backend/` | 仪表盘、分组、连接、日志、Tailscale/Taildrop、诊断和认证状态模型 |
 | 平台视图 | `flutter/BoxBrowserFactory.kt`、`flutter/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以 `AndroidView` 嵌入 Compose 页面 |
 | 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、Room、订阅更新及本地/远程命令目标 |
 | 应用查询 | [vendor/](app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
-Flutter 配置是 sing-box JSON，分组、可选节点、延迟和模式由 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
+配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
 
 Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/Shizuku 终端、Ghostty 设置和导入字体、OpenConnect/OpenVPN 认证、USB/IP、网络诊断、崩溃/OOM/电量报告均通过新页面使用现有后端。历史 MOD-014 的功能移除已回退，不能按旧裁剪记录删除这些能力。
 
@@ -123,13 +123,13 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 - **旧任务兼容：** 启动取消 WorkManager 的 `AutoUpdate`；[UpdateWorker.kt](app/src/main/java/io/nekohasekai/sfa/vendor/UpdateWorker.kt) 保留类名并直接成功返回，不下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
 - **Binder/设置兼容：** Root/Shizuku 已退役的安装事务编号 2 不复用；Root 的模块专用编号 3 与采集器编号 10 也保持空缺，其余编号不重排。删除功能的历史设置不再读取，不清空无关设置和数据库。
 
-关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxUpdates.kt) 检查：读取 B-box Releases（含预发布），以 `B-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `B-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
+关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxUpdates.kt) 检查：读取 [koko123as/B-box](https://github.com/koko123as/B-box/releases) Releases（含预发布），以 `FK-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `FK-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
 
 ## 构建与发布
 
-[app/build.gradle.kts](app/build.gradle.kts) 从本地 `app/libs/libbox.aar` 和 Flutter 生成的 Maven 仓库消费依赖。核心必须包含 [libbox.md](libbox.md) 的当前扩展。[setup-flutter] 统一固定 Flutter 3.47.6，并以 `--enforce-lockfile` 读取已提交的依赖锁文件。Flutter 验证在 Gradle 启动前显式安装该 SDK 使用的 NDK 28.2.13676358，避免 AAR 配置阶段触发隐式安装；它与 libbox 使用的 NDK 独立。CI 先构建 AAR 到 `flutter/build/host/outputs/repo`，再构建 Android；应用使用 AAR 时不需要再安装 Flutter SDK。
+[app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心，界面为同一模块内的 Kotlin + Jetpack Compose 源码，不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
 
-默认 ABI 为 ARMv7、ARM64、x86_64 并生成 universal；Flutter 不提供 x86 AOT，因此没有 x86。`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal；核心及 Flutter AAR 必须包含目标 ABI。
+Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
 
 [build-release.yml](.github/workflows/build-release.yml) 仅手动触发，发布 Android 7.0+ 的 ARM64 `otherRelease`。Release 与模拟器构建共用 [build-libbox](.github/actions/build-libbox/action.yml)，核心使用 JDK 17，应用使用 JDK 21；具体 SDK/Build Tools/NDK 版本以共享 Action 和 Gradle 为准。本机未经明确要求不构建，见 [AGENTS.md](AGENTS.md)。
 
@@ -144,18 +144,19 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 
 工作流将已有密钥解码至 `app/release.keystore`，结束时清理，不上传密钥。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
 
-Release 调用 [newui.yml](.github/workflows/newui.yml) 完成核心、MITM 及 Flutter 验证，直接下载**同一次运行**的 `flutter-aar-arm64` Artifact，不再次分析、测试或构建 Flutter。随后运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、退役采集器未打包及签名。APK Artifact 名为 `B-box-<版本>-arm64-v8a-release`，保留 30 天。
+Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及 Compose 源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名沿用 `B-box-<版本>-arm64-v8a-release`，保留 30 天。
 
-`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `B-box-version-metadata.json`，alpha/beta/rc 标为预发布。
+`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
 
 ## 验证与历史记录
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | Flutter 字形/导入、Android 入口、旧 UI/更新依赖及退役抓包实现残留的静态检查 |
-| [newui.yml](.github/workflows/newui.yml) | `dev` / `newui` / `feat/mitm-requests` push、目标为前两个分支的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。检查 Go 扩展、HTTP/MITM 抓取及自动重定向布局，运行 Flutter 分析/交互/布局测试并构建 ARM64 Flutter AAR |
-| [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` APK/仪器测试构建及 API 24/31/35 模拟器 smoke |
-| [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用完整核心/Flutter 验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Compose 入口/字形/占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [newui.yml](.github/workflows/newui.yml) | `dev` / `newui` / `feat/mitm-requests` / `fk-box` push、目标为 `dev`/`newui` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及 Compose 源码检查 |
+| [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
+| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；Compose 源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
+| [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用 newui.yml 的核心/源码验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
 
 JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界和 QRS；[ServiceSettingsChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/flutter/ServiceSettingsChangeTest.kt) 覆盖服务开关保存后的启动确认、失败/超时/取消恢复及恢复错误保留；[ProfileChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/database/ProfileChangeTest.kt) 覆盖配置持久化失败、应用超时/取消、恢复确认及恢复错误保留。[ProfileRecoveryTest.kt](app/src/androidTest/java/io/nekohasekai/sfa/flutter/ProfileRecoveryTest.kt) 覆盖实际 libbox 二进制导入、查询策略持久化、端口占用导致的 JSON 编辑/配置切换/手动与自动订阅/完整备份恢复失败，以及停服和未选中配置更新的服务状态。Flutter 视觉验证见 [flclash.md](flclash.md)。
 

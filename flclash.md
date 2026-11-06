@@ -23,9 +23,9 @@ fk-box 分支已把下文列出的全部 Flutter 页面和组件翻译为 Kotlin
 
 ## 参考版本与来源清单
 
-固定参考 [chen08209/FlClash v0.9.2](https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7)，提交 `7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`（2026-10-24）。当前使用实际 Flutter 组件，历史 Compose 仿制按钮和卡片不再定义界面。
+固定参考 [chen08209/FlClash v0.9.2](https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7)，提交 `7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`（2026-10-24）。fk-box 的 Compose 界面按该版本的 Flutter 组件逐项翻译；84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
 
-[flutter/flclash-manifest.json](flclash-manifest.json) 是逐文件来源清单：
+[flclash-manifest.json](flclash-manifest.json) 是逐文件来源清单（记录翻译所依据的原 Flutter 导入/适配文件）：
 
 | 清单字段 | 使用方式 |
 | --- | --- |
@@ -34,15 +34,15 @@ fk-box 分支已把下文列出的全部 Flutter 页面和组件翻译为 Kotlin
 | `adaptedNativeFiles` | `libbox/ui_egress.go` 对 FlClash IP 查询的适配来源；用 sing-box 路由和 libbox HTTP 替换原传输 |
 | `supplementalReferences` | 独立于整体 UI 基线的 MITM dev 补充参考，按原样导入、改写或设计参考记录源文件哈希；本地路径相对仓库根目录 |
 
-清单中 `files` 和 `adaptedFiles` 的本地路径相对 `flutter/`，`adaptedNativeFiles` 的本地路径相对仓库根目录；`source`/`sources` 指向固定参考提交内的上游路径。清单记录逐文件哈希和改动来源，本文维护使用说明，两者一并保留。
+清单中 `files` 和 `adaptedFiles` 的本地路径相对已删除的 `flutter/`（可在删除前的 Git 历史中查看），`adaptedNativeFiles` 的本地路径相对仓库根目录；`source`/`sources` 指向固定参考提交内的上游路径。清单记录逐文件哈希和改动来源，本文维护使用说明，两者一并保留。
 
 本次请求/MITM 功能补充核对 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)，相关提交为 [`f54486102172566e7342d7f5c138663c3c5dec0b`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计和 [`1a7556d30a38707f39abfba4b7d6a6b8f57774ed`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合。该 dev 源码的 `FEATURE_MITM` 默认关闭，公开 core 不提供完整 MITM 实现；B-box 自行实现 sing-box 路由上的 TLS 接管，不能把上游页面当成可用核心。此次采用证书信任、报文展示和 CA 模块设计，保留 B-box 的独立连接页，不整体迁移该版本的 UI 依赖。整体 FlClash UI、Android 上游和核心三个基线均不变。
 
-共享组件位于 `flutter/lib/ui`。原始许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [JetBrainsMono-OFL.txt](licenses/JetBrainsMono-OFL.txt) 和 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。Twemoji 原始图形来自 Twitter，字体转换由 Mozilla 提供，图形未修改。这些文件同时用于应用内许可证页，不再单独保存重复副本。
+共享组件原位于 `flutter/lib/ui`，现由 `compose/ui` 与 `compose/theme` 翻译实现。原始许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [JetBrainsMono-OFL.txt](licenses/JetBrainsMono-OFL.txt) 和 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。Twemoji 原始图形来自 Twitter，字体转换由 Mozilla 提供，图形未修改。这些文件同时用于应用内许可证页，不再单独保存重复副本。
 
 ## 界面复用与业务适配
 
-Flutter 承担仪表盘、代理、配置、工具及所有子页面的导航。复用 FlClash 的控件、字形、形状、排版、字体、动效、弹层及导航；页面状态和操作经 Android 桥接接入 B-box 的 Room 与 libbox。没有引入 FlClash/Mihomo 原生库、Clash 配置模型、Mihomo 配置覆写脚本、订阅转换器或 Clash 专用服务。B-box 请求/响应脚本的范围见 [核心 HTTP 改写](libbox.md#json-配置中的-http-改写)。
+Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（下文 `*.dart` 名称指翻译参考源文件）。复用 FlClash 的控件、字形、形状、排版、字体、动效、弹层及导航；页面状态和操作经 Android 桥接接入 B-box 的 Room 与 libbox。没有引入 FlClash/Mihomo 原生库、Clash 配置模型、Mihomo 配置覆写脚本、订阅转换器或 Clash 专用服务。B-box 请求/响应脚本的范围见 [核心 HTTP 改写](libbox.md#json-配置中的-http-改写)。
 
 | 区域 | 主要实现 | 当前适配 |
 | --- | --- | --- |
@@ -132,7 +132,9 @@ Flutter 承担仪表盘、代理、配置、工具及所有子页面的导航。
 
 ## 验证与升级参考版本
 
-[newui.yml](.github/workflows/newui.yml) 配置 Flutter 分析、测试及 AAR 构建，由 [setup-flutter] 固定 SDK 和依赖锁文件。测试按功能组织，覆盖导航、配置编辑、首页编辑、代理列表、备份、外观、关于、终端设置、模式、内网 IP 和 IP 查询/缓存；源码约束检查为 [verify_newui.py](tools/verify_newui.py)。截图/像素比较仍由同一测试入口运行，截图与 AAR 分别上传到 `newui-validation` 和 `flutter-aar-arm64`，Release 消费同次运行的 AAR，见 [构建与发布](app.md#构建与发布)。
+fk-box 删除 `flutter/` 后不再运行 Flutter 分析、Widget 测试、截图/像素比较或 AAR 构建，[newui.yml](.github/workflows/newui.yml) 也不再上传 `newui-validation` / `flutter-aar-arm64`。当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Compose 源码约束（由 newui.yml 和 build-debug-apk.yml 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)；Compose 页面尚无对应的截图或像素比较测试。
+
+以下 `*_test.dart` 段落记录删除前 Flutter 版的测试覆盖，测试文件可在 Git 历史中查看，不代表当前 Compose 源码已通过同等测试。
 
 `profiles_test.dart` 覆盖新建与二进制导入的内容/元数据、添加菜单与取消导入、菜单能力、原始订阅链接、相对时间边界、自动更新校验、选中配置定位、列表及弹层在启停期间禁止切换与状态稳定后恢复、切换失败、排序冲突及远程会话隔离。`navigation_test.dart` 另输出配置编辑与排序弹层在窄屏、大字号和宽屏下的截图；这些是布局回归产物，配置页尚未声明与上游逐像素一致。
 

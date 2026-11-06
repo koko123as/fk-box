@@ -233,7 +233,7 @@ fun AboutPage(box: BoxController) {
                     }
                     Spacer(Modifier.height(16.dp))
                     Text(
-                        tr("A sing-box client with the FlClash Android interface."),
+                        tr("Kotlin + Jetpack Compose three-core client"),
                         Modifier.widthIn(max = 420.dp),
                         textAlign = TextAlign.Center,
                         style = AppTextStyle.Subheadline.of().copy(color = scheme.onSurfaceVariant, lineHeight = AppTextStyle.Subheadline.of().fontSize * 1.5f),

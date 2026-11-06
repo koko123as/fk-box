@@ -555,7 +555,7 @@ internal object BoxStrings {
         map["You are up to date"] = "已是最新版本"
         map["No release metadata available"] = "暂无可验证的版本信息"
         map["Releases"] = "发布版本"
-        map["A sing-box client with the FlClash Android interface."] = "采用 FlClash Android 界面的 sing-box 客户端。"
+        map["Kotlin + Jetpack Compose three-core client"] = "Kotlin+Jetpack Compose三内核客户端"
         map["FlClash interface"] = "FlClash 界面"
         map["Version"] = "版本"
         map["Network diagnostics"] = "网络诊断"
