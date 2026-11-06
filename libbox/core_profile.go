@@ -421,33 +421,37 @@ func convertLinksToMihomo(proxies []map[string]any) (*UICoreProfile, error) {
 var xrayOnlyNetworks = map[string]bool{"xhttp": true, "splithttp": true}
 
 func convertLinksToXray(text string) (*UICoreProfile, error) {
-	config, err := share.ConvertShareLinksToXrayJson(text)
+	// libXray >= v1.261031 returns {"outbounds": [...]} with only the fields it
+	// projects; the second argument is an Age secret key (unused here).
+	converted, err := share.ConvertShareLinksToXrayJson(text, "")
 	if err != nil {
+		return nil, fmt.Errorf("xray share links: %w", err)
+	}
+	var document struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
+	decoder := json.NewDecoder(bytes.NewReader(converted))
+	decoder.UseNumber()
+	if err := decoder.Decode(&document); err != nil {
 		return nil, fmt.Errorf("xray share links: %w", err)
 	}
 	var tags []string
 	used := map[string]bool{"direct": true, "block": true}
-	for i := range config.OutboundConfigs {
-		outbound := &config.OutboundConfigs[i]
-		name := ""
-		// libXray keeps the node name in sendThrough; it is not a bind address.
-		if outbound.SendThrough != nil {
-			name = *outbound.SendThrough
-			outbound.SendThrough = nil
+	outbounds := make([]any, 0, len(document.Outbounds)+2)
+	for i, outbound := range document.Outbounds {
+		// The node name is the tag; older libXray kept it in sendThrough,
+		// which is not a bind address either way.
+		name, _ := outbound["tag"].(string)
+		if sendThrough, ok := outbound["sendThrough"].(string); ok && name == "" {
+			name = sendThrough
 		}
-		outbound.Tag = uniqueTag(used, name, i)
-		tags = append(tags, outbound.Tag)
+		delete(outbound, "sendThrough")
+		outbound["tag"] = uniqueTag(used, name, i)
+		tags = append(tags, outbound["tag"].(string))
+		outbounds = append(outbounds, outbound)
 	}
-	raw, err := json.Marshal(config.OutboundConfigs)
-	if err != nil {
-		return nil, err
-	}
-	var outbounds []any
-	if err := json.Unmarshal(raw, &outbounds); err != nil {
-		return nil, err
-	}
-	// conf.Config marshals unset json.RawMessage fields as null; Xray reads a
-	// null "dest" as set and would build REALITY as a server. Drop them.
+	// Unset fields must not reach Xray as null (a null REALITY "dest" reads
+	// as set and would build REALITY as a server). Drop them.
 	outbounds = pruneJSONNulls(outbounds).([]any)
 	outbounds = append(outbounds,
 		map[string]any{"tag": "direct", "protocol": "freedom"},
