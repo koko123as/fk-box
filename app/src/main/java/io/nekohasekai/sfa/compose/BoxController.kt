@@ -356,7 +356,6 @@ class BoxController(private val bridge: BoxBridge) {
                 downloadHistory = (downloadHistory + (rates["download"].asDouble() ?: 0.0)).takeLast(30)
             }
             "error" -> _messages.tryEmit(BoxMessage(value.toString(), error = true))
-            "applyRequired" -> applyRequired = value.toString()
             "intentAvailable" -> scope.launch {
                 try {
                     val uri = call("intent.take")
@@ -370,8 +369,6 @@ class BoxController(private val bridge: BoxBridge) {
                     report(error)
                 }
             }
-            // A backend request remains a visible user action in the UI.
-            "openUrl" -> _messages.tryEmit(BoxMessage(value.toString()))
         }
     }
 

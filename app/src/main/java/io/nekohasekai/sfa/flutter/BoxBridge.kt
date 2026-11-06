@@ -239,7 +239,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 else activity.applyProfile(args["restart"] == true)
                 null
             }
-            "profiles.list" -> withContext(Dispatchers.IO) { profiles.list() }
             "profiles.read" -> withContext(Dispatchers.IO) { profiles.read(id()) }
             "profiles.config" -> withContext(Dispatchers.IO) { profiles.config(id()) }
             "profiles.stats" -> withContext(Dispatchers.IO) { profiles.stats(id()) }
@@ -378,7 +377,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 withContext(Dispatchers.IO) { check(preferences.edit().putString("value", old.toString()).commit()) { "Unable to save preferences" } }
                 readPreferences()
             }
-            "settings.get" -> settings()
             "settings.set" -> operations.withLock { saveSettings(args); settings() }
             "settings.patch" -> operations.withLock {
                 @Suppress("UNCHECKED_CAST")

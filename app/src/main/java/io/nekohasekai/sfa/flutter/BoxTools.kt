@@ -125,7 +125,6 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         if (method.startsWith("ssh.")) return ssh.invoke(method, args)
         fun string(key: String): String = args[key] as? String ?: error("Missing argument: " + key)
         when (method) {
-            "tools.snapshot" -> return snapshot()
             "stun.start" -> {
                 require(!stun.uiState.value.isRunning) { "A STUN test is already running" }
                 stun.updateServer(string("server"))
