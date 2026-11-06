@@ -393,6 +393,9 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 	if len(raw.Tun.DNSHijack) == 0 {
 		raw.Tun.DNSHijack = []string{"0.0.0.0:53"}
 	}
+	// redir/tproxy need root and iptables, which a VpnService app lacks.
+	raw.RedirPort = 0
+	raw.TProxyPort = 0
 	raw.Interface = ""
 	raw.RoutingMark = 0
 	raw.ExternalController = ""
