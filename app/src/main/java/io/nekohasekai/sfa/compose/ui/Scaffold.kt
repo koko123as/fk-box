@@ -454,7 +454,3 @@ fun BoxPage(
         ) { content() }
     }
 }
-
-/** button.dart's TonalButton at the bar size, as the phase-1 pages call it. */
-@Composable
-fun TonalBarButton(action: IconAction, filled: Boolean = true) = TonalIconButton(action, grouped = !filled)

@@ -38,7 +38,6 @@ private fun encode(data: String): ByteMatrix? = try {
     null
 }
 
-fun qrFits(data: String): Boolean = encode(data) != null
 
 @Composable
 fun QrCodeView(data: String, size: Dp = 240.dp) {

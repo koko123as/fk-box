@@ -79,7 +79,6 @@ data class BoxScheme(
     val warningContainer: Color get() = tone(warningPalette, 90, 30)
     val onWarningContainer: Color get() = tone(warningPalette, 30, 90)
 
-    val modalScrim: Color get() = scrim.copy(alpha = 0.32f)
 
     /** iOS 27's systemRed, which an alert's destructive action takes. */
     val destructive: Color get() = Color(if (dark) 0xFFFF4245 else 0xFFFF383C)

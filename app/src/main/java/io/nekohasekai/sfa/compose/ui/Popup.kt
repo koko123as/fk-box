@@ -49,7 +49,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.Layout
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
@@ -103,7 +102,6 @@ private const val ITEM_RADIUS = AppCorner.MD
 private const val CARD_RADIUS = ITEM_RADIUS + CARD_INSET
 private const val ITEM_ICON_SIZE = 20f
 private const val SUBMENU_ARROW_SIZE = 16f
-private const val DIVIDER_HEIGHT = CARD_INSET * 2 + 1
 private const val MENU_MIN_WIDTH = 160f
 private const val MENU_MAX_WIDTH = 280f
 private const val DEFAULT_MAX_VISIBLE_ITEMS = 7
@@ -138,8 +136,6 @@ class PopupHost {
 
 val LocalPopups = staticCompositionLocalOf<PopupHost?> { null }
 
-/** Where the root's layout puts its children: the popups place against it. */
-internal val LocalPopupRoot = staticCompositionLocalOf<LayoutCoordinates?> { null }
 
 /** popup.dart's CommonPopupBox: [target] receives the opener. */
 @Composable

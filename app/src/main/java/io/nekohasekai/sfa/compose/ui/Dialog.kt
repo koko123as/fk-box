@@ -34,7 +34,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -376,8 +375,3 @@ private fun InputDialog(request: DialogRequest.Input) {
         }
     }
 }
-
-/** Launches [block] from a click handler with the dialog host at hand. */
-@Composable
-fun rememberDialogScope(): Pair<kotlinx.coroutines.CoroutineScope, DialogHost?> = rememberCoroutineScope() to LocalDialogs.current
-

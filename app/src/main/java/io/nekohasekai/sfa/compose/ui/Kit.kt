@@ -25,7 +25,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -602,8 +601,6 @@ fun Modifier.semanticsLabel(label: String): Modifier = this.then(
     Modifier.semantics(mergeDescendants = true) { contentDescription = label },
 )
 
-@Composable
-fun RowScope.Gap(width: Dp) = Spacer(Modifier.width(width))
 
 @Composable
 fun animatedColor(target: Color, millis: Int = 240): Color = animateColorAsState(target, tween(millis), label = "color").value

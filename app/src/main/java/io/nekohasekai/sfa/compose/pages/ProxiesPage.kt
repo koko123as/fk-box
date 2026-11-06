@@ -484,7 +484,6 @@ private fun GroupTab(name: String, selected: Boolean, onPressed: () -> Unit) {
 private const val HEADER_INSET = 10f
 private const val HEADER_BUTTON_INSET = 4f
 private const val GROUP_INSET = 16f
-private const val LIFT_DISTANCE = 16f
 private const val LAST_ROW_GROWTH = 2f
 
 @Composable
