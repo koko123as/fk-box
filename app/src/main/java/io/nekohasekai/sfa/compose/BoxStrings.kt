@@ -631,6 +631,19 @@ internal object BoxStrings {
     }
 
     private fun part4(map: HashMap<String, String>) {
+        // Subscription traffic and expiry (subscription-userinfo).
+        map["Subscription info"] = "订阅信息"
+        map["Remaining"] = "剩余"
+        map["%d days left"] = "剩余 %d 天"
+        map["No expiry"] = "长期有效"
+        map["Expired"] = "已过期"
+        map["Traffic not reported"] = "未提供流量信息"
+        map["Used traffic"] = "已用流量"
+        map["Total traffic"] = "总流量"
+        map["Remaining traffic"] = "剩余流量"
+        map["Expire time"] = "到期时间"
+        map["Open website"] = "打开官网"
+        map["used"] = "已用"
         map["Loading"] = "加载中"
         map["Start failed"] = "启动失败"
         map["Style"] = "样式"

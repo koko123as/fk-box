@@ -127,9 +127,10 @@ private fun clipboardText(context: Context): String? {
 
 /** profile_card.dart's profileCardHeight. */
 @Composable
-fun profileCardHeight(): Float {
+fun profileCardHeight(withMeter: Boolean = false): Float {
     val scale = LocalDensity.current.fontScale
-    return AppTextStyle.Headline.leading * scale + 4 + AppTextStyle.Footnote.leading * scale + 2 * 10f
+    val meter = if (withMeter) (PROFILE_METER_GAP + PROFILE_METER_HEIGHT).toFloat() else 0f
+    return AppTextStyle.Headline.leading * scale + 4 + AppTextStyle.Footnote.leading * scale + meter + 2 * 10f
 }
 
 // ---------------------------------------------------------------------------
@@ -284,7 +285,7 @@ internal fun trFor(): (String) -> String {
 private fun ProfilesGrid(box: BoxController, profiles: List<Json>, selectedId: Long, picker: Boolean, item: @Composable (Json) -> Unit) {
     val active = LocalPageActive.current
     val state = rememberLazyGridState()
-    val height = profileCardHeight()
+    val height = profileCardHeight(withMeter = profiles.any { it.subscriptionInfo()?.usage != null })
     var revealed by remember { mutableStateOf(false) }
     val mobile = LocalBoxNavigator.current?.mobile ?: true
     val spacing = if (mobile) 8f else 12f
@@ -326,6 +327,9 @@ private fun ProfilesGrid(box: BoxController, profiles: List<Json>, selectedId: L
 @Composable
 fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: List<PopupMenuItem>, onPressed: (() -> Unit)?) {
     val scheme = BoxTheme.scheme
+    // FlClash's url-profile row: expiry chip after the title, used / total as the subtitle.
+    val info = profile.subscriptionInfo()
+    val usage = info?.usage
     ContextMenuRegion(if (updating) null else menuItems) {
         CommonCard(Modifier.fillMaxSize(), radius = AppCorner.XL, isSelected = selected, onPressed = onPressed) {
             Row(
@@ -333,14 +337,18 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(profile["name"].toString(), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Headline.of().copy(color = scheme.onSurface))
+                    SubscriptionChipTitle(profile["name"].toString(), info, AppTextStyle.Headline.of().copy(color = scheme.onSurface))
                     Spacer(Modifier.height(4.dp))
                     Text(
-                        tr(if (profile["remote"] == true) "Remote" else "Local"),
+                        info?.let { subscriptionTrafficLine(it) } ?: tr(if (profile["remote"] == true) "Remote" else "Local"),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = AppTextStyle.Footnote.of().copy(color = scheme.onSurface.copy(alpha = 0.6f)),
                     )
+                    if (info != null && usage != null) {
+                        Spacer(Modifier.height(PROFILE_METER_GAP.dp))
+                        SubscriptionProgressBar(usage, subscriptionColor(info, scheme, System.currentTimeMillis()))
+                    }
                 }
                 Spacer(Modifier.padding(start = 16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -362,6 +370,10 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
         }
     }
 }
+
+/** The quota bar's gap and height, added to the row height while any profile shows one. */
+private const val PROFILE_METER_GAP = 6
+private const val PROFILE_METER_HEIGHT = 4
 
 // ---------------------------------------------------------------------------
 // Adding profiles
@@ -488,7 +500,8 @@ fun ProfileForm(box: BoxController, initial: Json) {
     val scope = rememberCoroutineScope()
     var name by remember { mutableStateOf(initial["name"] as? String ?: "") }
     var url by remember { mutableStateOf(initial["url"] as? String ?: "") }
-    var interval by remember { mutableStateOf((initial["interval"] ?: 60).toString().removeSuffix(".0")) }
+    val initialInterval = remember { (initial["interval"] ?: 60).toString().removeSuffix(".0") }
+    var interval by remember { mutableStateOf(initialInterval) }
     var remote by remember { mutableStateOf(initial["remote"] == true || url.isNotEmpty()) }
     var auto by remember { mutableStateOf(initial["autoUpdate"] != false) }
     var core by remember { mutableStateOf(initial["core"] as? String ?: "auto") }
@@ -524,6 +537,8 @@ fun ProfileForm(box: BoxController, initial: Json) {
                         "url" to if (remote) url.trim() else "",
                         "autoUpdate" to (remote && auto),
                         "interval" to if (parsed != null && parsed >= 15) parsed else if (previous >= 15) previous else 60,
+                        // A typed interval outranks the provider's profile-update-interval.
+                        "intervalEdited" to (initial["intervalEdited"] == true || (remote && auto && interval != initialInterval)),
                         "core" to core,
                     ),
                 )

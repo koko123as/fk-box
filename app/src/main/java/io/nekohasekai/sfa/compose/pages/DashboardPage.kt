@@ -356,14 +356,22 @@ private fun ProfilePanel(box: BoxController) {
                 }
             }
             if (profile != null || box.remote) {
+                // dashboard/widgets/profiles.dart: days left replaces the source once the provider reports an expiry,
+                // and the usage meter replaces the counts once it reports a quota.
+                val info = profile?.subscriptionInfo()
+                val days = subscriptionDaysLabel(info)
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.weight(1f)) {
                         if (profile != null) ProfileUpdateTime(profile["updatedAt"].asLong(), label, showLabel = true)
                     }
-                    Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), style = label)
+                    if (days != null) {
+                        Text(days.first, maxLines = 1, style = days.second?.let { label.copy(color = it) } ?: label)
+                    } else {
+                        Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), style = label)
+                    }
                 }
                 Spacer(Modifier.height(14.dp))
-                ProfileStats(box, profile)
+                if (info?.usage != null) SubscriptionUsageMeter(info) else ProfileStats(box, profile)
             }
         }
     }

@@ -78,6 +78,7 @@ import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.GlyphButton
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ListItem
+import androidx.compose.ui.text.style.TextOverflow
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
 import io.nekohasekai.sfa.compose.ui.ListStyles
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
@@ -121,6 +122,16 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
             EmojiText(p["name"].toString(), AppTextStyle.Title2.of(true).copy(color = BoxTheme.scheme.onSurface))
             Spacer(Modifier.height(14.dp))
             ProfileStats(box, p)
+        }
+        // profile_detail.dart's subscription section, shown only when the provider sent subscription-userinfo.
+        val subscription = p.subscriptionInfo()
+        val webPage = p.subscriptionWebPage()
+        if (subscription != null) {
+            SubscriptionInfoSection(subscription, webPage) { url -> box.launchAct("url.open", mapOf("url" to url)) }
+        } else if (webPage != null) {
+            Section(title = tr("Subscription info"), count = 1) { _, position ->
+                ListItem(title = { Text(tr("Open website")) }, subtitle = { Text(webPage, maxLines = 1, overflow = TextOverflow.Ellipsis) }, position = position, onClick = { box.launchAct("url.open", mapOf("url" to webPage)) })
+            }
         }
         val remote = p["remote"] == true
         val rows = buildList<@Composable (io.nekohasekai.sfa.compose.ui.ItemPosition) -> Unit> {
