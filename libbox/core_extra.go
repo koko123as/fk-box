@@ -6,13 +6,18 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
+	"github.com/sagernet/sing-box/common/networkquality"
+	"github.com/sagernet/sing-box/common/stun"
 	"github.com/sagernet/sing-box/daemon"
+	M "github.com/sagernet/sing/common/metadata"
 
 	mihomoYAML "github.com/metacubex/mihomo/common/yaml"
 	mihomoInner "github.com/metacubex/mihomo/listener/inner"
 	mihomoTunnel "github.com/metacubex/mihomo/tunnel"
 	xrayNet "github.com/xtls/xray-core/common/net"
+	xraySession "github.com/xtls/xray-core/common/session"
 	xrayCore "github.com/xtls/xray-core/core"
 
 	"google.golang.org/grpc"
@@ -23,6 +28,12 @@ import (
 // core exactly like app traffic (rules, selected node), for the dashboard's
 // egress IP check.
 func dialThroughCore(ctx context.Context, running *runningCore, network, address string) (net.Conn, error) {
+	return dialThroughCoreTag(ctx, running, "", address)
+}
+
+// dialThroughCoreTag dials through one named outbound/proxy when tag is set,
+// otherwise through the core's routing.
+func dialThroughCoreTag(ctx context.Context, running *runningCore, tag, address string) (net.Conn, error) {
 	switch running.core {
 	case CoreXray:
 		if running.xray == nil {
@@ -32,9 +43,12 @@ func dialThroughCore(ctx context.Context, running *runningCore, network, address
 		if err != nil {
 			return nil, err
 		}
+		if tag != "" {
+			ctx = xraySession.SetForcedOutboundTagToContext(ctx, tag)
+		}
 		return xrayCore.Dial(ctx, running.xray, destination)
 	case CoreMihomo:
-		conn, err := mihomoInner.HandleTcp(mihomoTunnel.Tunnel, address, "")
+		conn, err := mihomoInner.HandleTcp(mihomoTunnel.Tunnel, address, tag)
 		if err != nil {
 			return nil, err
 		}
@@ -163,4 +177,78 @@ func (s *coreStartedService) GetDeprecatedWarnings(ctx context.Context, empty *e
 		return s.StartedService.GetDeprecatedWarnings(ctx, empty)
 	}
 	return &daemon.DeprecatedWarnings{}, nil
+}
+
+// ---- network quality / STUN through Xray or mihomo ----
+
+// coreDialer adapts the running core to sing's N.Dialer for the diagnostics
+// tools. UDP goes through Xray's dispatcher; mihomo offers no inner UDP path.
+type coreDialer struct {
+	running *runningCore
+	tag     string
+}
+
+func (d *coreDialer) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+	if network != "tcp" && network != "tcp4" && network != "tcp6" {
+		return nil, fmt.Errorf("%s: only TCP is available here", d.running.core)
+	}
+	return dialThroughCoreTag(ctx, d.running, d.tag, destination.String())
+}
+
+func (d *coreDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+	if d.running.core != CoreXray || d.running.xray == nil {
+		return nil, fmt.Errorf("UDP tests are not available with the %s core", d.running.core)
+	}
+	if d.tag != "" {
+		ctx = xraySession.SetForcedOutboundTagToContext(ctx, d.tag)
+	}
+	return xrayCore.DialUDP(ctx, d.running.xray)
+}
+
+func (s *coreStartedService) StartNetworkQualityTest(request *daemon.NetworkQualityTestRequest, server grpc.ServerStreamingServer[daemon.NetworkQualityTestProgress]) error {
+	running := otherCore()
+	if running == nil {
+		return s.StartedService.StartNetworkQualityTest(request, server)
+	}
+	nqDialer := &coreDialer{running: running, tag: request.OutboundTag}
+	httpClient := networkquality.NewHTTPClient(nqDialer)
+	defer httpClient.CloseIdleConnections()
+	factory, err := networkquality.NewOptionalHTTP3Factory(nqDialer, request.Http3)
+	if err != nil {
+		return err
+	}
+	result, nqErr := networkquality.Run(networkquality.Options{
+		ConfigURL:            request.ConfigURL,
+		HTTPClient:           httpClient,
+		NewMeasurementClient: factory,
+		Serial:               request.Serial,
+		MaxRuntime:           time.Duration(request.MaxRuntimeSeconds) * time.Second,
+		Context:              server.Context(),
+		OnProgress: func(p networkquality.Progress) {
+			_ = server.Send(daemon.NewNetworkQualityTestProgress(p))
+		},
+	})
+	if nqErr != nil {
+		return server.Send(&daemon.NetworkQualityTestProgress{IsFinal: true, Error: nqErr.Error()})
+	}
+	return server.Send(daemon.NewNetworkQualityTestResult(result))
+}
+
+func (s *coreStartedService) StartSTUNTest(request *daemon.STUNTestRequest, server grpc.ServerStreamingServer[daemon.STUNTestProgress]) error {
+	running := otherCore()
+	if running == nil {
+		return s.StartedService.StartSTUNTest(request, server)
+	}
+	result, stunErr := stun.Run(stun.Options{
+		Server:  request.Server,
+		Dialer:  &coreDialer{running: running, tag: request.OutboundTag},
+		Context: server.Context(),
+		OnProgress: func(p stun.Progress) {
+			_ = server.Send(daemon.NewSTUNTestProgress(p))
+		},
+	})
+	if stunErr != nil {
+		return server.Send(&daemon.STUNTestProgress{IsFinal: true, Error: stunErr.Error()})
+	}
+	return server.Send(daemon.NewSTUNTestResult(result))
 }

@@ -134,6 +134,8 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         var configurationError: String? = null
         var running = false
         var activeProfileId = -1L
+        // The LAN proxy switch edits sing-box inbounds; Xray/mihomo profiles have none.
+        var lanSwitchable = true
         if (!CommandTarget.isRemote) {
             try {
                 val config = ProfileContent.mutex.withLock {
@@ -151,6 +153,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
                 }
                 if (config != null) {
                     revision = config.revision
+                    lanSwitchable = Libbox.detectCoreConfig(config.content) !in setOf(Libbox.CoreXray, Libbox.CoreMihomo)
                     bindings = config.listeners(encodedAddresses)
                 }
             } catch (error: CancellationException) {
@@ -180,7 +183,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         return mapOf("addresses" to addresses, "bindings" to bindings, "activeBindings" to activeBindings,
             "enabled" to (if (running) activeBindings else bindings).any { it["lan"] == true },
             "running" to running, "activeProfileId" to activeProfileId,
-            "profileId" to profileId, "revision" to revision, "canToggle" to (revision != null && configurationError == null),
+            "profileId" to profileId, "revision" to revision, "canToggle" to (revision != null && configurationError == null && lanSwitchable),
             "error" to configurationError, "stamp" to stamp)
     }
 

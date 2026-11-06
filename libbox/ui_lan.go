@@ -41,6 +41,10 @@ func uiProxyInbound(inboundType string) bool {
 // respecting explicit addresses, address families and bind_interface.
 // Port zero is assigned by the OS and cannot be advertised from configuration.
 func ReadUILANProxyListeners(configContent, interfaceAddresses string) (*StringBox, error) {
+	// Xray and mihomo profiles have no sing-box inbounds to list or toggle.
+	if core := DetectCoreConfig(configContent); core == CoreXray || core == CoreMihomo {
+		return wrapString("[]"), nil
+	}
 	options, err := parseConfig(baseContext(nil), configContent)
 	if err != nil {
 		return nil, err
@@ -64,7 +68,7 @@ func ReadUILANProxyListeners(configContent, interfaceAddresses string) (*StringB
 		item := uiLANListener{
 			Type: inbound.Type, Tag: inbound.Tag, Listen: listen.String(),
 			Port: listenOptions.ListenPort, BindInterface: listenOptions.BindInterface,
-			LAN: !listen.IsLoopback() && (listen.IsUnspecified() || listen.IsGlobalUnicast() || listen.IsLinkLocalUnicast()),
+			LAN:       !listen.IsLoopback() && (listen.IsUnspecified() || listen.IsGlobalUnicast() || listen.IsLinkLocalUnicast()),
 			Endpoints: make([]string, 0),
 		}
 		switch typed := inbound.Options.(type) {

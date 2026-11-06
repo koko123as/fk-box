@@ -123,7 +123,9 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         } else if (id != 0L) {
             File(profile.typed.path).readText()
         } else {
-            "{}"
+            // An empty local profile starts on its own core, or the first core
+            // left on when auto (so turning sing-box off never blocks creation).
+            emptyProfileContent(if (declaredCore == TypedProfile.CORE_AUTO) Settings.autoFetchCore() else declaredCore)
         }
         val prepared = ProfileContent.prepare(declaredCore, incomingContent)
         val content = prepared.content
@@ -244,3 +246,9 @@ internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "core" to typed.core,
     "resolvedCore" to resolvedCore(),
 )
+
+private fun emptyProfileContent(core: String): String = when (core) {
+    TypedProfile.CORE_XRAY -> "{\n  \"outbounds\": [\n    {\n      \"protocol\": \"freedom\",\n      \"tag\": \"direct\"\n    }\n  ]\n}\n"
+    TypedProfile.CORE_MIHOMO -> "mode: rule\nproxies: []\nproxy-groups: []\nrules:\n  - MATCH,DIRECT\n"
+    else -> "{}"
+}
