@@ -245,7 +245,7 @@ fun AboutPage(box: BoxController) {
             item(key = "links") {
                 Spacer(Modifier.height(8.dp))
                 val links = listOf(
-                    Triple(AppGlyphs.code, "Source code", "github.com/koko123as/B-box") to "https://github.com/koko123as/B-box",
+                    Triple(AppGlyphs.code, "Source code", "github.com/koko123as/fk-box") to "https://github.com/koko123as/fk-box",
                     Triple(AppGlyphs.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
                     Triple(AppGlyphs.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
                     Triple(AppGlyphs.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
@@ -290,7 +290,7 @@ private fun UpdateDialog(box: BoxController, result: Json, dismiss: () -> Unit) 
                     add(
                         DialogAction(tr(if (result["downloadUrl"] == null) "Releases" else "Download"), {
                             dismiss()
-                            box.launchAct("url.open", mapOf("url" to (result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/B-box/releases")))
+                            box.launchAct("url.open", mapOf("url" to (result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/fk-box/releases")))
                         }),
                     )
                 }
@@ -321,8 +321,9 @@ private fun LinkBadge(glyph: Glyph) {
     }
 }
 
-/** showLicensePage: the components B-box ships, each with its license and source. */
+/** showLicensePage: the components FK-box ships, each with its license and source. */
 private val licenses = listOf(
+    Triple("FK-box", "GPL-3.0", "https://github.com/koko123as/fk-box"),
     Triple("B-box", "GPL-3.0", "https://github.com/koko123as/B-box"),
     Triple("sing-box", "GPL-3.0", "https://github.com/SagerNet/sing-box"),
     Triple("sing-box-for-android", "GPL-3.0", "https://github.com/SagerNet/sing-box-for-android"),

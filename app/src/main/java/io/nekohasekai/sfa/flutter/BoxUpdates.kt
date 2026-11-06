@@ -16,7 +16,7 @@ internal object BoxUpdates {
     }
 
     fun check(): Map<String, Any?> {
-        val releases = JSONArray(get("https://api.github.com/repos/koko123as/B-box/releases?per_page=20"))
+        val releases = JSONArray(get("https://api.github.com/repos/koko123as/fk-box/releases?per_page=20"))
         var latestCode = -1L
         var latest: Map<String, Any?>? = null
         for (index in 0 until releases.length()) {
@@ -41,6 +41,6 @@ internal object BoxUpdates {
                 "downloadUrl" to apk?.getString("browser_download_url"),
             )
         }
-        return latest ?: mapOf("available" to false, "hasMetadata" to false, "url" to "https://github.com/koko123as/B-box/releases")
+        return latest ?: mapOf("available" to false, "hasMetadata" to false, "url" to "https://github.com/koko123as/fk-box/releases")
     }
 }
