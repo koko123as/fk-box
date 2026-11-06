@@ -1,5 +1,5 @@
-name: Prepare B-box core
-description: Check out the matching sing-box version and install all B-box patches and bindings.
+name: Prepare FK-box core
+description: Check out the matching sing-box version and install all FK-box patches and bindings.
 
 outputs:
   version:

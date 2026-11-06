@@ -55,7 +55,7 @@ def wait_for(label, timeout=90, dismiss_launcher_anr=False, whole_window=False):
         if found:
             return current if whole_window else found
         # Google APIs images can start with a Pixel Launcher ANR over our app.
-        # Dismiss only that known emulator failure, once; B-box ANRs still fail.
+        # Dismiss only that known emulator failure, once; FK-box ANRs still fail.
         if dismiss_launcher_anr and matching("Pixel Launcher isn't responding", current):
             close = [node for node in current if node.get("resource-id") == "android:id/aerr_close"]
             if close:
@@ -162,7 +162,7 @@ def mitm_origin():
         root = Path(directory)
         commands = [
             ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
-             "-sha256", "-days", "1", "-subj", "/CN=B-box independent CI origin root", "-keyout", "root.key", "-out", "root.pem",
+             "-sha256", "-days", "1", "-subj", "/CN=FK-box independent CI origin root", "-keyout", "root.key", "-out", "root.pem",
              "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign"],
             ["openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
              "-subj", "/CN=origin.test", "-keyout", "origin.key", "-out", "origin.csr"],

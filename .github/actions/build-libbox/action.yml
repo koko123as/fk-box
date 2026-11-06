@@ -1,4 +1,4 @@
-name: Build B-box libbox
+name: Build FK-box libbox
 description: Build the patched Android core with the upstream Java and NDK versions.
 
 inputs:
