@@ -4,7 +4,7 @@
 
 ## 基线与集成方式
 
-上游为 [SagerNet/sing-box](https://github.com/SagerNet/sing-box)，绑定位于 `experimental/libbox`。当前基线是 [`v1.15.0-alpha.13`](https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13/experimental/libbox)，Go 为 `go1.26.10`；实际版本由 [version.properties](version.properties) 的 `VERSION_NAME` 和 `GO_VERSION` 决定，工作流检出 `v${VERSION_NAME}`。
+上游为 [SagerNet/sing-box](https://github.com/SagerNet/sing-box)，绑定位于 `experimental/libbox`。当前基线是 [`v1.15.0-alpha.13`](https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13/experimental/libbox)，Go 为 `go1.27.3`；实际版本由 [version.properties](version.properties) 的 `VERSION_NAME` 和 `GO_VERSION` 决定，工作流检出 `v${VERSION_NAME}`。
 
 本仓库不存储完整核心或 AAR，构建补丁与扩展源码统一保存在 [libbox/](libbox/)。CI 通过 [setup-core](.github/actions/setup-core/action.yml) 检出上游至 `.core/`，先准备版本文件指定的 Go，再应用构建补丁、sing-tun 兼容补丁和 HTTP 调试补丁。抓取引擎、路由适配及所有 `ui_*.go`及相应测试使用同一安装入口；Android 构建由 [build-libbox](.github/actions/build-libbox/action.yml) 生成标准 `libbox.aar`。仅有上游原版 AAR 不足以编译当前 B-box，因为它没有下面的 UI 扩展绑定，也不包含本仓库的路由和自动重定向兼容补丁。
 
@@ -27,16 +27,17 @@
 | 内核 | 版本 | Go 模块版本 |
 | --- | --- | --- |
 | sing-box | `CORE_VERSION` | 上游标签 |
-| Xray | `XRAY_VERSION`（v26.7.28） | `XRAY_MODULE_VERSION`：xray-core 的 `v26.x` 标签不是该模块路径可用的语义版本，使用指向标签提交 `5ca6f4b7` 的伪版本 |
+| Xray | `XRAY_VERSION`（v26.10.31） | `XRAY_MODULE_VERSION`：xray-core 的 `v26.x` 标签不是该模块路径可用的语义版本，使用指向标签提交 `a4a3dff5` 的伪版本 |
+| libXray | `LIBXRAY_MODULE_VERSION`（v1.261031.0） | 同标签；其 `go.mod` 固定与上行相同的 xray-core 提交 |
 | mihomo | `MIHOMO_VERSION`（v1.19.33） | 同标签 |
 
-Xray 选 v26.7.28：之后的版本要求 Go 1.27，当前构建使用 `GO_VERSION`。只编译 arm64，不再构建 amd64。
+Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/masque` 传输，`main/distro/all` 一并链接），并要求 Go 1.27；libXray v1.261031.0 要求 go 1.27.3。因此 `GO_VERSION` 为 `go1.27.3`，sing-box `v1.15.0-alpha.13` 与 mihomo v1.19.33 保持不变、同用该 Go 编译。只编译 arm64，不再构建 amd64。
 
 [setup-core](.github/actions/setup-core/action.yml) 在 sing-box 自身依赖整理完后再加入两个内核并 `go mod tidy`，把被抬高或新增的模块写入 `core-module-bumps.txt`，并断言 `github.com/sagernet/sing` 未被改变。[core_link.go](libbox/core_link.go) 以空导入把两个内核真正链接进 libbox。
 
 ### 依赖冲突核查（第 0 阶段）
 
-以 `v1.15.0-alpha.13` + 本仓库全部补丁为基线，按 libbox 的 Android 标签（不含需 cgo 的 `with_naive_outbound`）在 Go 1.26.10 下核查：
+以下是最初接入（Xray v26.7.28、Go 1.26.10）时以 `v1.15.0-alpha.13` + 本仓库全部补丁为基线，按 libbox 的 Android 标签（不含需 cgo 的 `with_naive_outbound`）所做的核查；升级到 Xray v26.10.31 / Go 1.27.3 后的抬高结果见下文“当前核查”：
 
 - `GOOS=android GOARCH=arm64` 编译 `experimental/libbox` 通过；同一组导入的测试二进制可以运行，所有包的 `init` 无冲突（protobuf 全名分别在 `xray.*`、`mihomo.*` 下，无注册冲突）。
 - mihomo 对 `google.golang.org/protobuf` 的 `replace`（metacubex/protobuf-go，仅为降到 go1.20 兼容旧系统）作为依赖时不生效，使用 sing-box 已有的 v1.36.11。
@@ -50,12 +51,15 @@ Xray 选 v26.7.28：之后的版本要求 Go 1.27，当前构建使用 `GO_VERSI
 
 | 接口 | 作用 |
 | --- | --- |
-| `DetectCoreConfig` | Clash YAML → `mihomo`；JSON 的 inbounds/outbounds 带 `protocol` → `xray`；其余 JSON → `sing-box`；分享链接或 Base64 节点列表 → `links`。裸 `http(s)://` 视为订阅地址，不当作 HTTP 代理节点 |
+| `DetectCoreConfig` | Clash YAML → `mihomo`；JSON 的 inbounds/outbounds 带 `protocol` → `xray`（含 `"protocol": "masque"` 出站）；顶层为对象数组的 JSON → `array`；其余 JSON → `sing-box`；分享链接或 Base64 节点列表 → `links`。裸 `http(s)://` 视为订阅地址，不当作 HTTP 代理节点 |
+| `SplitCoreConfigArray` / `CoreConfigRemarks` | [core_array.go](libbox/core_array.go)：把 v2rayNG 式“多个完整配置的 JSON 数组”拆成逐个元素（`CoreConfigEntries` 按下标读 `Remarks`/`Content`/`Core`），每个元素单独识别内核；内容按原键顺序缩进。Xray 元素保留全部键（Xray 忽略未知键，如 `remarks` 和 `_AsteriskNG…`），sing-box 元素去掉 `remarks`（sing-box 拒绝未知字段），不做其他转换。`array` 不能直接 `ResolveProfileCore`/`CheckCoreConfig`，必须先拆分 |
 | `ResolveProfileCore` | 配置文件的 `core`（`auto` 或指定内核）解析为实际运行的内核 |
 | `CheckCoreConfig` | sing-box 走 `CheckConfig`；Xray 用 Xray 自带 JSON 解析并逐个构建 outbound/inbound，路由与 DNS 仅在 geo 文件存在时构建；mihomo 用 mihomo 的原始配置解析、逐个 `adapter.ParseProxy` 并检查策略组成员。mihomo 规则与 provider 要到启动时完整解析（会读取/下载 geo 数据库），导入时不做 |
 | `FormatCoreConfig` | sing-box 走 `FormatConfig`；Xray 只做 JSON 缩进；mihomo 只规范换行，保留注释与键顺序 |
 | `ConvertCoreShareLinks(For)` | 链接经 mihomo `common/convert` 解析；默认生成 sing-box 配置（字段映射参照 SagerNet/serenity 的 clash 解析器）；含 xhttp 时改用 libXray `share` 生成 Xray 配置；用户指定 mihomo 时生成 Clash YAML。生成结果都会再经对应内核校验 |
 | `CoreSubscriptionUserAgent` | 按内核发送订阅 UA：mihomo 为 `clash.meta`，Xray 为 `v2rayN/<Xray 版本>`，sing-box 沿用原 UA |
+
+应用侧拆分与命名见 [app.md](app.md#配置服务应用与备份)。
 
 libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，并把未设置的 `json.RawMessage` 序列化成 `null`（Xray 会把 `"dest": null` 当成已设置，按服务端构建 REALITY）。转换后统一改为 `tag` 并清除 `null`。
 
@@ -67,7 +71,8 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 - `StartOrReloadCoreService(core, content, options)`：sing-box 照旧走 `StartOrReloadService`；Xray/mihomo 先停掉 sing-box 和上一个内核，再经 `PlatformInterface.OpenTun`（即 VpnService.Builder）建 TUN（`172.19.0.1/30`、`fdfe:dcba:9876::1/126`、MTU 9000、DNS `172.19.0.2`，分应用代理沿用设置），把 dup 后的 fd 直接交给内核，不经本地转发。`CloseCoreService` 停止当前内核。
 - 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到 `AutoDetectInterfaceControl`（`VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取当前平台接口。
-- Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；geo 文件目录为 `<工作目录>/cores/xray`。
+- Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；geo 文件目录为 `<工作目录>/cores/xray`。MASQUE 出站经 `internet.DialSystem` 拨号，同样走上述保护钩子。
+- 默认日志级别（[core_loglevel.go](libbox/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。
 - 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 规则在 cmfa 模式下取不到进程名；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
 
@@ -76,7 +81,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。
 
 1. `python3 tools/bump_core.py <sing-box|xray|mihomo|libxray> <版本>`（可先加 `--dry-run`）。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写 [version.properties](version.properties)。需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
-2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`。CI 会拦下：
+2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`（两者在非 `main` 分支都需 `workflow_dispatch` 指定 ref）。CI 会拦下：
    - 编译错误：libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
    - [verify_multicore.py](tools/verify_multicore.py)：sing-box 新增的 StartedService gRPC 方法必须在 `coreStartedService` 中处理，或经审核后写入 [core_grpc_passthrough.txt](libbox/core_grpc_passthrough.txt)。否则 Xray/mihomo 运行时它会打到空闲的 sing-box，返回 `invalid argument`。
    - `TestCoreInternals*`：Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
@@ -217,7 +222,7 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 
 参考依据为 2026-11-03 读取的 Surge [HTTP Processing](https://manual.nssurge.com/http/overview.html)、[MITM](https://manual.nssurge.com/http/mitm.html)、[URL Rewrite](https://manual.nssurge.com/http/url-rewrite.html)、[Header Rewrite](https://manual.nssurge.com/http/header-rewrite.html)、[Body Rewrite](https://manual.nssurge.com/http/body-rewrite.html)、[Map Local](https://manual.nssurge.com/http/map-local.html)、[请求脚本](https://manual.nssurge.com/scripting/http-request.html)和[响应脚本](https://manual.nssurge.com/scripting/http-response.html)。Surge 的 URL header 模式提供透明远端映射；B-box 另提供 map_remote 列表。上表明确 B-box 的字段、顺序与支持范围，不宣称配置或脚本完全兼容 Surge。
 
-核心集成固定 [Goja `a177d211bf606f6275674a35bc0d31d8ee0ee396`](https://github.com/dop251/goja/tree/a177d211bf606f6275674a35bc0d31d8ee0ee396)，模块版本 `v0.0.0-20261102223426-a177d211bf60`。共享 setup-core 将核心模块最低 Go 版本调整为 1.26.0，实际构建仍用 version.properties 的 go1.26.10；Goja 依赖将 x/text 提升到 v0.43.0，并引入 regexp2/v2、sourcemap 和 pprof。许可证随 Flutter assets 打包并在许可证页注册；三个上游基线不变。Release、Flutter 核心验证和 Android smoke 都使用同一个安装入口。
+核心集成固定 [Goja `a177d211bf606f6275674a35bc0d31d8ee0ee396`](https://github.com/dop251/goja/tree/a177d211bf606f6275674a35bc0d31d8ee0ee396)，模块版本 `v0.0.0-20261102223426-a177d211bf60`。共享 setup-core 先将核心模块最低 Go 版本调整为 1.26.0，加入 Xray/libXray 后 `go mod tidy` 再抬到它们要求的 Go 1.27.x，实际构建用 version.properties 的 go1.27.3；Goja 依赖将 x/text 提升到 v0.43.0，并引入 regexp2/v2、sourcemap 和 pprof。许可证随 Flutter assets 打包并在许可证页注册；三个上游基线不变。Release、Flutter 核心验证和 Android smoke 都使用同一个安装入口。
 
 ### 旧抓包配置清理
 
