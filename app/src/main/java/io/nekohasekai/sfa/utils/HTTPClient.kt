@@ -2,7 +2,8 @@ package io.nekohasekai.sfa.utils
 
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.ktx.unwrap
+import io.nekohasekai.sfa.database.SubscriptionFetch
+import io.nekohasekai.sfa.database.SubscriptionHeaders
 import java.io.Closeable
 import java.util.Locale
 
@@ -24,22 +25,15 @@ class HTTPClient : Closeable {
         }
     }
 
-    private val client = Libbox.newHTTPClient()
-
-    init {
-        client.modernTLS()
+    /**
+     * Fetches a subscription; [core] picks the User-Agent so the provider answers in
+     * that core's format. Provider traffic/expiry/update headers come back parsed.
+     */
+    fun getSubscription(url: String, core: String = "sing-box"): SubscriptionFetch {
+        // gomobile lowercases the initial uppercase run in UISubscriptionGet.
+        val response = Libbox.uiSubscriptionGet(url, userAgentFor(core))
+        return SubscriptionHeaders.fetch(response.content, response.userInfo, response.updateInterval, response.webPage)
     }
 
-    /** [core] picks the User-Agent so the provider answers in that core's format. */
-    fun getString(url: String, core: String = "sing-box"): String {
-        val request = client.newRequest()
-        request.setUserAgent(userAgentFor(core))
-        request.setURL(url)
-        val response = request.execute()
-        return response.content.unwrap
-    }
-
-    override fun close() {
-        client.close()
-    }
+    override fun close() = Unit
 }

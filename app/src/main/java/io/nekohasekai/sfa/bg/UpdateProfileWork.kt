@@ -64,6 +64,7 @@ class UpdateProfileWork {
                     .filter { it.typed.type == TypedProfile.Type.Remote && it.typed.autoUpdate }
             if (remoteProfiles.isEmpty()) return true
             var success = true
+            var intervalChanged = false
             for (profile in remoteProfiles) {
                 val lastSeconds =
                     (System.currentTimeMillis() - profile.typed.lastUpdated.time) / 1000L
@@ -76,13 +77,15 @@ class UpdateProfileWork {
                         if (current.typed.type != TypedProfile.Type.Remote || !current.typed.autoUpdate) return@withLock
                         val age = (System.currentTimeMillis() - current.typed.lastUpdated.time) / 1000L
                         if (age < current.typed.autoUpdateInterval * 60) return@withLock
-                        val content = HTTPClient().use { it.getString(current.typed.remoteURL, current.typed.core) }
+                        val fetch = HTTPClient().use { it.getSubscription(current.typed.remoteURL, current.typed.core) }
+                        val interval = current.typed.autoUpdateInterval
                         val service = BackgroundProfileService(context)
                         try {
-                            ProfileContent.replaceLocked(current, content, updatedAt = Date(), applySelected = service::apply)
+                            ProfileContent.replaceLocked(current, fetch.content, updatedAt = Date(), subscription = fetch, applySelected = service::apply)
                         } finally {
                             service.close()
                         }
+                        if (current.typed.autoUpdateInterval != interval) intervalChanged = true
                     }
                 } catch (e: CancellationException) {
                     throw e
@@ -91,6 +94,8 @@ class UpdateProfileWork {
                     success = false
                 }
             }
+            // A provider's profile-update-interval changed a schedule.
+            if (intervalChanged) reconfigureUpdater()
             return success
         }
     }

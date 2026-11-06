@@ -9,7 +9,10 @@ import io.nekohasekai.sfa.database.ProfileChange
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.database.SubscriptionMetadata
 import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.database.metadataAfter
+import io.nekohasekai.sfa.database.restoreSubscriptionMetadata
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.HTTPClient
 import kotlinx.coroutines.sync.withLock
@@ -118,8 +121,14 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         require(interval >= 15) { "Update interval must be at least 15 minutes" }
         val declaredCore = (args["core"] as? String) ?: profile.typed.core
         require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
-        val incomingContent = args["content"] as? String ?: if (id == 0L && url.isNotEmpty()) {
-            HTTPClient().use { it.getString(url, declaredCore) }
+        // A newly created remote profile takes the provider's headers from its first fetch.
+        val fetched = if (args["content"] !is String && id == 0L && url.isNotEmpty()) {
+            HTTPClient().use { it.getSubscription(url, declaredCore) }
+        } else {
+            null
+        }
+        val incomingContent = args["content"] as? String ?: if (fetched != null) {
+            fetched.content
         } else if (id != 0L) {
             File(profile.typed.path).readText()
         } else {
@@ -136,6 +145,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             File(profile.typed.path)
         }
         val oldContent = if (file.exists()) file.readText() else null
+        val previousUrl = profile.typed.remoteURL
         write(file, content)
         profile.name = name
         profile.typed.core = declaredCore
@@ -143,7 +153,16 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         profile.typed.type = if (url.isEmpty()) TypedProfile.Type.Local else TypedProfile.Type.Remote
         profile.typed.remoteURL = url
         profile.typed.autoUpdate = url.isNotEmpty() && args["autoUpdate"] == true
+        // Edits keep a choice already made; the form reports whether the interval field was touched.
+        profile.typed.intervalUserSet = profile.typed.intervalUserSet || args["intervalEdited"] == true ||
+            (id != 0L && interval != profile.typed.autoUpdateInterval)
         profile.typed.autoUpdateInterval = interval
+        if (url.isEmpty() || (id != 0L && url != previousUrl)) {
+            // Traffic and expiry belonged to the old subscription; the next fetch reports the new one.
+            profile.typed.restoreSubscriptionMetadata(SubscriptionMetadata(0L, 0L, 0L, 0L, "", interval))
+        } else if (fetched != null) {
+            profile.typed.restoreSubscriptionMetadata(profile.typed.metadataAfter(fetched))
+        }
         if (id == 0L) {
             val importedAt = (args["updatedAt"] as? Number)?.toLong()?.takeIf { it >= 0L }
             profile.typed.lastUpdated = if (url.isNotEmpty() && args["content"] is String && importedAt != null) Date(importedAt) else Date()
@@ -167,8 +186,10 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     suspend fun update(id: Long) = mutex.withLock {
         val profile = get(id)
         require(profile.typed.type == TypedProfile.Type.Remote) { "Only remote profiles can be updated" }
-        val content = HTTPClient().use { it.getString(validateUrl(profile.typed.remoteURL), profile.typed.core) }
-        ProfileContent.replaceLocked(profile, content, updatedAt = Date(), applySelected = applySelected)
+        val fetch = HTTPClient().use { it.getSubscription(validateUrl(profile.typed.remoteURL), profile.typed.core) }
+        val interval = profile.typed.autoUpdateInterval
+        ProfileContent.replaceLocked(profile, fetch.content, updatedAt = Date(), subscription = fetch, applySelected = applySelected)
+        if (profile.typed.autoUpdateInterval != interval) UpdateProfileWork.reconfigureUpdater()
     }
 
     suspend fun delete(id: Long) = mutex.withLock {
@@ -206,6 +227,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         return mapOf("name" to profile.name, "content" to profile.config,
             "remote" to remote, "url" to url, "autoUpdate" to (remote && profile.autoUpdate),
             "interval" to if (remote) profile.autoUpdateInterval.coerceAtLeast(15) else 60,
+            "intervalEdited" to (remote && profile.autoUpdateInterval != TypedProfile.DEFAULT_INTERVAL),
             "updatedAt" to if (remote) profile.lastUpdated.coerceAtLeast(0) else 0L)
     }
 
@@ -238,14 +260,7 @@ internal fun Profile.resolvedCore(): String {
 internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "id" to id,
     "name" to name,
-    "remote" to (typed.type == TypedProfile.Type.Remote),
-    "url" to typed.remoteURL,
-    "updatedAt" to typed.lastUpdated.time,
-    "autoUpdate" to typed.autoUpdate,
-    "interval" to typed.autoUpdateInterval,
-    "core" to typed.core,
-    "resolvedCore" to resolvedCore(),
-)
+) + ProfileWireFields.export(typed) + mapOf("resolvedCore" to resolvedCore())
 
 private fun emptyProfileContent(core: String): String = when (core) {
     TypedProfile.CORE_XRAY -> "{\n  \"outbounds\": [\n    {\n      \"protocol\": \"freedom\",\n      \"tag\": \"direct\"\n    }\n  ]\n}\n"

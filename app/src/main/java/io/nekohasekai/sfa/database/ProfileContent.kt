@@ -58,6 +58,7 @@ internal object ProfileContent {
         content: String,
         expectedRevision: String? = null,
         updatedAt: Date? = null,
+        subscription: SubscriptionFetch? = null,
         applySelected: suspend (recover: Boolean) -> Unit,
     ) {
         val file = File(profile.typed.path)
@@ -67,19 +68,24 @@ internal object ProfileContent {
         }
         val cleaned = prepare(profile.typed.core, content).content
         val changed = previous != cleaned
-        if (!changed && updatedAt == null) return
+        if (!changed && updatedAt == null && subscription == null) return
         val savedAt = updatedAt ?: if (changed && profile.typed.type == TypedProfile.Type.Local) Date() else null
 
         val apply = changed && profile.id == Settings.selectedProfile
         val previousUpdatedAt = Date(profile.typed.lastUpdated.time)
+        // Provider traffic/expiry/interval are saved and rolled back with the content.
+        val previousMetadata = profile.typed.subscriptionMetadata()
+        val nextMetadata = subscription?.let { profile.typed.metadataAfter(it) }
+        val metadataChanged = nextMetadata != null && nextMetadata != previousMetadata
         val previousMode = Settings.serviceMode
         val restore = mutableListOf<suspend () -> Unit>()
         if (changed) restore.add {
             if (previous != null) write(file, previous)
             else check(!file.exists() || file.delete()) { "Unable to restore profile file" }
         }
-        if (savedAt != null) restore.add {
+        if (savedAt != null || metadataChanged) restore.add {
             profile.typed.lastUpdated = previousUpdatedAt
+            profile.typed.restoreSubscriptionMetadata(previousMetadata)
             check(ProfileManager.update(profile) == 1) { "Profile no longer exists" }
         }
         if (apply) restore.add {
@@ -89,8 +95,9 @@ internal object ProfileContent {
         ProfileChange.apply(
             save = {
                 if (changed) write(file, cleaned)
-                if (savedAt != null) {
-                    profile.typed.lastUpdated = savedAt
+                if (savedAt != null || metadataChanged) {
+                    if (savedAt != null) profile.typed.lastUpdated = savedAt
+                    if (nextMetadata != null) profile.typed.restoreSubscriptionMetadata(nextMetadata)
                     check(ProfileManager.update(profile) == 1) { "Profile no longer exists" }
                 }
             },
