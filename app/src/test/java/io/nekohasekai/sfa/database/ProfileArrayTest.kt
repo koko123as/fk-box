@@ -29,6 +29,16 @@ class ProfileArrayTest {
         )
     }
 
+    @Test fun mergedSingleElementTakesTheSourceName() {
+        assertEquals(
+            listOf(ProfileArray.Entry("MASQUE-To-Xray-H3", "{}", "xray")),
+            ProfileArray.entries(" MASQUE-To-Xray-H3 ", listOf(ProfileArray.Element("", "{}", "xray"))),
+        )
+        assertEquals("Profile", ProfileArray.entries("", listOf(ProfileArray.Element(" ", "{}", "xray"))).single().name)
+        // A lone element that has remarks keeps them.
+        assertEquals("Node", ProfileArray.entries("src", listOf(ProfileArray.Element("Node", "{}", "xray"))).single().name)
+    }
+
     @Test fun selectFollowsSavedRemarksThenNameThenFallbackIndex() {
         val remarks = listOf("alpha", "", "beta", "")
         // The saved content's remarks win, even after the user renamed the profile.

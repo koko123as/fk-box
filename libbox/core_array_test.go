@@ -234,3 +234,136 @@ func TestCoreDefaultLogLevel(t *testing.T) {
 		t.Fatal("mihomo level mapping")
 	}
 }
+
+func TestCoreConfigArrayMerge(t *testing.T) {
+	node := func(remarks, address string) map[string]any {
+		config := testMasqueConfig(t, remarks)
+		proxy := config["outbounds"].([]any)[0].(map[string]any)
+		proxy["settings"].(map[string]any)["address"] = address
+		// The element's own rules send some traffic to the node.
+		rules := config["routing"].(map[string]any)["rules"].([]any)
+		config["routing"].(map[string]any)["rules"] = append(rules, map[string]any{"type": "field", "outboundTag": "proxy", "domain": []string{"domain:example.net"}})
+		return config
+	}
+	array := func(configs ...map[string]any) string {
+		parts := make([]string, len(configs))
+		for i, config := range configs {
+			parts[i] = mustJSON(t, config)
+		}
+		return "[" + strings.Join(parts, ",") + "]"
+	}
+
+	entries, err := SplitCoreConfigArray(array(node("Node A", "203.0.113.20"), node("Node B", "203.0.113.21"), node("Node A", "203.0.113.22")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if entries.Len() != 1 || entries.Core(0) != CoreXray || entries.Remarks(0) != "" {
+		t.Fatalf("not merged: len %d core %s remarks %q", entries.Len(), entries.Core(0), entries.Remarks(0))
+	}
+	content := entries.Content(0)
+	if err := CheckCoreConfig(CoreXray, content); err != nil {
+		t.Fatal(err)
+	}
+	config, err := xraySerial.LoadJSONConfig(strings.NewReader(content))
+	if err != nil {
+		t.Fatal(err)
+	}
+	instance, err := xrayCore.New(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = instance.Close()
+
+	var merged struct {
+		Remarks   *string `json:"remarks"`
+		Outbounds []struct {
+			Tag      string `json:"tag"`
+			Settings struct {
+				Address string `json:"address"`
+			} `json:"settings"`
+		} `json:"outbounds"`
+		Routing struct {
+			Rules     []map[string]any `json:"rules"`
+			Balancers []struct {
+				Tag         string            `json:"tag"`
+				Selector    []string          `json:"selector"`
+				Strategy    map[string]string `json:"strategy"`
+				FallbackTag string            `json:"fallbackTag"`
+			} `json:"balancers"`
+		} `json:"routing"`
+		Observatory struct {
+			SubjectSelector []string `json:"subjectSelector"`
+		} `json:"observatory"`
+	}
+	if err := json.Unmarshal([]byte(content), &merged); err != nil {
+		t.Fatal(err)
+	}
+	wantTags := []string{"Node A", "Node B", "Node A #2"}
+	var tags []string
+	for _, outbound := range merged.Outbounds {
+		tags = append(tags, outbound.Tag)
+	}
+	if strings.Join(tags, "|") != strings.Join(append(append([]string(nil), wantTags...), "direct", "block"), "|") {
+		t.Fatalf("outbound tags %q", tags)
+	}
+	if merged.Outbounds[1].Settings.Address != "203.0.113.21" {
+		t.Fatalf("node B address %q", merged.Outbounds[1].Settings.Address)
+	}
+	if merged.Remarks != nil {
+		t.Fatal("merged config kept an element's remarks")
+	}
+	if len(merged.Routing.Balancers) != 1 {
+		t.Fatalf("balancers %+v", merged.Routing.Balancers)
+	}
+	balancer := merged.Routing.Balancers[0]
+	if balancer.Tag != "proxy" || strings.Join(balancer.Selector, "|") != strings.Join(wantTags, "|") ||
+		balancer.Strategy["type"] != "leastPing" || balancer.FallbackTag != "Node A" {
+		t.Fatalf("balancer %+v", balancer)
+	}
+	if strings.Join(merged.Observatory.SubjectSelector, "|") != strings.Join(wantTags, "|") {
+		t.Fatalf("observatory %q", merged.Observatory.SubjectSelector)
+	}
+	rules := merged.Routing.Rules
+	if len(rules) != 3 || rules[0]["outboundTag"] != "direct" || rules[1]["balancerTag"] != "proxy" || rules[1]["outboundTag"] != nil ||
+		rules[2]["balancerTag"] != "proxy" || rules[2]["network"] != "tcp,udp" {
+		t.Fatalf("rules %v", rules)
+	}
+	if !strings.HasPrefix(content, "{\n  \"_AsteriskNG_test\"") {
+		t.Fatalf("key order not kept: %.40q", content)
+	}
+
+	// Anything beyond the one node keeps one profile per element.
+	differentDNS := node("Node B", "203.0.113.21")
+	differentDNS["dns"] = map[string]any{"servers": []any{"9.9.9.9"}}
+	dialer := func(remarks, address string) map[string]any {
+		config := node(remarks, address)
+		config["outbounds"].([]any)[1].(map[string]any)["streamSettings"] = map[string]any{"sockopt": map[string]any{"dialerProxy": "proxy"}}
+		return config
+	}
+	twoOutbounds := node("Node B", "203.0.113.21")
+	twoOutbounds["outbounds"].([]any)[2].(map[string]any)["protocol"] = "freedom"
+	balanced := func(remarks, address string) map[string]any {
+		config := node(remarks, address)
+		config["observatory"] = map[string]any{"subjectSelector": []string{"proxy"}}
+		return config
+	}
+	for name, content := range map[string]string{
+		"dns":       array(node("Node A", "203.0.113.20"), differentDNS),
+		"dialer":    array(dialer("Node A", "203.0.113.20"), dialer("Node B", "203.0.113.21")),
+		"outbounds": array(node("Node A", "203.0.113.20"), twoOutbounds),
+		"observed":  array(balanced("Node A", "203.0.113.20"), balanced("Node B", "203.0.113.21")),
+		"single":    array(node("Node A", "203.0.113.20")),
+	} {
+		entries, err := SplitCoreConfigArray(content)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		want := int32(2)
+		if name == "single" {
+			want = 1
+		}
+		if entries.Len() != want || entries.Remarks(0) != "Node A" {
+			t.Fatalf("%s: len %d remarks %q", name, entries.Len(), entries.Remarks(0))
+		}
+	}
+}

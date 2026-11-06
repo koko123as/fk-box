@@ -64,7 +64,9 @@ func coreConfigArrayElements(text string) ([]json.RawMessage, bool) {
 }
 
 // SplitCoreConfigArray splits a JSON array of configs into one entry per
-// element, each with its own detected core. Xray elements keep every key
+// element, each with its own detected core. An array of Xray configs that
+// differ only in one proxy outbound is merged into a single entry without
+// remarks instead (mergeXrayConfigArray). Xray elements keep every key
 // (Xray ignores unknown ones, and the kept "remarks" lets a subscription
 // update find the same element again); sing-box rejects unknown keys, so
 // "remarks" is removed from sing-box elements. Nothing else is converted.
@@ -74,8 +76,21 @@ func SplitCoreConfigArray(content string) (*CoreConfigEntries, error) {
 		return nil, fmt.Errorf("not a JSON array of configs")
 	}
 	result := &CoreConfigEntries{}
+	remarks := make([]string, len(elements))
 	for index, element := range elements {
-		remarks := coreConfigRemarksOf(element)
+		remarks[index] = coreConfigRemarksOf(element)
+	}
+	// One node per element with everything else shared: one profile whose
+	// nodes form a group (core_array_merge.go).
+	if merged, ok := mergeXrayConfigArray(elements, remarks); ok {
+		var indented bytes.Buffer
+		if err := json.Indent(&indented, merged, "", "  "); err == nil {
+			indented.WriteByte('\n')
+			result.entries = append(result.entries, coreConfigEntry{content: indented.String(), core: CoreXray})
+			return result, nil
+		}
+	}
+	for index, element := range elements {
 		core := DetectCoreConfig(string(element))
 		raw := []byte(element)
 		if core == CoreSingBox {
@@ -90,7 +105,7 @@ func SplitCoreConfigArray(content string) (*CoreConfigEntries, error) {
 			return nil, fmt.Errorf("config %d: %w", index+1, err)
 		}
 		indented.WriteByte('\n')
-		result.entries = append(result.entries, coreConfigEntry{remarks: remarks, content: indented.String(), core: core})
+		result.entries = append(result.entries, coreConfigEntry{remarks: remarks[index], content: indented.String(), core: core})
 	}
 	return result, nil
 }

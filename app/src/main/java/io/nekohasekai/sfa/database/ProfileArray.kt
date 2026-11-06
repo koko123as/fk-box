@@ -2,7 +2,9 @@ package io.nekohasekai.sfa.database
 
 /**
  * A top-level JSON array of complete configs (v2rayNG's multi custom-config export, or a
- * subscription serving one): libbox splits it, and every element becomes its own profile.
+ * subscription serving one): libbox splits it, and every element becomes its own profile;
+ * an array of Xray configs that differ only in one proxy outbound arrives already merged
+ * into a single element, whose nodes form one group.
  * Naming and the element a subscription profile follows are decided here, without libbox,
  * so they can be tested on the JVM.
  */
@@ -23,8 +25,16 @@ internal object ProfileArray {
         return "$base #${index + 1}"
     }
 
-    fun entries(source: String, elements: List<Element>): List<Entry> =
-        elements.mapIndexed { index, element -> Entry(name(source, element.remarks, index), element.content, element.core) }
+    /**
+     * A lone element without remarks (libbox merged an array of one-node Xray configs into one
+     * profile) takes the source's own name; otherwise each element is named by [name].
+     */
+    fun entries(source: String, elements: List<Element>): List<Entry> {
+        elements.singleOrNull()?.takeIf { it.remarks.isBlank() }?.let { element ->
+            return listOf(Entry(source.trim().ifEmpty { "Profile" }, element.content, element.core))
+        }
+        return elements.mapIndexed { index, element -> Entry(name(source, element.remarks, index), element.content, element.core) }
+    }
 
     /**
      * Which element a subscription profile keeps following when its URL returns an array:
