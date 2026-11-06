@@ -2,9 +2,9 @@
 
 本文记录界面来源、复用和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](AGENTS.md)。
 
-## fk-box：Kotlin + Jetpack Compose 翻译
+## Kotlin + Jetpack Compose 翻译
 
-fk-box 分支已把下文列出的全部 Flutter 页面和组件翻译为 Kotlin + Jetpack Compose，位于 `app/src/main/java/io/nekohasekai/sfa/compose`（`theme/`、`ui/`、`pages/`），`flutter/` 目录随后删除。下文中的 `*.dart` 文件名指删除前的参考源码，可在 Git 历史中查看；对应关系：
+本仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box) 的 `main`）已把下文列出的全部 Flutter 页面和组件用 Kotlin + Jetpack Compose 重写（仓库不再包含任何 Flutter/Dart 代码，只参考并翻译 FlClash 的设计与组件行为），位于 `app/src/main/java/io/nekohasekai/sfa/compose`（`theme/`、`ui/`、`pages/`），`flutter/` 目录随后删除。下文中的 `*.dart` 文件名指删除前的参考源码，可在 Git 历史中查看；对应关系：
 
 | 原 Flutter 页面 | Compose 实现 |
 | --- | --- |
@@ -23,7 +23,7 @@ fk-box 分支已把下文列出的全部 Flutter 页面和组件翻译为 Kotlin
 
 ## 参考版本与来源清单
 
-固定参考 [chen08209/FlClash v0.9.2](https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7)，提交 `7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`（2026-10-24）。fk-box 的 Compose 界面按该版本的 Flutter 组件逐项翻译；84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
+固定参考 [chen08209/FlClash v0.9.2](https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7)，提交 `7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`（2026-10-24）。FK-box 的 Compose 界面按该版本的 Flutter 组件逐项翻译；84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
 
 [flclash-manifest.json](flclash-manifest.json) 是逐文件来源清单（记录翻译所依据的原 Flutter 导入/适配文件）：
 
@@ -53,7 +53,7 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 | 首页编辑 | `dashboard_editor.dart` → `DashboardEditor.kt` | 原地编辑卡片、摇摆、长按排序、移除徽章及添加列表 |
 | 内存与局域网 | `memory_panel.dart`、`intranet_panel.dart` | 分别使用 Go/进程内存和 sing-box 监听配置，不虚构 Mihomo 内存或全局代理端口 |
 | 系统 HTTP 代理 | `system_proxy_panel.dart` | 采用参考版 VPN 卡片的布局、状态徽章和紧凑开关，使用 B-box 自有的大陆轮廓地球字形；开关接入内核上报状态及既有 Android 桥接 |
-| 外观与关于 | `appearance.dart`、`about.dart` | 复用主题预览、调色和版本/许可布局，保持 B-box 品牌及其 Release 来源 |
+| 外观与关于 | `appearance.dart`、`about.dart` | 复用主题预览、调色和版本/许可布局，保持 FK-box 品牌及 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 Release 来源 |
 | 备份 | `backup.dart`、`form.dart` | 复用本地/远程分区、WebDAV 表单、连通状态、恢复范围及策略，后端使用 `bbox-1` 格式 |
 | 请求调试 | `requests.dart`、`request_settings.dart`、`mitm_certificate.dart`、`capture_logs.dart`、`capture_domains.dart` | 请求列表/详情、本机筛选、HTTPS MITM 与证书、诊断、域名选择及 HAR/cURL 导出；复用共享列表、表单和导航 |
 
@@ -132,7 +132,7 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 
 ## 验证与升级参考版本
 
-fk-box 删除 `flutter/` 后不再运行 Flutter 分析、Widget 测试、截图/像素比较或 AAR 构建，[newui.yml](.github/workflows/newui.yml) 也不再上传 `newui-validation` / `flutter-aar-arm64`。当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Compose 源码约束（由 newui.yml 和 build-debug-apk.yml 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)；Compose 页面尚无对应的截图或像素比较测试。
+FK-box 删除 `flutter/` 后不再运行 Flutter 分析、Widget 测试、截图/像素比较或 AAR 构建，[newui.yml](.github/workflows/newui.yml) 也不再上传 `newui-validation` / `flutter-aar-arm64`。当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Compose 源码约束（由 newui.yml 和 build-debug-apk.yml 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)；Compose 页面尚无对应的截图或像素比较测试。
 
 以下 `*_test.dart` 段落记录删除前 Flutter 版的测试覆盖，测试文件可在 Git 历史中查看，不代表当前 Compose 源码已通过同等测试。
 
