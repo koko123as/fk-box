@@ -55,6 +55,7 @@ fun ResourcesPage(box: BoxController) {
     val urlTitle = tr("Download URL")
     val invalidUrl = tr("Not a valid HTTP or HTTPS URL")
     val hours = tr("hours")
+    val intervalTitle = tr("Update interval")
 
     suspend fun reload() {
         try {
@@ -118,7 +119,7 @@ fun ResourcesPage(box: BoxController) {
                     onClick = {
                         scope.launch {
                             val value = dialogs?.input(
-                                tr("Update interval"),
+                                intervalTitle,
                                 interval.toString(),
                                 KeyboardType.Number,
                                 suffixText = hours,
