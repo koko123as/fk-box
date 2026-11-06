@@ -183,7 +183,13 @@ class VPNService :
 
         val pfd =
             builder.establish() ?: error("android: the application is not prepared or is revoked")
+        // Switching cores opens a new TUN while the service runs: close the
+        // previous descriptor now instead of leaving it to the finalizer.
+        val previous = service.fileDescriptor
         service.fileDescriptor = pfd
+        if (previous != null && previous !== pfd) {
+            runCatching { previous.close() }
+        }
         return pfd.fd
     }
 

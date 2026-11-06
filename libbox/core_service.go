@@ -219,8 +219,10 @@ func (s *CommandServer) stopOtherCore() {
 			close(running.mihomoLog)
 		}
 	}
-	// Neither core closes the fd it was given; this is our dup of the
-	// VpnService descriptor, which the app closes itself.
+	// running.tunFd is our own dup of the VpnService descriptor (Xray never
+	// closes the fd it reads; mihomo closed its separate dup in Shutdown), so
+	// it is closed exactly once here. Closing a descriptor twice could hit a
+	// number Android reused for a tracked fd, which aborts the whole app.
 	_ = syscall.Close(running.tunFd)
 	s.StartedService.WriteMessage(log.LevelInfo, running.core+" stopped")
 	go notifyCoreChange()
@@ -378,6 +380,8 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 		return err
 	}
 	raw.Tun.Enable = true
+	// The real descriptor is set after parsing: mihomo gets a dup of its own,
+	// since its TUN closes the descriptor it is given.
 	raw.Tun.FileDescriptor = running.tunFd
 	raw.Tun.Device = ""
 	raw.Tun.Stack = mihomoConstant.TunSystem
@@ -429,6 +433,13 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 			}
 		}
 	}(running.mihomoLog)
+	mihomoFd, err := dup(running.tunFd)
+	if err != nil {
+		close(running.mihomoLog)
+		running.mihomoLog = nil
+		return E.Cause(err, "dup tun")
+	}
+	config.General.Tun.FileDescriptor = mihomoFd
 	mihomoExecutor.ApplyConfig(config, true)
 	return nil
 }
