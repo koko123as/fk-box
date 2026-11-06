@@ -126,6 +126,19 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 
 关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `FK-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `FK-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
 
+## 地理数据资源
+
+Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 规则需要地理数据文件。目录与下载校验由 libbox 提供（见 [libbox.md](libbox.md#地理数据)），应用侧参照 FlClash 的 `initGeo` 与资源页：
+
+- 内置：构建时 [app/build.gradle.kts](app/build.gradle.kts) 的 `prepare<变体>GeoAssets` 任务按 [geo-assets.properties](app/geo-assets.properties) 从 `MetaCubeX/meta-rules-dat` release 分支的固定提交下载四个文件，逐个核对 SHA-256，连同 `manifest.json`（提交、提交时间、各文件哈希/大小）放入 APK 的 `assets/geo/`。文件不入库，缓存在 `.gradle/geo-assets/<提交>`。更新固定版本用 `python3 tools/bump_geo_assets.py [提交]`（`--dry-run` 只打印）。
+- 解压：[GeoResources.kt](app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt) 在应用启动（后台）、打开资源页以及 Xray/mihomo 启动前把内置文件解压到 `Libbox.geoDataDir()`，边解压边算 SHA-256，与清单一致才 rename 覆盖。状态记在同目录的 `geo-resources.json`（来源 builtin/download、哈希、数据时间、上次成功检查时间）。规则（`GeoPolicy.shouldExtract`）：文件缺失一定解压；已记录的文件只在其数据时间早于内置提交时间且哈希不同才被替换，所以较新的下载版不会被内置文件覆盖，而应用升级带来的更新内置数据会替换更旧的文件；没有记录的文件（mihomo 自己下载的）按修改时间同样判断。
+- 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.updateGeoResource`，失败保留原文件并显示错误；成功后记为“已下载”。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。
+- 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
+- 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
+- 界面：工具页设置分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
+- 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/flutter/BoxSettingsTest.kt) 覆盖三项设置的校验。
+- APK 体积：内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），APK 中压缩存放；实测增量见下方验证记录。首次解压约占 38 MB 存储。
+
 ## 构建与发布
 
 [app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心，界面为同一模块内的 Kotlin + Jetpack Compose 源码，不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
@@ -145,7 +158,7 @@ Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm6
 
 工作流将已有密钥解码至 `app/release.keystore`，结束时清理，不上传密钥。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
 
-Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及 Compose 源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
+Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及 Compose 源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
 
 `publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
 

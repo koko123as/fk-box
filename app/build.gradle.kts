@@ -1,6 +1,7 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.FileInputStream
 import java.net.HttpURLConnection
 import java.net.URI
@@ -228,7 +229,7 @@ abstract class PrepareGeoAssets : DefaultTask() {
         )
     }
 
-    private fun sha256Of(file: java.io.File): String {
+    private fun sha256Of(file: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { input ->
             val buffer = ByteArray(1 shl 16)
@@ -241,10 +242,10 @@ abstract class PrepareGeoAssets : DefaultTask() {
         return digest.digest().joinToString("") { "%02x".format(it) }
     }
 
-    private fun download(url: String, target: java.io.File) {
+    private fun download(url: String, target: File) {
         var failure: Exception? = null
         repeat(3) { attempt ->
-            val temp = java.io.File(target.parentFile, target.name + ".part")
+            val temp = File(target.parentFile, target.name + ".part")
             try {
                 val connection = URI(url).toURL().openConnection() as HttpURLConnection
                 connection.connectTimeout = 30_000

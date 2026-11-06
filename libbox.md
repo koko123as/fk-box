@@ -72,10 +72,26 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 - `StartOrReloadCoreService(core, content, options)`：sing-box 照旧走 `StartOrReloadService`；Xray/mihomo 先停掉 sing-box 和上一个内核，再经 `PlatformInterface.OpenTun`（即 VpnService.Builder）建 TUN（`172.19.0.1/30`、`fdfe:dcba:9876::1/126`、MTU 9000、DNS `172.19.0.2`，分应用代理沿用设置），把 dup 后的 fd 直接交给内核，不经本地转发。`CloseCoreService` 停止当前内核。
 - 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到 `AutoDetectInterfaceControl`（`VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取当前平台接口。
-- Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；geo 文件目录为 `<工作目录>/cores/xray`。MASQUE 出站经 `internet.DialSystem` 拨号，同样走上述保护钩子。
+- Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；`xray.location.asset` 指向共享地理数据目录（见下文“地理数据”）。MASQUE 出站经 `internet.DialSystem` 拨号，同样走上述保护钩子。
 - 默认日志级别（[core_loglevel.go](libbox/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。
 - 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 规则在 cmfa 模式下取不到进程名；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
+
+### 地理数据
+
+[core_geo.go](libbox/core_geo.go) 参照 FlClash（`core/geo.go`、`defaultGeoXUrl`）为 Xray 和 mihomo 提供同一套地理数据：
+
+| 资源 | 文件 | 默认下载地址 | 校验 |
+| --- | --- | --- | --- |
+| `geoip` | `geoip.dat` | `MetaCubeX/meta-rules-dat` latest `geoip.dat` | protobuf GeoIPList，至少一条带合法 IP 的条目 |
+| `geosite` | `geosite.dat` | 同上 `geosite.dat` | protobuf GeoSiteList，至少一条非空域名 |
+| `mmdb` | `geoip.metadb` | 同上 `geoip.metadb` | MaxMind DB 可打开 |
+| `asn` | `ASN.mmdb` | 同上 `GeoLite2-ASN.mmdb` | MaxMind DB 可打开 |
+
+- 目录：`GeoDataDir()` = `<工作目录>/cores/mihomo`，即 mihomo 的 home（mihomo 按不区分大小写的名字找 `GeoIP.dat`/`GeoSite.dat`/`geoip.metadb`/`ASN.mmdb`）；Xray 启动和 `CheckCoreConfig` 时把 `xray.location.asset` 设为同一目录，读小写的 `geoip.dat`/`geosite.dat`。因此两个内核共用一份文件，mihomo 配置自己的 `geo-auto-update`/`geox-url` 也写入这里。Android 的应用外部目录不支持符号链接，所以不用链接。
+- `UpdateGeoResource(dir, name, url)`：经 libbox HTTP 客户端（与订阅相同，上限 96 MiB，5 分钟超时）下载，按上表校验后写临时文件并 rename 覆盖；下载失败、HTTP 非 200、校验失败都不动原文件。内容与现有文件 SHA-256 相同时返回 `Skipped`。写入后删除大小写不同的旧变体（如 mihomo 下载的 `GeoSite.dat`，大小写不敏感的文件系统上同一文件不删），并清除 mihomo 的 GeoIP/GeoSite 缓存；MMDB/ASN 和 Xray 在内核下次启动时读到新文件。
+- `VerifyGeoResource`、`GeoResourceFileName`、`GeoResourceDefaultURL` 供应用使用。APK 内置副本、解压和自动更新见 [app.md](app.md#地理数据资源)。
+- 测试 [core_geo_test.go](libbox/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML 等错误数据被拒、下载失败/错误内容/非 HTTP 地址保留旧文件且不留临时文件、成功替换与相同内容跳过、旧大小写变体清理。
 
 ### 升级内核
 
