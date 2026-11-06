@@ -70,6 +70,18 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。
 - 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 规则在 cmfa 模式下取不到进程名；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
 
+### 升级内核
+
+一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。
+
+1. `python3 tools/bump_core.py <sing-box|xray|mihomo|libxray> <版本>`（可先加 `--dry-run`）。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写 [version.properties](version.properties)。需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
+2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`。CI 会拦下：
+   - 编译错误：libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
+   - [verify_multicore.py](tools/verify_multicore.py)：sing-box 新增的 StartedService gRPC 方法必须在 `coreStartedService` 中处理，或经审核后写入 [core_grpc_passthrough.txt](libbox/core_grpc_passthrough.txt)。否则 Xray/mihomo 运行时它会打到空闲的 sing-box，返回 `invalid argument`。
+   - `TestCoreInternals*`：Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
+   - `core-module-bumps.txt`：被抬高的共用模块；`github.com/sagernet/sing` 不能变。
+3. 实机检查（CI 测不到）：三个内核分别启动、暂停、互相切换不闪退；切换后 7890 等端口已释放；连接页、流量、IP 检测、网络质量有数据；分流规则命中正常；日志中没有新的 Warn/Error。mihomo 的 TUN 由它自己关闭描述符，所以它拿到的是单独的 dup；升级后如果再次出现无崩溃记录的闪退，先查描述符是否被重复关闭。
+
 ## 新增接口与行为
 
 ### 运行时内存
