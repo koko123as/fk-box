@@ -246,7 +246,9 @@ fun AboutPage(box: BoxController) {
                 Spacer(Modifier.height(8.dp))
                 val links = listOf(
                     Triple(AppGlyphs.code, "Source code", "github.com/koko123as/B-box") to "https://github.com/koko123as/B-box",
-                    Triple(AppGlyphs.cpu, "Core", "sing-box ${box.coreVersion}") to "https://github.com/SagerNet/sing-box",
+                    Triple(AppGlyphs.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
+                    Triple(AppGlyphs.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
+                    Triple(AppGlyphs.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
                     Triple(AppGlyphs.paintbrush, "FlClash interface", "chen08209/FlClash · v0.9.2 · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
                 )
                 Section(title = tr("More"), count = links.size + 1) { index, position ->
