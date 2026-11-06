@@ -12,6 +12,7 @@
 | --- | --- | --- |
 | 排除 legacy 产物 | [libbox-no-legacy.patch](libbox/libbox-no-legacy.patch) | 修改上游 `cmd/internal/build_libbox/main.go`，删除 API 21 AAR 分支及只供该分支使用的 `filterTags` |
 | Android 自动重定向兼容 | [sing-tun-android-ingress.patch](libbox/sing-tun-android-ingress.patch) | 兼容 ingress discard BPF map 的 4/8 字节 value，保留接口归属检查和原值恢复 |
+| TUN 默认 system 栈 | [core_tunstack.go](libbox/core_tunstack.go) | sing-box 配置的 tun 入站未写 `stack`（或写了本构建没有的 `gvisor`/`mixed`）时启动前改为 `system`；显式 `system`/`go` 保留。1.15 默认的 `go` 栈用 mmap 缓冲，不计入 Go 堆，移动端会涨到上 G。该选项 1.15 起弃用、1.17 移除，App 不向用户显示它的弃用提示 |
 | 运行时内存绑定 | [ui_dashboard.go](libbox/ui_dashboard.go) | 读取 Go 运行时内存和 goroutine 数，提供释放内存操作 |
 | HTTP/WebDAV 绑定 | [ui_http.go](libbox/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
 | 订阅获取绑定 | [ui_subscription.go](libbox/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |

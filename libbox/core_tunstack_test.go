@@ -8,22 +8,32 @@ import (
 )
 
 func TestDropUnbuiltTunStack(t *testing.T) {
-	if tun.WithGVisor {
-		t.Skip("built with gVisor")
+	stackOf := func(content string) []any {
+		var root struct {
+			Inbounds []map[string]any `json:"inbounds"`
+		}
+		if err := json.Unmarshal([]byte(dropUnbuiltTunStack(content)), &root); err != nil {
+			t.Fatal(err)
+		}
+		stacks := make([]any, len(root.Inbounds))
+		for i, inbound := range root.Inbounds {
+			stacks[i] = inbound["stack"]
+		}
+		return stacks
 	}
-	in := `{"inbounds":[{"type":"tun","tag":"tun-in","stack":"mixed","mtu":9000},{"type":"mixed","tag":"mixed-in","listen_port":2412}],"outbounds":[{"type":"direct"}]}`
-	var root struct {
-		Inbounds []map[string]any `json:"inbounds"`
+	in := `{"inbounds":[{"type":"tun","tag":"tun-in","mtu":9000},{"type":"mixed","tag":"mixed-in","listen_port":2412}],"outbounds":[{"type":"direct"}]}`
+	if got := stackOf(in); got[0] != "system" || got[1] != nil {
+		t.Fatalf("unset stack: %v", got)
 	}
-	if err := json.Unmarshal([]byte(dropUnbuiltTunStack(in)), &root); err != nil {
-		t.Fatal(err)
+	if !tun.WithGVisor {
+		if got := stackOf(`{"inbounds":[{"type":"tun","stack":"mixed"},{"type":"tun","stack":"gvisor"}]}`); got[0] != "system" || got[1] != "system" {
+			t.Fatalf("unbuilt stack: %v", got)
+		}
 	}
-	if _, ok := root.Inbounds[0]["stack"]; ok || root.Inbounds[0]["mtu"] != float64(9000) || root.Inbounds[1]["type"] != "mixed" {
-		t.Fatalf("unexpected %v", root.Inbounds)
-	}
-	system := `{"inbounds":[{"type":"tun","stack":"system"}]}`
-	if dropUnbuiltTunStack(system) != system || dropUnbuiltTunStack("not json") != "not json" {
-		t.Fatal("must not touch other content")
+	for _, kept := range []string{`{"inbounds":[{"type":"tun","stack":"system"}]}`, `{"inbounds":[{"type":"tun","stack":"go"}]}`, "not json", `{"outbounds":[]}`} {
+		if dropUnbuiltTunStack(kept) != kept {
+			t.Fatalf("must not touch %s", kept)
+		}
 	}
 }
 

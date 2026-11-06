@@ -101,6 +101,9 @@ class DashboardViewModel :
                     val notesList = mutableListOf<DashboardUiState.DeprecatedNote>()
                     while (notes.hasNext()) {
                         val note = notes.next()
+                        // The core adds a tun "stack" itself (system by default), so
+                        // its deprecation is the app's to handle, not the user's.
+                        if (note.name == "tun-stack") continue
                         notesList.add(
                             DashboardUiState.DeprecatedNote(
                                 message = note.message(),
