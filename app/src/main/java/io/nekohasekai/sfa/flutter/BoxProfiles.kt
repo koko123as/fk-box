@@ -219,7 +219,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         }
         UpdateProfileWork.reconfigureUpdater()
         if (profile.id == Settings.selectedProfile && content != oldContent) applySelected(false)
-        profile.id
+        return profile.id
     }
 
     suspend fun update(id: Long) = mutex.withLock {
