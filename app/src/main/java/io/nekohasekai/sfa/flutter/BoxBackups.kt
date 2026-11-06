@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.flutter
 
+import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileContent
@@ -7,13 +8,11 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.RemoteServer
 import io.nekohasekai.sfa.database.RemoteServerManager
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.TypedProfile
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.io.File
-import java.util.Date
 import java.util.UUID
 
 internal class BoxBackups(
@@ -47,7 +46,7 @@ internal class BoxBackups(
             size += file.length()
             require(size <= MAX_BYTES) { "Backup exceeds 64 MiB" }
             val content = file.readText()
-            BoxProfiles.validate(content)
+            ProfileContent.validate(ProfileContent.coreOf(profile, content), content)
             profile.toWire() + mapOf("key" to profileKey(profile, origin), "content" to content)
         }
         val backup = mapOf("format" to "bbox-1", "origin" to origin, "createdAt" to System.currentTimeMillis(),
@@ -80,7 +79,10 @@ internal class BoxBackups(
         require(entries.size <= 1000) { "Backup contains too many profiles" }
         entries.forEach { entry ->
             require((entry["name"] as? String)?.let { it.isNotBlank() && it.length <= 4096 } == true) { "Profile name is required" }
-            BoxProfiles.validate(entry["content"] as? String ?: error("Missing profile content"))
+            ProfileWireFields.validate(entry)
+            val content = entry["content"] as? String ?: error("Missing profile content")
+            // Each profile is checked by the core it declares; old backups declare none (auto).
+            ProfileContent.validate(Libbox.resolveProfileCore(ProfileWireFields.declaredCore(entry), content), content)
             require(entry["url"] == null || entry["url"] is String) { "Invalid profile URL" }
             val url = entry["url"] as? String ?: ""
             if (url.isNotEmpty()) BoxProfiles.validateUrl(url)
@@ -151,11 +153,7 @@ internal class BoxBackups(
                         ProfileContent.write(file, entry["content"] as String)
                         profile.name = (entry["name"] as String).trim()
                         profile.typed.path = file.path
-                        profile.typed.remoteURL = entry["url"] as? String ?: ""
-                        profile.typed.type = if (profile.typed.remoteURL.isEmpty()) TypedProfile.Type.Local else TypedProfile.Type.Remote
-                        profile.typed.autoUpdate = profile.typed.remoteURL.isNotEmpty() && entry["autoUpdate"] == true
-                        profile.typed.autoUpdateInterval = (entry["interval"] as? Number)?.toInt() ?: 60
-                        profile.typed.lastUpdated = Date((entry["updatedAt"] as? Number)?.toLong() ?: 0L)
+                        ProfileWireFields.restore(profile.typed, entry)
                         profile.userOrder = if (strategy == "Override") index.toLong() else existing?.userOrder ?: nextOrder++
                         if (existing == null) ProfileManager.create(profile) else ProfileManager.update(profile)
                         restored.add(profile)
@@ -260,10 +258,8 @@ internal class BoxBackups(
             it as? Map<String, Any?> ?: error("Invalid backup $key")
         }
 
-        private fun copyProfile(profile: Profile) = Profile(profile.id, profile.userOrder, profile.name, profile.icon, TypedProfile().apply {
-            path = profile.typed.path; type = profile.typed.type; remoteURL = profile.typed.remoteURL
-            lastUpdated = Date(profile.typed.lastUpdated.time); autoUpdate = profile.typed.autoUpdate; autoUpdateInterval = profile.typed.autoUpdateInterval
-        })
+        // Every TypedProfile field, so a restore over an existing profile cannot drop its core.
+        private fun copyProfile(profile: Profile) = Profile(profile.id, profile.userOrder, profile.name, profile.icon, profile.typed.copy())
         private fun restoreFile(file: File, original: File) {
             ProfileContent.write(file) { output -> original.inputStream().use { it.copyTo(output) } }
         }
