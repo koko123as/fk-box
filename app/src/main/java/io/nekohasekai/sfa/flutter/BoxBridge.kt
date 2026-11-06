@@ -15,6 +15,9 @@ import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.backend.log.LogViewModel
+import io.nekohasekai.sfa.bg.GeoPolicy
+import io.nekohasekai.sfa.bg.GeoResources
+import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
@@ -188,6 +191,14 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         fun id(key: String = "id"): Long = (args[key] as? Number)?.toLong() ?: error("Missing argument: " + key)
         return when (method) {
             "updates.check" -> withContext(Dispatchers.IO) { BoxUpdates.check() }
+            "geo.list" -> GeoResources.list(activity)
+            "geo.update" -> GeoResources.update(string("name"))
+            "geo.setUrl" -> operations.withLock {
+                GeoResources.setUrl(string("name"), string("url"))
+                withContext(Dispatchers.IO) { Settings.dataStore.flush() }
+                emit("settings", settings())
+                GeoResources.list(activity)
+            }
             "dashboard.egress" -> dashboardDetails.egress(string("id"))
             "dashboard.probe.open" -> { dashboardDetails.openProbe(string("id")); null }
             "dashboard.probe.get" -> dashboardDetails.query(string("id"), string("url"), id("timeoutMillis"))
@@ -518,6 +529,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         "oomKillerEnabled" to Settings.oomKillerEnabled, "oomKillerDisabled" to Settings.oomKillerDisabled,
         "oomMemoryLimitMB" to Settings.oomMemoryLimitMB, "powerReportEnabled" to Settings.powerReportEnabled,
         "queryMode" to Settings.perAppProxyPackageQueryMode,
+        "geoAutoUpdate" to Settings.geoAutoUpdate, "geoUpdateInterval" to Settings.geoUpdateInterval,
+        "geoUrls" to GeoPolicy.decodeUrls(Settings.geoUrls),
         "batteryExempt" to (activity.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(activity.packageName) == true),
     )
 
@@ -594,6 +607,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 Settings.oomMemoryLimitMB = value
             }
             "powerReportEnabled" -> Settings.powerReportEnabled = args["value"] == true
+            "geoAutoUpdate" -> Settings.geoAutoUpdate = args["value"] == true
+            "geoUpdateInterval" -> Settings.geoUpdateInterval = (args["value"] as Number).toInt()
+            "geoUrls" -> Settings.geoUrls = GeoPolicy.encodeUrls((args["value"] as Map<*, *>).entries.associate { it.key as String to it.value as String })
             "queryMode" -> {
                 val value = args["value"] as String
                 require(value in listOf(Settings.PACKAGE_QUERY_MODE_ROOT, Settings.PACKAGE_QUERY_MODE_SHIZUKU))
@@ -606,6 +622,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             Settings.dataStore.flush()
             Application.application.reloadSetupOptions()
         }
+        if (values.keys.any { it == "geoAutoUpdate" || it == "geoUpdateInterval" }) UpdateGeoWork.reconfigure()
         emit("settings", settings())
     }
 

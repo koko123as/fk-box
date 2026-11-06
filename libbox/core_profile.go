@@ -178,9 +178,13 @@ func CheckCoreConfig(core string, content string) error {
 }
 
 // Xray: decode with Xray's own JSON loader and build every outbound and
-// inbound. Routing is only built when its geo files are present, because
-// geosite:/geoip: rules read them while building (assets arrive in phase 4).
+// inbound. Routing and DNS read geosite:/geoip: from the shared geo directory
+// while building; a missing file is only reported at start, since the app
+// extracts its bundled copy before an Xray profile runs.
 func checkXrayConfig(content string) error {
+	if sWorkingPath != "" {
+		_ = os.Setenv("xray.location.asset", GeoDataDir())
+	}
 	config, err := decodeXrayConfig(content)
 	if err != nil {
 		return err
@@ -972,7 +976,7 @@ func MihomoVersion() string {
 	return mihomoCoreVersion()
 }
 
-// geo data directory for Xray (xray.location.asset) and mihomo home.
+// mihomo's home; also the shared geo directory (GeoDataDir) Xray reads.
 func coreAssetDir(workDir string, core string) string {
 	dir := filepath.Join(workDir, "cores", core)
 	_ = os.MkdirAll(dir, 0o755)

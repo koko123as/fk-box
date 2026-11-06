@@ -2,6 +2,10 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import java.io.ByteArrayInputStream
 import java.io.FileInputStream
+import java.net.HttpURLConnection
+import java.net.URI
+import java.security.MessageDigest
+import java.time.Instant
 import java.util.Base64
 import java.util.Properties
 
@@ -174,6 +178,104 @@ android {
             fileName = fileName.replace("-other", "")
             output.outputFileName = fileName
         }
+    }
+}
+
+/**
+ * Bundled geo data for Xray and mihomo (assets/geo, see libbox.md "地理数据"):
+ * the files pinned in geo-assets.properties are downloaded once into a shared
+ * cache, checked against their SHA-256 sums and copied with a manifest the app
+ * reads to decide whether the bundle replaces an installed file.
+ */
+abstract class PrepareGeoAssets : DefaultTask() {
+    @get:InputFile
+    abstract val pins: RegularFileProperty
+
+    @get:Internal
+    abstract val cacheDir: DirectoryProperty
+
+    @get:OutputDirectory
+    abstract val outputDir: DirectoryProperty
+
+    @TaskAction
+    fun prepare() {
+        val props = Properties().apply { pins.get().asFile.inputStream().use { load(it) } }
+        val repository = props.getProperty("GEO_REPOSITORY")
+        val commit = props.getProperty("GEO_COMMIT")
+        val time = Instant.parse(props.getProperty("GEO_TIME")).toEpochMilli()
+        require(Regex("[0-9a-f]{40}").matches(commit)) { "GEO_COMMIT must be a full commit SHA" }
+        val cache = cacheDir.get().asFile.resolve(commit).apply { mkdirs() }
+        val out = outputDir.get().asFile.resolve("geo")
+        out.deleteRecursively()
+        out.mkdirs()
+        val entries = mutableListOf<String>()
+        for (name in listOf("geoip", "geosite", "mmdb", "asn")) {
+            val (source, file, sha256) = props.getProperty(name).split(":")
+            val cached = cache.resolve(file)
+            if (!cached.isFile || sha256Of(cached) != sha256) {
+                download("https://raw.githubusercontent.com/$repository/$commit/$source", cached)
+                val actual = sha256Of(cached)
+                if (actual != sha256) {
+                    cached.delete()
+                    throw GradleException("$source from $repository@$commit has SHA-256 $actual, expected $sha256")
+                }
+            }
+            cached.copyTo(out.resolve(file), overwrite = true)
+            entries += "\"$name\":{\"file\":\"$file\",\"sha256\":\"$sha256\",\"size\":${cached.length()}}"
+        }
+        out.resolve("manifest.json").writeText(
+            "{\"source\":\"$repository\",\"commit\":\"$commit\",\"time\":$time,\"files\":{${entries.joinToString(",")}}}\n",
+        )
+    }
+
+    private fun sha256Of(file: java.io.File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buffer = ByteArray(1 shl 16)
+            while (true) {
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    private fun download(url: String, target: java.io.File) {
+        var failure: Exception? = null
+        repeat(3) { attempt ->
+            val temp = java.io.File(target.parentFile, target.name + ".part")
+            try {
+                val connection = URI(url).toURL().openConnection() as HttpURLConnection
+                connection.connectTimeout = 30_000
+                connection.readTimeout = 120_000
+                connection.instanceFollowRedirects = true
+                try {
+                    if (connection.responseCode != 200) throw GradleException("HTTP ${connection.responseCode} for $url")
+                    connection.inputStream.use { input -> temp.outputStream().use { input.copyTo(it) } }
+                } finally {
+                    connection.disconnect()
+                }
+                if (!temp.renameTo(target)) throw GradleException("Unable to save ${target.name}")
+                return
+            } catch (error: Exception) {
+                temp.delete()
+                failure = error
+                logger.warn("Geo asset download attempt ${attempt + 1} failed: ${error.message}")
+                Thread.sleep(2_000L * (attempt + 1))
+            }
+        }
+        throw GradleException("Unable to download $url", failure)
+    }
+}
+
+androidComponents {
+    onVariants { variant ->
+        val task = tasks.register<PrepareGeoAssets>("prepare${variant.name.replaceFirstChar { it.uppercase() }}GeoAssets") {
+            pins.set(layout.projectDirectory.file("geo-assets.properties"))
+            cacheDir.set(rootProject.layout.projectDirectory.dir(".gradle/geo-assets"))
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(task, PrepareGeoAssets::outputDir)
     }
 }
 

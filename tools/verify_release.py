@@ -1,5 +1,7 @@
 """Verify the signed ARM64 release artifact before upload or publication."""
 
+import hashlib
+import json
 import os
 import re
 import subprocess
@@ -29,6 +31,19 @@ def main():
             packaged = 'assets/' + source.relative_to('app/src/main/assets').as_posix()
             if packaged not in names or apk.read(packaged) != source.read_bytes():
                 raise SystemExit(f'Missing or changed MITM module asset: {packaged}')
+        pins = dict(
+            line.strip().split('=', 1)
+            for line in Path('app/geo-assets.properties').read_text().splitlines()
+            if line.strip() and not line.lstrip().startswith('#') and '=' in line
+        )
+        manifest = json.loads(apk.read('assets/geo/manifest.json')) if 'assets/geo/manifest.json' in names else {}
+        if manifest.get('commit') != pins['GEO_COMMIT']:
+            raise SystemExit('Missing or stale bundled geo manifest')
+        for resource in ('geoip', 'geosite', 'mmdb', 'asn'):
+            _, file, digest = pins[resource].split(':')
+            packaged = f'assets/geo/{file}'
+            if packaged not in names or hashlib.sha256(apk.read(packaged)).hexdigest() != digest:
+                raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
     if abis != {'arm64-v8a'}:
         raise SystemExit(f'Unexpected native ABIs: {abis}')
 

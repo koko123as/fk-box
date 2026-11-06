@@ -15,6 +15,16 @@ class BoxSettingsTest {
     }
 
     @Test
+    fun geoResourceSettingsAreValidated() {
+        val value = mapOf("geoAutoUpdate" to true, "geoUpdateInterval" to 24, "geoUrls" to mapOf("geoip" to "https://example.com/geoip.dat"))
+        assertEquals(value, BoxSettings.validate(value))
+        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUpdateInterval" to 0)) }
+        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUpdateInterval" to 1.5)) }
+        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUrls" to mapOf("geoip" to "file:///sdcard/geoip.dat"))) }
+        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUrls" to mapOf("rules" to "https://example.com/x"))) }
+    }
+
+    @Test
     fun preferencesRejectInventedFeaturesAndMissingStatusCard() {
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("clashScript" to "code")) }
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("hiddenCards" to listOf("Status"))) }

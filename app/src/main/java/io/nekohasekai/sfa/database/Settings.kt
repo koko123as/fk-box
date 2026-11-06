@@ -74,6 +74,12 @@ object Settings {
         else -> "sing-box"
     }
 
+    // Geo resources shared by Xray and mihomo (FlClash's geo-auto-update,
+    // geo-update-interval in hours and geox-url; off and 24 by default).
+    var geoAutoUpdate by dataStore.boolean(SettingsKey.GEO_AUTO_UPDATE) { false }
+    var geoUpdateInterval by dataStore.int(SettingsKey.GEO_UPDATE_INTERVAL) { 24 }
+    var geoUrls by dataStore.string(SettingsKey.GEO_URLS) { "" }
+
     const val PER_APP_PROXY_EXCLUDE = 1
     const val PER_APP_PROXY_INCLUDE = 2
 

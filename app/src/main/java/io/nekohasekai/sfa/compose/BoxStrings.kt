@@ -697,5 +697,15 @@ internal object BoxStrings {
         map["Selected apps bypass the VPN"] = "选中的应用绕过 VPN"
         // A JSON array of configs imported as one profile per config.
         map["Imported %d profiles"] = "已导入 %d 个配置"
+        // Tools › Resources (geo data for Xray and mihomo).
+        map["Geo resources"] = "地理数据"
+        map["Updated"] = "已更新"
+        map["Already up to date"] = "已是最新"
+        map["Download URL"] = "下载地址"
+        map["Not a valid HTTP or HTTPS URL"] = "不是有效的 HTTP 或 HTTPS 地址"
+        map["hours"] = "小时"
+        map["Built in"] = "内置"
+        map["Downloaded"] = "已下载"
+        map["Xray and mihomo share these files. A failed update keeps the current file; changes apply when the core next starts."] = "Xray 和 mihomo 共用这些文件。更新失败时保留现有文件；更新后在内核下次启动时生效。"
     }
 }

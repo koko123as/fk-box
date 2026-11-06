@@ -9,6 +9,11 @@ object SettingsKey {
     const val CORE_XRAY_ENABLED = "core_xray_enabled"
     const val CORE_MIHOMO_ENABLED = "core_mihomo_enabled"
 
+    // Geo resources (Tools › Resources)
+    const val GEO_AUTO_UPDATE = "geo_auto_update"
+    const val GEO_UPDATE_INTERVAL = "geo_update_interval"
+    const val GEO_URLS = "geo_urls"
+
     const val AUTO_REDIRECT = "auto_redirect"
     const val PER_APP_PROXY_ENABLED = "per_app_proxy_enabled"
     const val PER_APP_PROXY_MODE = "per_app_proxy_mode"

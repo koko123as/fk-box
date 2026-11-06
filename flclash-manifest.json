@@ -477,6 +477,61 @@
           "changes": "FEATURE_MITM is disabled by default in this reference. The public FlClash core is not used as an MITM backend."
         }
       ]
+    },
+    {
+      "name": "geo-resources",
+      "repository": "https://github.com/chen08209/FlClash",
+      "commit": "be84736605527034689c95bf27828ff27d912c5e",
+      "relatedCommits": [],
+      "scope": "Geo data (GeoIP, GeoSite, MMDB, ASN) bundling, update and Resources page design for the Xray and mihomo cores; the overall UI, Android and core baselines stay unchanged. No FlClash source or data file is copied. Local paths are relative to the repository root.",
+      "files": [
+        {
+          "source": "lib/views/resources.dart",
+          "sourceSHA256": "9c61d1b0ec19d8a1a5f8ba9084a90f03ad1b36d547e7aad3b4f2da8101c36b40",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt"
+          ],
+          "changes": "Auto update toggle, interval in hours, geo rows with size, last update, single update, URL edit with reset to default and copy link translated to Compose. Icon sets, rule providers, scripts and MITM modules are not carried over; the source (built in or downloaded) is shown beside the time."
+        },
+        {
+          "source": "lib/providers/actions/geo_resource.dart",
+          "sourceSHA256": "66a3de82fe37bcaf93913bbea075b0789581a2cb1972918e84fc0a5eff705d08",
+          "usage": "design",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt"
+          ],
+          "changes": "Per-resource update with a failure banner and URL validation; updates run in the app through libbox instead of the mihomo core's updater."
+        },
+        {
+          "source": "lib/core/controller.dart",
+          "sourceSHA256": "b3081913410994fa61aeea22eb0b5d3b88bbe1b34e9724a814c226e3e1d99dd4",
+          "usage": "design",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt"
+          ],
+          "changes": "initGeo extracts bundled assets into the core home; FK-box also replaces a bundled or downloaded file older than a newer bundle, never a newer download, and checks each extraction against the build's SHA-256."
+        },
+        {
+          "source": "lib/models/clash_config.dart",
+          "sourceSHA256": "84c3e49046785166334f5a3c99e3abdb22badd262f6a50268e5f815edc8a36f4",
+          "usage": "design",
+          "localPaths": [
+            "libbox/core_geo.go",
+            "app/geo-assets.properties"
+          ],
+          "changes": "defaultGeoXUrl (MetaCubeX/meta-rules-dat latest) kept as the default URLs; geo-auto-update off and geo-update-interval 24 hours kept as defaults. The bundled copy is pinned to a meta-rules-dat release-branch commit and verified by SHA-256 at build time instead of being committed."
+        },
+        {
+          "source": "core/geo.go",
+          "sourceSHA256": "abbc7ee2b7dc9df49a780dc8aa1fcbc25fdd43c3f17c115a72ba55547116acfb",
+          "usage": "design",
+          "localPaths": [
+            "libbox/core_geo.go"
+          ],
+          "changes": "Same four resources and parser checks as mihomo's updater (protobuf GeoIP/GeoSite, MaxMind DB); the file is written beside the target and renamed so a failed download keeps the old file."
+        }
+      ]
     }
   ],
   "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation. Local paths under files/adaptedFiles name the former flutter/ tree (see Git history before the removal); their Compose translations live in app/src/main/java/io/nekohasekai/sfa/compose."

@@ -277,7 +277,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         // The libbox lifecycle prepares the rules/CA, starts the core, then
         // activates profile processing before reporting startup success.
         // Xray and mihomo get the VpnService TUN fd directly (CommandServer.startOrReloadCoreService).
-        if (core != TypedProfile.CORE_SING_BOX) DefaultNetworkMonitor.pushSystemDNS()
+        if (core != TypedProfile.CORE_SING_BOX) {
+            // geoip.dat / geosite.dat / MMDB / ASN come from the APK until downloaded.
+            GeoResources.ensureBundledBlocking(service)
+            DefaultNetworkMonitor.pushSystemDNS()
+        }
         commandServer.startOrReloadCoreService(core, content, overrides)
     }
 

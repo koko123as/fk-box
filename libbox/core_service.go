@@ -299,7 +299,8 @@ func startXrayCore(running *runningCore, content string) error {
 		return err
 	}
 	_ = os.Setenv(xrayPlatform.TunFdKey, strconv.Itoa(running.tunFd))
-	_ = os.Setenv("xray.location.asset", coreAssetDir(sWorkingPath, CoreXray))
+	// geoip.dat / geosite.dat: the shared geo directory (core_geo.go).
+	_ = os.Setenv("xray.location.asset", GeoDataDir())
 	config, err := xraySerial.LoadJSONConfig(strings.NewReader(string(encoded)))
 	if err != nil {
 		return err

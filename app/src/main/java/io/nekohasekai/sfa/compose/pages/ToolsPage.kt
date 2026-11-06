@@ -110,11 +110,12 @@ fun ToolsPage(box: BoxController) {
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppGlyphs.proxies) { RemotePage(box) }
             }
         }
-        Section(title = tr("Settings"), count = 4) { index, position ->
+        Section(title = tr("Settings"), count = 5) { index, position ->
             when (index) {
                 0 -> ListItemOpen(tr("Appearance"), position, leading = AppGlyphs.paintbrush) { AppearancePage(box) }
                 1 -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { GeneralSettingsPage(box) }
                 2 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { AccessPage(box) }
+                3 -> ListItemOpen(tr("Resources"), position, leading = AppGlyphs.resources) { ResourcesPage(box) }
                 else -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { BackupPage(box) }
             }
         }
