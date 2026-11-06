@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.utils
 
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.unwrap
 import java.io.Closeable
 import java.util.Locale
@@ -16,8 +17,9 @@ class HTTPClient : Closeable {
             userAgent
         }
 
-        fun userAgentFor(core: String): String = when (core) {
-            "xray", "mihomo" -> Libbox.coreSubscriptionUserAgent(core, "")
+        fun userAgentFor(core: String): String = when (if (core == "auto" || core.isEmpty()) Settings.autoFetchCore() else core) {
+            "xray" -> Libbox.coreSubscriptionUserAgent("xray", "")
+            "mihomo" -> Libbox.coreSubscriptionUserAgent("mihomo", "")
             else -> userAgent
         }
     }

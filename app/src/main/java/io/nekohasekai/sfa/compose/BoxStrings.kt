@@ -496,6 +496,8 @@ internal object BoxStrings {
         map["Apply"] = "应用"
         map["Later"] = "稍后"
         map["Core"] = "内核"
+        map["Cores"] = "内核"
+        map["A core that is off is skipped when choosing automatically, and profiles that need it will not start."] = "关闭的内核不会被自动选择，需要它的配置也无法启动。"
         map["Core version"] = "内核版本"
         map["Disable deprecation warnings"] = "关闭弃用警告"
         map["Memory limit"] = "内存限制"

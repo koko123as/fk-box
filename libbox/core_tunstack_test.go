@@ -26,3 +26,20 @@ func TestDropUnbuiltTunStack(t *testing.T) {
 		t.Fatal("must not touch other content")
 	}
 }
+
+func TestConvertCoreShareLinksEnabled(t *testing.T) {
+	link := "vless://a219bbfa-3a4a-4e24-a5e4-a4bdd2eb647d@example.com:443?encryption=none&type=ws&path=%2Fws&host=example.com&security=tls&sni=example.com#node"
+	for enabled, want := range map[string]string{"sing-box,xray,mihomo": CoreSingBox, "xray,mihomo": CoreMihomo, "xray": CoreXray} {
+		profile, err := ConvertCoreShareLinksEnabled(CoreAuto, enabled, link)
+		if err != nil {
+			t.Fatal(enabled, err)
+		}
+		if profile.Core != want {
+			t.Fatalf("%s: got %s want %s", enabled, profile.Core, want)
+		}
+	}
+	xhttp := "vless://a219bbfa-3a4a-4e24-a5e4-a4bdd2eb647d@example.com:443?encryption=none&type=xhttp&path=%2Fx&security=tls&sni=example.com#x"
+	if _, err := ConvertCoreShareLinksEnabled(CoreAuto, "sing-box,mihomo", xhttp); err == nil {
+		t.Fatal("xhttp must need Xray")
+	}
+}

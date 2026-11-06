@@ -302,6 +302,43 @@ func ConvertCoreShareLinks(content string) (*UICoreProfile, error) {
 	return ConvertCoreShareLinksFor(CoreAuto, content)
 }
 
+// ConvertCoreShareLinksEnabled converts share links like ConvertCoreShareLinksFor,
+// but for auto it only picks from enabled (comma-separated cores the user left
+// on): xhttp links need Xray; others prefer sing-box, then mihomo, then Xray.
+func ConvertCoreShareLinksEnabled(core string, enabled string, content string) (*UICoreProfile, error) {
+	if core != "" && core != CoreAuto {
+		return ConvertCoreShareLinksFor(core, content)
+	}
+	on := map[string]bool{}
+	for _, item := range strings.Split(enabled, ",") {
+		on[strings.TrimSpace(item)] = true
+	}
+	text := normalizeCoreContent(content)
+	if !isShareLinks(text) {
+		if decoded, err := mihomoConvert.TryDecodeBase64(text); err == nil {
+			text = normalizeCoreContent(string(decoded))
+		}
+	}
+	proxies, err := mihomoConvert.ConvertsV2Ray([]byte(text))
+	if err != nil {
+		return nil, err
+	}
+	for _, proxy := range proxies {
+		if network, _ := proxy["network"].(string); xrayOnlyNetworks[network] {
+			if !on[CoreXray] {
+				return nil, fmt.Errorf("these nodes use %s, which only Xray supports, and the Xray core is turned off", network)
+			}
+			return ConvertCoreShareLinksFor(CoreXray, content)
+		}
+	}
+	for _, candidate := range []string{CoreSingBox, CoreMihomo, CoreXray} {
+		if on[candidate] {
+			return ConvertCoreShareLinksFor(candidate, content)
+		}
+	}
+	return nil, fmt.Errorf("every core is turned off")
+}
+
 // ConvertCoreShareLinksFor converts share links for a profile whose core the
 // user chose; auto picks as ConvertCoreShareLinks does.
 func ConvertCoreShareLinksFor(core string, content string) (*UICoreProfile, error) {

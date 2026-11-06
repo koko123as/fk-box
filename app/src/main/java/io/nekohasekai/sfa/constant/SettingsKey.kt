@@ -5,6 +5,9 @@ object SettingsKey {
     const val SERVICE_MODE = "service_mode"
     const val DYNAMIC_NOTIFICATION = "dynamic_notification"
     const val DISABLE_DEPRECATED_WARNINGS = "disable_deprecated_warnings"
+    const val CORE_SING_BOX_ENABLED = "core_sing_box_enabled"
+    const val CORE_XRAY_ENABLED = "core_xray_enabled"
+    const val CORE_MIHOMO_ENABLED = "core_mihomo_enabled"
 
     const val AUTO_REDIRECT = "auto_redirect"
     const val PER_APP_PROXY_ENABLED = "per_app_proxy_enabled"

@@ -215,6 +215,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             }
             "ready" -> mapOf(
                 "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
+                "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
                 "systemAccentColor" to systemAccentColor(),
                 "dashboard" to dashboard.uiState.value.toWire(),
                 "profiles" to withContext(Dispatchers.IO) { profiles.list() },
@@ -507,6 +508,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         "perAppManagedList" to Settings.perAppProxyManagedList.toList(),
         "allowBypass" to Settings.allowBypass, "autoRedirect" to Settings.autoRedirect,
         "dynamicNotification" to Settings.dynamicNotification, "disableDeprecatedWarnings" to Settings.disableDeprecatedWarnings,
+        "singBoxEnabled" to Settings.singBoxEnabled, "xrayEnabled" to Settings.xrayEnabled, "mihomoEnabled" to Settings.mihomoEnabled,
         "oomKillerEnabled" to Settings.oomKillerEnabled, "oomKillerDisabled" to Settings.oomKillerDisabled,
         "oomMemoryLimitMB" to Settings.oomMemoryLimitMB, "powerReportEnabled" to Settings.powerReportEnabled,
         "queryMode" to Settings.perAppProxyPackageQueryMode,
@@ -566,6 +568,18 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             "autoRedirect" -> Settings.autoRedirect = args["value"] == true
             "dynamicNotification" -> Settings.dynamicNotification = args["value"] == true
             "disableDeprecatedWarnings" -> Settings.disableDeprecatedWarnings = args["value"] == true
+            "singBoxEnabled", "xrayEnabled", "mihomoEnabled" -> {
+                val value = args["value"] == true
+                val next = mapOf(
+                    "singBoxEnabled" to Settings.singBoxEnabled, "xrayEnabled" to Settings.xrayEnabled, "mihomoEnabled" to Settings.mihomoEnabled,
+                ) + (key to value)
+                require(next.values.any { it }) { "Keep at least one core turned on" }
+                when (key) {
+                    "singBoxEnabled" -> Settings.singBoxEnabled = value
+                    "xrayEnabled" -> Settings.xrayEnabled = value
+                    else -> Settings.mihomoEnabled = value
+                }
+            }
             "oomKillerEnabled" -> Settings.oomKillerEnabled = args["value"] == true
             "oomKillerDisabled" -> Settings.oomKillerDisabled = args["value"] == true
             "oomMemoryLimitMB" -> {

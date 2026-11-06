@@ -30,12 +30,13 @@ internal object ProfileContent {
     fun prepare(declaredCore: String, content: String): Prepared {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
         val prepared = if (Libbox.detectCoreConfig(content) == Libbox.CoreLinks) {
-            val converted = Libbox.convertCoreShareLinksFor(declaredCore, content)
+            val converted = Libbox.convertCoreShareLinksEnabled(declaredCore, Settings.enabledCores(), content)
             Prepared(converted.core, converted.content)
         } else {
             val core = Libbox.resolveProfileCore(declaredCore, content)
             Prepared(core, if (core == TypedProfile.CORE_SING_BOX) Libbox.removeUIRetiredCaptureOptions(content) else content)
         }
+        Settings.requireCoreEnabled(prepared.core)
         validate(prepared.core, prepared.content)
         return prepared
     }

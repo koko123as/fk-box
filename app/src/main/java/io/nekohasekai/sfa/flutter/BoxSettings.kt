@@ -4,7 +4,7 @@ package io.nekohasekai.sfa.flutter
 internal object BoxSettings {
     private val booleans = setOf(
         "perAppEnabled", "perAppManaged", "allowBypass", "autoRedirect", "dynamicNotification",
-        "disableDeprecatedWarnings", "oomKillerEnabled", "oomKillerDisabled", "powerReportEnabled",
+        "disableDeprecatedWarnings", "singBoxEnabled", "xrayEnabled", "mihomoEnabled", "oomKillerEnabled", "oomKillerDisabled", "powerReportEnabled",
     )
 
     fun validate(values: Map<String, Any?>): Map<String, Any?> {

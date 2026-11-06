@@ -71,6 +71,8 @@ class BoxController(private val bridge: BoxBridge) {
         private set
     var version by mutableStateOf("")
     var coreVersion by mutableStateOf("")
+    var xrayVersion by mutableStateOf("")
+    var mihomoVersion by mutableStateOf("")
     var systemAccentColor by mutableStateOf(0xff007aff.toInt())
     var sampleRevision by mutableIntStateOf(0)
     var profilesRevision by mutableIntStateOf(0)
@@ -183,6 +185,8 @@ class BoxController(private val bridge: BoxBridge) {
                 val result = json(call("ready"))
                 version = result["version"] as? String ?: ""
                 coreVersion = result["coreVersion"] as? String ?: ""
+                xrayVersion = result["xrayVersion"] as? String ?: ""
+                mihomoVersion = result["mihomoVersion"] as? String ?: ""
                 systemAccentColor = result["systemAccentColor"].asLong()?.toInt() ?: 0xff007aff.toInt()
                 dashboard = json(result["dashboard"])
                 profiles = rows(result["profiles"])

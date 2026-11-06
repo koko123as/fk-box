@@ -155,9 +155,27 @@ private fun ServiceSettingsPage(box: BoxController) {
 private fun CoreSettingsPage(box: BoxController) {
     val scope = rememberCoroutineScope()
     BoxPage("Core") {
-        Section(count = 6) { index, position ->
-            when (index) {
-                0 -> ListItem(title = { Text(tr("Core version")) }, subtitle = { Text(box.coreVersion) }, position = position)
+        // One switch per linked core, with its version; a core that is off is
+        // skipped by auto and refuses to start. The last one cannot go off.
+        val cores = listOf(
+            Triple("sing-box", "singBoxEnabled", box.coreVersion),
+            Triple("Xray", "xrayEnabled", box.xrayVersion),
+            Triple("mihomo", "mihomoEnabled", box.mihomoVersion),
+        )
+        Section(title = tr("Cores"), count = cores.size, footer = tr("A core that is off is skipped when choosing automatically, and profiles that need it will not start.")) { index, position ->
+            val (name, setting, version) = cores[index]
+            val on = box.settings[setting] != false
+            val lastOn = on && cores.count { box.settings[it.second] != false } == 1
+            ListItemToggle(
+                name,
+                on,
+                position,
+                subtitle = version.ifEmpty { null },
+                onChanged = if (box.serviceSettingsChanging || lastOn) null else ({ value -> scope.launch { box.setSetting(setting, value, restart = false) } }),
+            )
+        }
+        Section(count = 5) { index, position ->
+            when (index + 1) {
                 1 -> NativeToggle(box, "Disable deprecation warnings", "disableDeprecatedWarnings", position, restart = false)
                 2 -> NativeToggle(box, "Enable memory protection", "oomKillerEnabled", position)
                 3 -> NativeToggle(box, "Disable core memory killer", "oomKillerDisabled", position)

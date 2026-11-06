@@ -256,6 +256,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private fun startOrReloadCore(content: String, declaredCore: String) = synchronized(MitmCertificate.accessLock) {
         val core = Libbox.resolveProfileCore(declaredCore, content)
+        Settings.requireCoreEnabled(core)
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
