@@ -79,15 +79,47 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
 
     private fun memory(): Map<String, Any?> {
         if (CommandTarget.isRemote) return mapOf("remote" to true, "total" to remoteMemory, "core" to remoteMemory)
-        val rss = File("/proc/self/status").useLines { lines -> lines.firstOrNull { it.startsWith("VmRSS:") }
-            ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024) ?: 0L }
+        val status = File("/proc/self/status").useLines { lines -> lines.filter { it.startsWith("VmRSS:") || it.startsWith("Rss") }
+            .associate { it.substringBefore(':') to (it.substringAfter(':').trim().substringBefore(' ').toLongOrNull()?.times(1024) ?: 0L) } }
+        val rss = status["VmRSS"] ?: 0L
+        // Where the app side goes, as dumpsys meminfo's App Summary splits it.
+        val info = android.os.Debug.MemoryInfo().also { android.os.Debug.getMemoryInfo(it) }
+        fun stat(name: String) = info.getMemoryStat("summary.$name")?.toLongOrNull()?.times(1024)
         val running = activity.serviceStatus.value == Status.Started
         val core = if (running) Libbox.readUIRuntimeMemory() else null
         val accounted = core?.total ?: 0L
         return mapOf("total" to maxOf(rss, accounted), "rss" to rss, "app" to maxOf(0L, rss - accounted), "core" to accounted,
             "remote" to false, "running" to running, "heapInuse" to core?.heapInuse, "heapIdle" to core?.heapIdle,
-            "stack" to core?.stackInuse, "runtimeOther" to core?.runtimeOther, "goroutines" to core?.goroutines)
+            "stack" to core?.stackInuse, "runtimeOther" to core?.runtimeOther, "goroutines" to core?.goroutines,
+            "rssAnon" to status["RssAnon"], "rssFile" to status["RssFile"], "rssShmem" to status["RssShmem"],
+            "javaHeap" to stat("java-heap"), "nativeHeap" to stat("native-heap"), "code" to stat("code"),
+            "appStack" to stat("stack"), "graphics" to stat("graphics"), "privateOther" to stat("private-other"),
+            "system" to stat("system"), "mappings" to topMappings())
     }
+
+    /** The largest resident mappings by name, from /proc/self/smaps, for finding what outgrows the Go heap. */
+    private fun topMappings(): List<Map<String, Any>> = runCatching {
+        val sizes = HashMap<String, Long>()
+        val header = Regex("^[0-9a-f]+-[0-9a-f]+ ")
+        val spaces = Regex("\\s+")
+        var name = ""
+        File("/proc/self/smaps").forEachLine { line ->
+            if (header.containsMatchIn(line)) {
+                val fields = line.trim().split(spaces, limit = 6)
+                name = fields.getOrNull(5)?.trim()?.let { path ->
+                    when {
+                        path.startsWith("[anon:dalvik-") -> "[anon:dalvik-" + path.removePrefix("[anon:dalvik-").substringBefore(' ').substringBefore(']') + "]"
+                        path.startsWith("/") -> path.substringAfterLast('/')
+                        else -> path
+                    }
+                }?.ifEmpty { null } ?: "[anonymous]"
+            } else if (line.startsWith("Rss:")) {
+                val kb = line.substringAfter(':').trim().substringBefore(' ').toLongOrNull() ?: 0L
+                sizes[name] = (sizes[name] ?: 0L) + kb * 1024
+            }
+        }
+        sizes.entries.sortedByDescending { it.value }.take(12).map { mapOf("name" to it.key, "rss" to it.value) }
+    }.getOrDefault(emptyList())
 
     @Suppress("DEPRECATION")
     private suspend fun network(): Map<String, Any?> {

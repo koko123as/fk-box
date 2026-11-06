@@ -626,7 +626,16 @@ private fun MemoryDetails(box: BoxController) {
             style = ListStyles.caption,
         )
         if (memory["remote"] != true) {
-            val appRows = listOf("Process RSS" to (memory["rss"] as? Number ?: 0), "App and shared memory" to (memory["app"] as? Number ?: 0))
+            val appRows = listOf("Process RSS" to (memory["rss"] as? Number ?: 0), "App and shared memory" to (memory["app"] as? Number ?: 0)) +
+                listOf(
+                    "rssAnon" to "Anonymous RSS", "rssFile" to "File-backed RSS", "rssShmem" to "Shared memory RSS",
+                    "javaHeap" to "Java heap", "nativeHeap" to "Native heap", "graphics" to "Graphics",
+                    "code" to "Code", "appStack" to "App stack", "privateOther" to "Other private", "system" to "System memory",
+                ).mapNotNull { (key, label) -> (memory[key] as? Number)?.let { label to it } } +
+                (memory["mappings"] as? List<*>).orEmpty().mapNotNull { row ->
+                    val entry = row as? Map<*, *> ?: return@mapNotNull null
+                    "\u2022 ${entry["name"]}" to (entry["rss"] as? Number ?: return@mapNotNull null)
+                }
             Section(title = tr("App"), count = appRows.size) { index, position ->
                 ListItem(title = { Text(tr(appRows[index].first)) }, trailing = { Text(bytes(appRows[index].second)) }, position = position)
             }
