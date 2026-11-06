@@ -9,7 +9,7 @@
 | 仓库 | [koko123as/fk-box](https://github.com/koko123as/fk-box)（`main`；直接前身 [giturass/B-box](https://github.com/giturass/B-box)，经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入并保留完整历史） |
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
-| FK-box 版本 / versionCode | `1.15.0-alpha.14` / `748`，以 [version.properties](version.properties) 为准 |
+| FK-box 版本 / versionCode | `1.15.0-alpha.15` / `749`，以 [version.properties](version.properties) 为准 |
 | 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
 | 源码 namespace / 包路径 | `io.nekohasekai.sfa` |
