@@ -87,13 +87,22 @@ android {
             keyAlias = getProps("ALIAS_NAME")
             keyPassword = getProps("ALIAS_PASS")
         }
+        // Fixed key for test builds without the release key, so each CI debug
+        // APK installs over the last one. Debug-only and public on purpose.
+        create("ciDebug") {
+            storeFile = file("debug-ci.p12")
+            storeType = "pkcs12"
+            storePassword = "android"
+            keyAlias = "fkboxdebug"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
         debug {
-            if (getProps("KEYSTORE_PASS").isNotEmpty()) {
-                signingConfig = signingConfigs.getByName("release")
-            }
+            signingConfig = signingConfigs.getByName(if (getProps("KEYSTORE_PASS").isNotEmpty()) "release" else "ciDebug")
+            // CI debug builds carry their commit, shown in About, so a test APK is identifiable.
+            System.getenv("GITHUB_SHA")?.take(7)?.let { versionNameSuffix = "-$it" }
         }
         release {
             isMinifyEnabled = true

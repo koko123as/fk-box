@@ -59,7 +59,7 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: FK-box-${{ steps.core.outputs.version }}-arm64-v8a-debug
+          name: FK-box-${{ steps.core.outputs.version }}-${{ github.sha }}-arm64-v8a-debug
           path: app/build/outputs/apk/other/debug/*.apk
           if-no-files-found: error
           compression-level: 0

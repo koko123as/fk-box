@@ -20,6 +20,8 @@ local.properties
 *.jks
 *.p12
 *.keystore
+# Public CI debug key (see app/build.gradle.kts ciDebug)
+!/app/debug-ci.p12
 
 # Retired capture helper; keep stale local binaries out of version control
 /app/src/main/jniLibs/**/libbbox_capture.so
