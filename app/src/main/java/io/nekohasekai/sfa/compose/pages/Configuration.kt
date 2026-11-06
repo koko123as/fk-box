@@ -462,7 +462,7 @@ fun LogConfigPage(store: ProfileConfigStore) {
             when (index) {
                 0 -> ListItemToggle(tr("Enable logging"), store.value(listOf("log", "disabled")) != true, position) { store.launchSet(listOf("log", "disabled"), !it) }
                 1 -> ListItemOptions(
-                    tr("Log level"), listOf("trace", "debug", "info", "warn", "error", "fatal", "panic"), store.value(listOf("log", "level")) as? String ?: "info", position,
+                    tr("Log level"), listOf("trace", "debug", "info", "warn", "error", "fatal", "panic"), store.value(listOf("log", "level")) as? String ?: "warn", position,
                     textOf = { t(capitalized(it)) },
                     onChanged = { store.launchSet(listOf("log", "level"), it) },
                 )

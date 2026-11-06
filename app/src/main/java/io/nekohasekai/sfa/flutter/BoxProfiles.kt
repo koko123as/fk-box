@@ -5,10 +5,12 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Profile
+import io.nekohasekai.sfa.database.ProfileArray
 import io.nekohasekai.sfa.database.ProfileChange
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.database.SubscriptionFetch
 import io.nekohasekai.sfa.database.SubscriptionMetadata
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.metadataAfter
@@ -110,7 +112,34 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         )
     }
 
-    suspend fun save(args: Map<String, Any?>): Long = mutex.withLock {
+    suspend fun save(args: Map<String, Any?>): Long = mutex.withLock { saveLocked(args) }
+
+    /**
+     * Creates one local profile per entry of a split JSON array of configs
+     * ([decode]/[decodeText] return them as "entries"). Every entry is checked first, so a
+     * bad element saves nothing. Returns the new profile ids in order.
+     */
+    suspend fun saveAll(args: Map<String, Any?>): List<Long> = mutex.withLock {
+        val declaredCore = (args["core"] as? String) ?: TypedProfile.CORE_AUTO
+        require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
+        val entries = (args["entries"] as? List<*>).orEmpty().map { item ->
+            val entry = item as? Map<*, *> ?: error("Invalid configuration entry")
+            ProfileArray.Entry(entry["name"] as? String ?: "", entry["content"] as? String ?: "", entry["core"] as? String ?: "")
+        }
+        require(entries.isNotEmpty()) { "No configurations to import" }
+        entries.forEachIndexed { index, entry ->
+            require(entry.name.isNotBlank()) { "Configuration ${index + 1} has no name" }
+            runCatching { ProfileContent.prepare(declaredCore, entry.content) }.onFailure {
+                throw IllegalArgumentException("Configuration ${index + 1} (${entry.name}): ${it.message}", it)
+            }
+        }
+        entries.map { entry -> saveLocked(mapOf("name" to entry.name, "content" to entry.content, "core" to declaredCore)) }
+    }
+
+    /** One element of a split array, with the fetch it came from (null for local content). */
+    private class ArrayElement(val fetch: SubscriptionFetch?)
+
+    private suspend fun saveLocked(args: Map<String, Any?>, element: ArrayElement? = null): Long {
         val id = (args["id"] as? Number)?.toLong() ?: 0L
         val profile = if (id == 0L) Profile() else get(id)
         val name = (args["name"] as? String)?.trim().orEmpty()
@@ -122,7 +151,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         val declaredCore = (args["core"] as? String) ?: profile.typed.core
         require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
         // A newly created remote profile takes the provider's headers from its first fetch.
-        val fetched = if (args["content"] !is String && id == 0L && url.isNotEmpty()) {
+        val fetched = if (element != null) element.fetch else if (args["content"] !is String && id == 0L && url.isNotEmpty()) {
             HTTPClient().use { it.getSubscription(url, declaredCore) }
         } else {
             null
@@ -135,6 +164,16 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             // An empty local profile starts on its own core, or the first core
             // left on when auto (so turning sing-box off never blocks creation).
             emptyProfileContent(if (declaredCore == TypedProfile.CORE_AUTO) Settings.autoFetchCore() else declaredCore)
+        }
+        if (id == 0L && element == null) {
+            // A JSON array of configs becomes one profile per element; a subscription URL is
+            // shared by all of them, and each update keeps following its own element.
+            ProfileContent.splitArray(incomingContent)?.let { elements ->
+                val entries = ProfileContent.prepareArray(declaredCore, name, elements)
+                return entries.map { entry ->
+                    saveLocked(args + mapOf("name" to entry.name, "content" to entry.content), ArrayElement(fetched))
+                }.first()
+            }
         }
         val prepared = ProfileContent.prepare(declaredCore, incomingContent)
         val content = prepared.content
@@ -211,8 +250,28 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         ProfileManager.update(ids.mapIndexed { index, id -> byId.getValue(id).apply { userOrder = index.toLong() } })
     }
 
+    /**
+     * A JSON array of configs, split for [saveAll]: "entries" holds one name/content/core per
+     * element, already checked by its core. Null when [text] is not such an array.
+     */
+    private fun decodeArray(text: String, source: String): Map<String, Any?>? {
+        val elements = ProfileContent.splitArray(text) ?: return null
+        val entries = ProfileContent.prepareArray(TypedProfile.CORE_AUTO, source, elements)
+        return mapOf("name" to source, "core" to TypedProfile.CORE_AUTO,
+            "entries" to entries.map { mapOf("name" to it.name, "content" to it.content, "core" to it.core) })
+    }
+
+    /** Pasted or scanned text: a JSON array of configs is split, anything else is prepared as one profile. */
+    fun decodeText(text: String, name: String): Map<String, Any?> {
+        decodeArray(text, name)?.let { return it }
+        val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
+        return mapOf("name" to name, "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
+            "detectedCore" to prepared.core)
+    }
+
     fun decode(data: ByteArray, name: String): Map<String, Any?> {
         val text = data.toString(Charsets.UTF_8)
+        decodeArray(text, name.substringBeforeLast('.'))?.let { return it }
         val detected = Libbox.detectCoreConfig(text)
         if (text.trimStart().startsWith("{") || detected == Libbox.CoreMihomo || detected == Libbox.CoreLinks) {
             val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)

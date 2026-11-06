@@ -695,5 +695,7 @@ internal object BoxStrings {
         map["Access control is disabled"] = "应用访问控制未开启"
         map["Only selected apps use the VPN"] = "仅选中的应用使用 VPN"
         map["Selected apps bypass the VPN"] = "选中的应用绕过 VPN"
+        // A JSON array of configs imported as one profile per config.
+        map["Imported %d profiles"] = "已导入 %d 个配置"
     }
 }

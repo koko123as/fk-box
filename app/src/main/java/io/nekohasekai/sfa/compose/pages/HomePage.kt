@@ -76,6 +76,7 @@ fun HomePage(box: BoxController) {
     val fade = box.preferences["tabAnimation"] == "fade"
     val floating = box.preferences["floatingNavigation"] != false
     val navigator = LocalBoxNavigator.current
+    val importedMessage = tr("Imported %d profiles")
     val select: (Int) -> Unit = { next ->
         if (next != index) {
             previous = index
@@ -99,7 +100,7 @@ fun HomePage(box: BoxController) {
                         continue
                     }
                     val data = io.nekohasekai.sfa.compose.json(box.call("profiles.decodeIntent", mapOf("uri" to uri)))
-                    navigator?.openForm { ProfileForm(box, data) }
+                    openImported(box, navigator, data, importedMessage)
                 } catch (error: kotlinx.coroutines.CancellationException) {
                     throw error
                 } catch (error: Exception) {

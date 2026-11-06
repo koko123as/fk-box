@@ -263,6 +263,14 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 publishProfiles()
                 saved
             }
+            "profiles.saveAll" -> localProfiles {
+                val saved = profiles.saveAll(args)
+                publishProfiles()
+                saved
+            }
+            "profiles.decodeText" -> withContext(Dispatchers.IO) {
+                profiles.decodeText(string("content"), args["name"] as? String ?: "Imported profile")
+            }
             "profiles.update" -> localProfiles {
                 profiles.update(id())
                 publishProfiles()

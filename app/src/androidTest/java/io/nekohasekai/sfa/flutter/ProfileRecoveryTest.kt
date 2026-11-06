@@ -429,8 +429,8 @@ class ProfileRecoveryTest {
 
     @Test fun logLevelFollowsSuccessfulConfigurationReloads() = withRunningProfile { activity, profiles, id ->
         val logs = withContext(Dispatchers.Main) { ViewModelProvider(activity)[LogViewModel::class.java] }
-        // The matching core defaults to trace when log.level is omitted.
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.TRACE } }
+        // libbox runs every core at warn when the profile omits log.level.
+        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
         for ((configured, expected) in listOf("warn" to LogLevel.WARNING, "debug" to LogLevel.DEBUG, "info" to LogLevel.INFO)) {
             val previous = profiles.read(id)
             profiles.writeContent(id, """{"log":{"level":"$configured"}}""", BoxProfiles.revision(previous))
@@ -438,7 +438,7 @@ class ProfileRecoveryTest {
             withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == expected } }
         }
         profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.TRACE } }
+        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
     }
 
     @Test fun lanCacheTracksEqualSizeWritesSuccessfulReloadsAndRecovery() = withRunningProfile { activity, profiles, id ->

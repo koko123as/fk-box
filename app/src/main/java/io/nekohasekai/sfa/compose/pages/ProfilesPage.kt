@@ -384,8 +384,24 @@ suspend fun decodeImport(box: BoxController, text: String): Json {
     if (text.startsWith("https://") || text.startsWith("http://") || text.startsWith("sing-box://")) {
         return json(box.call("profiles.decodeIntent", mapOf("uri" to text)))
     }
-    val prepared = json(box.call("config.prepare", mapOf("content" to text, "core" to "auto")))
-    return mapOf("name" to "Imported profile", "content" to prepared["content"], "core" to "auto")
+    // A JSON array of configs comes back split as "entries" (see openImported).
+    val decoded = json(box.call("profiles.decodeText", mapOf("content" to text, "name" to "Imported profile")))
+    return if (decoded["entries"] is List<*>) decoded else mapOf("name" to decoded["name"], "content" to decoded["content"], "core" to "auto")
+}
+
+/**
+ * Opens the profile form for one decoded profile. A JSON array of configs (v2rayNG's multi
+ * custom-config list) arrives split as "entries" and is saved as one profile per config;
+ * [importedMessage] reports how many, with "%d" for the count.
+ */
+suspend fun openImported(box: BoxController, navigator: io.nekohasekai.sfa.compose.ui.BoxNavigator?, data: Json, importedMessage: String) {
+    val entries = data["entries"] as? List<*>
+    if (entries == null) {
+        navigator?.openForm { ProfileForm(box, data) }
+        return
+    }
+    val ids = box.call("profiles.saveAll", mapOf("entries" to entries, "core" to (data["core"] as? String ?: "auto"))) as? List<*>
+    box.message(importedMessage.replace("%d", (ids?.size ?: entries.size).toString()))
 }
 
 /** The cores a profile can run on, "auto" first. */
@@ -397,21 +413,29 @@ fun coreLabels(): List<Pair<String, String>> = listOf(
     "mihomo" to "mihomo",
 )
 
-private suspend fun importProfile(box: BoxController, context: Context, source: String, navigator: io.nekohasekai.sfa.compose.ui.BoxNavigator?, emptyClipboard: String) {
+private suspend fun importProfile(box: BoxController, context: Context, source: String, navigator: io.nekohasekai.sfa.compose.ui.BoxNavigator?, emptyClipboard: String, importedMessage: String) {
     try {
         when (source) {
             "File" -> {
                 val result = box.call("profiles.importFile")
-                if (result != null) navigator?.openForm { ProfileForm(box, json(result)) }
+                if (result != null) openImported(box, navigator, json(result), importedMessage)
             }
             "Clipboard" -> {
                 val text = clipboardText(context)?.trim()
                 if (text.isNullOrEmpty()) throw IllegalStateException(emptyClipboard)
                 val data = decodeImport(box, text)
-                navigator?.openForm { ProfileForm(box, data) }
+                openImported(box, navigator, data, importedMessage)
             }
             "Scan QR code" -> navigator?.pushPage({ ScanPage(box) }) { result ->
-                if (result is Map<*, *>) navigator?.openForm { ProfileForm(box, json(result)) }
+                if (result is Map<*, *>) box.launch {
+                    try {
+                        openImported(box, navigator, json(result), importedMessage)
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        box.report(error)
+                    }
+                }
             }
         }
     } catch (error: CancellationException) {
@@ -429,13 +453,14 @@ fun AddProfileMenu(box: BoxController, target: @Composable (open: () -> Unit) ->
     val navigator = LocalBoxNavigator.current
     var busy by remember { mutableStateOf(false) }
     val emptyClipboard = tr("Empty clipboard")
+    val importedMessage = tr("Imported %d profiles")
     val t = trFor()
     val import: (String) -> Unit = { source ->
         if (!busy) {
             busy = true
             scope.launch {
                 try {
-                    importProfile(box, context, source, navigator, emptyClipboard)
+                    importProfile(box, context, source, navigator, emptyClipboard, importedMessage)
                 } finally {
                     busy = false
                 }
@@ -461,12 +486,13 @@ fun AddProfilePage(box: BoxController) {
     val navigator = LocalBoxNavigator.current
     var loading by remember { mutableStateOf(false) }
     val emptyClipboard = tr("Empty clipboard")
+    val importedMessage = tr("Imported %d profiles")
     val import: (String) -> Unit = { source ->
         if (!loading) {
             loading = true
             scope.launch {
                 try {
-                    importProfile(box, context, source, navigator, emptyClipboard)
+                    importProfile(box, context, source, navigator, emptyClipboard, importedMessage)
                 } finally {
                     loading = false
                 }

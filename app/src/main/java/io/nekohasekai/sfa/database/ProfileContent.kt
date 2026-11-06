@@ -41,6 +41,43 @@ internal object ProfileContent {
         return prepared
     }
 
+    /**
+     * The elements of a top-level JSON array of configs, each with its own detected core,
+     * or null when [content] is not one. A single profile never stores an array.
+     */
+    fun splitArray(content: String): List<ProfileArray.Element>? {
+        if (Libbox.detectCoreConfig(content) != Libbox.CoreArray) return null
+        val split = Libbox.splitCoreConfigArray(content)
+        return (0 until split.len()).map { ProfileArray.Element(split.remarks(it), split.content(it), split.core(it)) }
+    }
+
+    /**
+     * One profile per element, named by its remarks (or "[source] #n"), each prepared for
+     * [declaredCore] ("auto" detects every element separately). Fails on the first element
+     * that does not pass its core's check, naming it, so nothing is saved half-way.
+     */
+    fun prepareArray(declaredCore: String, source: String, elements: List<ProfileArray.Element>): List<ProfileArray.Entry> =
+        ProfileArray.entries(source, elements).mapIndexed { index, entry ->
+            val prepared = try {
+                prepare(declaredCore, entry.content)
+            } catch (e: Exception) {
+                throw IllegalArgumentException("Configuration ${index + 1} (${entry.name}): ${e.message}", e)
+            }
+            entry.copy(content = prepared.content, core = prepared.core)
+        }
+
+    /**
+     * A subscription that returns an array keeps each profile on its own element
+     * ([ProfileArray.select]); any other content is returned unchanged.
+     */
+    fun followArray(profileName: String, previous: String?, content: String): String {
+        val elements = splitArray(content) ?: return content
+        val savedRemarks = previous?.let { runCatching { Libbox.coreConfigRemarks(it) }.getOrNull() }.orEmpty()
+        val index = ProfileArray.select(elements.map { it.remarks }, savedRemarks, profileName)
+            ?: throw IllegalArgumentException("The subscription returned ${elements.size} configurations and none matches this profile")
+        return elements[index].content
+    }
+
     fun validate(core: String, content: String) {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
         Libbox.checkCoreConfig(core, content)
@@ -66,7 +103,9 @@ internal object ProfileContent {
         if (expectedRevision != null) {
             require(previous != null && revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
         }
-        val cleaned = prepare(profile.typed.core, content).content
+        // A subscription serving a JSON array of configs: keep following this profile's element.
+        val incoming = if (subscription != null) followArray(profile.name, previous, content) else content
+        val cleaned = prepare(profile.typed.core, incoming).content
         val changed = previous != cleaned
         if (!changed && updatedAt == null && subscription == null) return
         val savedAt = updatedAt ?: if (changed && profile.typed.type == TypedProfile.Type.Local) Date() else null
