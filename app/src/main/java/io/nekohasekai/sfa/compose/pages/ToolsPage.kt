@@ -51,6 +51,7 @@ import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
+import io.nekohasekai.sfa.compose.ui.ListItemUnavailable
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.LocalDialogs
 import io.nekohasekai.sfa.compose.ui.NullStatus
@@ -87,18 +88,22 @@ private val reportKinds = listOf("crash", "oom", "power")
 @Composable
 fun ToolsPage(box: BoxController) {
     BoxPage("Tools") {
-        // Requests (HTTP capture) is sing-box only; Xray has no connection tracker.
+        // Requests (HTTP capture) is a sing-box feature: shown greyed on Xray/mihomo.
         val core = box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box"
         val entries = buildList {
-            if (core == "sing-box") add("Requests")
-            if (core != "xray") add("Connections")
+            add("Requests")
+            add("Connections")
             add("Logs")
             add("Terminal")
             add("Remote control")
         }
         Section(count = entries.size) { index, position ->
             when (entries[index]) {
-                "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.filter) { RequestsPage(box) }
+                "Requests" -> if (core == "sing-box") {
+                    ListItemOpen(tr("Requests"), position, leading = AppGlyphs.filter) { RequestsPage(box) }
+                } else {
+                    ListItemUnavailable(tr("Requests"), position, leading = AppGlyphs.filter, reason = tr("HTTP capture needs the sing-box core"))
+                }
                 "Connections" -> ListItemOpen(tr("Connections"), position, leading = AppGlyphs.connections) { ConnectionsPage(box) }
                 "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
                 "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }

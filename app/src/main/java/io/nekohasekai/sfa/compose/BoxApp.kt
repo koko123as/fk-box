@@ -43,6 +43,10 @@ import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.NavigationDock
 import io.nekohasekai.sfa.compose.ui.NavigatorHost
 import io.nekohasekai.sfa.compose.ui.rememberBoxNavigator
+import io.nekohasekai.sfa.compose.ui.MessageBanner
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 
 /** theme_settings.dart's appTextScale: the custom or system scale, kept within 0.8–1.4. */
 fun appTextScale(prefs: Json, systemScale: Float): Float {
@@ -72,10 +76,12 @@ fun BoxApp(box: BoxController) {
     androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalLiquidGlass provides glass) {
     Theme(scheme = scheme, fontFamily = appFontFamily(prefs["fontFamily"]), textScale = appTextScale(prefs, systemScale)) {
         val snackbar = remember { SnackbarHostState() }
+        var lastMessage by remember { mutableStateOf(BoxMessage("")) }
         val chinese = LocalConfiguration.current.locales.let { !it.isEmpty && it[0].language == "zh" }
         LaunchedEffect(box) {
             box.messages.collect { message ->
-                snackbar.showSnackbar(if (chinese) BoxStrings.zh[message] ?: message else message)
+                lastMessage = message
+                snackbar.showSnackbar(if (chinese) BoxStrings.zh[message.text] ?: message.text else message.text)
             }
         }
         val navigator = rememberBoxNavigator()
@@ -88,7 +94,9 @@ fun BoxApp(box: BoxController) {
                 else -> SplashScreen()
             }
             val bottom = if (navigator.pages.isEmpty()) NavigationDock.inset() else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottom))
+            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottom)) { data ->
+                MessageBanner(data.visuals.message, lastMessage.error) { data.dismiss() }
+            }
         }
     }
     }

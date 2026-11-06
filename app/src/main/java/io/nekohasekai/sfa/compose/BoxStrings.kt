@@ -240,6 +240,8 @@ internal object BoxStrings {
         map["App and core share one process. Core runtime memory is separated from process RSS, not added twice."] = "应用与内核共享进程；内核运行时占用从进程常驻内存中拆分，避免重复计算。"
         map["Memory reported by the remote core. Detailed accounting is unavailable."] = "此数据由远程内核上报，暂不提供详细内存分类。"
         map["Proxy groups"] = "代理组"
+        map["HTTP capture needs the sing-box core"] = "HTTP 抓包仅 sing-box 内核支持"
+        map["Deprecation warnings and memory protection apply to the sing-box core only."] = "弃用提示和内存保护仅对 sing-box 内核生效。"
         map["Memory"] = "内存"
         map["Goroutines"] = "协程"
         map["Current profile"] = "当前配置"

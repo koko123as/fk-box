@@ -55,6 +55,7 @@ const coreTunMTU = 9000
 type runningCore struct {
 	core      string
 	xray      *xrayCore.Instance
+	xrayTrack *xrayTracker
 	mihomoLog chan struct{}
 	tunFd     int
 	startedAt time.Time
@@ -213,6 +214,7 @@ func (s *CommandServer) stopOtherCore() {
 		}
 	case CoreMihomo:
 		mihomoExecutor.Shutdown()
+		mihomoCloseListeners()
 		if running.mihomoLog != nil {
 			close(running.mihomoLog)
 		}
@@ -303,6 +305,13 @@ func startXrayCore(running *runningCore, content string) error {
 	instance, err := xrayCore.New(config)
 	if err != nil {
 		return err
+	}
+	// Connection list and traffic: wrap the TUN inbound's dispatcher first.
+	if tracker, err := installXrayTracker(instance, "tun-in"); err == nil {
+		running.xrayTrack = tracker
+	} else {
+		running.xrayTrack = newXrayTracker()
+		log.Warn("xray connection tracking unavailable: ", err)
 	}
 	if err := instance.Start(); err != nil {
 		_ = instance.Close()

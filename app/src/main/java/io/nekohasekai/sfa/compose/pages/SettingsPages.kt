@@ -174,7 +174,7 @@ private fun CoreSettingsPage(box: BoxController) {
                 onChanged = if (box.serviceSettingsChanging || lastOn) null else ({ value -> scope.launch { box.setSetting(setting, value, restart = false) } }),
             )
         }
-        Section(count = 5) { index, position ->
+        Section(count = 5, footer = tr("Deprecation warnings and memory protection apply to the sing-box core only.")) { index, position ->
             when (index + 1) {
                 1 -> NativeToggle(box, "Disable deprecation warnings", "disableDeprecatedWarnings", position, restart = false)
                 2 -> NativeToggle(box, "Enable memory protection", "oomKillerEnabled", position)

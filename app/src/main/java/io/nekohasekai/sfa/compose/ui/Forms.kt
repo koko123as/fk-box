@@ -34,6 +34,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -128,6 +129,18 @@ fun ListItemOpen(
         trailing = { GlyphIcon(AppGlyphs.chevronForward) },
         position = position,
         onClick = { navigator?.pushPage(page, onClosed) },
+    )
+}
+
+/** A row for a feature the running core does not have: greyed out, with the reason, not tappable. */
+@Composable
+fun ListItemUnavailable(title: String, position: ItemPosition?, leading: Glyph? = null, reason: String) {
+    ListItem(
+        title = { Text(title) },
+        modifier = Modifier.alpha(0.45f),
+        subtitle = { Text(reason) },
+        leading = leading?.let { { GlyphIcon(it) } },
+        position = position,
     )
 }
 

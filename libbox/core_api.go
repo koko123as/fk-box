@@ -154,11 +154,17 @@ func (s *coreStartedService) SubscribeStatus(request *daemon.SubscribeStatusRequ
 		first := true
 		for {
 			current := &daemon.Status{Memory: memory.Total(), Goroutines: int32(runtime.NumGoroutine())}
-			if running.core == CoreMihomo {
-				snapshot := mihomoStatistic.DefaultManager.Snapshot()
+			if running.core == CoreMihomo || running.xrayTrack != nil {
 				current.TrafficAvailable = true
-				current.UplinkTotal, current.DownlinkTotal = snapshot.UploadTotal, snapshot.DownloadTotal
-				current.ConnectionsIn = int32(len(snapshot.Connections))
+				if running.core == CoreMihomo {
+					snapshot := mihomoStatistic.DefaultManager.Snapshot()
+					current.UplinkTotal, current.DownlinkTotal = snapshot.UploadTotal, snapshot.DownloadTotal
+					current.ConnectionsIn = int32(len(snapshot.Connections))
+				} else {
+					up, down, count := running.xrayTrack.totals()
+					current.UplinkTotal, current.DownlinkTotal = up, down
+					current.ConnectionsIn = int32(count)
+				}
 				current.ConnectionsOut = current.ConnectionsIn
 				if !first {
 					current.Uplink, current.Downlink = current.UplinkTotal-lastUp, current.DownlinkTotal-lastDown
@@ -544,7 +550,7 @@ func (s *coreStartedService) SubscribeConnections(request *daemon.SubscribeConne
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.ConnectionEvents]) error {
 		return s.StartedService.SubscribeConnections(request, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.ConnectionEvents) error) error {
-		if running.core != CoreMihomo {
+		if running.core != CoreMihomo && running.xrayTrack == nil {
 			return status.Error(codes.Unimplemented, "connection tracking not available")
 		}
 		interval := time.Duration(request.Interval)
@@ -559,15 +565,15 @@ func (s *coreStartedService) SubscribeConnections(request *daemon.SubscribeConne
 		for {
 			var events []*daemon.ConnectionEvent
 			seen := map[string]bool{}
-			for _, info := range mihomoStatistic.DefaultManager.Snapshot().Connections {
-				id := info.UUID.String()
+			for _, item := range coreConnections(running) {
+				id := item.id
 				seen[id] = true
-				up, down := info.UploadTotal.Load(), info.DownloadTotal.Load()
+				up, down := item.up, item.down
 				previous, exists := known[id]
 				known[id] = totals{up, down}
 				if !exists {
 					events = append(events, &daemon.ConnectionEvent{
-						Type: daemon.ConnectionEventType_CONNECTION_EVENT_NEW, Id: id, Connection: mihomoConnection(info),
+						Type: daemon.ConnectionEventType_CONNECTION_EVENT_NEW, Id: id, Connection: item.build(),
 					})
 				} else if up != previous.up || down != previous.down {
 					events = append(events, &daemon.ConnectionEvent{
@@ -639,6 +645,9 @@ func (s *coreStartedService) CloseConnection(ctx context.Context, request *daemo
 			_ = tracker.Close()
 		}
 	}
+	if running.xrayTrack != nil {
+		running.xrayTrack.close(request.Id)
+	}
 	return &emptypb.Empty{}, nil
 }
 
@@ -652,6 +661,9 @@ func (s *coreStartedService) CloseAllConnections(ctx context.Context, empty *emp
 			_ = tracker.Close()
 			return true
 		})
+	}
+	if running.xrayTrack != nil {
+		running.xrayTrack.closeAll()
 	}
 	return &emptypb.Empty{}, nil
 }
@@ -689,4 +701,37 @@ func (s *coreStartedService) SubscribeOutbounds(empty *emptypb.Empty, server grp
 		<-ctx.Done()
 		return ctx.Err()
 	})
+}
+
+type coreConnectionItem struct {
+	id       string
+	up, down int64
+	build    func() *daemon.Connection
+}
+
+// coreConnections lists the running core's live connections (mihomo's
+// statistic manager, or the Xray tracker).
+func coreConnections(running *runningCore) []coreConnectionItem {
+	var items []coreConnectionItem
+	if running.core == CoreMihomo {
+		for _, info := range mihomoStatistic.DefaultManager.Snapshot().Connections {
+			info := info
+			items = append(items, coreConnectionItem{
+				id: info.UUID.String(), up: info.UploadTotal.Load(), down: info.DownloadTotal.Load(),
+				build: func() *daemon.Connection { return mihomoConnection(info) },
+			})
+		}
+	} else if running.xrayTrack != nil {
+		running.access.Lock()
+		protocols := running.xrayProtocols
+		running.access.Unlock()
+		for _, conn := range running.xrayTrack.snapshot() {
+			conn := conn
+			items = append(items, coreConnectionItem{
+				id: conn.id, up: conn.up.Load(), down: conn.down.Load(),
+				build: func() *daemon.Connection { return conn.connection(protocols) },
+			})
+		}
+	}
+	return items
 }

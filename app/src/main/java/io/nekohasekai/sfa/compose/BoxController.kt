@@ -36,8 +36,8 @@ enum class BoxData { Memory, Logs }
  */
 class BoxController(private val bridge: BoxBridge) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private val _messages = MutableSharedFlow<String>(extraBufferCapacity = 16)
-    val messages: SharedFlow<String> = _messages
+    private val _messages = MutableSharedFlow<BoxMessage>(extraBufferCapacity = 16)
+    val messages: SharedFlow<BoxMessage> = _messages
     private val _intents = MutableSharedFlow<String>(extraBufferCapacity = 16)
     val intents: SharedFlow<String> = _intents
     private val _browserEvents = MutableSharedFlow<Json>(extraBufferCapacity = 16)
@@ -302,11 +302,11 @@ class BoxController(private val bridge: BoxBridge) {
     }
 
     fun report(error: Throwable) {
-        if (!disposed) _messages.tryEmit(describe(error))
+        if (!disposed) _messages.tryEmit(BoxMessage(describe(error), error = true))
     }
 
     fun message(text: String) {
-        if (!disposed) _messages.tryEmit(text)
+        if (!disposed) _messages.tryEmit(BoxMessage(text))
     }
 
     private fun onEvent(event: Map<String, Any?>) {
@@ -355,7 +355,7 @@ class BoxController(private val bridge: BoxBridge) {
                 uploadHistory = (uploadHistory + (rates["upload"].asDouble() ?: 0.0)).takeLast(30)
                 downloadHistory = (downloadHistory + (rates["download"].asDouble() ?: 0.0)).takeLast(30)
             }
-            "error" -> _messages.tryEmit(value.toString())
+            "error" -> _messages.tryEmit(BoxMessage(value.toString(), error = true))
             "applyRequired" -> applyRequired = value.toString()
             "intentAvailable" -> scope.launch {
                 try {
@@ -371,7 +371,7 @@ class BoxController(private val bridge: BoxBridge) {
                 }
             }
             // A backend request remains a visible user action in the UI.
-            "openUrl" -> _messages.tryEmit(value.toString())
+            "openUrl" -> _messages.tryEmit(BoxMessage(value.toString()))
         }
     }
 
@@ -382,7 +382,16 @@ class BoxController(private val bridge: BoxBridge) {
     }
 
     companion object {
-        fun describe(error: Throwable): String = error.message ?: error.toString()
+        fun describe(error: Throwable): String = cleanErrorText(error.message ?: error.toString())
+
+        /** Drops gRPC/Go plumbing ("rpc error: code = Unknown desc = ", "start or reload service: ") so the reason reads first. */
+        fun cleanErrorText(text: String): String {
+            var value = text.trim()
+            value = value.replace(Regex("""^[a-z0-9 .]+ recv: """), "")
+            value = value.replace(Regex("""rpc error: code = \w+ desc = """), "")
+            value = value.removePrefix("start or reload service: ")
+            return value.replaceFirstChar { it.uppercase() }
+        }
     }
 }
 
@@ -397,3 +406,6 @@ fun bytes(value: Number): String {
     }
     return if (unit == 0) "${size.toLong()} ${units[unit]}" else "${String.format(java.util.Locale.ROOT, "%.1f", size)} ${units[unit]}"
 }
+
+/** A line for the message banner; [error] picks the error look. */
+data class BoxMessage(val text: String, val error: Boolean = false)

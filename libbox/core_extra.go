@@ -14,6 +14,10 @@ import (
 	M "github.com/sagernet/sing/common/metadata"
 
 	mihomoYAML "github.com/metacubex/mihomo/common/yaml"
+	mihomoConstant "github.com/metacubex/mihomo/constant"
+	mihomoDNS "github.com/metacubex/mihomo/dns"
+	mihomoListener "github.com/metacubex/mihomo/listener"
+	mihomoListenerConfig "github.com/metacubex/mihomo/listener/config"
 	mihomoInner "github.com/metacubex/mihomo/listener/inner"
 	mihomoTunnel "github.com/metacubex/mihomo/tunnel"
 	xrayNet "github.com/xtls/xray-core/common/net"
@@ -251,4 +255,42 @@ func (s *coreStartedService) StartSTUNTest(request *daemon.STUNTestRequest, serv
 		return server.Send(&daemon.STUNTestProgress{IsFinal: true, Error: stunErr.Error()})
 	}
 	return server.Send(daemon.NewSTUNTestResult(result))
+}
+
+// mihomoCloseListeners releases every port the profile opened (mixed-port,
+// port, socks-port, listeners:, tunnels:, dns.listen). executor.Shutdown only
+// closes the TUN, which left e.g. 7890 bound and broke the next sing-box start.
+func mihomoCloseListeners() {
+	tunnel := mihomoTunnel.Tunnel
+	mihomoListener.PatchInboundListeners(map[string]mihomoConstant.InboundListener{}, tunnel, true)
+	mihomoListener.PatchTunnel(nil, tunnel)
+	mihomoListener.ReCreateHTTP(0, tunnel)
+	mihomoListener.ReCreateSocks(0, tunnel)
+	mihomoListener.ReCreateRedir(0, tunnel)
+	mihomoListener.ReCreateTProxy(0, tunnel)
+	mihomoListener.ReCreateMixed(0, tunnel)
+	mihomoListener.ReCreateShadowSocks("", tunnel)
+	mihomoListener.ReCreateVmess("", tunnel)
+	mihomoListener.ReCreateTuic(mihomoListenerConfig.TuicServer{}, tunnel)
+	mihomoDNS.ReCreateServer("", nil, nil)
+}
+
+func (s *coreStartedService) SubscribeUSBIPServerStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.USBIPServerStatusUpdate]) error {
+	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.USBIPServerStatusUpdate]) error {
+		return s.StartedService.SubscribeUSBIPServerStatus(empty, stream)
+	})
+}
+
+// ProvideUSBDevices waits while Xray or mihomo runs (no USB/IP server there)
+// instead of failing, and hands over to sing-box once it is the running core.
+func (s *coreStartedService) ProvideUSBDevices(server grpc.BidiStreamingServer[daemon.USBProviderMessage, daemon.USBServerMessage]) error {
+	for otherCore() != nil {
+		change, _ := currentCoreChange()
+		select {
+		case <-change:
+		case <-server.Context().Done():
+			return server.Context().Err()
+		}
+	}
+	return s.StartedService.ProvideUSBDevices(server)
 }
