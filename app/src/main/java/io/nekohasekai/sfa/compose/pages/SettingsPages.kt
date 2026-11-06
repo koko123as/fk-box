@@ -246,10 +246,12 @@ fun AboutPage(box: BoxController) {
                 Spacer(Modifier.height(8.dp))
                 val links = listOf(
                     Triple(AppGlyphs.code, "Source code", "github.com/koko123as/fk-box") to "https://github.com/koko123as/fk-box",
+                    Triple(AppGlyphs.code, "Based on sing-box-for-android", "SagerNet/sing-box-for-android · GPL-3.0") to "https://github.com/SagerNet/sing-box-for-android",
+                    Triple(AppGlyphs.code, "Predecessor: B-box", "giturass/B-box · GPL-3.0") to "https://github.com/giturass/B-box",
                     Triple(AppGlyphs.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
                     Triple(AppGlyphs.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
                     Triple(AppGlyphs.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
-                    Triple(AppGlyphs.paintbrush, "FlClash interface", "chen08209/FlClash · v0.9.2 · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
+                    Triple(AppGlyphs.paintbrush, "FlClash design", "v0.9.2 · rewritten in Kotlin + Compose, no Flutter code · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
                 )
                 Section(title = tr("More"), count = links.size + 1) { index, position ->
                     if (index < links.size) {
@@ -321,18 +323,29 @@ private fun LinkBadge(glyph: Glyph) {
     }
 }
 
-/** showLicensePage: the components FK-box ships, each with its license and source. */
+/** showLicensePage: the projects FK-box ships or borrows from, with license, what was taken and source. */
+private data class Credit(val name: String, val license: String, val taken: String, val url: String)
+
 private val licenses = listOf(
-    Triple("FK-box", "GPL-3.0", "https://github.com/koko123as/fk-box"),
-    Triple("B-box", "GPL-3.0", "https://github.com/koko123as/B-box"),
-    Triple("sing-box", "GPL-3.0", "https://github.com/SagerNet/sing-box"),
-    Triple("sing-box-for-android", "GPL-3.0", "https://github.com/SagerNet/sing-box-for-android"),
-    Triple("FlClash", "GPL-3.0", "https://github.com/chen08209/FlClash"),
-    Triple("libghostty", "MIT", "https://github.com/ghostty-org/ghostty"),
-    Triple("Jetpack Compose", "Apache-2.0", "https://developer.android.com/jetpack/compose"),
-    Triple("AndroidX Graphics Shapes", "Apache-2.0", "https://developer.android.com/jetpack/androidx/releases/graphics"),
-    Triple("ZXing", "Apache-2.0", "https://github.com/zxing/zxing"),
-    Triple("JetBrains Mono", "OFL-1.1", "https://github.com/JetBrains/JetBrainsMono"),
+    Credit("FK-box", "GPL-3.0", "This app", "https://github.com/koko123as/fk-box"),
+    Credit("sing-box-for-android", "GPL-3.0", "Base Android app and backend", "https://github.com/SagerNet/sing-box-for-android"),
+    Credit("B-box", "GPL-3.0", "Direct predecessor: core extensions, MITM, multi-core", "https://github.com/giturass/B-box"),
+    Credit("sing-box", "GPL-3.0", "Proxy core (libbox)", "https://github.com/SagerNet/sing-box"),
+    Credit("Xray-core", "MPL-2.0", "Second core", "https://github.com/XTLS/Xray-core"),
+    Credit("mihomo", "GPL-3.0", "Third core (Clash YAML)", "https://github.com/MetaCubeX/mihomo"),
+    Credit("FlClash", "GPL-3.0", "UI design, rewritten in Kotlin + Compose (no Flutter code)", "https://github.com/chen08209/FlClash"),
+    Credit("shadowsocks-android", "GPL-3.0", "DefaultNetworkListener", "https://github.com/shadowsocks/shadowsocks-android"),
+    Credit("Android Open Source Project", "Apache-2.0", "ParceledListSlice, Material 3 shapes", "https://github.com/androidx/androidx"),
+    Credit("Jetpack Compose", "Apache-2.0", "UI framework", "https://developer.android.com/jetpack/compose"),
+    Credit("AndroidX Graphics Shapes", "Apache-2.0", "Shape morphing", "https://developer.android.com/jetpack/androidx/releases/graphics"),
+    Credit("CameraX", "Apache-2.0", "QR code camera", "https://developer.android.com/jetpack/androidx/releases/camera"),
+    Credit("ZXing", "Apache-2.0", "QR code scanning and generation", "https://github.com/zxing/zxing"),
+    Credit("libghostty", "MIT", "Terminal", "https://github.com/ghostty-org/ghostty"),
+    Credit("Shizuku API", "MIT", "Shizuku access", "https://github.com/RikkaApps/Shizuku-API"),
+    Credit("libsu", "Apache-2.0", "Root shell and service", "https://github.com/topjohnwu/libsu"),
+    Credit("smali / dexlib2", "BSD-3-Clause", "Per-app proxy scanning", "https://github.com/google/smali"),
+    Credit("Goja", "MIT", "JavaScript for HTTP rewrite scripts", "https://github.com/dop251/goja"),
+    Credit("JetBrains Mono", "OFL-1.1", "Monospace font", "https://github.com/JetBrains/JetBrainsMono"),
 )
 
 @Composable
@@ -340,10 +353,11 @@ private fun LicensesPage(box: BoxController) {
     BoxPage("Open-source licenses") {
         Text("FK-box ${box.version}", Modifier.padding(16.dp), style = AppTextStyle.Headline.of().copy(color = BoxTheme.scheme.onSurface))
         Section(count = licenses.size) { index, position ->
-            val (name, license, url) = licenses[index]
+            val credit = licenses[index]
+            val url = credit.url
             ListItem(
-                title = { Text(name) },
-                subtitle = { Text(license) },
+                title = { Text(credit.name) },
+                subtitle = { Text(credit.license + " · " + tr(credit.taken)) },
                 trailing = { GlyphIcon(AppGlyphs.openExternal) },
                 position = position,
                 onClick = { box.launchAct("url.open", mapOf("url" to url)) },
