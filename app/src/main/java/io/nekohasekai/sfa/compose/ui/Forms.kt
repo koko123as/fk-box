@@ -198,7 +198,11 @@ fun <T> ListItemOptions(
     )
 }
 
-/** ListItem.input: a tap opens an InputDialog, whose text (or null) reaches [onChanged]. */
+/**
+ * ListItem.input: a tap opens an InputDialog on [value], whose text (or null) reaches [onChanged].
+ * [display] is what the row shows (e.g. the value with its unit); the unit belongs in [suffixText]
+ * so the dialog never pre-fills text its validator would reject.
+ */
 @Composable
 fun ListItemInput(
     title: String,
@@ -206,6 +210,8 @@ fun ListItemInput(
     position: ItemPosition?,
     dialogTitle: String = title,
     keyboardType: KeyboardType = KeyboardType.Text,
+    display: String = value,
+    suffixText: String? = null,
     validator: ((String) -> String?)? = null,
     onChanged: (String?) -> Unit,
 ) {
@@ -213,10 +219,10 @@ fun ListItemInput(
     val scope = rememberCoroutineScope()
     ListItem(
         title = { Text(title) },
-        trailing = { Text(value, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+        trailing = { Text(display, maxLines = 1, overflow = TextOverflow.Ellipsis) },
         position = position,
         onClick = {
-            scope.launch { onChanged(dialogs?.input(dialogTitle, value, keyboardType, validator = validator)) }
+            scope.launch { onChanged(dialogs?.input(dialogTitle, value, keyboardType, suffixText = suffixText, validator = validator)) }
         },
     )
 }

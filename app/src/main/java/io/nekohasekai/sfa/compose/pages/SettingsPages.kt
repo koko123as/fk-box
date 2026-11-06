@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
 import android.graphics.BitmapFactory
+import io.nekohasekai.sfa.flutter.BoxSettings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -179,13 +180,19 @@ private fun CoreSettingsPage(box: BoxController) {
                 1 -> NativeToggle(box, "Disable deprecation warnings", "disableDeprecatedWarnings", position, restart = false)
                 2 -> NativeToggle(box, "Enable memory protection", "oomKillerEnabled", position)
                 3 -> NativeToggle(box, "Disable core memory killer", "oomKillerDisabled", position)
-                4 -> ListItemInput(
-                    tr("Memory limit"),
-                    "${(box.settings["oomMemoryLimitMB"] ?: 50).toString().removeSuffix(".0")} MiB",
-                    position,
-                    keyboardType = KeyboardType.Number,
-                    validator = { value -> if ((value.toIntOrNull() ?: 0) in 10..4096) null else "10–4096 MiB" },
-                ) { value -> if (value != null) scope.launch { box.setSetting("oomMemoryLimitMB", value.toInt()) } }
+                4 -> {
+                    // The dialog edits the bare number; "MiB" is only shown beside it.
+                    val limit = BoxSettings.memoryLimitText(box.settings["oomMemoryLimitMB"])
+                    ListItemInput(
+                        tr("Memory limit"),
+                        limit,
+                        position,
+                        keyboardType = KeyboardType.Number,
+                        display = "$limit MiB",
+                        suffixText = "MiB",
+                        validator = { value -> if (BoxSettings.parseMemoryLimit(value) != null) null else "10–4096 MiB" },
+                    ) { value -> BoxSettings.parseMemoryLimit(value ?: "")?.let { limitMB -> scope.launch { box.setSetting("oomMemoryLimitMB", limitMB) } } }
+                }
                 else -> NativeToggle(box, "Power reports", "powerReportEnabled", position)
             }
         }
