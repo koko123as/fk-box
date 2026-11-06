@@ -170,10 +170,11 @@ func (s *coreStartedService) SetGroupExpand(ctx context.Context, request *daemon
 }
 
 func (s *coreStartedService) GetDefaultLogLevel(ctx context.Context, empty *emptypb.Empty) (*daemon.DefaultLogLevel, error) {
-	if otherCore() == nil {
+	running := otherCore()
+	if running == nil {
 		return s.StartedService.GetDefaultLogLevel(ctx, empty)
 	}
-	return &daemon.DefaultLogLevel{Level: daemon.LogLevel_INFO}, nil
+	return &daemon.DefaultLogLevel{Level: running.logLevel}, nil
 }
 
 func (s *coreStartedService) GetDeprecatedWarnings(ctx context.Context, empty *emptypb.Empty) (*daemon.DeprecatedWarnings, error) {

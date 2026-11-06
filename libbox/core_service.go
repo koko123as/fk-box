@@ -30,6 +30,7 @@ import (
 	mihomoConstant "github.com/metacubex/mihomo/constant"
 	mihomoExecutor "github.com/metacubex/mihomo/hub/executor"
 	mihomoLog "github.com/metacubex/mihomo/log"
+	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	tun "github.com/sagernet/sing-tun"
@@ -59,6 +60,8 @@ type runningCore struct {
 	mihomoLog chan struct{}
 	tunFd     int
 	startedAt time.Time
+	// The level the core runs at, for GetDefaultLogLevel.
+	logLevel daemon.LogLevel
 
 	access           sync.Mutex
 	xrayBalancers    []xrayBalancer
@@ -154,7 +157,7 @@ func (s *CommandServer) RunningCore() string {
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
 	if core == CoreSingBox || core == "" {
 		s.stopOtherCore()
-		return s.StartOrReloadService(dropUnbuiltTunStack(configContent), options)
+		return s.StartOrReloadService(withDefaultSingBoxLogLevel(dropUnbuiltTunStack(configContent)), options)
 	}
 	if core != CoreXray && core != CoreMihomo {
 		return fmt.Errorf("unknown core: %s", core)
@@ -286,10 +289,7 @@ func startXrayCore(running *runningCore, content string) error {
 		"inboundTag": []string{"tun-in"}, "port": "53", "outboundTag": "dns-out",
 	}}, rules...)
 	root["routing"] = routing
-	logConfig, _ := root["log"].(map[string]any)
-	if logConfig == nil {
-		logConfig = map[string]any{"loglevel": "warning"}
-	}
+	logConfig := xrayLogConfigWithDefault(root)
 	// Console output goes to the service log; files are not writable here.
 	delete(logConfig, "access")
 	delete(logConfig, "error")
@@ -320,6 +320,7 @@ func startXrayCore(running *runningCore, content string) error {
 		return err
 	}
 	running.xray = instance
+	running.logLevel = xrayDaemonLogLevel(fmt.Sprint(logConfig["loglevel"]))
 	readXrayLayout(running, root)
 	return nil
 }
@@ -379,6 +380,9 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 	if err != nil {
 		return err
 	}
+	if !mihomoSetsLogLevel(content) {
+		raw.LogLevel = mihomoLog.WARNING
+	}
 	raw.Tun.Enable = true
 	// The real descriptor is set after parsing: mihomo gets a dup of its own,
 	// since its TUN closes the descriptor it is given.
@@ -411,6 +415,7 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 	// assigned coreTunInet4, and the system stack must listen there.
 	config.General.Tun.Inet4Address = []netip.Prefix{coreTunInet4}
 	config.General.Tun.Inet6Address = []netip.Prefix{coreTunInet6}
+	running.logLevel = mihomoDaemonLogLevel(config.General.LogLevel)
 	running.mihomoLog = make(chan struct{})
 	subscription := mihomoLog.Subscribe()
 	go func(done chan struct{}) {

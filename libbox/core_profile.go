@@ -44,9 +44,13 @@ func normalizeCoreContent(content string) string {
 
 // DetectCoreConfig reports which core a profile's content belongs to:
 // Clash YAML -> mihomo; JSON whose inbounds/outbounds carry "protocol" -> Xray;
+// a top-level JSON array of config objects -> array (split it first);
 // other JSON -> sing-box; share links or a Base64 node list -> links.
 func DetectCoreConfig(content string) string {
 	text := normalizeCoreContent(content)
+	if isCoreConfigArray(text) {
+		return CoreArray
+	}
 	if strings.HasPrefix(text, "{") || strings.HasPrefix(text, "[") {
 		if isXrayJSON(text) {
 			return CoreXray
@@ -133,6 +137,9 @@ func ResolveProfileCore(declared string, content string) (string, error) {
 		if detected == CoreLinks {
 			return "", fmt.Errorf("share links must be converted to a profile first")
 		}
+		if detected == CoreArray {
+			return "", fmt.Errorf("a JSON array of configs must be split into profiles first")
+		}
 		return detected, nil
 	default:
 		return "", fmt.Errorf("unknown core: %s", declared)
@@ -163,6 +170,8 @@ func CheckCoreConfig(core string, content string) error {
 		return checkMihomoConfig(content)
 	case CoreLinks:
 		return fmt.Errorf("share links must be converted to a profile first")
+	case CoreArray:
+		return fmt.Errorf("a JSON array of configs must be split into profiles first")
 	default:
 		return fmt.Errorf("unknown core: %s", core)
 	}
