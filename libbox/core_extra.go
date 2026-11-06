@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/sagernet/sing-box/daemon"
 
@@ -124,4 +125,42 @@ func CoreProfileStats(core string, content string) (string, error) {
 	}
 	encoded, err := json.Marshal(map[string]int{"groups": groups, "outbounds": outbounds, "rules": rules})
 	return string(encoded), err
+}
+
+// ---- remaining sing-box-only calls, answered for Xray/mihomo ----
+
+var (
+	coreGroupExpandAccess sync.Mutex
+	coreGroupCollapsed    = map[string]bool{}
+)
+
+func coreGroupExpanded(tag string) bool {
+	coreGroupExpandAccess.Lock()
+	defer coreGroupExpandAccess.Unlock()
+	return !coreGroupCollapsed[tag]
+}
+
+func (s *coreStartedService) SetGroupExpand(ctx context.Context, request *daemon.SetGroupExpandRequest) (*emptypb.Empty, error) {
+	if otherCore() == nil {
+		return s.StartedService.SetGroupExpand(ctx, request)
+	}
+	coreGroupExpandAccess.Lock()
+	coreGroupCollapsed[request.GroupTag] = !request.IsExpand
+	coreGroupExpandAccess.Unlock()
+	go notifyGroupsChange()
+	return &emptypb.Empty{}, nil
+}
+
+func (s *coreStartedService) GetDefaultLogLevel(ctx context.Context, empty *emptypb.Empty) (*daemon.DefaultLogLevel, error) {
+	if otherCore() == nil {
+		return s.StartedService.GetDefaultLogLevel(ctx, empty)
+	}
+	return &daemon.DefaultLogLevel{Level: daemon.LogLevel_INFO}, nil
+}
+
+func (s *coreStartedService) GetDeprecatedWarnings(ctx context.Context, empty *emptypb.Empty) (*daemon.DeprecatedWarnings, error) {
+	if otherCore() == nil {
+		return s.StartedService.GetDeprecatedWarnings(ctx, empty)
+	}
+	return &daemon.DeprecatedWarnings{}, nil
 }

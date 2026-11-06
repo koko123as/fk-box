@@ -271,7 +271,7 @@ func readMihomoGroups() *daemon.Groups {
 			Type:       mihomoGroupType(proxy.Type()),
 			Selectable: proxy.Type() == mihomoConstant.Selector,
 			Selected:   group.Now(),
-			IsExpand:   true,
+			IsExpand:   coreGroupExpanded(proxy.Name()),
 		}
 		for _, member := range group.Proxies() {
 			entry := &daemon.GroupItem{Tag: member.Name(), Type: strings.ToLower(member.Type().String())}
@@ -305,7 +305,7 @@ func readXrayGroups(running *runningCore) *daemon.Groups {
 	running.access.Lock()
 	defer running.access.Unlock()
 	for _, balancer := range running.xrayBalancers {
-		group := &daemon.Group{Tag: balancer.tag, Type: "urltest", Selectable: true, Selected: xrayAutoItem, IsExpand: true}
+		group := &daemon.Group{Tag: balancer.tag, Type: "urltest", Selectable: true, Selected: xrayAutoItem, IsExpand: coreGroupExpanded(balancer.tag)}
 		if overrider != nil {
 			if target, err := overrider.GetOverrideTarget(balancer.tag); err == nil && target != "" {
 				group.Selected = target
