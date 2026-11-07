@@ -446,7 +446,7 @@ private fun MenuRow(item: PopupMenuItem, onTap: (() -> Unit)?, arrowTurns: Float
             .fillMaxWidth()
             .clip(AppShape.all(ITEM_RADIUS))
             .background(if (pressed && onTap != null) scheme.onSurface.copy(alpha = 0.1f) else Color.Transparent)
-            .clickable(interactionSource = interaction, indication = null, enabled = onTap != null) { onTap?.invoke() }
+            .clickable(interactionSource = interaction, indication = hoverPressIndication(AppShape.all(ITEM_RADIUS), if (item.danger) scheme.error.copy(alpha = 0.1f) else null), enabled = onTap != null) { onTap?.invoke() }
             .padding(start = 12.dp, top = 12.dp, bottom = 12.dp, end = if (hasArrow) 8.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

@@ -1,7 +1,9 @@
 package io.nekohasekai.sfa.compose.theme
 
 import android.app.Activity
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -18,6 +20,7 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
+import io.nekohasekai.sfa.compose.ui.DefaultPressIndication
 
 /** flutter/lib/ui/surface.dart: the page, card, block and inset levels. */
 enum class SurfaceLevel {
@@ -150,7 +153,14 @@ fun Theme(
         LocalDensity provides Density(density.density, textScale),
     ) {
         MaterialTheme(colorScheme = materialScheme, typography = typography) {
-            CompositionLocalProvider(LocalContentColor provides scheme.onSurface, content = content)
+            // prism_ui press_surface.dart replaces the Material ripple: PressSurface ink for
+            // anything clickable that names no indication; Material components draw none.
+            CompositionLocalProvider(
+                LocalContentColor provides scheme.onSurface,
+                LocalIndication provides DefaultPressIndication,
+                LocalRippleConfiguration provides null,
+                content = content,
+            )
         }
     }
 }

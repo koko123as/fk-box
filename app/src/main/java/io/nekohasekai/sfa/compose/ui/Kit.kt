@@ -18,7 +18,6 @@ import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import io.nekohasekai.sfa.compose.theme.LocalSurfaceLevel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -223,7 +222,7 @@ fun BoxPanel(
             .boxShadows(PanelShape, panelShadows(scheme.dark))
             .background(SurfaceLevel.Card.colorOf(scheme), PanelShape)
             .then(if (clip || onClick != null) Modifier.clip(PanelShape) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(interactionSource = null, indication = PressIndication(PressLook.Ink, PanelShape), onClick = onClick) else Modifier)
             .padding(padding),
     ) {
         CompositionLocalProvider(LocalSurfaceLevelForContent provides SurfaceLevel.Card) { content() }
@@ -459,7 +458,6 @@ fun ListItem(
     val end = position == ItemPosition.End || position == ItemPosition.StartAndEnd
     val shape = AppShape.vertical(if (start) AppCorner.XL else 0f, if (end) AppCorner.XL else 0f)
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val sorting = LocalSorting.current
     val level = LocalSurfaceLevel.current.next
     val background = if (invalid) scheme.errorContainer else level.colorOf(scheme)
@@ -468,8 +466,8 @@ fun ListItem(
         modifier
             .fillMaxWidth()
             .then(if (position != null) Modifier.background(background, shape).clip(shape) else Modifier)
-            .then(if (onClick != null && !sorting) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
-            .pressOverlay(pressed && onClick != null && position != null, foreground, shape),
+            // list_item.dart: a PressSurface ink on the row.
+            .then(if (onClick != null && !sorting) Modifier.clickable(interactionSource = interaction, indication = PressIndication(PressLook.Ink, shape, foreground), onClick = onClick) else Modifier),
     ) {
         Row(
             Modifier.fillMaxWidth().heightIn(min = 56.dp).padding(start = startPadding, end = 16.dp, top = minVerticalPadding, bottom = minVerticalPadding),
@@ -552,14 +550,16 @@ fun EmptyState(title: String, message: String? = null, glyph: Glyph = AppGlyphs.
 
 @Composable
 fun FilledPillButton(text: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier) {
-    androidx.compose.material3.Button(onClick = { onClick?.invoke() }, enabled = onClick != null, modifier = modifier, shape = AppShape.full) {
+    val interaction = remember { MutableInteractionSource() }
+    androidx.compose.material3.Button(onClick = { onClick?.invoke() }, enabled = onClick != null, modifier = modifier.tintPress(interaction), shape = AppShape.full, interactionSource = interaction) {
         Text(text, style = AppTextStyle.Subheadline.of(true))
     }
 }
 
 @Composable
 fun TextPillButton(text: String, onClick: (() -> Unit)?, modifier: Modifier = Modifier, color: Color? = null) {
-    androidx.compose.material3.TextButton(onClick = { onClick?.invoke() }, enabled = onClick != null, modifier = modifier, shape = AppShape.full) {
+    val interaction = remember { MutableInteractionSource() }
+    androidx.compose.material3.TextButton(onClick = { onClick?.invoke() }, enabled = onClick != null, modifier = modifier.tintPress(interaction), shape = AppShape.full, interactionSource = interaction) {
         Text(text, style = AppTextStyle.Subheadline.of(true).let { if (color != null) it.copy(color = color) else it })
     }
 }
@@ -589,7 +589,7 @@ fun GlyphButton(
         modifier
             .size(size)
             .clip(AppShape.full)
-            .clickable(interactionSource = interaction, indication = androidx.compose.material3.ripple(), enabled = onClick != null) { onClick?.invoke() }
+            .clickable(interactionSource = interaction, indication = PressIndication(PressLook.Tint, AppShape.full), enabled = onClick != null) { onClick?.invoke() }
             .then(if (contentDescription != null) Modifier.semanticsLabel(contentDescription) else Modifier),
         contentAlignment = Alignment.Center,
     ) {

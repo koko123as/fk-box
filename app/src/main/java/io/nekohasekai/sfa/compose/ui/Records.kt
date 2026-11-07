@@ -6,7 +6,6 @@ import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -40,6 +39,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -127,14 +127,13 @@ fun RecordListItem(
     val level = raisedSurfaceLevel
     val shape = AppShape.xl
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     Box(modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .background(level.colorOf(scheme), shape)
-                .then(if (onTap != null) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onTap) else Modifier)
-                .pressOverlay(pressed && onTap != null, scheme.onSurfaceVariant, shape)
+                // record.dart: a PressSurface ink on the raised row.
+                .then(if (onTap != null) Modifier.clip(shape).clickable(interactionSource = interaction, indication = PressIndication(PressLook.Ink, shape), onClick = onTap) else Modifier)
                 .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
         ) {
             CompositionLocalProvider(LocalSurfaceLevel provides level) {
@@ -172,7 +171,7 @@ fun TonalChip(label: String, color: Color, foregroundColor: Color, onPressed: ((
     Box(
         Modifier
             .background(color, AppShape.sm)
-            .then(if (onPressed != null) Modifier.clickable(onClick = onPressed) else Modifier)
+            .then(if (onPressed != null) Modifier.clip(AppShape.sm).clickable(interactionSource = null, indication = PressIndication(PressLook.Ink, AppShape.sm, foregroundColor), onClick = onPressed) else Modifier)
             .padding(horizontal = 6.dp, vertical = 1.dp),
     ) {
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Caption1.of(emphasized = true).copy(color = foregroundColor))

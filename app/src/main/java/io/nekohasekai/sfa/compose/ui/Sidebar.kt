@@ -8,8 +8,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsHoveredAsState
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -273,26 +271,19 @@ private fun SidebarButton(
 ) {
     val scheme = BoxTheme.scheme
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    val hovered by interaction.collectIsHoveredAsState()
-    // PressRegion: selection fill, then the pressed (6%) or hovered (4%) overlay.
-    val overlay = when {
-        pressed -> scheme.onSurface.copy(alpha = 0.06f)
-        hovered -> scheme.onSurface.copy(alpha = 0.04f)
-        else -> Color.Transparent
-    }
+    // PressRegion: selection fill, then the pressed (6%), focused (10%) or hovered (4%) overlay, 50 ms fades.
+    val overlay = sidebarPressIndication(ItemShape)
     Box(
         Modifier
             .padding(horizontal = sideInset.dp, vertical = (ITEM_GAP / 2).dp)
             .height(height.dp)
             .clip(ItemShape)
             .then(if (selected == true) Modifier.background(scheme.onSurface.copy(alpha = 0.08f)) else Modifier)
-            .background(overlay)
             .semantics {
                 contentDescription = description
                 if (selected != null) this.selected = selected
             }
-            .clickable(interactionSource = interaction, indication = null, role = Role.Tab, onClick = onTap),
+            .clickable(interactionSource = interaction, indication = overlay, role = Role.Tab, onClick = onTap),
     ) { content() }
 }
 

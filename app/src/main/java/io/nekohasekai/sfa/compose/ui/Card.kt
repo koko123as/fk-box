@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -40,10 +39,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -69,15 +66,6 @@ import kotlin.math.sin
 /** context.raisedSurfaceLevel: the level a card on the current surface takes. */
 val raisedSurfaceLevel: SurfaceLevel
     @Composable get() = LocalSurfaceLevel.current.next
-
-/** Material's FilledButton state layer: the foreground at 10% while pressed. */
-fun Modifier.pressOverlay(pressed: Boolean, color: Color, shape: Shape): Modifier = drawWithContent {
-    drawContent()
-    if (pressed) {
-        val outline = shape.createOutline(size, layoutDirection, this)
-        drawOutline(outline, color.copy(alpha = 0.1f))
-    }
-}
 
 /**
  * card.dart's CommonCard: a FilledButton on the raised surface, its content
@@ -112,7 +100,6 @@ fun CommonCard(
         else -> scheme.onSurfaceVariant
     }
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val enabled = !inert && onPressed != null
     Box(
         modifier
@@ -122,7 +109,8 @@ fun CommonCard(
                 if (enabled || (!inert && onLongPress != null)) {
                     Modifier.combinedClickable(
                         interactionSource = interaction,
-                        indication = null,
+                        // card.dart: PressSurface ink, in the content colour on a filled card.
+                        indication = PressIndication(PressLook.Ink, shape, if (filled) foreground else Color.Unspecified),
                         enabled = true,
                         role = Role.Button,
                         onLongClick = onLongPress,
@@ -132,7 +120,6 @@ fun CommonCard(
                     Modifier
                 },
             )
-            .pressOverlay(pressed && enabled, foreground, shape)
             .padding(padding),
         contentAlignment = contentAlignment,
     ) {
@@ -214,7 +201,7 @@ fun TonalButton(label: String, onPressed: (() -> Unit)?, glyph: Glyph? = null, s
             .heightIn(min = size.button.dp)
             .clip(AppShape.full)
             .background(raisedSurfaceLevel.colorOf(scheme))
-            .clickable(enabled = onPressed != null, interactionSource = remember { MutableInteractionSource() }, indication = null) { onPressed?.invoke() }
+            .clickable(enabled = onPressed != null, interactionSource = remember { MutableInteractionSource() }, indication = PressIndication(PressLook.None, AppShape.full)) { onPressed?.invoke() }
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
@@ -249,7 +236,7 @@ fun TonalIconButton(
             .size(size.button.dp)
             .clip(AppShape.full)
             .background(background)
-            .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = null) { action.onClick?.invoke() }
+            .clickable(enabled = enabled, interactionSource = remember { MutableInteractionSource() }, indication = PressIndication(PressLook.None, AppShape.full)) { action.onClick?.invoke() }
             .semanticsLabel(action.tooltip),
         contentAlignment = Alignment.Center,
     ) {

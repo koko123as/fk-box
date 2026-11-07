@@ -152,8 +152,8 @@ internal fun DialogLayer(host: DialogHost) {
                 onDismissRequest = { request.result.complete(false) },
                 title = { Text(request.title) },
                 text = request.message?.let { message -> { Text(message) } },
-                dismissButton = { TextButton(onClick = { request.result.complete(false) }) { Text(tr("Cancel")) } },
-                confirmButton = { TextButton(onClick = { request.result.complete(true) }) { Text(request.action) } },
+                dismissButton = { TintTextButton({ request.result.complete(false) }) { Text(tr("Cancel")) } },
+                confirmButton = { TintTextButton({ request.result.complete(true) }) { Text(request.action) } },
             )
             is DialogRequest.Choice -> FloatingDialog(onDismiss = { request.result.complete(null) }) {
                 CommonDialog(
@@ -374,4 +374,11 @@ private fun InputDialog(request: DialogRequest.Input) {
             }
         }
     }
+}
+
+/** common_button.dart: a text button held down tints (PressLook.tint) instead of rippling. */
+@Composable
+private fun TintTextButton(onClick: () -> Unit, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    TextButton(onClick = onClick, modifier = Modifier.tintPress(interaction), interactionSource = interaction, content = content)
 }
