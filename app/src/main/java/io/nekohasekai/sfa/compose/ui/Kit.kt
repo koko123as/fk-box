@@ -54,6 +54,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
@@ -130,21 +132,29 @@ fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
     if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
         this
     } else {
-        drawBehind {
-            for (shadow in shadows) {
-                if (shadow.color.alpha <= 0f) continue
+        // The paths and paints are built once per size: HWUI caches each blurred
+        // mask on the GPU by the path's identity, so a new Path on every redraw
+        // (a panel redraws whenever its content ticks) left a fresh mask texture
+        // behind each time until the Java Path was collected.
+        drawWithCache {
+            val layers = shadows.filter { it.color.alpha > 0f }.map { shadow ->
                 val spread = shadow.spread.dp.toPx()
                 val outline = shape.createOutline(Size(size.width + 2 * spread, size.height + 2 * spread), layoutDirection, this)
                 val path = Path().apply { addOutline(outline) }
                 val flutterBlur = if (shadow.flutterRadius) shadow.blur else if (shadow.blur <= 1f) 0f else (shadow.blur / 2 - .5f) / .57735f
                 val radius = flutterBlur.dp.toPx()
+                val paint = Paint().apply { color = shadow.color }
+                if (radius > 0f) paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
+                Triple(path, paint, Offset(-spread, -spread + shadow.dy.dp.toPx()))
+            }
+            onDrawBehind {
                 drawIntoCanvas { canvas ->
-                    val paint = Paint().apply { color = shadow.color }
-                    if (radius > 0f) paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
-                    canvas.save()
-                    canvas.translate(-spread, -spread + shadow.dy.dp.toPx())
-                    canvas.drawPath(path, paint)
-                    canvas.restore()
+                    for ((path, paint, offset) in layers) {
+                        canvas.save()
+                        canvas.translate(offset.x, offset.y)
+                        canvas.drawPath(path, paint)
+                        canvas.restore()
+                    }
                 }
             }
         }

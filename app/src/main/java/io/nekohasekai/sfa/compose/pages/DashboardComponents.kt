@@ -79,9 +79,16 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
             .semanticsLabel(tooltip),
         contentAlignment = Alignment.Center,
     ) {
+        // One path per progress value: the blurred shadow's GPU mask is cached
+        // by path identity, so rebuilding it on every redraw left masks behind.
+        val morph = remember { arrayOf<Any?>(Float.NaN, null) }
         Canvas(Modifier.size(size)) {
             val p = progress.value
-            val path = morphPathOf(startMorph, p)
+            if (morph[0] != p) {
+                morph[0] = p
+                morph[1] = morphPathOf(startMorph, p)
+            }
+            val path = morph[1] as androidx.compose.ui.graphics.Path
             val turn = Math.toDegrees(p * 2 * PI / 9).toFloat()
             val shadowDy = 6.dp.toPx()
             if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28) {

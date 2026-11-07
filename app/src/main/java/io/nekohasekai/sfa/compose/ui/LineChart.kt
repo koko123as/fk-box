@@ -57,6 +57,12 @@ private fun slopes(values: DoubleArray): DoubleArray {
 @Composable
 fun LineChart(values: List<Double>, revision: Int, capacity: Int, minScale: Double, color: Color, baselineRatio: Float, modifier: Modifier = Modifier) {
     val heights = remember(revision, values, capacity) { blur(series(values, capacity + RADIUS + 1)) }
+    // Reused paths: rewinding one changes its identity in place, which drops
+    // the GPU geometry HWUI cached for its last shape at once instead of when
+    // the old Path happens to be collected.
+    val curve = remember { Path() }
+    val line = remember { Path() }
+    val area = remember { Path() }
     Canvas(modifier) {
         val step = size.width / (capacity - 1)
         val baseline = size.height * baselineRatio
@@ -64,7 +70,8 @@ fun LineChart(values: List<Double>, revision: Int, capacity: Int, minScale: Doub
         val firstX = size.width - (heights.size - 1) * step
         var x = firstX
         var y = -heights[0].toFloat()
-        val curve = Path().apply { moveTo(x, y) }
+        curve.rewind()
+        curve.moveTo(x, y)
         for (i in 1 until heights.size) {
             val nextX = x + step
             val nextY = -heights[i].toFloat()
@@ -74,16 +81,14 @@ fun LineChart(values: List<Double>, revision: Int, capacity: Int, minScale: Doub
         }
         val top = max(minScale.toFloat(), -curve.getBounds().top)
         val yScale = (baseline - STROKE_WIDTH) / top
-        val line = Path().apply {
-            addPath(curve)
-            transform(Matrix().apply { translate(0f, baseline); scale(1f, yScale) })
-        }
-        val area = Path().apply {
-            addPath(line)
-            lineTo(x, size.height)
-            lineTo(firstX, size.height)
-            close()
-        }
+        line.rewind()
+        line.addPath(curve)
+        line.transform(Matrix().apply { translate(0f, baseline); scale(1f, yScale) })
+        area.rewind()
+        area.addPath(line)
+        area.lineTo(x, size.height)
+        area.lineTo(firstX, size.height)
+        area.close()
         clipRect(0f, 0f, size.width, size.height) {
             drawPath(area, color.copy(alpha = color.alpha * FILL_OPACITY))
             drawPath(line, color, style = Stroke(STROKE_WIDTH, cap = StrokeCap.Round, join = StrokeJoin.Round))
