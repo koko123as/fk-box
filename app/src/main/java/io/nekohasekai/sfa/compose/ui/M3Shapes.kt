@@ -243,8 +243,6 @@ internal object M3Shapes {
             )
         }
 
-        @Suppress("ListIterator", "PrimitiveInCollection")
-        @Suppress("ListIterator", "PrimitiveInCollection")
         private data class PointNRound(
             val o: Offset,
             val r: CornerRounding = CornerRounding.Unrounded,
