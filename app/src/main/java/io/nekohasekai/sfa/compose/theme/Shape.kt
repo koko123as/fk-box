@@ -51,6 +51,7 @@ class SuperellipseShape(
     private val bottomStart: Dp = topStart,
 ) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        if (!io.nekohasekai.sfa.compose.DebugSwitches.superellipse) return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
         val ltr = layoutDirection == LayoutDirection.Ltr
         with(density) {
             val tl = (if (ltr) topStart else topEnd).toPx()
@@ -87,6 +88,7 @@ class SuperellipseClipShape(
     private val bottomStart: Dp,
 ) : Shape {
     override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        if (!io.nekohasekai.sfa.compose.DebugSwitches.superellipse) return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
         val ltr = layoutDirection == LayoutDirection.Ltr
         with(density) {
             val budget = min(size.width, size.height) / 2f

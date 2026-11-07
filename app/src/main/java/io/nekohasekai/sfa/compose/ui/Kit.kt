@@ -139,6 +139,7 @@ fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
         this
     } else {
         drawWithCache {
+            if (!io.nekohasekai.sfa.compose.DebugSwitches.shadows) return@drawWithCache onDrawBehind {}
             val layers = shadows.filter { it.color.alpha > 0f }.map { shadow ->
                 val spread = shadow.spread.dp.toPx()
                 val outlineSize = Size(size.width + 2 * spread, size.height + 2 * spread)
@@ -470,8 +471,9 @@ val LocalAnimationsActive = staticCompositionLocalOf { true }
 @Composable
 fun rememberLoop(periodMs: Int, running: Boolean): androidx.compose.runtime.State<Float> {
     val value = remember { Animatable(0f) }
-    LaunchedEffect(running) {
-        if (!running) return@LaunchedEffect
+    val live = running && io.nekohasekai.sfa.compose.DebugSwitches.animations
+    LaunchedEffect(live) {
+        if (!live) return@LaunchedEffect
         while (true) {
             val rest = ((1f - value.value) * periodMs).toInt().coerceAtLeast(1)
             value.animateTo(1f, tween(rest, easing = androidx.compose.animation.core.LinearEasing))

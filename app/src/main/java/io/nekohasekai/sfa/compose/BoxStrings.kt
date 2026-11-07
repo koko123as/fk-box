@@ -759,5 +759,20 @@ internal object BoxStrings {
         map["Groups show up here once the core starts"] = "启动后在这里显示策略组"
         map["Expand"] = "展开"
         map["Collapse"] = "收起"
+        // gpu-bisect diagnostic section on the memory page.
+        map["GPU memory bisect"] = "显存二分测试"
+        map["Refreshes every 2 s. Switches are not saved and reset when the app restarts."] = "每 2 秒刷新；开关不保存，重启应用后恢复。"
+        map["Bisect: icons"] = "图标"
+        map["Bisect: superellipse"] = "超椭圆"
+        map["Bisect: shadows"] = "阴影"
+        map["Bisect: glass panes"] = "玻璃面板"
+        map["Bisect: background pages"] = "后台页面"
+        map["Bisect: dashboard cards"] = "仪表盘卡片"
+        map["Bisect: sidebar and dock"] = "侧栏/底栏"
+        map["Bisect: animations and charts"] = "动画与图表"
+        map["Bisect: entire UI"] = "全部界面"
+        map["Release GPU memory"] = "释放显存"
+        map["Before"] = "释放前"
+        map["After"] = "释放后"
     }
 }

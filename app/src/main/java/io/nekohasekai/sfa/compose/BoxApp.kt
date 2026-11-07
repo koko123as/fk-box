@@ -58,6 +58,11 @@ fun appTextScale(prefs: Json, systemScale: Float): Float {
 /** main.dart's BoxApp: theme from the appearance preferences, splash, error and home. */
 @Composable
 fun BoxApp(box: BoxController) {
+    // gpu-bisect: "entire UI" off leaves only the bisect section on a blank page.
+    if (!DebugSwitches.allUi) {
+        GpuBisectScreen()
+        return
+    }
     val prefs = box.preferences
     val dark = when (prefs["theme"]) {
         "dark" -> true
@@ -87,7 +92,10 @@ fun BoxApp(box: BoxController) {
         val navigator = rememberBoxNavigator()
         Box(Modifier.fillMaxSize().background(SurfaceLevel.Page.colorOf(scheme))) {
             when {
-                box.ready -> androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalBoxController provides box) { NavigatorHost(navigator) { HomePage(box) } }
+                box.ready -> androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalBoxController provides box) {
+                    // gpu-bisect: a switch change rebuilds the UI below so every shape and layer is made anew.
+                    androidx.compose.runtime.key(DebugSwitches.epoch) { NavigatorHost(navigator) { HomePage(box) } }
+                }
                 box.startupError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     ErrorState(box.startupError!!) { box.retryInitialize() }
                 }

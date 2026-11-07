@@ -56,6 +56,10 @@ private fun slopes(values: DoubleArray): DoubleArray {
 
 @Composable
 fun LineChart(values: List<Double>, revision: Int, capacity: Int, minScale: Double, color: Color, baselineRatio: Float, modifier: Modifier = Modifier) {
+    if (!io.nekohasekai.sfa.compose.DebugSwitches.animations) {
+        androidx.compose.foundation.layout.Spacer(modifier)
+        return
+    }
     val heights = remember(revision, values, capacity) { blur(series(values, capacity + RADIUS + 1)) }
     // Reused paths: rewinding one changes its identity in place, which drops
     // the GPU geometry HWUI cached for its last shape at once instead of when

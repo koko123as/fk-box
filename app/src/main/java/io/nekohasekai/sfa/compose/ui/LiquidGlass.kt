@@ -52,7 +52,7 @@ enum class LiquidGlassQuality { Standard, Ultra }
 /** LiquidGlassScope: whether the dock and the popups are glass, and how fine. */
 @Immutable
 data class LiquidGlassSettings(val enabled: Boolean, val quality: LiquidGlassQuality = LiquidGlassQuality.Ultra) {
-    val shaded: Boolean get() = enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val shaded: Boolean get() = enabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && io.nekohasekai.sfa.compose.DebugSwitches.glass
 }
 
 val LocalLiquidGlass = compositionLocalOf { LiquidGlassSettings(false) }
@@ -163,7 +163,9 @@ class GlassBackdrop internal constructor(internal val layer: GraphicsLayer) {
 }
 
 @Composable
-fun rememberGlassBackdrop(): GlassBackdrop {
+fun rememberGlassBackdrop(): GlassBackdrop? {
+    // gpu-bisect: with glass off no graphics layer is created at all.
+    if (!io.nekohasekai.sfa.compose.DebugSwitches.glass) return null
     val layer = rememberGraphicsLayer()
     return remember(layer) { GlassBackdrop(layer) }
 }
@@ -173,7 +175,7 @@ val LocalGlassBackdrop = staticCompositionLocalOf<GlassBackdrop?> { null }
 
 /** Records this box's content as [backdrop], for panes outside it to bend. */
 fun Modifier.glassBackdropSource(backdrop: GlassBackdrop?, enabled: Boolean = true): Modifier =
-    if (backdrop == null || !enabled) {
+    if (backdrop == null || !enabled || !io.nekohasekai.sfa.compose.DebugSwitches.glass) {
         this
     } else {
         onGloballyPositioned { backdrop.origin = it.positionInRoot() }
@@ -211,7 +213,7 @@ fun LiquidGlassPane(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     Box(modifier) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop != null) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop != null && io.nekohasekai.sfa.compose.DebugSwitches.glass) {
             GlassLayer(style, cornerRadius, backdrop, glow, Modifier.matchParentSize())
         } else {
             val shape = if (cornerRadius == null) io.nekohasekai.sfa.compose.theme.AppShape.full else androidx.compose.foundation.shape.RoundedCornerShape(androidx.compose.ui.unit.Dp(cornerRadius))

@@ -202,7 +202,9 @@ fun DashboardPage(box: BoxController) {
             val roomHeight = maxHeight.value / fontScale
             val density = DashboardDensity.of(roomWidth, roomHeight)
             CompositionLocalProvider(LocalDashboardScope provides DashboardScope(density, fontScale)) {
-                if (density.isDesktop) {
+                // gpu-bisect: "dashboard cards" off leaves the grid empty.
+                if (!io.nekohasekai.sfa.compose.DebugSwitches.dashboardCards) {
+                } else if (density.isDesktop) {
                     DesktopDashboard(box, dashboardColumnsOf(roomWidth), gap, maxWidth.value, maxHeight.value)
                 } else {
                     val side = dashboardMobileSideOf(maxWidth.value).dp
@@ -835,6 +837,8 @@ private fun MemoryDetails(box: BoxController) {
         emptyList()
     }
     BoxPage("Memory", actions = actions, loading = releasing) {
+        // gpu-bisect: first on the page, since a switch change rebuilds the UI and scrolls back to the top.
+        io.nekohasekai.sfa.compose.GpuBisectSection()
         Spacer(Modifier.height(8.dp))
         Text(tr("Total"), style = AppTextStyle.Headline.of().copy(color = BoxTheme.scheme.onSurface))
         Spacer(Modifier.height(4.dp))

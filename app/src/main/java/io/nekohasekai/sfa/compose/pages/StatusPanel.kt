@@ -523,8 +523,9 @@ private fun CountryBadge(size: Float, country: String?, active: Boolean, checkin
     val scheme = BoxTheme.scheme
     val color = if (active) scheme.onSurface else scheme.onSurfaceVariant
     val turn = remember { Animatable(0f) }
-    LaunchedEffect(checking) {
-        if (checking) {
+    val spinning = checking && io.nekohasekai.sfa.compose.DebugSwitches.animations
+    LaunchedEffect(spinning) {
+        if (spinning) {
             while (true) {
                 turn.animateTo(turn.value + 1f, tween(1500, easing = LinearEasing))
             }

@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -132,7 +133,7 @@ fun HomePage(box: BoxController) {
         Row(Modifier.fillMaxSize()) {
             // AppSidebarContainer: the sidebar slides in from the start edge as the window widens past a phone's.
             androidx.compose.animation.AnimatedVisibility(
-                visible = !mobile,
+                visible = !mobile && io.nekohasekai.sfa.compose.DebugSwitches.navigation,
                 enter = androidx.compose.animation.expandHorizontally(expandFrom = Alignment.Start) + androidx.compose.animation.slideInHorizontally { -it },
                 exit = androidx.compose.animation.shrinkHorizontally(shrinkTowards = Alignment.Start) + androidx.compose.animation.slideOutHorizontally { -it },
             ) {
@@ -162,6 +163,8 @@ fun HomePage(box: BoxController) {
                         for (i in items.indices) {
                             val active = i == index
                             val shown = active || i == previous
+                            // gpu-bisect: "background pages" off composes the selected tab only.
+                            if (active || io.nekohasekai.sfa.compose.DebugSwitches.backgroundTabs) key(i) {
                             Box(
                                 Modifier
                                     .fillMaxSize()
@@ -191,10 +194,11 @@ fun HomePage(box: BoxController) {
                                     }
                                 }
                             }
+                            }
                         }
                     }
                     }
-                    if (mobile && floating) {
+                    if (mobile && floating && io.nekohasekai.sfa.compose.DebugSwitches.navigation) {
                         NavigationDock(
                             backdrop = if (glassOn) pageBackdrop else null,
                             destinations = items.map { DockDestination(it.second, tr(it.first)) },
@@ -204,7 +208,7 @@ fun HomePage(box: BoxController) {
                         )
                     }
                 }
-                if (mobile && !floating) {
+                if (mobile && !floating && io.nekohasekai.sfa.compose.DebugSwitches.navigation) {
                     val scheme = BoxTheme.scheme
                     val floatingLevel = SurfaceLevel.floatingOf(scheme)
                     NavigationBar(containerColor = floatingLevel.colorOf(scheme)) {
@@ -226,7 +230,7 @@ fun HomePage(box: BoxController) {
             }
         }
         }
-        if (!mobile) SidebarOverlay(overlay, destinations, index, select)
+        if (!mobile && io.nekohasekai.sfa.compose.DebugSwitches.navigation) SidebarOverlay(overlay, destinations, index, select)
     }
 }
 

@@ -220,6 +220,7 @@ private fun area(color: Color) = Paint().apply {
 
 /** glyph_painter.dart's GlyphPainter, drawn live. */
 fun DrawScope.drawGlyph(glyph: Glyph, fill: Float, color: Color, mirror: Boolean = false) {
+    if (!io.nekohasekai.sfa.compose.DebugSwitches.icons) return
     drawIntoCanvas { canvas -> paintGlyph(canvas, size.width, size.height, glyph, fill, color, mirror) }
 }
 
@@ -333,6 +334,7 @@ private fun GlyphIcon(glyph: Glyph, modifier: Modifier, size: Dp, color: Color, 
  * computed glyph and sizes too large to be worth caching.
  */
 fun DrawScope.drawGlyphCached(glyph: Glyph, fill: Float, color: Color, mirror: Boolean = false, box: Size = size) {
+    if (!io.nekohasekai.sfa.compose.DebugSwitches.icons) return
     val width = box.width.roundToInt()
     val height = box.height.roundToInt()
     val settled = fill == 0f || fill == 1f
