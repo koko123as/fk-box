@@ -61,6 +61,7 @@ import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.max
 import kotlin.math.min
@@ -265,25 +266,32 @@ private fun FloatingBar(
         if (pressedIndex < 0 && lens.targetValue != selected.toFloat()) lens.animateTo(selected.toFloat(), travelSpring)
     }
     // _wobble: the lens stretches with its speed and squashes as it brakes.
+    // It only runs while the lens moves or waits to drop: a frame callback that
+    // never stops would keep the frame clock, and with it the window, busy.
     LaunchedEffect(Unit) {
-        var lastVelocity = 0f
-        var lastTime = 0L
         while (true) {
-            withFrameNanos { time ->
-                val velocity = lens.velocity
-                val dt = if (lastTime == 0L) 0f else (time - lastTime) / 1e9f
-                val acceleration = if (dt > 0f) (velocity - lastVelocity) / dt else 0f
-                lastVelocity = velocity
-                lastTime = time
-                val braking = max(0f, -acceleration * kotlin.math.sign(velocity))
-                val target = JELLY_STRETCH * saturate(kotlin.math.abs(velocity) / JELLY_SPEED) - JELLY_SQUASH * saturate(braking / JELLY_BRAKE)
-                if (kotlin.math.abs(target - jelly.targetValue) > 1e-3f) scope.launch { jelly.animateTo(target, jellySpring) }
-                // _dropLift: UIKit keeps the lens lifted until it has risen and arrived.
-                if (dropping && pressedIndex < 0 && lift.value >= LIFT_SNAP && kotlin.math.abs(lens.targetValue - lens.value) <= LIFT_RELEASE) {
-                    dropping = false
-                    scope.launch { lift.animateTo(0f, liftSpring) }
+            androidx.compose.runtime.snapshotFlow { lens.isRunning || dropping }.first { it }
+            var lastVelocity = 0f
+            var lastTime = 0L
+            while (lens.isRunning || dropping) {
+                withFrameNanos { time ->
+                    val velocity = lens.velocity
+                    val dt = if (lastTime == 0L) 0f else (time - lastTime) / 1e9f
+                    val acceleration = if (dt > 0f) (velocity - lastVelocity) / dt else 0f
+                    lastVelocity = velocity
+                    lastTime = time
+                    val braking = max(0f, -acceleration * kotlin.math.sign(velocity))
+                    val target = JELLY_STRETCH * saturate(kotlin.math.abs(velocity) / JELLY_SPEED) - JELLY_SQUASH * saturate(braking / JELLY_BRAKE)
+                    if (kotlin.math.abs(target - jelly.targetValue) > 1e-3f) scope.launch { jelly.animateTo(target, jellySpring) }
+                    // _dropLift: UIKit keeps the lens lifted until it has risen and arrived.
+                    if (dropping && pressedIndex < 0 && lift.value >= LIFT_SNAP && kotlin.math.abs(lens.targetValue - lens.value) <= LIFT_RELEASE) {
+                        dropping = false
+                        scope.launch { lift.animateTo(0f, liftSpring) }
+                    }
                 }
             }
+            // The lens has come to rest: what the next frame would have computed (no speed, no braking).
+            if (kotlin.math.abs(jelly.targetValue) > 1e-3f) scope.launch { jelly.animateTo(0f, jellySpring) }
         }
     }
     val density = LocalDensity.current

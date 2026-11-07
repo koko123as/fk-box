@@ -55,8 +55,10 @@ import io.nekohasekai.sfa.compose.bytes
 import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
+import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.tabular
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.ChipTone
@@ -301,7 +303,7 @@ fun ConnectionStatsCard(box: BoxController, modifier: Modifier = Modifier) {
                     Modifier
                         .weight(1f)
                         .then(if (dashboardDensity.isDesktop) Modifier.fillMaxHeight() else Modifier)
-                        .clip(shape)
+                        .clip(shape.forClip())
                         .pressInk(shape, true, tr(feed.label)) { openDashboardFeed(navigator, box, feed) }
                         .padding(vertical = 10.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -496,7 +498,7 @@ private fun FeedTable(items: List<Json>, rowHeight: Float, columnsOf: @Composabl
         val tone = DashboardColors.tone
         val headerStyle = AppTextStyle.Caption1.of(true).copy(color = scheme.onSurfaceVariant)
         Column(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxWidth().clip(shape).background(tone, shape)) {
+            Box(Modifier.fillMaxWidth().background(tone, shape).clip(shape.forClip())) {
                 TableCells(columns, widths, headerHeight, 0f) { _, column ->
                     val descending = if (sort?.columnId == column.id) sort?.descending else null
                     val color = if (descending == null) headerStyle.color else scheme.onSurface
@@ -520,7 +522,7 @@ private fun FeedTable(items: List<Json>, rowHeight: Float, columnsOf: @Composabl
                 }
             } else {
                 androidx.compose.runtime.CompositionLocalProvider(LocalCellStyle provides AppTextStyle.Footnote.of().copy(color = scheme.onSurface)) {
-                    LazyColumn(Modifier.weight(1f).fillMaxWidth().dashboardFadeOut(overflows), contentPadding = PaddingValues(top = 2.dp)) {
+                    LazyColumn(Modifier.weight(1f).fillMaxWidth().dashboardFadeOut(overflows, SurfaceLevel.Card.colorOf(scheme)), contentPadding = PaddingValues(top = 2.dp)) {
                         itemsIndexed(shown, key = { _, item -> item["id"].toString() }) { index, item ->
                             Box(Modifier.fillMaxWidth().height(rowHeight.dp).then(if (index % 2 == 1) Modifier.background(tone, shape) else Modifier)) {
                                 TableCells(columns, widths, rowHeight, CELL_INSET) { _, column -> column.cell(item) }
@@ -535,7 +537,8 @@ private fun FeedTable(items: List<Json>, rowHeight: Float, columnsOf: @Composabl
 
 @Composable
 fun ConnectionsTableCard(box: BoxController) {
-    if (io.nekohasekai.sfa.compose.pages.LocalPageActive.current) BoxDataSubscription(box, BoxData.Connections)
+    val pageActive = io.nekohasekai.sfa.compose.pages.LocalPageActive.current
+    if (pageActive) BoxDataSubscription(box, BoxData.Connections)
     val density = dashboardDensity
     val scale = dashboardScale
     val rowHeight = rowHeightOf(density) * scale
@@ -543,10 +546,10 @@ fun ConnectionsTableCard(box: BoxController) {
     val tabInset = tabInsetOf(density)
     val cellStart = dashboardCardPaddingStart(density) - CELL_INSET
     var feed by remember { mutableStateOf(DashboardFeed.Connections) }
-    // Durations tick once a second while the live table shows.
+    // Durations tick once a second while the live table shows on the page in view.
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(feed) {
-        while (feed == DashboardFeed.Connections) {
+    LaunchedEffect(feed, pageActive) {
+        while (pageActive && feed == DashboardFeed.Connections) {
             now = System.currentTimeMillis()
             delay(1000)
         }
@@ -704,7 +707,7 @@ fun ProxyGroupsCard(box: BoxController) {
                     val overflows = rowsCount * tileHeight + (rowsCount - 1) * tileGap + padTop > maxHeight.value
                     LazyVerticalGrid(
                         columns = GridCells.Fixed(columns),
-                        modifier = Modifier.fillMaxSize().dashboardFadeOut(overflows),
+                        modifier = Modifier.fillMaxSize().dashboardFadeOut(overflows, SurfaceLevel.Card.colorOf(BoxTheme.scheme)),
                         contentPadding = PaddingValues(bottom = padTop.dp),
                         verticalArrangement = Arrangement.spacedBy(tileGap.dp),
                         horizontalArrangement = Arrangement.spacedBy(tileGap.dp),

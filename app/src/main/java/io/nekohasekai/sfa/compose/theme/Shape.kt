@@ -2,9 +2,16 @@ package io.nekohasekai.sfa.compose.theme
 
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Immutable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.PathFillType
+import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
@@ -54,10 +61,104 @@ class SuperellipseShape(
         }
     }
 
+    /** The native rounded-rectangle stand-in to clip content to; see [SuperellipseClipShape]. */
+    val clip: Shape by lazy(LazyThreadSafetyMode.NONE) { SuperellipseClipShape(topStart, topEnd, bottomEnd, bottomStart) }
+
     override fun equals(other: Any?): Boolean = other is SuperellipseShape && other.topStart == topStart &&
         other.topEnd == topEnd && other.bottomEnd == bottomEnd && other.bottomStart == bottomStart
 
     override fun hashCode(): Int = ((topStart.hashCode() * 31 + topEnd.hashCode()) * 31 + bottomEnd.hashCode()) * 31 + bottomStart.hashCode()
+}
+
+/**
+ * What to hand Modifier.clip in place of a [SuperellipseShape]. A generic path
+ * outline makes HWUI rasterize a clip mask for the layer, which a Mali driver
+ * keeps per process; a rounded rectangle with one radius clips natively. The
+ * radius is raised just enough (by [clipRadius]) that the rounded rectangle
+ * lies inside the squircle to within a quarter pixel, so clipped content never
+ * shows outside the squircle the background and border are still drawn with.
+ * Clip sites draw their background and border with the squircle itself.
+ */
+@Immutable
+class SuperellipseClipShape(
+    private val topStart: Dp,
+    private val topEnd: Dp,
+    private val bottomEnd: Dp,
+    private val bottomStart: Dp,
+) : Shape {
+    override fun createOutline(size: Size, layoutDirection: LayoutDirection, density: Density): Outline {
+        val ltr = layoutDirection == LayoutDirection.Ltr
+        with(density) {
+            val budget = min(size.width, size.height) / 2f
+            fun radius(dp: Dp) = min(clipRadius(dp.toPx()), budget)
+            val tl = radius(if (ltr) topStart else topEnd)
+            val tr = radius(if (ltr) topEnd else topStart)
+            val br = radius(if (ltr) bottomEnd else bottomStart)
+            val bl = radius(if (ltr) bottomStart else bottomEnd)
+            val rect = Rect(0f, 0f, size.width, size.height)
+            if (tl <= 0f && tr <= 0f && br <= 0f && bl <= 0f) return Outline.Rectangle(rect)
+            if (tl == tr && tr == br && br == bl) return Outline.Rounded(RoundRect(rect, CornerRadius(tl)))
+            // One rounded side (a sheet's top, a segment's end): the square side is pushed
+            // out past the bounds so the outline keeps a single radius and a native clip.
+            val r = max(max(tl, tr), max(br, bl))
+            val extended = when {
+                tl == r && tr == r && br <= 0f && bl <= 0f -> rect.copy(bottom = rect.bottom + r)
+                bl == r && br == r && tl <= 0f && tr <= 0f -> rect.copy(top = rect.top - r)
+                tl == r && bl == r && tr <= 0f && br <= 0f -> rect.copy(right = rect.right + r)
+                tr == r && br == r && tl <= 0f && bl <= 0f -> rect.copy(left = rect.left - r)
+                else -> null
+            }
+            if (extended != null) return Outline.Rounded(RoundRect(extended, CornerRadius(r)))
+            return Outline.Rounded(RoundRect(rect, CornerRadius(tl), CornerRadius(tr), CornerRadius(br), CornerRadius(bl)))
+        }
+    }
+
+    override fun equals(other: Any?): Boolean = other is SuperellipseClipShape && other.topStart == topStart &&
+        other.topEnd == topEnd && other.bottomEnd == bottomEnd && other.bottomStart == bottomStart
+
+    override fun hashCode(): Int = (((topStart.hashCode() * 31 + topEnd.hashCode()) * 31 + bottomEnd.hashCode()) * 31 + bottomStart.hashCode()) * 31 + 1
+}
+
+/** The shape to clip content with: a squircle's native stand-in, any other shape as is. */
+fun Shape.forClip(): Shape = if (this is SuperellipseShape) clip else this
+
+// How far (in units of the radius) a 60%-smoothed squircle corner of radius 1
+// lies inside a circular corner of radius k, for k = 1.00, 1.05 … 1.60. Measured
+// by sampling the corner of superellipsePath against the circle.
+private val CLIP_DEPTHS = floatArrayOf(
+    .012487f, .008527f, .005770f, .003831f, .002470f, .001528f, .000894f, .000483f, .000232f, .000092f, .000026f, .000003f, 0f,
+)
+
+/** The smallest circular radius whose corner stays within a quarter pixel of a squircle corner of [radius] px. */
+fun clipRadius(radius: Float): Float {
+    if (radius <= 0f) return 0f
+    val allowed = .25f / radius
+    if (allowed >= CLIP_DEPTHS[0]) return radius
+    for (i in 1 until CLIP_DEPTHS.size) {
+        if (CLIP_DEPTHS[i] <= allowed) {
+            val previous = CLIP_DEPTHS[i - 1]
+            val fraction = (previous - allowed) / (previous - CLIP_DEPTHS[i])
+            return radius * (1f + .05f * (i - 1 + fraction))
+        }
+    }
+    return radius * 1.6f
+}
+
+/**
+ * Covers what lies outside [shape] with [outside], the solid color around it,
+ * in place of a squircle clip: one static path fill (bounds minus the
+ * squircle) instead of a clip mask, for content that runs into the corners.
+ */
+fun Modifier.squircleCorners(shape: Shape, outside: Color): Modifier = drawWithCache {
+    val corners = Path().apply {
+        fillType = PathFillType.EvenOdd
+        addRect(Rect(0f, 0f, size.width, size.height))
+        addOutline(shape.createOutline(size, layoutDirection, this@drawWithCache))
+    }
+    onDrawWithContent {
+        drawContent()
+        drawPath(corners, outside)
+    }
 }
 
 object AppShape {

@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
@@ -290,9 +291,11 @@ fun DashboardCard(
             .then(modifier)
             .boxShadows(shape, dashboardShadowsE1(scheme.dark))
             .background(SurfaceLevel.Card.colorOf(scheme), shape)
-            .then(if (clip || onTap != null) Modifier.clip(shape) else Modifier)
-            .then(if (onTap != null) Modifier.pressInk(shape, true, semanticLabel, onTap) else if (semanticLabel != null) Modifier.semanticsLabel(semanticLabel) else Modifier)
+            // The border sits outside the clip, which is a native rounded rectangle just
+            // inside the squircle (Shape.forClip), so the squircle border stays whole.
             .then(if (side != null) Modifier.border(side.first, side.second, shape) else Modifier)
+            .then(if (clip || onTap != null) Modifier.clip(shape.forClip()) else Modifier)
+            .then(if (onTap != null) Modifier.pressInk(shape, true, semanticLabel, onTap) else if (semanticLabel != null) Modifier.semanticsLabel(semanticLabel) else Modifier)
             .padding(padding ?: dashboardCardPadding(density)),
     ) {
         androidx.compose.runtime.CompositionLocalProvider(LocalSurfaceLevelForContent provides SurfaceLevel.Card) { content() }
@@ -421,8 +424,8 @@ fun DashboardBlock(
     val fill = color ?: DashboardColors.tone
     Box(
         modifier
-            .clip(shape)
             .background(fill, shape)
+            .clip(shape.forClip())
             .then(if (onTap != null) Modifier.pressInk(shape, true, semanticLabel, onTap) else Modifier)
             .padding(padding),
     ) { content() }
@@ -506,21 +509,22 @@ fun DashboardSwitchRow(
 
 const val DASHBOARD_FADE_HEIGHT = 44f
 
-/** DashboardFadeOut: the last 44 dp of a list that runs past its card fade out instead of showing a scroll bar. */
-fun Modifier.dashboardFadeOut(enabled: Boolean): Modifier = if (!enabled) {
+/**
+ * DashboardFadeOut: the last 44 dp of a list that runs past its card fade out
+ * instead of showing a scroll bar. The card under the list is one solid color
+ * ([background], the card's own), so the fade is painted as a gradient of that
+ * color over the list: the same pixels as fading the list out with DstIn, but
+ * with no offscreen layer to allocate and composite on every frame.
+ */
+fun Modifier.dashboardFadeOut(enabled: Boolean, background: Color): Modifier = if (!enabled) {
     this
 } else {
-    this
-        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-        .drawWithContent {
-            drawContent()
-            val fade = DASHBOARD_FADE_HEIGHT.dp.toPx()
-            val stop = if (size.height <= 0f) 1f else ((size.height - fade) / size.height).coerceIn(0f, 1f)
-            drawRect(
-                Brush.verticalGradient(0f to Color.Black, stop to Color.Black, 1f to Color.Transparent),
-                blendMode = BlendMode.DstIn,
-            )
-        }
+    this.drawWithContent {
+        drawContent()
+        val fade = DASHBOARD_FADE_HEIGHT.dp.toPx()
+        val stop = if (size.height <= 0f) 1f else ((size.height - fade) / size.height).coerceIn(0f, 1f)
+        drawRect(Brush.verticalGradient(0f to background.copy(alpha = 0f), stop to background.copy(alpha = 0f), 1f to background))
+    }
 }
 
 /** The 8 dp nudge FlClash gives trailing header buttons (Transform.translate(8, 0)). */

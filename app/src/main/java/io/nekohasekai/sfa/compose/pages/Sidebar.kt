@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.ui.AnimatedGlyph
@@ -127,6 +129,8 @@ fun sidebarGlyph(progress: Float): Glyph {
             }
         },
         matchTextDirection = true,
+        key = "sidebar" to progress.toDouble(),
+        cacheable = progress == 0f || progress == 1f,
     )
 }
 
@@ -340,9 +344,14 @@ private fun SidebarButton(
         Box(
             Modifier
                 .height(height.dp)
-                .clip(shape)
                 .background(if (selected == true) scheme.onSurface.copy(alpha = .08f) else Color.Transparent, shape)
-                .drawBehind { if (overlay > 0f) drawRect(scheme.onSurface.copy(alpha = overlay)) }
+                // The press overlay is drawn in the squircle itself, as the clip is a native
+                // rounded rectangle just inside it (Shape.forClip).
+                .drawWithCache {
+                    val outline = shape.createOutline(size, layoutDirection, this)
+                    onDrawBehind { if (overlay > 0f) drawOutline(outline, scheme.onSurface.copy(alpha = overlay)) }
+                }
+                .clip(shape.forClip())
                 .clickable(interactionSource = interaction, indication = null, onClick = onTap)
                 .semanticsLabel(label),
         ) { content() }

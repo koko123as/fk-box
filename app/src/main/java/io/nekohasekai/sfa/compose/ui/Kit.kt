@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.compose.ui
 
-import android.graphics.BlurMaskFilter
 import android.os.Build
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
@@ -62,7 +61,7 @@ import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.addOutline
-import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -78,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import io.nekohasekai.sfa.compose.BoxStrings
 import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxScheme
 import io.nekohasekai.sfa.compose.theme.BoxTheme
@@ -127,38 +127,50 @@ data class BoxShadowSpec(val color: Color, val dy: Float, val blur: Float, val s
 /**
  * Paints blurred shadows under [shape]. Blur mask filters need hardware
  * canvas support from API 28; below that the shadows are left out.
+ *
+ * Each blurred layer is rendered once, on the CPU, into an alpha mask shared
+ * by every box of the same size, shape and spec (see [shadowMask]) and drawn
+ * as a bitmap in the shadow's color: HWUI never regenerates a blur mask on the
+ * GPU, however often the box above it redraws. A layer without blur stays a
+ * plain fill of a path kept for the size.
  */
 fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
     if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
         this
     } else {
-        // The paths and paints are built once per size: HWUI caches each blurred
-        // mask on the GPU by the path's identity, so a new Path on every redraw
-        // (a panel redraws whenever its content ticks) left a fresh mask texture
-        // behind each time until the Java Path was collected.
         drawWithCache {
             val layers = shadows.filter { it.color.alpha > 0f }.map { shadow ->
                 val spread = shadow.spread.dp.toPx()
-                val outline = shape.createOutline(Size(size.width + 2 * spread, size.height + 2 * spread), layoutDirection, this)
-                val path = Path().apply { addOutline(outline) }
+                val outlineSize = Size(size.width + 2 * spread, size.height + 2 * spread)
                 val flutterBlur = if (shadow.flutterRadius) shadow.blur else if (shadow.blur <= 1f) 0f else (shadow.blur / 2 - .5f) / .57735f
                 val radius = flutterBlur.dp.toPx()
-                val paint = Paint().apply { color = shadow.color }
-                if (radius > 0f) paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
-                Triple(path, paint, Offset(-spread, -spread + shadow.dy.dp.toPx()))
+                val offset = Offset(-spread, -spread + shadow.dy.dp.toPx())
+                if (radius > 0f) {
+                    val key = ShadowShapeKey(shape, outlineSize, layoutDirection, density)
+                    val mask = shadowMask(key, radius) {
+                        Path().apply { addOutline(shape.createOutline(outlineSize, layoutDirection, this@drawWithCache)) }
+                    }
+                    ShadowLayer(shadow.color, offset, mask, null)
+                } else {
+                    val path = Path().apply { addOutline(shape.createOutline(outlineSize, layoutDirection, this@drawWithCache)) }
+                    ShadowLayer(shadow.color, offset, null, path)
+                }
             }
             onDrawBehind {
-                drawIntoCanvas { canvas ->
-                    for ((path, paint, offset) in layers) {
-                        canvas.save()
-                        canvas.translate(offset.x, offset.y)
-                        canvas.drawPath(path, paint)
-                        canvas.restore()
+                for (layer in layers) {
+                    if (layer.mask != null) {
+                        drawShadowMask(layer.mask, layer.color, layer.offset.x, layer.offset.y)
+                    } else if (layer.path != null) {
+                        translate(layer.offset.x, layer.offset.y) { drawPath(layer.path, layer.color) }
                     }
                 }
             }
         }
     }
+
+private class ShadowLayer(val color: Color, val offset: Offset, val mask: ShadowMask?, val path: Path?)
+
+private data class ShadowShapeKey(val shape: Shape, val size: Size, val layoutDirection: androidx.compose.ui.unit.LayoutDirection, val density: Float)
 
 /** navigation_dock.dart's dockShadows: a soft, wide drop in the manner of iOS. */
 fun dockShadows(scheme: BoxScheme): List<BoxShadowSpec> {
@@ -266,7 +278,7 @@ fun BoxPanel(
             .fillMaxWidth()
             .boxShadows(PanelShape, panelShadows(scheme.dark))
             .background(SurfaceLevel.Card.colorOf(scheme), PanelShape)
-            .then(if (clip || onClick != null) Modifier.clip(PanelShape) else Modifier)
+            .then(if (clip || onClick != null) Modifier.clip(PanelShape.forClip()) else Modifier)
             .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
             .padding(padding),
     ) {
@@ -447,17 +459,39 @@ fun CommonSwitch(value: Boolean, onChanged: ((Boolean) -> Unit)?, modifier: Modi
 // Skeleton (ui/skeleton.dart): a pulsing pill
 // ---------------------------------------------------------------------------
 
+/**
+ * False on a page that is composed but not in view (HomePage keeps every tab
+ * composed at alpha 0): looping animations hold still there, since one running
+ * loop anywhere makes the whole window draw every frame.
+ */
+val LocalAnimationsActive = staticCompositionLocalOf { true }
+
+/** A 0→1 ramp repeating every [periodMs] while [running]; it holds its value while stopped. Read it at draw time. */
+@Composable
+fun rememberLoop(periodMs: Int, running: Boolean): androidx.compose.runtime.State<Float> {
+    val value = remember { Animatable(0f) }
+    LaunchedEffect(running) {
+        if (!running) return@LaunchedEffect
+        while (true) {
+            val rest = ((1f - value.value) * periodMs).toInt().coerceAtLeast(1)
+            value.animateTo(1f, tween(rest, easing = androidx.compose.animation.core.LinearEasing))
+            value.snapTo(0f)
+        }
+    }
+    return value.asState()
+}
+
 @Composable
 fun SkeletonPill(width: Dp?, height: Dp, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "skeleton")
-    val t by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1600, easing = androidx.compose.animation.core.LinearEasing), RepeatMode.Restart), label = "pulse")
-    // _Pulse: eases between 1 and .4 and back over the period.
-    val alpha = 0.7f + 0.3f * kotlin.math.cos(2 * Math.PI * t).toFloat()
+    // Pulses only on the page in view: hidden pages stay composed, and a loop there
+    // would keep the whole window redrawing every frame.
+    val t = rememberLoop(1600, LocalAnimationsActive.current)
     Box(
         modifier
             .then(if (width == null) Modifier.fillMaxWidth() else Modifier.width(width))
             .height(height)
-            .graphicsLayer { this.alpha = alpha }
+            // _Pulse: eases between 1 and .4 and back over the period; read at draw time.
+            .graphicsLayer { this.alpha = 0.7f + 0.3f * kotlin.math.cos(2 * Math.PI * t.value).toFloat() }
             .background(BoxTheme.scheme.surfaceContainerHighest, AppShape.full),
     )
 }
@@ -511,7 +545,7 @@ fun ListItem(
     Column(
         modifier
             .fillMaxWidth()
-            .then(if (position != null) Modifier.background(background, shape).clip(shape) else Modifier)
+            .then(if (position != null) Modifier.background(background, shape).clip(shape.forClip()) else Modifier)
             .then(if (onClick != null && !sorting) Modifier.clickable(interactionSource = interaction, indication = null, onClick = onClick) else Modifier)
             .pressOverlay(pressed && onClick != null && position != null, foreground, shape),
     ) {

@@ -182,7 +182,7 @@ fun HomePage(box: BoxController) {
                                     }
                                     .then(if (active) Modifier else Modifier.blockInput()),
                             ) {
-                                CompositionLocalProvider(LocalPageActive provides active) {
+                                CompositionLocalProvider(LocalPageActive provides active, io.nekohasekai.sfa.compose.ui.LocalAnimationsActive provides active) {
                                     when (i) {
                                         0 -> DashboardPage(box)
                                         1 -> ProxiesPage(box)

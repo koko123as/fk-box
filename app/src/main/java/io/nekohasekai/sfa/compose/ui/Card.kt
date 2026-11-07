@@ -57,6 +57,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.LocalSurfaceLevel
@@ -116,8 +117,8 @@ fun CommonCard(
     val enabled = !inert && onPressed != null
     Box(
         modifier
-            .clip(shape)
             .background(animatedColor(background, 200), shape)
+            .clip(shape.forClip())
             .then(
                 if (enabled || (!inert && onLongPress != null)) {
                     Modifier.combinedClickable(
@@ -163,8 +164,8 @@ fun SelectionCheck() {
 /** loading.dart's CommonCircleLoading: a comet ring turning once a second. */
 @Composable
 fun CommonCircleLoading(size: Dp = 24.dp, color: Color = BoxTheme.scheme.primary, modifier: Modifier = Modifier) {
-    val transition = rememberInfiniteTransition(label = "loading")
-    val turns by transition.animateFloat(0f, 1f, infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Restart), label = "turns")
+    // Turns only on the page in view (see LocalAnimationsActive); read at draw time.
+    val turns by rememberLoop(1000, LocalAnimationsActive.current)
     Canvas(modifier.size(size)) {
         val side = this.size.minDimension
         val strokeWidth = max(side / 12, 1.5.dp.toPx())

@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import io.nekohasekai.sfa.compose.theme.AppCorner
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.LocalSurfaceLevel
@@ -492,8 +493,8 @@ private fun SnapSheet(navigator: BoxNavigator, level: NavLevel) {
                 .fillMaxWidth()
                 .height(with(density) { max(sheetPx, controller.stops.first()).toDp() })
                 .offset { IntOffset(0, ((1 - shown) * max(sheetPx, controller.stops.first()) + max(0f, controller.stops.first() - sheetPx)).toInt()) }
-                .clip(AppShape.top(AppCorner.XXL))
-                .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme))
+                .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme), AppShape.top(AppCorner.XXL))
+                .clip(AppShape.top(AppCorner.XXL).forClip())
                 .nestedScroll(controller.nestedScroll)
                 .draggable(
                     rememberDraggableState { delta -> controller.dragBy(-delta) },
@@ -529,8 +530,8 @@ private fun FormSheetCard(level: NavLevel) {
                     scaleX = scale
                     scaleY = scale
                 }
-                .clip(AppShape.all(AppCorner.XXL))
-                .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme)),
+                .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme), AppShape.all(AppCorner.XXL))
+                .clip(AppShape.all(AppCorner.XXL).forClip()),
         ) {
             CompositionLocalProvider(LocalSheetType provides SheetType.FormSheet, LocalBottomInset provides 0.dp) { SheetPages(level) }
         }

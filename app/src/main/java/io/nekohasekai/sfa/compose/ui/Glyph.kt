@@ -14,9 +14,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Canvas
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageBitmapConfig
 import androidx.compose.ui.graphics.Paint
 import androidx.compose.ui.graphics.PaintingStyle
 import androidx.compose.ui.graphics.Path
@@ -37,6 +40,7 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /*
@@ -47,8 +51,21 @@ import kotlin.math.sin
 
 enum class GlyphRole { Body, Detail, Line }
 
+/**
+ * [key] names a computed glyph's shape for the raster cache (a fixed glyph is
+ * its own key); [cacheable] is false for in-between frames of a computed
+ * glyph, which are drawn live instead of filling the cache.
+ */
 @Immutable
-class Glyph(val shapes: List<GlyphShape>, val matchTextDirection: Boolean = false) {
+class Glyph(
+    val shapes: List<GlyphShape>,
+    val matchTextDirection: Boolean = false,
+    key: Any? = null,
+    val cacheable: Boolean = true,
+) {
+    val cacheKey: Any = key ?: this
+
+
     companion object {
         const val SIZE = 24f
         const val STROKE_WIDTH = 1.8f
@@ -201,8 +218,12 @@ private fun area(color: Color) = Paint().apply {
     isAntiAlias = true
 }
 
-/** glyph_painter.dart's GlyphPainter. */
+/** glyph_painter.dart's GlyphPainter, drawn live. */
 fun DrawScope.drawGlyph(glyph: Glyph, fill: Float, color: Color, mirror: Boolean = false) {
+    drawIntoCanvas { canvas -> paintGlyph(canvas, size.width, size.height, glyph, fill, color, mirror) }
+}
+
+private fun paintGlyph(canvas: Canvas, width: Float, height: Float, glyph: Glyph, fill: Float, color: Color, mirror: Boolean) {
     val opaque = color.copy(alpha = 1f)
     val strokePaint = stroke(opaque, Glyph.STROKE_WIDTH)
     val clamped = fill.coerceIn(0f, 1f)
@@ -211,11 +232,11 @@ fun DrawScope.drawGlyph(glyph: Glyph, fill: Float, color: Color, mirror: Boolean
     val areaPaint = area(opaque)
     val cut = fill > DETAIL_SWAP
     val detailScale = if (cut) (fill - DETAIL_SWAP) / (1 - DETAIL_SWAP) else 1 - fill / DETAIL_SWAP
-    val scale = min(size.width, size.height) / Glyph.SIZE
-    drawIntoCanvas { canvas ->
+    val scale = min(width, height) / Glyph.SIZE
+    run {
         canvas.save()
         if (mirror) {
-            canvas.translate(size.width, 0f)
+            canvas.translate(width, 0f)
             canvas.scale(-1f, 1f)
         }
         canvas.scale(scale, scale)
@@ -293,9 +314,43 @@ fun GlyphIcon(
     color: Color = LocalContentColor.current,
     fill: Float = 0f,
 ) {
-    val mirror = glyph.matchTextDirection && LocalLayoutDirection.current == LayoutDirection.Rtl
-    Canvas(modifier.size(size)) { drawGlyph(glyph, fill, color, mirror) }
+    GlyphIcon(glyph, modifier, size, color, fill, live = false)
 }
+
+@Composable
+private fun GlyphIcon(glyph: Glyph, modifier: Modifier, size: Dp, color: Color, fill: Float, live: Boolean) {
+    val mirror = glyph.matchTextDirection && LocalLayoutDirection.current == LayoutDirection.Rtl
+    Canvas(modifier.size(size)) {
+        if (live) drawGlyph(glyph, fill, color, mirror) else drawGlyphCached(glyph, fill, color, mirror)
+    }
+}
+
+/**
+ * Draws [glyph] from a mask rasterized once per glyph, pixel size, fill and
+ * mirroring, the way VectorPainter caches a vector; the mask is alpha-only and
+ * takes [color] (alpha included) when drawn. A fill between 0 and 1 is a
+ * fill animation in flight and is drawn live, as are in-between frames of a
+ * computed glyph and sizes too large to be worth caching.
+ */
+fun DrawScope.drawGlyphCached(glyph: Glyph, fill: Float, color: Color, mirror: Boolean = false, box: Size = size) {
+    val width = box.width.roundToInt()
+    val height = box.height.roundToInt()
+    val settled = fill == 0f || fill == 1f
+    if (!settled || !glyph.cacheable || width <= 0 || height <= 0 || width * height > MAX_CACHED_GLYPH_PIXELS) {
+        drawIntoCanvas { canvas -> paintGlyph(canvas, box.width, box.height, glyph, fill, color, mirror) }
+        return
+    }
+    val mask = GlyphMasks.get(GlyphKey(glyph.cacheKey, width, height, fill == 1f, mirror)) {
+        ImageBitmap(width, height, ImageBitmapConfig.Alpha8).also { image ->
+            paintGlyph(Canvas(image), width.toFloat(), height.toFloat(), glyph, fill, Color.White, mirror)
+        }
+    }
+    drawMask(mask, color)
+}
+
+private data class GlyphKey(val glyph: Any, val width: Int, val height: Int, val filled: Boolean, val mirror: Boolean)
+
+private const val MAX_CACHED_GLYPH_PIXELS = 256 * 256
 
 private val EaseInOutCubic = CubicBezierEasing(0.645f, 0.045f, 0.355f, 1f)
 
@@ -328,6 +383,8 @@ fun AnimatedGlyph(glyph: Glyph, filled: Boolean, modifier: Modifier = Modifier, 
         size = size,
         color = color,
         fill = fill.value,
+        // The pop scales the layer: a live path stays sharp where a scaled mask would soften.
+        live = popScale != 0f,
     )
 }
 
@@ -341,7 +398,7 @@ internal fun computedSidebar(progress: Double): Glyph {
     for (y in listOf(8.5, 11.0, 13.5)) {
         shapes += GlyphPolyline(listOf(GlyphVertex(5.5, y), GlyphVertex(divider - 2.5, y)), role = GlyphRole.Detail)
     }
-    return Glyph(shapes, matchTextDirection = true)
+    return Glyph(shapes, matchTextDirection = true, key = "sidebar" to progress, cacheable = progress == 0.0 || progress == 1.0)
 }
 
 private val playCorners = listOf(GlyphPoint(8.3, 5.6), GlyphPoint(18.8, 12.0), GlyphPoint(8.3, 18.4))
@@ -362,11 +419,15 @@ private fun turnedVertex(corner: GlyphPoint, angle: Double): GlyphVertex {
 internal fun computedPlayPause(progress: Double): Glyph {
     val fold = progress.coerceIn(0.0, 1.0)
     val turn = PI / 2 * progress
+    val key = "playPause" to progress
+    val cacheable = progress == 0.0 || progress == 1.0
     if (fold == 0.0) {
-        return Glyph(listOf(GlyphPolyline(playCorners.map { turnedVertex(it, turn) }, closed = true)))
+        return Glyph(listOf(GlyphPolyline(playCorners.map { turnedVertex(it, turn) }, closed = true)), key = key, cacheable = cacheable)
     }
     return Glyph(
-        playHalves.map { (half, bar) ->
+        key = key,
+        cacheable = cacheable,
+        shapes = playHalves.map { (half, bar) ->
             GlyphPolyline(
                 half.indices.map { i ->
                     turnedVertex(GlyphPoint(half[i].x + (bar[i].x - half[i].x) * fold, half[i].y + (bar[i].y - half[i].y) * fold), turn)

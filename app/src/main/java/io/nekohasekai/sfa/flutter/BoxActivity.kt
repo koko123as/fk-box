@@ -370,6 +370,23 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
         bridge?.reportError(description)
     }
 
+    // The glyph and shadow masks are rebuilt on demand; while the UI is hidden they
+    // only hold memory, so they are dropped (HWUI trims its own GPU caches then too).
+    override fun onStop() {
+        super.onStop()
+        io.nekohasekai.sfa.compose.ui.clearRasterCaches()
+    }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        @Suppress("DEPRECATION")
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_UI_HIDDEN || level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
+            level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+        ) {
+            io.nekohasekai.sfa.compose.ui.clearRasterCaches()
+        }
+    }
+
     override fun onDestroy() {
         documentRequest?.cancel()
         startResult.failed(IllegalStateException("Activity closed during service start"))

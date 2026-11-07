@@ -30,11 +30,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.BiasAlignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asComposePath
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
@@ -53,6 +55,7 @@ import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /** null_status.dart's NullStatusIllustration. */
@@ -237,7 +240,14 @@ fun EmptyIllustration(type: NullStatusIllustration, dimension: Int) {
         val (halo, body, mark) = poseAt(entrance, t)
         paintShape(shape, halo, center, side * HALO_EXTENT, palette.highlight.copy(alpha = palette.highlight.alpha * 0.14f * halo.alpha))
         paintShape(shape, body, center, side * SHAPE_EXTENT, palette.shape)
-        if (mark.scale > 0f) {
+        if (t >= 1f) {
+            // Settled: the glyph stands still from here on, so it is drawn from its
+            // cached mask at a whole-pixel size and position instead of live paths.
+            val extent = (side * GLYPH_EXTENT).roundToInt().toFloat()
+            translate((center.x - extent / 2).roundToInt().toFloat(), (center.y - extent / 2).roundToInt().toFloat()) {
+                drawGlyphCached(glyph, 1f, palette.ink, box = Size(extent, extent))
+            }
+        } else if (mark.scale > 0f) {
             val extent = side * GLYPH_EXTENT * mark.scale
             val at = center + Offset(0f, side * mark.rise)
             withTransform({

@@ -48,6 +48,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
@@ -427,8 +428,7 @@ fun GroupTabs(groups: List<Json>, selected: Int, onSelected: (Int) -> Unit) {
             state = state,
             modifier = Modifier
                 .weight(1f)
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                .drawWithEdgeFade(fade, with(density) { FADE_EXTENT.dp.toPx() }),
+                .drawWithEdgeFade(fade, with(density) { FADE_EXTENT.dp.toPx() }, SurfaceLevel.Page.colorOf(BoxTheme.scheme)),
             contentPadding = PaddingValues(start = STRIP_INSET.dp, end = if (hasMore) 0.dp else STRIP_INSET.dp),
             horizontalArrangement = Arrangement.spacedBy(TAB_SPACING.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -450,14 +450,16 @@ fun GroupTabs(groups: List<Json>, selected: Int, onSelected: (Int) -> Unit) {
     }
 }
 
-private fun Modifier.drawWithEdgeFade(fade: Float, extent: Float): Modifier = drawWithContent {
+/**
+ * The strip's trailing fade, painted as a gradient of the page color under it
+ * ([background]) over the chips: the same pixels as fading them out with
+ * DstIn, without an offscreen layer composited on every frame.
+ */
+private fun Modifier.drawWithEdgeFade(fade: Float, extent: Float, background: Color): Modifier = drawWithContent {
     drawContent()
     if (fade > 0f && size.width > 0f) {
         val start = max(0f, 1 - extent / size.width)
-        drawRect(
-            Brush.horizontalGradient(start to Color.Black, 1f to Color.Black.copy(alpha = 1 - fade)),
-            blendMode = BlendMode.DstIn,
-        )
+        drawRect(Brush.horizontalGradient(start to background.copy(alpha = 0f), 1f to background.copy(alpha = fade)))
     }
 }
 
@@ -622,7 +624,7 @@ private fun UnfoldingRows(rowCount: Int, extent: Float, unfold: Float, shape: an
         Modifier
             .fillMaxWidth()
             .height((total * unfold).dp)
-            .clip(AppShape.none)
+            .clipToBounds()
             .background(raisedSurfaceLevel.colorOf(BoxTheme.scheme), shape),
     ) {
         Column {

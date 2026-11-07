@@ -39,6 +39,9 @@ import androidx.graphics.shapes.Morph
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
+import io.nekohasekai.sfa.compose.theme.forClip
+import io.nekohasekai.sfa.compose.ui.drawShadowMask
+import io.nekohasekai.sfa.compose.ui.shadowMask
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.MaterialShapes
@@ -91,7 +94,28 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
             val path = morph[1] as androidx.compose.ui.graphics.Path
             val turn = Math.toDegrees(p * 2 * PI / 9).toFloat()
             val shadowDy = 6.dp.toPx()
-            if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
+            if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28 && (p == 0f || p == 1f)) {
+                // At rest the blurred shadow comes from a mask rendered once (see shadowMask);
+                // only the 450 ms morph between the two rests blurs live.
+                val w = this@Canvas.size.width
+                val h = this@Canvas.size.height
+                val radius = (7f - .5f) / .57735f * density
+                val mask = shadowMask(StartShadowKey(p, w, h, turn), radius) {
+                    androidx.compose.ui.graphics.Path().apply {
+                        addPath(path)
+                        transform(
+                            androidx.compose.ui.graphics.Matrix().apply {
+                                // rotate(turn) about the center, then scale the unit square: applied right to left.
+                                translate(w / 2, h / 2)
+                                rotateZ(turn)
+                                translate(-w / 2, -h / 2)
+                                scale(w, h)
+                            },
+                        )
+                    }
+                }
+                drawShadowMask(mask, shadow, 0f, shadowDy)
+            } else if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
                 withTransform({
                     translate(0f, shadowDy)
                     rotate(turn)
@@ -155,10 +179,12 @@ fun ConnectedButton(
     Box(
         modifier
             .elasticPress()
-            .clip(shape)
-            .background(lerp(background, scheme.primary, amount))
+            .background(lerp(background, scheme.primary, amount), shape)
+            .clip(shape.forClip())
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, onClick = onTap)
             .semanticsLabel(label),
         contentAlignment = Alignment.Center,
     ) { content(if (selected) scheme.onPrimary else foreground) }
 }
+
+private data class StartShadowKey(val progress: Float, val width: Float, val height: Float, val turn: Float)

@@ -20,6 +20,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
+import io.nekohasekai.sfa.compose.theme.forClip
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 
 /**
@@ -39,8 +40,8 @@ fun MessageBanner(text: String, error: Boolean, onDismiss: () -> Unit) {
             .widthIn(max = 560.dp)
             .fillMaxWidth()
             .shadow(12.dp, shape, ambientColor = scheme.shadow, spotColor = scheme.shadow)
-            .clip(shape)
-            .background(scheme.surfaceContainerHigh)
+            .background(scheme.surfaceContainerHigh, shape)
+            .clip(shape.forClip())
             .padding(start = 14.dp, end = 6.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),

@@ -40,6 +40,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.addOutline
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
@@ -73,6 +75,7 @@ import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ListItem
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.MaterialShapes
+import io.nekohasekai.sfa.compose.ui.shapePathOf
 import io.nekohasekai.sfa.compose.ui.PanelShape
 import io.nekohasekai.sfa.compose.ui.Section
 import io.nekohasekai.sfa.compose.ui.ShapeBadge
@@ -340,20 +343,37 @@ fun StatusPanel(box: BoxController, modifier: Modifier = Modifier) {
     val cardShape = io.nekohasekai.sfa.compose.theme.AppShape.all(dashboardCardRadius(density))
     DashboardCard(modifier, padding = PaddingValues(0.dp), semanticLabel = tr("Status")) {
         Box(if (density.isDesktop) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
-            Box(Modifier.matchParentSize().clip(cardShape)) {
-                Box(Modifier.align(Alignment.TopEnd).wrapContentSize(Alignment.TopEnd, unbounded = true).offset(x = (-metrics.decorationEnd).dp, y = metrics.decorationTop.dp)) {
-                    ShapeBadge(
-                        MaterialShapes.Cookie12Sided,
-                        lerp(SurfaceLevel.Block.colorOf(scheme), alphaBlend(scheme.primary.copy(alpha = .1f), SurfaceLevel.Card.colorOf(scheme)), badgeProgress.coerceIn(0f, 1f)),
-                        metrics.decorationSize.dp,
-                        Modifier.graphicsLayer {
-                            rotationZ = (180f / 6f) * badgeProgress
-                            scaleX = 1 + .12f * badgeProgress
-                            scaleY = 1 + .12f * badgeProgress
-                        },
-                    )
-                }
-            }
+            // The cookie behind the top-end corner, cut to the card's squircle. It used to be a
+            // ShapeBadge under a squircle clip; the cut is now the path intersection itself, a
+            // plain fill rebuilt only while the badge animates, so HWUI keeps no clip mask.
+            val decorationColor = lerp(SurfaceLevel.Block.colorOf(scheme), alphaBlend(scheme.primary.copy(alpha = .1f), SurfaceLevel.Card.colorOf(scheme)), badgeProgress.coerceIn(0f, 1f))
+            Box(
+                Modifier.matchParentSize().drawWithCache {
+                    val turn = badgeProgress
+                    val side = metrics.decorationSize.dp.toPx()
+                    // Where Alignment.TopEnd + wrapContentSize(unbounded) + offset put the badge.
+                    val shiftX = (-metrics.decorationEnd).dp.toPx()
+                    val left = if (layoutDirection == androidx.compose.ui.unit.LayoutDirection.Ltr) size.width - side + shiftX else -shiftX
+                    val top = metrics.decorationTop.dp.toPx()
+                    val growth = 1 + .12f * turn
+                    val cookie = androidx.compose.ui.graphics.Path().apply {
+                        addPath(shapePathOf(MaterialShapes.Cookie12Sided))
+                        transform(
+                            androidx.compose.ui.graphics.Matrix().apply {
+                                // The badge's graphicsLayer turn and swell about its center, then the unit square scaled to its size.
+                                translate(left + side / 2, top + side / 2)
+                                rotateZ((180f / 6f) * turn)
+                                scale(growth, growth)
+                                translate(-side / 2, -side / 2)
+                                scale(side, side)
+                            },
+                        )
+                    }
+                    val card = androidx.compose.ui.graphics.Path().apply { addOutline(cardShape.createOutline(size, layoutDirection, this@drawWithCache)) }
+                    val cut = androidx.compose.ui.graphics.Path().apply { op(cookie, card, androidx.compose.ui.graphics.PathOperation.Intersect) }
+                    onDrawBehind { drawPath(cut, decorationColor) }
+                },
+            )
             Row(
                 (if (density.isDesktop) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(metrics.padding),
                 horizontalArrangement = Arrangement.spacedBy(metrics.gap.dp),

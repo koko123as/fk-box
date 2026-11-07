@@ -65,6 +65,9 @@ import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.bytes
 import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.theme.forClip
+import io.nekohasekai.sfa.compose.theme.squircleCorners
+import androidx.compose.ui.draw.clipToBounds
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
@@ -409,7 +412,16 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
     val scale = max(1f, LocalDensity.current.fontScale)
     val textHeight = 14 + 4 + (AppTextStyle.Footnote.leading + AppTextStyle.Title1.leading + AppTextStyle.Caption1.leading) * scale
     val shape = AppShape.all(22f)
-    BoxWithConstraints(Modifier.fillMaxWidth().clip(shape).background(SurfaceLevel.Block.colorOf(scheme), shape)) {
+    // The chart runs into the tile's bottom corners: rather than a squircle clip, the
+    // tile is clipped to its bounds and what lies outside the squircle is covered in
+    // the card color around it (squircleCorners), which is the same picture.
+    BoxWithConstraints(
+        Modifier
+            .fillMaxWidth()
+            .background(SurfaceLevel.Block.colorOf(scheme), shape)
+            .clipToBounds()
+            .squircleCorners(shape, SurfaceLevel.Card.colorOf(scheme)),
+    ) {
         val chartHeight = max(36f, maxWidth.value / 1.06f - textHeight - 12 + 2)
         Box(Modifier.fillMaxWidth().height((chartHeight - 2 + 12 + textHeight).dp)) {
             io.nekohasekai.sfa.compose.ui.LineChart(
@@ -954,7 +966,7 @@ private fun IntranetPanel(box: BoxController, modifier: Modifier = Modifier) {
             }
             if (mobile) Spacer(Modifier.height(14.dp)) else Spacer(Modifier.weight(1f))
             if (box.remote) {
-                Box(Modifier.fillMaxWidth().clip(AppShape.all(20f)).background(SurfaceLevel.Block.colorOf(scheme))) {
+                Box(Modifier.fillMaxWidth().background(SurfaceLevel.Block.colorOf(scheme), AppShape.all(20f)).clip(AppShape.all(20f).forClip())) {
                     ListItem(
                         leading = { GlyphIcon(AppGlyphs.wifi, size = 32.dp) },
                         title = { Text(tr("This device")) },
