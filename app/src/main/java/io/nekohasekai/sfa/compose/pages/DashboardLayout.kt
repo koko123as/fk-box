@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
@@ -234,9 +235,8 @@ private const val INK_FADE_MS = 200
  * under the content and lets it out over 200 ms. A quick tap, which Flutter
  * reports down and up together, shows no ink.
  */
-fun Modifier.pressInk(shape: Shape, enabled: Boolean, label: String? = null, onClick: () -> Unit): Modifier = this.then(
-    Modifier.composedPressInk(shape, enabled, label, onClick),
-)
+fun Modifier.pressInk(shape: Shape, enabled: Boolean, label: String? = null, onClick: () -> Unit): Modifier =
+    this.composedPressInk(shape, enabled, label, onClick)
 
 @Composable
 private fun inkModifier(shape: Shape, enabled: Boolean, label: String?, onClick: () -> Unit): Modifier {
@@ -265,7 +265,7 @@ private fun inkModifier(shape: Shape, enabled: Boolean, label: String?, onClick:
 }
 
 private fun Modifier.composedPressInk(shape: Shape, enabled: Boolean, label: String?, onClick: () -> Unit): Modifier =
-    androidx.compose.ui.composed { inkModifier(shape, enabled, label, onClick) }
+    this.composed { inkModifier(shape, enabled, label, onClick) }
 
 /**
  * DashboardCard: the card surface with the e1 shadows. Unclipped by default
