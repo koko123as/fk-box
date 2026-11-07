@@ -251,11 +251,12 @@ private fun OutboundModeBar(box: BoxController) {
     val glyphs = mapOf("rule" to AppGlyphs.rules, "global" to AppGlyphs.proxies, "direct" to AppGlyphs.target)
     BoxPanel(padding = PaddingValues(start = dashboardCardPadding(density).first, top = inset, end = inset, bottom = inset)) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
+            val titleMax = maxWidth / 4
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
                 GlyphIcon(AppGlyphs.split, size = 18.dp, color = scheme.onSurfaceVariant)
                 Text(
                     tr("Outbound mode"),
-                    Modifier.widthIn(max = maxWidth / 4),
+                    Modifier.widthIn(max = titleMax),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface),
