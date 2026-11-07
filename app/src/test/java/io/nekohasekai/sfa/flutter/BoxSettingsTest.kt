@@ -41,6 +41,9 @@ class BoxSettingsTest {
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("hiddenCards" to listOf("Status"))) }
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("proxyColumns" to 1.5)) }
         BoxPreferences.validate(mapOf("theme" to "dark", "proxyColumns" to 2, "hiddenCards" to listOf("Memory")))
+        BoxPreferences.validate(mapOf("appearanceStyle" to "minimal"))
+        BoxPreferences.validate(mapOf("appearanceStyle" to "standard"))
+        assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("appearanceStyle" to "flat")) }
     }
 
     @Test

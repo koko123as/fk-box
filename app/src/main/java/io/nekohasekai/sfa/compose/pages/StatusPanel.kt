@@ -330,7 +330,8 @@ fun StatusPanel(box: BoxController) {
 
     BoxPanel(padding = PaddingValues(0.dp), clip = false, modifier = Modifier.semanticsLabel(tr("Status"))) {
         Box(Modifier.fillMaxWidth().then(if (desktop) Modifier.fillMaxHeight() else Modifier)) {
-            Box(Modifier.matchParentSize().clip(io.nekohasekai.sfa.compose.ui.panelShape())) {
+            // The background cookie is decoration; the minimal style leaves it out.
+            if (io.nekohasekai.sfa.compose.theme.LocalAppearance.current.decorations) Box(Modifier.matchParentSize().clip(io.nekohasekai.sfa.compose.ui.panelShape())) {
                 Box(Modifier.align(Alignment.TopEnd).wrapContentSize(Alignment.TopEnd, unbounded = true).offset(x = if (desktop) 64.dp else 60.dp, y = if (density == io.nekohasekai.sfa.compose.ui.DashboardDensity.Standard) (-87).dp else if (compact) (-75).dp else (-66).dp)) {
                     ShapeBadge(
                         MaterialShapes.Cookie12Sided,

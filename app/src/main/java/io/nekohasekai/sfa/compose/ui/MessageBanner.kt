@@ -40,6 +40,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.nekohasekai.sfa.compose.theme.hairlineOutline
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -299,8 +300,11 @@ fun BannerHost(state: BannerHostState, stacked: Boolean, topInset: Dp = 0.dp) {
 private fun BannerItem(state: BannerHostState, entry: BannerEntry, stacked: Boolean, top: Dp) {
     val visible = entry.visible
     val id = entry.id
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style shows a banner in place with a short fade instead of dropping it in.
+    val still = !tokens.expressiveMotion
     val drop = remember { Animatable(0f) }
-    val fade = remember { Animatable(1f) }
+    val fade = remember { Animatable(if (still) 0f else 1f) }
     var dragOffset by remember { mutableFloatStateOf(0f) }
     var pull by remember { mutableFloatStateOf(0f) }
     var dragging by remember { androidx.compose.runtime.mutableStateOf(false) }
@@ -311,6 +315,17 @@ private fun BannerItem(state: BannerHostState, entry: BannerEntry, stacked: Bool
     val topPx = with(density) { top.toPx() }
     val currentVisible by rememberUpdatedState(visible)
     LaunchedEffect(visible) {
+        if (still) {
+            if (visible) {
+                drop.snapTo(1f)
+                fade.animateTo(1f, tokens.fade<Float>())
+            } else {
+                settle?.cancel()
+                if (fade.value > 0f) fade.animateTo(0f, tokens.fadeOut<Float>())
+                state.remove(id)
+            }
+            return@LaunchedEffect
+        }
         if (visible) {
             drop.animateTo(1f, spring(DROP_DAMPING_RATIO, DROP_STIFFNESS))
             drop.snapTo(1f)
@@ -355,7 +370,7 @@ private fun BannerItem(state: BannerHostState, entry: BannerEntry, stacked: Bool
                 } else {
                     state.setDragging(id, false)
                     settle = scope.launch {
-                        animate(offset, 0f, velocity, spring(DROP_DAMPING_RATIO, DROP_STIFFNESS)) { value, _ -> dragOffset = value }
+                        animate(offset, 0f, velocity, if (still) tokens.fade<Float>() else spring(DROP_DAMPING_RATIO, DROP_STIFFNESS)) { value, _ -> dragOffset = value }
                         dragOffset = 0f
                     }
                 }
@@ -400,7 +415,10 @@ private fun BannerItem(state: BannerHostState, entry: BannerEntry, stacked: Bool
                 .onSizeChanged { height = it.height.toFloat() }
                 // Lerps the top from a banner's height above the screen to its rest.
                 .offset { IntOffset(0, (topPx * drop.value + dragOffset).roundToInt()) }
-                .graphicsLayer { translationY = (drop.value - 1) * size.height },
+                .graphicsLayer {
+                    translationY = (drop.value - 1) * size.height
+                    alpha = fade.value.coerceIn(0f, 1f)
+                },
         ) { surface() }
     }
 }
@@ -421,12 +439,19 @@ private fun BannerSurface(message: BannerMessage, modifier: Modifier, onDismiss:
     val accent = if (error) scheme.error else scheme.primary
     val badge = if (level == BannerLevel.Info) scheme.primaryContainer else content.copy(alpha = 0.12f)
     val shape = AppShape.xl
+    val shadows = io.nekohasekai.sfa.compose.theme.LocalAppearance.current.shadows
     androidx.compose.runtime.CompositionLocalProvider(LocalSurfaceLevel provides floating) {
         Row(
             modifier
                 .fillMaxWidth()
                 .heightIn(min = BANNER_MIN_HEIGHT.dp)
-                .shadow(3.dp, shape, ambientColor = scheme.shadow.copy(alpha = 0.6f), spotColor = scheme.shadow.copy(alpha = 0.6f))
+                .then(
+                    if (shadows) {
+                        Modifier.shadow(3.dp, shape, ambientColor = scheme.shadow.copy(alpha = 0.6f), spotColor = scheme.shadow.copy(alpha = 0.6f))
+                    } else {
+                        Modifier.hairlineOutline(shape)
+                    },
+                )
                 .clip(shape)
                 .background(fill)
                 .padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),

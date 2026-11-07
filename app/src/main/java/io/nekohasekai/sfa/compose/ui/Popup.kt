@@ -215,18 +215,19 @@ internal fun PopupLayer(host: PopupHost) {
 @Composable
 private fun PopupOverlay(host: PopupHost, request: PopupRequest) {
     val scope = rememberCoroutineScope()
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
     val levels = remember { mutableStateListOf(MenuLevel(request.items, null, 0f)) }
     val close: (after: (() -> Unit)?) -> Unit = { after ->
         if (!request.closing) {
             request.closing = true
             scope.launch {
-                request.presentation.animateTo(0f, tween(200))
+                request.presentation.animateTo(0f, if (tokens.expressiveMotion) tween(200) else tokens.fadeOut<Float>())
                 host.requests.remove(request)
                 after?.invoke()
             }
         }
     }
-    LaunchedEffect(request) { request.presentation.animateTo(1f, openSpring) }
+    LaunchedEffect(request) { request.presentation.animateTo(1f, if (tokens.expressiveMotion) openSpring else tokens.fade<Float>()) }
     BackHandler {
         if (levels.size > 1) levels.removeAt(levels.lastIndex) else close(null)
     }
@@ -305,6 +306,9 @@ private fun MenuStack(
     placement: PopupPlacement,
 ) {
     val scheme = BoxTheme.scheme
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style only fades a menu; it does not grow out of its anchor or recede.
+    val still = !tokens.expressiveMotion
     val origin = when (placement) {
         PopupPlacement.OverAnchorEnd -> TransformOrigin(1f, 0f)
         PopupPlacement.OverAnchorStart, PopupPlacement.BelowPoint -> TransformOrigin(0f, 0f)
@@ -312,7 +316,7 @@ private fun MenuStack(
     Box(
         Modifier.graphicsLayer {
             val shown = presentation
-            val scale = if (closing) DISMISS_SCALE + (1 - DISMISS_SCALE) * shown else 0.3f + 0.7f * shown
+            val scale = if (still) 1f else if (closing) DISMISS_SCALE + (1 - DISMISS_SCALE) * shown else 0.3f + 0.7f * shown
             scaleX = scale
             scaleY = scale
             alpha = shown.coerceIn(0f, 1f)
@@ -325,11 +329,11 @@ private fun MenuStack(
         val menuGlass = remember(scheme) { LiquidGlassStyle.menu(scheme) }
         levels.forEachIndexed { index, level ->
             androidx.compose.runtime.key(level) {
-                LaunchedEffect(level) { if (level.owner != null) level.unfold.animateTo(1f, unfoldSpring) }
+                LaunchedEffect(level) { if (level.owner != null) level.unfold.animateTo(1f, if (still) tokens.fade<Float>() else unfoldSpring) }
                 val depth = topIndex - index
                 val receding = depth > 0
                 val distance = if (receding) depth - 1 + (levels.getOrNull(index + 1)?.unfold?.value ?: 1f) else 0f
-                val scale = max(0f, 1 - LEVEL_SCALE_STEP * distance)
+                val scale = if (still) 1f else max(0f, 1 - LEVEL_SCALE_STEP * distance)
                 val shadowDepth = if (receding) max(1f / 6, 1 - distance / 3) else level.unfold.value.coerceIn(0f, 1f)
                 Box(
                     Modifier

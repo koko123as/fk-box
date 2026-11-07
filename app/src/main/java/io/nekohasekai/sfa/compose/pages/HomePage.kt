@@ -107,7 +107,9 @@ fun HomePage(box: BoxController) {
     val previous = previousLabel?.let { label -> items.indexOfFirst { it.label == label }.takeIf { it >= 0 } }
     val motion = remember { Animatable(1f) }
     val scope = rememberCoroutineScope()
-    val fade = box.preferences["tabAnimation"] == "fade"
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style always cross-fades destinations, briefly.
+    val fade = !appearance.expressiveMotion || box.preferences["tabAnimation"] == "fade"
     val floating = box.preferences["floatingNavigation"] != false
     val navigator = LocalBoxNavigator.current
     val nested = remember(navigator) { mutableMapOf<String, BoxNavigator>() }
@@ -118,7 +120,7 @@ fun HomePage(box: BoxController) {
             current = items[next].label
             scope.launch {
                 motion.snapTo(0f)
-                motion.animateTo(1f, tween(if (fade) 220 else 300, easing = if (fade) EaseInOut else EaseOut))
+                motion.animateTo(1f, tween(if (!appearance.expressiveMotion) appearance.fadeMillis else if (fade) 220 else 300, easing = if (fade) EaseInOut else EaseOut))
                 previousLabel = null
             }
         }

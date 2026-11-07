@@ -439,6 +439,7 @@ internal object BoxStrings {
         map["Slide"] = "滑动"
         map["Fade"] = "淡入淡出"
         map["Liquid glass"] = "液态玻璃"
+        map["Minimal"] = "简约"
         map["Ultra"] = "超高"
         map["Font family"] = "字体"
         map["Follow system"] = "跟随系统"

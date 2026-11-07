@@ -39,17 +39,22 @@ private fun pulseAt(progress: Float): Pair<Float, Float> {
 /** BarItemPresence: the item springs in when it first shows, and swells when [glyph] changes. */
 @Composable
 fun Modifier.barItemPresence(glyph: Any? = null): Modifier {
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style fades a toolbar item in briefly; no scale, blur or swell.
+    val still = !tokens.expressiveMotion
     val presence = remember { Animatable(0f) }
     val pulse = remember { Animatable(1f) }
     val last = remember { arrayOf(glyph) }
-    LaunchedEffect(Unit) { presence.animateTo(1f, PRESENCE_SPRING) }
+    LaunchedEffect(Unit) { presence.animateTo(1f, if (still) tokens.fade<Float>() else PRESENCE_SPRING) }
     LaunchedEffect(glyph) {
         if (last[0] != glyph) {
             last[0] = glyph
+            if (still) return@LaunchedEffect
             pulse.snapTo(0f)
             pulse.animateTo(1f, tween(PULSE_LENGTH_MS, easing = LinearEasing))
         }
     }
+    if (still) return graphicsLayer { alpha = presence.value.coerceIn(0f, 1f) }
     return graphicsLayer {
         val shown = presence.value
         val (across, down) = if (pulse.value < 1f) pulseAt(pulse.value) else 1f to 1f

@@ -60,21 +60,28 @@ class SuperellipseShape(
     override fun hashCode(): Int = ((topStart.hashCode() * 31 + topEnd.hashCode()) * 31 + bottomEnd.hashCode()) * 31 + bottomStart.hashCode()
 }
 
+/**
+ * The app's shapes. Every radius passes through the appearance tokens, so the
+ * minimal style's smaller, squarer corners apply everywhere; a read during
+ * composition recomposes when the style changes.
+ */
 object AppShape {
+    private fun c(corner: Float): Dp = AppearanceTokens.active.corner(corner).dp
+
     val none = SuperellipseShape(0.dp)
-    val xs = SuperellipseShape(AppCorner.XS.dp)
-    val sm = SuperellipseShape(AppCorner.SM.dp)
-    val md = SuperellipseShape(AppCorner.MD.dp)
-    val lg = SuperellipseShape(AppCorner.LG.dp)
-    val xl = SuperellipseShape(AppCorner.XL.dp)
-    val xxl = SuperellipseShape(AppCorner.XXL.dp)
+    val xs: Shape get() = SuperellipseShape(c(AppCorner.XS))
+    val sm: Shape get() = SuperellipseShape(c(AppCorner.SM))
+    val md: Shape get() = SuperellipseShape(c(AppCorner.MD))
+    val lg: Shape get() = SuperellipseShape(c(AppCorner.LG))
+    val xl: Shape get() = SuperellipseShape(c(AppCorner.XL))
+    val xxl: Shape get() = SuperellipseShape(c(AppCorner.XXL))
 
     /** A pill: the superellipse of a 1000 dp radius collapses to round ends. */
     val full = RoundedCornerShape(50)
-    fun all(corner: Float) = SuperellipseShape(corner.dp)
-    fun top(corner: Float) = SuperellipseShape(corner.dp, corner.dp, 0.dp, 0.dp)
-    fun vertical(top: Float = 0f, bottom: Float = 0f) = SuperellipseShape(top.dp, top.dp, bottom.dp, bottom.dp)
-    fun horizontal(start: Float, end: Float) = SuperellipseShape(start.dp, end.dp, end.dp, start.dp)
+    fun all(corner: Float): Shape = SuperellipseShape(c(corner))
+    fun top(corner: Float): Shape = SuperellipseShape(c(corner), c(corner), 0.dp, 0.dp)
+    fun vertical(top: Float = 0f, bottom: Float = 0f): Shape = SuperellipseShape(c(top), c(top), c(bottom), c(bottom))
+    fun horizontal(start: Float, end: Float): Shape = SuperellipseShape(c(start), c(end), c(end), c(start))
 }
 
 private const val SMOOTHING = 0.6f

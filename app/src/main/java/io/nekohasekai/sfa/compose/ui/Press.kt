@@ -48,6 +48,7 @@ import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.Modifier
+import io.nekohasekai.sfa.compose.theme.LocalAppearance
 import io.nekohasekai.sfa.compose.theme.LocalBoxScheme
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -151,15 +152,19 @@ private class PressNode(
         }
     }
 
+    /** The minimal style's press is a static dim: no spreading ink, no sparkle. */
+    private val tokens get() = currentValueOf(LocalAppearance)
+
     private fun pressed(at: Offset) {
         held++
+        val tokens = tokens
         when (spec.look) {
             PressLook.Ink -> {
-                if (SPARKLES) startSparkle(at)
+                if (SPARKLES && tokens.sparkle) startSparkle(at)
                 reveal?.cancel()
                 reveal = coroutineScope.launch {
                     delay(REVEAL_DELAY_MS)
-                    press.animateTo(1f, tween(INK_FADE_MS, easing = LinearEasing))
+                    if (tokens.inkSpread) press.animateTo(1f, tween(INK_FADE_MS, easing = LinearEasing)) else press.snapTo(1f)
                 }
             }
             // clickable already holds a press back inside a scrolling container.
@@ -174,8 +179,11 @@ private class PressNode(
         reveal?.cancel()
         reveal = null
         if (press.value == 0f && !press.isRunning) return
+        val spread = tokens.inkSpread
         coroutineScope.launch {
-            if (spec.look == PressLook.Ink) {
+            if (!spread) {
+                press.snapTo(0f)
+            } else if (spec.look == PressLook.Ink) {
                 press.animateTo(0f, tween(INK_FADE_MS, easing = LinearEasing))
             } else {
                 press.animateTo(0f, tween(TINT_RELEASE_MS, easing = EaseInOut))

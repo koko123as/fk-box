@@ -38,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import io.nekohasekai.sfa.compose.theme.hairlineWithoutShadows
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
@@ -172,7 +173,10 @@ internal fun DialogLayer(host: DialogHost) {
 fun FloatingDialog(onDismiss: () -> Unit, dismissible: Boolean = true, content: @Composable () -> Unit) {
     val scheme = BoxTheme.scheme
     val shown = remember { Animatable(0f) }
-    LaunchedEffect(Unit) { shown.animateTo(1f, spring(dampingRatio = 1f, stiffness = 522f)) }
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style fades an alert in without growing it.
+    val still = !tokens.expressiveMotion
+    LaunchedEffect(Unit) { shown.animateTo(1f, if (still) tokens.fade<Float>() else spring(dampingRatio = 1f, stiffness = 522f)) }
     androidx.activity.compose.BackHandler(enabled = dismissible) { onDismiss() }
     Box(
         Modifier
@@ -186,7 +190,7 @@ fun FloatingDialog(onDismiss: () -> Unit, dismissible: Boolean = true, content: 
         Box(
             Modifier
                 .graphicsLayer {
-                    val scale = ALERT_ENTRY_SCALE + (1 - ALERT_ENTRY_SCALE) * shown.value
+                    val scale = if (still) 1f else ALERT_ENTRY_SCALE + (1 - ALERT_ENTRY_SCALE) * shown.value
                     scaleX = scale
                     scaleY = scale
                 }
@@ -225,7 +229,15 @@ fun CommonDialog(
     Column(
         Modifier
             .fillMaxWidth()
-            .then(if (glass) Modifier else Modifier.background(SurfaceLevel.floatingOf(scheme).colorOf(scheme), AppShape.all(AppCorner.ALERT))),
+            .then(
+                if (glass) {
+                    Modifier
+                } else {
+                    Modifier
+                        .hairlineWithoutShadows(AppShape.all(AppCorner.ALERT))
+                        .background(SurfaceLevel.floatingOf(scheme).colorOf(scheme), AppShape.all(AppCorner.ALERT))
+                },
+            ),
     ) {
         Text(
             title,

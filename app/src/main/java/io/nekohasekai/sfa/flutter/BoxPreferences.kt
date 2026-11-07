@@ -14,6 +14,8 @@ internal object BoxPreferences {
         "restoreStrategy" to setOf("Compatible", "Override"),
         "tabAnimation" to setOf("slide", "fade"),
         "liquidGlass" to setOf("none", "standard", "ultra"),
+        // Appearance → Style: the FlClash look or the flat minimal one (compose/theme/Appearance.kt).
+        "appearanceStyle" to setOf("standard", "minimal"),
         // requests.dart's requestFeed, with fk-box's captured HTTP feed.
         "requestFeed" to setOf("recent", "live", "captured"),
     )

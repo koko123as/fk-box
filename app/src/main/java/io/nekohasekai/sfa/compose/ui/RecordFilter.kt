@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.ui
 
+import io.nekohasekai.sfa.compose.theme.itemMotion
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
@@ -304,13 +305,13 @@ fun <T> LazyListScope.recordGroups(
                 open = folds.isOpen(group.key),
                 trailing = trailingOf?.invoke(group),
                 onToggle = { folds.toggle(group.key) },
-                modifier = Modifier.animateItem(),
+                modifier = itemMotion(),
             )
         }
         if (folds.isOpen(group.key)) {
             for (item in group.items) {
                 item(key = "group:" + group.key + ":" + keyOf(item), contentType = "record") {
-                    androidx.compose.foundation.layout.Box(Modifier.animateItem()) { itemContent(item) }
+                    androidx.compose.foundation.layout.Box(itemMotion()) { itemContent(item) }
                 }
             }
         }
@@ -321,7 +322,12 @@ fun <T> LazyListScope.recordGroups(
 @Composable
 fun CollapsibleHeader(label: String, count: Int, open: Boolean, onToggle: (() -> Unit)?, modifier: Modifier = Modifier, trailing: String? = null) {
     val scheme = BoxTheme.scheme
-    val turn by animateFloatAsState(if (open) 0f else -90f, spring(dampingRatio = 1f, stiffness = 600f), label = "fold")
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    val turn by animateFloatAsState(
+        if (open) 0f else -90f,
+        if (appearance.expressiveMotion) spring(dampingRatio = 1f, stiffness = 600f) else appearance.fade<Float>(),
+        label = "fold",
+    )
     val interaction = remember { MutableInteractionSource() }
     Row(
         modifier

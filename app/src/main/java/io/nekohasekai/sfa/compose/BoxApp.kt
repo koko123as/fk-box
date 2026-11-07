@@ -28,7 +28,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.pages.HomePage
+import io.nekohasekai.sfa.compose.theme.AppearanceStyle
+import io.nekohasekai.sfa.compose.theme.AppearanceTokens
 import io.nekohasekai.sfa.compose.theme.ColorStyle
+import io.nekohasekai.sfa.compose.theme.ProvideAppearance
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.Theme
 import io.nekohasekai.sfa.compose.theme.appFontFamily
@@ -63,11 +66,14 @@ fun BoxApp(box: BoxController) {
     val scheme = seededColorScheme(accent, dark, ColorStyle.of(prefs["colorStyle"])).toPureBlack(prefs["pureBlack"] == true)
     val systemScale = LocalConfiguration.current.fontScale
     // main.dart's LiquidGlassScope: glass for the dock, popups and alerts; RuntimeShader needs Android 13.
+    val appearance = AppearanceTokens.of(AppearanceStyle.of(prefs["appearanceStyle"]))
     val glassMode = prefs["liquidGlass"] as? String ?: "none"
+    // The minimal style draws flat surfaces and never runs the glass shaders.
     val glass = io.nekohasekai.sfa.compose.ui.LiquidGlassSettings(
-        enabled = glassMode != "none",
+        enabled = appearance.glass && glassMode != "none",
         quality = if (glassMode == "ultra") io.nekohasekai.sfa.compose.ui.LiquidGlassQuality.Ultra else io.nekohasekai.sfa.compose.ui.LiquidGlassQuality.Standard,
     )
+    ProvideAppearance(appearance) {
     androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalLiquidGlass provides glass) {
     Theme(scheme = scheme, fontFamily = appFontFamily(prefs["fontFamily"]), textScale = appTextScale(prefs, systemScale)) {
         val banners = rememberBannerHostState()
@@ -95,6 +101,7 @@ fun BoxApp(box: BoxController) {
                 BannerHost(banners, stacked = stacked)
             }
         }
+    }
     }
     }
 }

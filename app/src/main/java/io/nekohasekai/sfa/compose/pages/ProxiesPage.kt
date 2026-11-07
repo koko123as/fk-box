@@ -507,6 +507,7 @@ fun ProxyListView(
     var saving by remember { mutableStateOf(false) }
     val state = rememberLazyListState()
     val unfolds = remember { HashMap<String, Animatable<Float, androidx.compose.animation.core.AnimationVector1D>>() }
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
     val metrics = proxyCardMetrics(box.preferences)
     val header = headerHeight()
     val toggle: (String) -> Unit = toggle@{ name ->
@@ -551,7 +552,10 @@ fun ProxyListView(
                 val floatingHere = expanded && (firstKey == "rows:$name" || firstKey?.startsWith("row:$name:") == true || (firstKey == "header:$name" && state.firstVisibleItemScrollOffset > 0))
                 stickyHeader(key = "header:$name") {
                     LaunchedEffect(expanded) {
-                        unfold.animateTo(if (expanded) 1f else 0f, tween(240, easing = if (expanded) EaseOutCubic else EaseInCubic))
+                        unfold.animateTo(
+                            if (expanded) 1f else 0f,
+                            if (appearance.expressiveMotion) tween(240, easing = if (expanded) EaseOutCubic else EaseInCubic) else appearance.fade<Float>(),
+                        )
                     }
                     val floating by animateFloatAsState(if (floatingHere) 1f else 0f, tween(150), label = "floating")
                     Box(Modifier.fillMaxWidth().height(header.dp).background(if (floating > 0f) BoxTheme.scheme.let { SurfaceLevel.Page.colorOf(it) } else Color.Transparent)) {
@@ -617,6 +621,8 @@ private fun UnfoldingRows(rowCount: Int, extent: Float, unfold: Float, shape: an
     val visible = min(rowCount.toFloat(), screen / extent)
     val count = min(rowCount, visible.toInt() + 1)
     val total = rowCount * extent + LAST_ROW_GROWTH
+    // The minimal style reveals the rows with a plain fade; they do not slide out from the header.
+    val still = !io.nekohasekai.sfa.compose.theme.LocalAppearance.current.expressiveMotion
     Box(
         Modifier
             .fillMaxWidth()
@@ -634,8 +640,12 @@ private fun UnfoldingRows(rowCount: Int, extent: Float, unfold: Float, shape: an
                         .fillMaxWidth()
                         .height(extent.dp)
                         .graphicsLayer {
-                            translationY = (-index - 0.5f) * size.height * (1 - unfold)
-                            alpha = ((unfold - start) / 0.5f).coerceIn(0f, 1f)
+                            if (still) {
+                                alpha = unfold.coerceIn(0f, 1f)
+                            } else {
+                                translationY = (-index - 0.5f) * size.height * (1 - unfold)
+                                alpha = ((unfold - start) / 0.5f).coerceIn(0f, 1f)
+                            }
                         },
                 ) { row(index) }
             }

@@ -211,7 +211,8 @@ fun LiquidGlassPane(
     content: @Composable BoxScope.() -> Unit = {},
 ) {
     Box(modifier) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop != null) {
+        // The minimal style never runs the glass shader, whoever asks for a pane.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && backdrop != null && io.nekohasekai.sfa.compose.theme.LocalAppearance.current.glass) {
             GlassLayer(style, cornerRadius, backdrop, glow, Modifier.matchParentSize())
         } else {
             val shape = if (cornerRadius == null) io.nekohasekai.sfa.compose.theme.AppShape.full else androidx.compose.foundation.shape.RoundedCornerShape(androidx.compose.ui.unit.Dp(cornerRadius))

@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.ui
 
+import io.nekohasekai.sfa.compose.theme.itemMotion
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
@@ -201,6 +202,7 @@ fun CommonScaffold(
     var query by remember { mutableStateOf<String?>(null) }
     var dockedText by remember { mutableStateOf("") }
     val searchMotion = remember { Animatable(0f) }
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
     val scope = rememberCoroutineScope()
     val focus = LocalFocusManager.current
     val exitSearch = {
@@ -208,7 +210,7 @@ fun CommonScaffold(
             query = null
             searchState?.onSearch("")
             focus.clearFocus()
-            scope.launch { searchMotion.animateTo(0f, spring(dampingRatio = 0.75f, stiffness = 600f)) }
+            scope.launch { searchMotion.animateTo(0f, if (appearance.expressiveMotion) spring(dampingRatio = 0.75f, stiffness = 600f) else appearance.fadeOut<Float>()) }
         }
     }
     BackHandler(enabled = query != null || sorting) {
@@ -310,7 +312,7 @@ fun CommonScaffold(
                         val lead = if (barSearch) {
                             IconAction(AppGlyphs.search, tr("Search"), {
                                 query = ""
-                                scope.launch { searchMotion.animateTo(1f, spring(dampingRatio = 0.75f, stiffness = 390f)) }
+                                scope.launch { searchMotion.animateTo(1f, if (appearance.expressiveMotion) spring(dampingRatio = 0.75f, stiffness = 390f) else appearance.fade<Float>()) }
                             })
                         } else {
                             null
@@ -378,7 +380,7 @@ private fun KeywordStrip(keywords: List<ScaffoldKeyword>, modifier: Modifier) {
         val maxChip = max(0f, (maxWidth - 32.dp).value).dp
         LazyRow(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp)) {
             itemsIndexed(keywords, key = { _, keyword -> keyword.key.toString() }) { index, keyword ->
-                Row(Modifier.animateItem()) {
+                Row(itemMotion()) {
                     if (index > 0) Spacer(Modifier.width(if (keyword.startsSection) 20.dp else 8.dp))
                     Box(Modifier.widthIn(max = maxChip)) { KeywordChip(keyword) }
                 }
@@ -492,7 +494,12 @@ private fun DockedSearch(text: String, onChanged: (String) -> Unit, onCancel: ()
     val scheme = BoxTheme.scheme
     var focused by remember { mutableStateOf(false) }
     val active = focused || text.isNotEmpty()
-    val t by animateFloatAsState(if (active) 1f else 0f, spring(dampingRatio = 0.75f, stiffness = 390f), label = "docked")
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    val t by animateFloatAsState(
+        if (active) 1f else 0f,
+        if (appearance.expressiveMotion) spring(dampingRatio = 0.75f, stiffness = 390f) else appearance.fade<Float>(),
+        label = "docked",
+    )
     val height = DOCKED_SEARCH_HEIGHT.dp
     val bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     Box(

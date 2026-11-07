@@ -252,6 +252,11 @@ private fun FloatingBar(
     val count = destinations.size
     val lastIndex = max(0, count - 1)
     val selected = selectedIndex.coerceIn(0, lastIndex)
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style: the selection moves on a short eased tween; no swell, stretch, lift or wobble.
+    val still = !tokens.expressiveMotion
+    val travel: androidx.compose.animation.core.AnimationSpec<Float> = if (still) tokens.fade() else travelSpring
+    val follow: androidx.compose.animation.core.AnimationSpec<Float> = if (still) androidx.compose.animation.core.snap() else followSpring
     val lens = remember { Animatable(selected.toFloat()) }
     val lift = remember { Animatable(0f) }
     val jelly = remember { Animatable(0f) }
@@ -262,7 +267,7 @@ private fun FloatingBar(
     val currentSelected by rememberUpdatedState(selected)
     val currentOnSelected by rememberUpdatedState(onSelected)
     LaunchedEffect(selected) {
-        if (pressedIndex < 0 && lens.targetValue != selected.toFloat()) lens.animateTo(selected.toFloat(), travelSpring)
+        if (pressedIndex < 0 && lens.targetValue != selected.toFloat()) lens.animateTo(selected.toFloat(), travel)
     }
     // _wobble: the lens stretches with its speed and squashes as it brakes.
     LaunchedEffect(Unit) {
@@ -277,7 +282,7 @@ private fun FloatingBar(
                 lastTime = time
                 val braking = max(0f, -acceleration * kotlin.math.sign(velocity))
                 val target = JELLY_STRETCH * saturate(kotlin.math.abs(velocity) / JELLY_SPEED) - JELLY_SQUASH * saturate(braking / JELLY_BRAKE)
-                if (kotlin.math.abs(target - jelly.targetValue) > 1e-3f) scope.launch { jelly.animateTo(target, jellySpring) }
+                if (!still && kotlin.math.abs(target - jelly.targetValue) > 1e-3f) scope.launch { jelly.animateTo(target, jellySpring) }
                 // _dropLift: UIKit keeps the lens lifted until it has risen and arrived.
                 if (dropping && pressedIndex < 0 && lift.value >= LIFT_SNAP && kotlin.math.abs(lens.targetValue - lens.value) <= LIFT_RELEASE) {
                     dropping = false
@@ -372,7 +377,7 @@ private fun FloatingBar(
         // it (rubber-banding past the ends), a flick carries it one further,
         // and letting go selects where it rests.
         Box(
-            Modifier.fillMaxSize().pointerInput(count, layout.pitch, layout.inset) {
+            Modifier.fillMaxSize().pointerInput(count, layout.pitch, layout.inset, still) {
                 fun positionAt(x: Float): Float {
                     val position = (x / density.density - layout.inset) / layout.pitch - 0.5f
                     return when {
@@ -388,12 +393,12 @@ private fun FloatingBar(
                     onTouch(down.position, true)
                     val tracker = VelocityTracker()
                     tracker.addPosition(down.uptimeMillis, down.position)
-                    scope.launch { swell.animateTo(1f, pressSpringDock) }
+                    if (!still) scope.launch { swell.animateTo(1f, pressSpringDock) }
                     val start = indexAt(positionAt(down.position.x))
                     pressedIndex = start
                     dropping = false
-                    scope.launch { lift.animateTo(1f, liftSpring) }
-                    scope.launch { lens.animateTo(start.toFloat(), travelSpring) }
+                    if (!still) scope.launch { lift.animateTo(1f, liftSpring) }
+                    scope.launch { lens.animateTo(start.toFloat(), travel) }
                     var dragging = false
                     var committed = false
                     while (true) {
@@ -414,9 +419,9 @@ private fun FloatingBar(
                         change.consume()
                         val overshoot = x - x.coerceIn(0f, size.width.toFloat())
                         val pull = rubberBand(overshoot, min(size.width, size.height) * PULL_LIMIT)
-                        scope.launch { stretch.animateTo(pull, trackSpring) }
+                        if (!still) scope.launch { stretch.animateTo(pull, trackSpring) }
                         val position = positionAt(x)
-                        scope.launch { lens.animateTo(position, followSpring) }
+                        scope.launch { lens.animateTo(position, follow) }
                         val index = indexAt(position)
                         if (index != pressedIndex) {
                             view.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
@@ -437,7 +442,7 @@ private fun FloatingBar(
                     val index = pressedIndex
                     pressedIndex = -1
                     dropping = true
-                    scope.launch { lens.animateTo((if (committed) index else currentSelected).toFloat(), travelSpring) }
+                    scope.launch { lens.animateTo((if (committed) index else currentSelected).toFloat(), travel) }
                     scope.launch { stretch.animateTo(0f, pressSpringDock) }
                     scope.launch { swell.animateTo(0f, pressSpringDock) }
                     onRelease()

@@ -78,6 +78,7 @@ import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxScheme
+import io.nekohasekai.sfa.compose.theme.hairlineOutline
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.tabular
@@ -126,11 +127,15 @@ data class BoxShadowSpec(val color: Color, val dy: Float, val blur: Float, val s
  * Paints blurred shadows under [shape]. Blur mask filters need hardware
  * canvas support from API 28; below that the shadows are left out.
  */
-fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
-    if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
-        this
+fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier = composed {
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style has no elevation: a raised surface takes a hairline instead.
+    if (!tokens.shadows) {
+        if (shadows.isEmpty()) Modifier else Modifier.hairlineOutline(shape)
+    } else if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
+        Modifier
     } else {
-        drawBehind {
+        Modifier.drawBehind {
             for (shadow in shadows) {
                 if (shadow.color.alpha <= 0f) continue
                 val spread = shadow.spread.dp.toPx()
@@ -149,6 +154,7 @@ fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
             }
         }
     }
+}
 
 /** navigation_dock.dart's dockShadows: a soft, wide drop in the manner of iOS. */
 fun dockShadows(scheme: BoxScheme): List<BoxShadowSpec> {
@@ -168,6 +174,8 @@ private const val MAX_PRESS_GROWTH = 16f
 private val pressSpring = spring<Float>(dampingRatio = 0.593f, stiffness = 311f)
 
 fun Modifier.elasticPress(enabled: Boolean = true, maxGrowth: Float = MAX_PRESS_GROWTH): Modifier = composed {
+    // The minimal style keeps controls still under the finger.
+    if (!io.nekohasekai.sfa.compose.theme.LocalAppearance.current.elasticPress) return@composed Modifier
     val lift = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
@@ -206,7 +214,7 @@ private fun panelShadows(dark: Boolean): List<BoxShadowSpec> = if (dark) {
     listOf(BoxShadowSpec(Color(0x0d000000), .5f, 1f), BoxShadowSpec(Color(0x0a000000), 2f, 6f), BoxShadowSpec(Color(0x17000000), 12f, 32f, -6f))
 }
 
-val PanelShape = AppShape.all(34f)
+val PanelShape: androidx.compose.ui.graphics.Shape get() = AppShape.all(34f)
 
 /** The panel shape for the dashboard density: 34 on the phone, 32 in the desktop grid. */
 @Composable

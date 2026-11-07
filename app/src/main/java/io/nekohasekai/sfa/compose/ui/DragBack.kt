@@ -38,7 +38,10 @@ private const val RUBBER_REACH = 0.5f
 internal const val PREDICTIVE_BACK_REACH = 0.4f
 
 /** A drag back in progress on one route: the page's offset as it follows the finger. */
-internal class DragBackState {
+internal class DragBackState(
+    /** The minimal style: the page stays put under the finger and fades back on release. */
+    val still: Boolean = false,
+) {
     val offset = Animatable(0f)
     var translation = 0f
 }
@@ -59,13 +62,14 @@ private fun releaseSpeedOf(speed: Float): Float {
 }
 
 internal fun NavLevel.startDragBack() {
-    val state = DragBackState()
+    val state = DragBackState(still = !io.nekohasekai.sfa.compose.theme.AppearanceTokens.active.expressiveMotion)
     drag = state
 }
 
 internal fun NavLevel.dragBackBy(scope: CoroutineScope, delta: Float) {
     val state = drag ?: return
     state.translation += delta
+    if (state.still) return
     val target = targetOf(state.translation, width)
     scope.launch { state.offset.animateTo(target, FOLLOW_SPRING) }
 }
@@ -86,6 +90,18 @@ internal suspend fun BoxNavigator.endDragBack(level: NavLevel, velocity: Float, 
     val width = level.width.coerceAtLeast(1f)
     val pops = commit ?: (state.translation + POP_LEAD * velocity >= POP_REACH * width)
     val speed = releaseSpeedOf(velocity / width) * width
+    if (state.still) {
+        // The gesture only decides; the pop itself is the minimal style's short fade.
+        level.drag = null
+        if (pops && level.guard == null && !level.closing) {
+            level.closing = true
+            level.presentation.animateTo(0f, io.nekohasekai.sfa.compose.theme.AppearanceTokens.active.fadeOut<Float>())
+            finishClose(level)
+        } else if (pops) {
+            maybePop()
+        }
+        return
+    }
     if (pops && level.guard == null && !level.closing) {
         level.closing = true
         coroutineScope {

@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.pages
 
+import io.nekohasekai.sfa.compose.theme.itemMotion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -307,7 +308,7 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
                 recordGroups(groups, folds, keyOf = { it["id"].toString() }) { item -> CapturedRecord(box, item) }
             } else {
                 items(shownEntries, key = { it["id"].toString() }) { item ->
-                    Box(Modifier.animateItem()) { CapturedRecord(box, item) }
+                    Box(itemMotion()) { CapturedRecord(box, item) }
                 }
             }
             item(key = "more") {

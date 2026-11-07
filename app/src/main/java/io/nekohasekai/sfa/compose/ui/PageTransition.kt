@@ -192,7 +192,8 @@ internal fun Modifier.cardTransition(
     surface: Color,
     shadow: Boolean,
     rtl: Boolean = false,
-): Modifier = this
+    minimal: Boolean = false,
+): Modifier = if (minimal) fadeTransition(level, surface) else this
     .graphicsLayer {
         val frame = cardFrame(level, above, size, density, hostOrigin(), displayRadius, rtl)
         // On whole pixels the moving page is drawn as sharp as at rest.
@@ -238,3 +239,20 @@ internal fun Modifier.cardTransition(
             drawRect(Color.Black.copy(alpha = dim * min(covered, 1f)))
         }
     }
+
+/**
+ * The minimal style's page transition: the route fades in over the page it
+ * covers and out again, on the page colour so the two do not show through
+ * each other at rest. Nothing slides, scales, dims or casts a shadow; the
+ * covered page stays where it is.
+ */
+private fun Modifier.fadeTransition(level: NavLevel?, surface: Color): Modifier = if (level == null) {
+    this
+} else {
+    this
+        .graphicsLayer { alpha = level.progress.coerceIn(0f, 1f) }
+        .drawWithContent {
+            drawRect(surface)
+            drawContent()
+        }
+}

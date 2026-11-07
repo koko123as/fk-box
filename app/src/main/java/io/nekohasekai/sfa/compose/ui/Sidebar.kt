@@ -85,7 +85,7 @@ private const val INDICATOR_WIDTH = 3f
 private const val INDICATOR_HEIGHT = 16f
 private const val EXPAND_DURATION = 250
 private const val INDICATOR_DURATION = 320
-private val ItemShape = RoundedCornerShape(10.dp)
+private val ItemShape: androidx.compose.ui.graphics.Shape get() = RoundedCornerShape(io.nekohasekai.sfa.compose.theme.AppearanceTokens.active.corner(10f).dp)
 
 /** Material's Easing.standard. */
 private val StandardEasing = CubicBezierEasing(0.2f, 0f, 0f, 1f)
@@ -171,7 +171,8 @@ fun SidebarLayout(
                 Modifier
                     .zIndex(4f)
                     .fillMaxHeight()
-                    .shadow(8.dp, RectangleShape, clip = false, ambientColor = scheme.shadow, spotColor = scheme.shadow)
+                    // The minimal style leaves the overlay's shadow out; its end hairline remains.
+                    .then(if (io.nekohasekai.sfa.compose.theme.LocalAppearance.current.shadows) Modifier.shadow(8.dp, RectangleShape, clip = false, ambientColor = scheme.shadow, spotColor = scheme.shadow) else Modifier)
                     .background(scheme.chromeSurface)
                     .endHairline(scheme)
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},

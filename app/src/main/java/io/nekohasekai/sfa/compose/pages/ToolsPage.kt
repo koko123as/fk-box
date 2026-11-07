@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.compose.pages
 
+import io.nekohasekai.sfa.compose.theme.itemMotion
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -271,7 +272,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
                         recordGroups(groups, folds, keyOf = { it["id"].toString() }) { connection -> ConnectionRecord(box, connection) }
                     } else {
                         items(list, key = { it["id"].toString() }) { connection ->
-                            Box(Modifier.animateItem()) { ConnectionRecord(box, connection) }
+                            Box(itemMotion()) { ConnectionRecord(box, connection) }
                         }
                     }
                 }
@@ -497,7 +498,7 @@ fun LogsPage(box: BoxController) {
                         }
                         RecordListItem(
                             onTap = {},
-                            modifier = Modifier.animateItem(),
+                            modifier = itemMotion(),
                             header = {
                                 RecordHeader {
                                     if ((log["receivedAt"].asDouble() ?: 0.0) > 0) RecordTimestamp(recordTime(log["receivedAt"]))

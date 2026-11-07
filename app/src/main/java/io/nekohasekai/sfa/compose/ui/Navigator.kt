@@ -171,7 +171,7 @@ class BoxNavigator internal constructor(
         if (parent != null) return parent.openForm(onClosed, page)
         val level = NavLevel(page, if (mobile) SheetType.BottomSheet else SheetType.FormSheet, onClosed)
         entries.add(level)
-        scope.launch { level.presentation.animateTo(1f, sheetSpring) }
+        scope.launch { level.presentation.animateTo(1f, sheetSpecOf(opens = true)) }
     }
 
     private fun current(): Pair<NavLevel, NavLevel?>? {
@@ -211,7 +211,7 @@ class BoxNavigator internal constructor(
         level.result = result
         scope.launch {
             if (level.sheet != null) {
-                level.presentation.animateTo(0f, sheetSpring)
+                level.presentation.animateTo(0f, sheetSpecOf(opens = false))
             } else {
                 level.drag = null
                 level.presentation.settleTo(level, 0f)
@@ -249,12 +249,28 @@ class BoxNavigator internal constructor(
     companion object {
         // snap_sheet.dart's presentation: a critically damped spring of stiffness 1000/3.
         val sheetSpring = spring<Float>(dampingRatio = 1f, stiffness = 1000f / 3f, visibilityThreshold = 0.001f)
+
+        /** The sheet's presentation: its spring, or the minimal style's short fade. */
+        internal fun sheetSpecOf(opens: Boolean): androidx.compose.animation.core.AnimationSpec<Float> {
+            val tokens = io.nekohasekai.sfa.compose.theme.AppearanceTokens.active
+            return when {
+                tokens.expressiveMotion -> sheetSpring
+                opens -> tokens.fade<Float>()
+                else -> tokens.fadeOut<Float>()
+            }
+        }
     }
 }
 
 /** CardRouteMixin.settleTo: a push or pop springs from where the route is, launched at its multiple of the distance a second. */
 private suspend fun Animatable<Float, AnimationVector1D>.settleTo(level: NavLevel, target: Float) {
     val opens = target == 1f
+    // The minimal style pushes and pops with a short fade from where the route is.
+    val tokens = io.nekohasekai.sfa.compose.theme.AppearanceTokens.active
+    if (!tokens.expressiveMotion) {
+        animateTo(target, if (opens) tokens.fade<Float>() else tokens.fadeOut<Float>())
+        return
+    }
     val (spec, speed) = when {
         level.transition == PageTransition.Zoom && opens -> ZOOM_OPEN_SPRING to ZOOM_OPEN_SPEED
         level.transition == PageTransition.Zoom -> ZOOM_CLOSE_SPRING to 0f
@@ -432,6 +448,7 @@ private class CardMotion(
     val surface: Color,
     val shadow: Boolean,
     val rtl: Boolean,
+    val minimal: Boolean,
 )
 
 @Composable
@@ -442,19 +459,22 @@ private fun rememberCardMotion(navigator: BoxNavigator): CardMotion {
     val surface = SurfaceLevel.Page.colorOf(scheme)
     val light = !scheme.dark
     val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    return remember(navigator, scope, radius, surface, light, rtl) { CardMotion(navigator, scope, radius, surface, light, rtl) }
+    val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    val minimal = !tokens.expressiveMotion
+    val shadow = light && tokens.shadows
+    return remember(navigator, scope, radius, surface, shadow, rtl, minimal) { CardMotion(navigator, scope, radius, surface, shadow, rtl, minimal) }
 }
 
 /** The page under [above] (the home page, or a route's root) as the route over it covers it. */
 private fun Modifier.covered(motion: CardMotion, above: NavLevel?): Modifier = if (above == null) {
     this
 } else {
-    cardTransition(null, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl)
+    cardTransition(null, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
 }
 
 private fun Modifier.route(motion: CardMotion, level: NavLevel, above: NavLevel?): Modifier = this
     .onSizeChanged { level.width = it.width.toFloat() }
-    .cardTransition(level, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl)
+    .cardTransition(level, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
     .dragBack(motion.navigator, level, motion.scope, motion.rtl)
 
 @Composable
@@ -645,7 +665,10 @@ private fun SnapSheet(navigator: BoxNavigator, level: NavLevel) {
     BoxWithConstraints(Modifier.fillMaxSize().padding(top = top)) {
         val available = with(density) { (maxHeight - ime).toPx() }
         controller.layout(available, density.density)
-        val shown = level.presentation.value
+        // The minimal style fades the sheet in place instead of raising it.
+        val minimal = !io.nekohasekai.sfa.compose.theme.LocalAppearance.current.expressiveMotion
+        val presented = level.presentation.value
+        val shown = if (minimal) 1f else presented
         val height = controller.height.value
         val sheetPx = max(0f, height)
         Box(
@@ -655,6 +678,7 @@ private fun SnapSheet(navigator: BoxNavigator, level: NavLevel) {
                 .fillMaxWidth()
                 .height(with(density) { max(sheetPx, controller.stops.first()).toDp() })
                 .offset { IntOffset(0, ((1 - shown) * max(sheetPx, controller.stops.first()) + max(0f, controller.stops.first() - sheetPx)).toInt()) }
+                .then(if (minimal) Modifier.graphicsLayer { alpha = presented.coerceIn(0f, 1f) } else Modifier)
                 .clip(AppShape.top(AppCorner.XXL))
                 .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme))
                 .nestedScroll(controller.nestedScroll)
@@ -679,6 +703,7 @@ private fun SnapSheet(navigator: BoxNavigator, level: NavLevel) {
 @Composable
 private fun FormSheetCard(level: NavLevel) {
     val shown = level.presentation.value
+    val minimal = !io.nekohasekai.sfa.compose.theme.LocalAppearance.current.expressiveMotion
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(
             Modifier
@@ -688,7 +713,7 @@ private fun FormSheetCard(level: NavLevel) {
                 .fillMaxSize(0.85f)
                 .graphicsLayer {
                     alpha = shown.coerceIn(0f, 1f)
-                    val scale = 0.94f + 0.06f * shown
+                    val scale = if (minimal) 1f else 0.94f + 0.06f * shown
                     scaleX = scale
                     scaleY = scale
                 }

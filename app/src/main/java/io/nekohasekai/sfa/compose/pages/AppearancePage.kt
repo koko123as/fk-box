@@ -80,6 +80,7 @@ import io.nekohasekai.sfa.compose.asDouble
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxScheme
+import io.nekohasekai.sfa.compose.theme.AppearanceStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.ColorStyle
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
@@ -201,6 +202,19 @@ fun AppearancePage(box: BoxController) {
     CommonScaffold(title = tr("Appearance")) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = contentTopPadding(), bottom = 32.dp + bottomInset())) {
             item(key = "preview") { ThemeLivePreview(box) }
+            item(key = "style") {
+                Spacer(Modifier.height(16.dp))
+                // Standard is the FlClash look; Minimal is flat and quiet (no glass, shadows or flourishes).
+                PreviewChoiceGroup(
+                    tr("Style"),
+                    AppGlyphs.sparkle,
+                    listOf(
+                        PreviewChoice(AppearanceStyle.Standard.key, tr("Standard")) { preview(null, null, null, null, null) },
+                        PreviewChoice(AppearanceStyle.Minimal.key, tr("Minimal")) { preview(null, null, null, false, null) },
+                    ),
+                    AppearanceStyle.of(prefs["appearanceStyle"]).key,
+                ) { setPreference("appearanceStyle", it) }
+            }
             item(key = "theme") {
                 Spacer(Modifier.height(16.dp))
                 PreviewChoiceGroup(

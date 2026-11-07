@@ -221,11 +221,14 @@ private fun EditMenuOverlay(provider: EditMenuProvider, coordinates: () -> Layou
     val open = remember { Animatable(0f) }
     val unfold = remember { Animatable(0f) }
     val showing = current != null
+    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
+    // The minimal style fades the edit menu in place.
+    val still = !appearance.expressiveMotion
     LaunchedEffect(showing) {
         if (showing) {
-            open.animateTo(1f, openSpring)
+            open.animateTo(1f, if (still) appearance.fade<Float>() else openSpring)
         } else {
-            open.animateTo(0f, tween(CLOSE_MS, easing = EaseIn))
+            open.animateTo(0f, if (still) appearance.fadeOut<Float>() else tween(CLOSE_MS, easing = EaseIn))
             unfold.snapTo(0f)
         }
     }
@@ -294,7 +297,7 @@ private fun EditMenuOverlay(provider: EditMenuProvider, coordinates: () -> Layou
                     .offset { IntOffset(left.dp.roundToPx(), menuTop.dp.roundToPx()) }
                     .requiredSize(width.dp, height.dp)
                     .graphicsLayer {
-                        val scale = CLOSED_SCALE + (1 - CLOSED_SCALE) * open.value
+                        val scale = if (still) 1f else CLOSED_SCALE + (1 - CLOSED_SCALE) * open.value
                         scaleX = scale
                         scaleY = scale
                         alpha = open.value.coerceIn(0f, 1f)
@@ -312,7 +315,7 @@ private fun EditMenuOverlay(provider: EditMenuProvider, coordinates: () -> Layou
                                 .requiredSize(barWidth.dp, BAR_HEIGHT.dp)
                                 .graphicsLayer { alpha = (1 - unfolded).coerceIn(0f, 1f) },
                         ) {
-                            EditMenuBar(state.items, widths, count, pressed) { scope.launch { unfold.animateTo(1f, unfoldSpring) } }
+                            EditMenuBar(state.items, widths, count, pressed) { scope.launch { unfold.animateTo(1f, if (still) appearance.fade<Float>() else unfoldSpring) } }
                         }
                     }
                     if (unfolded > 0f) {
