@@ -175,10 +175,32 @@ fun dockShadows(scheme: BoxScheme): List<BoxShadowSpec> {
 
 private const val PRESS_GROWTH = 1f / 8
 private const val MAX_PRESS_GROWTH = 16f
+private const val LIFT_SNAP = .975f
+private const val PULL_LIMIT = 7f / 32
+private const val PULL_STRETCH = .5f
 private val pressSpring = spring<Float>(dampingRatio = 0.593f, stiffness = 311f)
 
+// SpringDescription.withDurationAndBounce(120 ms): critically damped, stiffness (2π / 0.12 s)².
+private val trackSpring = spring<Float>(dampingRatio = 1f, stiffness = 2741.6f)
+
+/** navigation_dock.dart's _rubberBand. */
+private fun rubberBand(overshoot: Float, limit: Float): Float {
+    if (limit <= 0f) return 0f
+    val pull = 1 - 1 / (kotlin.math.abs(overshoot) * .55f / limit + 1)
+    return limit * pull * kotlin.math.sign(overshoot)
+}
+
+/**
+ * prism_ui's ElasticPress: a press swells the child by up to an eighth of its
+ * size per side (at most [maxGrowth] dp) and a dragging finger stretches it
+ * toward itself, rubber-banded to 7/32 of its shorter side; both spring back on
+ * release. A tap lets go before the swell has risen, so it rises all the way
+ * first. Only the drawing moves: layout and hit testing see the child at rest.
+ */
 fun Modifier.elasticPress(enabled: Boolean = true, maxGrowth: Float = MAX_PRESS_GROWTH): Modifier = composed {
     val lift = remember { Animatable(0f) }
+    val pullX = remember { Animatable(0f) }
+    val pullY = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     var size by remember { mutableStateOf(IntSize.Zero) }
     val density = androidx.compose.ui.platform.LocalDensity.current.density
@@ -187,12 +209,22 @@ fun Modifier.elasticPress(enabled: Boolean = true, maxGrowth: Float = MAX_PRESS_
         .pointerInput(enabled) {
             if (!enabled) return@pointerInput
             awaitEachGesture {
-                awaitFirstDown(requireUnconsumed = false)
+                val down = awaitFirstDown(requireUnconsumed = false)
+                val origin = down.position
                 scope.launch { lift.animateTo(1f, pressSpring) }
-                waitForUpOrCancellation()
+                while (true) {
+                    val event = awaitPointerEvent()
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    val limit = min(size.width, size.height) * PULL_LIMIT
+                    val pull = change.position - origin
+                    scope.launch { pullX.animateTo(rubberBand(pull.x, limit), trackSpring) }
+                    scope.launch { pullY.animateTo(rubberBand(pull.y, limit), trackSpring) }
+                }
+                scope.launch { pullX.animateTo(0f, pressSpring) }
+                scope.launch { pullY.animateTo(0f, pressSpring) }
                 scope.launch {
-                    // A tap lets go before the swell has risen; it rises all the way first.
-                    while (lift.value < 0.975f && lift.isRunning) kotlinx.coroutines.delay(8)
+                    while (lift.value < LIFT_SNAP && lift.isRunning) kotlinx.coroutines.delay(8)
                     lift.animateTo(0f, pressSpring)
                 }
             }
@@ -201,8 +233,10 @@ fun Modifier.elasticPress(enabled: Boolean = true, maxGrowth: Float = MAX_PRESS_
             val longest = max(size.width, size.height) / density
             val growth = if (longest <= 0f) 0f else min(PRESS_GROWTH * 2, maxGrowth / longest)
             val swell = 1 + lift.value * growth
-            scaleX = swell
-            scaleY = swell
+            scaleX = swell * (1 + if (size.width > 0) kotlin.math.abs(pullX.value) / size.width * PULL_STRETCH else 0f)
+            scaleY = swell * (1 + if (size.height > 0) kotlin.math.abs(pullY.value) / size.height * PULL_STRETCH else 0f)
+            translationX = pullX.value
+            translationY = pullY.value
         }
 }
 

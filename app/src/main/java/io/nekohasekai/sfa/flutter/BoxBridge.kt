@@ -202,6 +202,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             "dashboard.egress" -> dashboardDetails.egress(string("id"))
             "dashboard.probe.open" -> { dashboardDetails.openProbe(string("id")); null }
             "dashboard.probe.get" -> dashboardDetails.query(string("id"), string("url"), id("timeoutMillis"))
+            "dashboard.probe.services" -> dashboardDetails.services(string("id"), string("names"), id("timeoutMillis"))
             "dashboard.probe.close" -> { dashboardDetails.closeProbe(string("id")); null }
             "dashboard.qualityCache.get" -> dashboardDetails.readQualityCache(string("ip"))
             "dashboard.qualityCache.put" -> {

@@ -218,12 +218,13 @@ fun ProxyNodeCard(box: BoxController, group: Json, node: Json, testing: Boolean,
 // ---------------------------------------------------------------------------
 
 @Composable
-fun ProxiesPage(box: BoxController) {
+fun ProxiesPage(box: BoxController, initialGroup: String? = null) {
     var query by remember { mutableStateOf("") }
     val testing = remember { mutableStateMapOf<String, Boolean>() }
     val grids = remember { HashMap<String, LazyGridState>() }
     val selectedOffsets = remember { HashMap<String, Int>() }
-    var currentGroup by remember { mutableStateOf<String?>(null) }
+    // dashboard showProxiesSheet(groupName): a group tile opens the sheet on its group.
+    var currentGroup by remember { mutableStateOf(initialGroup) }
     val scope = rememberCoroutineScope()
     val groups = box.groups
     val prefs = box.preferences

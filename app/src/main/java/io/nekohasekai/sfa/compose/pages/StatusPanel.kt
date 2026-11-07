@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -268,8 +270,29 @@ private class StatusModel(private val box: BoxController, private val scope: Cor
     }
 }
 
+/** current_outbound.dart's _OutboundMetrics per density. */
+private class OutboundMetrics(
+    val padding: PaddingValues,
+    val gap: Float,
+    val ipTop: Float,
+    val cellGap: Float,
+    val badgeSize: Float,
+    val ip: AppTextStyle,
+    val buttonSize: Float,
+    val buttonSlot: Float,
+    val decorationSize: Float,
+    val decorationEnd: Float,
+    val decorationTop: Float,
+)
+
+private fun outboundMetricsOf(density: DashboardDensity): OutboundMetrics = when (density) {
+    DashboardDensity.Standard -> OutboundMetrics(dashboardCardPadding(density), 16f, 10f, 28f, 48f, AppTextStyle.Title1, 104f, 120f, 290f, -64f, -87f)
+    DashboardDensity.Compact -> OutboundMetrics(dashboardCardPadding(density), 16f, 8f, 22f, 40f, AppTextStyle.Title2, 84f, 100f, 250f, -64f, -75f)
+    DashboardDensity.Mobile -> OutboundMetrics(PaddingValues(start = 20.dp, top = 18.dp, end = 16.dp, bottom = 18.dp), 10f, 12f, 24f, 48f, AppTextStyle.Title2, 88f, 88f, 240f, -60f, -66f)
+}
+
 @Composable
-fun StatusPanel(box: BoxController) {
+fun StatusPanel(box: BoxController, modifier: Modifier = Modifier) {
     val scheme = BoxTheme.scheme
     val scope = rememberCoroutineScope()
     val model = remember { StatusModel(box, scope) }
@@ -306,20 +329,23 @@ fun StatusPanel(box: BoxController) {
     val ip = info?.get("ip") as? String
     val foreground = if (box.running) scheme.onSurface else scheme.onSurfaceVariant
     val scale = max(1f, LocalDensity.current.fontScale)
-    val ipStyle = AppTextStyle.Title2.of(true).tabular.copy(color = foreground, letterSpacing = 0.sp)
+    val density = dashboardDensity
+    val metrics = outboundMetricsOf(density)
+    val ipStyle = metrics.ip.of(true).tabular.copy(color = foreground, letterSpacing = 0.sp)
     val ipLoading = model.checking || (model.routeChanged && model.ipDue && !box.transitioning && !box.remote)
     val loading = (ipLoading && ip == null) || model.qualityChecking
     val organization = (info?.get("organization") as? String)?.takeIf { it.isNotEmpty() } ?: info?.get("asn") as? String
     val badgeProgress by animateFloatAsState(if (box.running) 1f else 0f, tween(450, easing = EaseOutBack), label = "badge")
 
-    BoxPanel(padding = PaddingValues(0.dp), clip = false, modifier = Modifier.semanticsLabel(tr("Status"))) {
-        Box(Modifier.fillMaxWidth()) {
-            Box(Modifier.matchParentSize().clip(PanelShape)) {
-                Box(Modifier.align(Alignment.TopEnd).wrapContentSize(Alignment.TopEnd, unbounded = true).offset(x = 60.dp, y = (-66).dp)) {
+    val cardShape = io.nekohasekai.sfa.compose.theme.AppShape.all(dashboardCardRadius(density))
+    DashboardCard(modifier, padding = PaddingValues(0.dp), semanticLabel = tr("Status")) {
+        Box(if (density.isDesktop) Modifier.fillMaxSize() else Modifier.fillMaxWidth()) {
+            Box(Modifier.matchParentSize().clip(cardShape)) {
+                Box(Modifier.align(Alignment.TopEnd).wrapContentSize(Alignment.TopEnd, unbounded = true).offset(x = (-metrics.decorationEnd).dp, y = metrics.decorationTop.dp)) {
                     ShapeBadge(
                         MaterialShapes.Cookie12Sided,
                         lerp(SurfaceLevel.Block.colorOf(scheme), alphaBlend(scheme.primary.copy(alpha = .1f), SurfaceLevel.Card.colorOf(scheme)), badgeProgress.coerceIn(0f, 1f)),
-                        240.dp,
+                        metrics.decorationSize.dp,
                         Modifier.graphicsLayer {
                             rotationZ = (180f / 6f) * badgeProgress
                             scaleX = 1 + .12f * badgeProgress
@@ -328,23 +354,28 @@ fun StatusPanel(box: BoxController) {
                     )
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(start = 20.dp, top = 18.dp, end = 16.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Row(Modifier.height((26 * scale).dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GlyphIcon(AppGlyphs.status, size = 18.dp, color = scheme.onSurfaceVariant)
-                        Text(tr("Status"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
-                        DashboardChip(tr(status), tone = if (box.running) ChipTone.Ok else ChipTone.Idle, dot = box.running)
-                    }
-                    Spacer(Modifier.height(12.dp))
+            Row(
+                (if (density.isDesktop) Modifier.fillMaxSize() else Modifier.fillMaxWidth()).padding(metrics.padding),
+                horizontalArrangement = Arrangement.spacedBy(metrics.gap.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f).then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)) {
+                    DashboardCardHeader(
+                        title = tr("Status"),
+                        glyph = AppGlyphs.status,
+                        leading = { DashboardChip(tr(status), tone = if (box.running) ChipTone.Ok else ChipTone.Idle, dot = box.running) },
+                    )
+                    Spacer(Modifier.height(metrics.ipTop.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                         CountryBadge(
+                            size = metrics.badgeSize,
                             country = info?.get("country") as? String,
                             active = box.running,
                             checking = ipLoading || model.qualityChecking,
                             onRefresh = if (!box.transitioning && !box.remote && !model.checking && !model.qualityChecking) model::retry else null,
                         )
                         Column(Modifier.weight(1f)) {
-                            Box(Modifier.fillMaxWidth().height((AppTextStyle.Title2.leading * scale).dp), contentAlignment = Alignment.CenterStart) {
+                            Box(Modifier.fillMaxWidth().height((metrics.ip.leading * scale).dp), contentAlignment = Alignment.CenterStart) {
                                 when {
                                     ip != null -> BasicText(
                                         ip,
@@ -355,7 +386,7 @@ fun StatusPanel(box: BoxController) {
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
                                         // FlClash stops shrinking at 75% so a long IPv6 address stays readable.
-                                        autoSize = TextAutoSize.StepBased(minFontSize = (AppTextStyle.Title2.size * .75f).sp, maxFontSize = AppTextStyle.Title2.size.sp, stepSize = 0.5.sp),
+                                        autoSize = TextAutoSize.StepBased(minFontSize = (metrics.ip.size * .75f).sp, maxFontSize = metrics.ip.size.sp, stepSize = 0.5.sp),
                                     )
                                     ipLoading -> SkeletonText(140.dp, ipStyle)
                                     else -> Text(
@@ -376,12 +407,12 @@ fun StatusPanel(box: BoxController) {
                                             SkeletonPill(48.dp, 28.dp)
                                             SkeletonPill(72.dp, 28.dp)
                                         } else {
-                                            DashboardChip(tr(info?.get("type") as? String ?: "Unknown type"), large = true)
+                                            DashboardChip(tr(info?.get("type") as? String ?: "Unknown type"), large = !density.isDesktop)
                                             val quality = info?.get("quality") as? String
                                             if (quality != null) {
                                                 DashboardChip(
                                                     "${tr("Quality")} ${tr(quality)}",
-                                                    large = true,
+                                                    large = !density.isDesktop,
                                                     tone = when (quality) {
                                                         "Good" -> ChipTone.Ok
                                                         "Risky" -> ChipTone.Warn
@@ -395,8 +426,8 @@ fun StatusPanel(box: BoxController) {
                             }
                         }
                     }
-                    Spacer(Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                    if (density.isDesktop) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(16.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(metrics.cellGap.dp)) {
                         StatusCell("Run time") { RuntimeValue(if (box.running) box.dashboard["startedAt"].asLong() else null) }
                         Box(Modifier.weight(1f, fill = false)) {
                             StatusCell("Organization") {
@@ -409,12 +440,12 @@ fun StatusPanel(box: BoxController) {
                         }
                     }
                 }
-                Box(Modifier.width(88.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.width(metrics.buttonSlot.dp), contentAlignment = Alignment.Center) {
                     if (box.remote) {
                         GlyphIcon(AppGlyphs.proxies, size = 60.dp)
                     } else {
                         StartToggle(
-                            size = 88.dp,
+                            size = metrics.buttonSize.dp,
                             enabled = (box.running || box.selectedProfile != null) && !model.busy && !box.transitioning,
                             running = box.running,
                             suspended = false,
@@ -468,7 +499,7 @@ private fun RuntimeValue(startedAt: Long?) {
 }
 
 @Composable
-private fun CountryBadge(country: String?, active: Boolean, checking: Boolean, onRefresh: (() -> Unit)?) {
+private fun CountryBadge(size: Float, country: String?, active: Boolean, checking: Boolean, onRefresh: (() -> Unit)?) {
     val scheme = BoxTheme.scheme
     val color = if (active) scheme.onSurface else scheme.onSurfaceVariant
     val turn = remember { Animatable(0f) }
@@ -488,11 +519,11 @@ private fun CountryBadge(country: String?, active: Boolean, checking: Boolean, o
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = onRefresh != null) { onRefresh?.invoke() }
             .semanticsLabel(tr("Retry")),
     ) {
-        ShapeBadge(MaterialShapes.Clover4Leaf, SurfaceLevel.Inset.colorOf(scheme), 48.dp, rotation = (turn.value * 2 * PI).toFloat()) {
+        ShapeBadge(MaterialShapes.Clover4Leaf, SurfaceLevel.Inset.colorOf(scheme), size.dp, rotation = (turn.value * 2 * PI).toFloat()) {
             if (!country.isNullOrEmpty()) {
                 Text(country.uppercase(), maxLines = 1, style = AppTextStyle.Footnote.of(true).copy(color = color, letterSpacing = (.04f * AppTextStyle.Footnote.size).sp))
             } else {
-                GlyphIcon(AppGlyphs.proxies, size = (48 * .42f).dp, color = color)
+                GlyphIcon(AppGlyphs.proxies, size = (size * .42f).dp, color = color)
             }
         }
     }

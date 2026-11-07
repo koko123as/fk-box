@@ -2,6 +2,17 @@
 package io.nekohasekai.sfa.compose
 
 internal object BoxStrings {
+    /**
+     * FlClash's dashboard wording where FK-box already uses the English key
+     * with another meaning elsewhere (the table's "Source" column, the switch
+     * tiles' state); read through trDashboard.
+     */
+    val dashboardZh: Map<String, String> = mapOf(
+        "Source" to "来源",
+        "Enabled" to "已开启",
+        "Disabled" to "已关闭",
+    )
+
     val zh: Map<String, String> = HashMap<String, String>(1260).apply {
         part0(this)
         part1(this)
@@ -717,5 +728,36 @@ internal object BoxStrings {
         map["Built in"] = "内置"
         map["Downloaded"] = "已下载"
         map["Xray and mihomo share these files. A failed update keeps the current file; changes apply when the core next starts."] = "Xray 和 mihomo 共用这些文件。更新失败时保留现有文件；更新后在内核下次启动时生效。"
+        // FlClash be84736 dashboard (zh_CN arb): speed, connections, service status, proxy groups and the sidebar.
+        map["Peak %s"] = "峰值 %s"
+        map["Total %s"] = "累计 %s"
+        map["Live connections"] = "实时连接"
+        map["Recent requests"] = "最近请求"
+        map["Connection stats"] = "连接统计"
+        map["Live connections and recent requests"] = "实时连接、最近请求"
+        map["Target"] = "目标"
+        map["Exit"] = "出口"
+        map["Traffic"] = "流量"
+        map["No data"] = "暂无数据"
+        map["Service status"] = "服务状态"
+        map["Available"] = "可用"
+        map["Access restricted"] = "访问受限"
+        map["Disallowed ISP"] = "不允许的 ISP"
+        map["Blocked"] = "已被封禁"
+        map["Region not supported"] = "地区不支持"
+        map["Originals only"] = "仅限自制内容"
+        map["Coming soon"] = "即将上线"
+        map["Loading…"] = "加载中…"
+        map["Not checked"] = "待检测"
+        map["%d issues"] = "%d 项异常"
+        map["All available"] = "全部可用"
+        map["Check all"] = "全部检测"
+        map["Manage services"] = "管理服务"
+        map["Shown on the dashboard"] = "显示在仪表盘"
+        map["%d timed out"] = "%d 超时"
+        map["Core is not running"] = "内核未运行"
+        map["Groups show up here once the core starts"] = "启动后在这里显示策略组"
+        map["Expand"] = "展开"
+        map["Collapse"] = "收起"
     }
 }

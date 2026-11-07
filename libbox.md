@@ -17,6 +17,7 @@
 | HTTP/WebDAV 绑定 | [ui_http.go](libbox/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
 | 订阅获取绑定 | [ui_subscription.go](libbox/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |
 | 出口探测绑定 | [ui_egress.go](libbox/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询与质量请求传输 |
+| 服务可用性检测 | [ui_service.go](libbox/ui_service.go) | 经出口探测的同一路由运行 FlClash 的服务检测（Google、GitHub、YouTube Premium、ChatGPT、Claude、Gemini、Netflix、Disney+、Prime Video、Spotify、TikTok、Discord、哔哩哔哩） |
 | 局域网代理配置绑定 | [ui_lan.go](libbox/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
 | HTTP/HTTPS 请求抓取 | [httpdebug.patch](libbox/httpdebug.patch)、[httpdebug/](libbox/httpdebug/)、[route/](libbox/route/)、[ui_capture.go](libbox/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
 | JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](libbox/http_rewrite.patch)、[rewrite_config.go](libbox/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](libbox/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
@@ -134,6 +135,10 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - `Close`：取消本次探测的请求和等待中的连接。每个请求独立持有连接与截止时间，不将 IP 竞速连接复用于后续质量查询。
 
 两种探测共用 libbox TLS 证书库；运行中的路由查询失败不能回退到设备网络。远程会话不提供本机出口探测。FlClash 来源、分批质量查询、缓存和界面刷新规则见 [flclash.md](flclash.md)；其中质量解析与缓存主要在 Dart/Android 层，不能将它们误记为 Go 核心补丁。
+
+### 服务可用性检测
+
+[ui_service.go](libbox/ui_service.go) 按 FlClash `be84736605527034689c95bf27828ff27d912c5e` 的 `core/service_check.go`、`service_rules.go`、`region.go` 和 `probe.go` 的请求部分移植。`UIEgressProbe.CheckServices(names, timeoutMillis)` 接收逗号分隔的检测名（空表示全部，未知名称跳过），返回 JSON 数组 `[{name, status, region, delay, checkedAt}]`；`status` 取值与 FlClash 相同（available、unavailable、restricted、disallowed-isp、blocked、unsupported-region、originals-only、coming-soon、timeout、failed），`region` 统一为两位国家代码。请求经该探测对象的拨号（停服时设备网络，运行时 sing-box 路由或 Xray/mihomo 自身路由），每个请求独立超时（默认 10 秒，最大 30 秒），同时最多 4 项检测，整轮预算为单次超时的 6 倍；超时的检测在预算允许时重试一次；规则恐慌记为 failed。与 FlClash 的差异：不记录出口链（chains）与路由命中（hits），因为 sing-box 路由不向探测连接回报所选节点。Android 经 `dashboard.probe.services` 桥接调用，见 [app.md](app.md#配置服务应用与备份)。[ui_service_test.go](libbox/ui_service_test.go) 以替身请求覆盖各规则、超时重试、地区规范化和流式读取，由 newui.yml 的 `^TestUI` 运行；它不访问真实服务。
 
 ### 局域网代理
 

@@ -36,6 +36,8 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.foundation.layout.fillMaxHeight
 import io.nekohasekai.sfa.compose.BoxController
 import androidx.compose.foundation.background
 import io.nekohasekai.sfa.compose.theme.BoxTheme
@@ -112,20 +114,41 @@ fun HomePage(box: BoxController) {
         box.intents.collect { drain() }
     }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val mobile = maxWidth < 600.dp
+        // common/layout.dart's getViewMode: the sidebar takes over from the dock past a phone's width.
+        val viewMode = viewModeOf(maxWidth.value)
+        val mobile = viewMode == ViewMode.Mobile
+        val canExpand = canExpandSidebar(viewMode)
+        // appSetting.sidebarExpanded, true until the user collapses it.
+        val sidebarExpanded = box.preferences["sidebarExpanded"] != false
+        val overlay = rememberSidebarOverlay()
+        val destinations = items.map { SidebarDestination(it.second, tr(it.first)) }
+        val sideWidthPx = remember { androidx.compose.runtime.mutableIntStateOf(0) }
+        val sideWidth = with(androidx.compose.ui.platform.LocalDensity.current) { sideWidthPx.intValue.toDp().value }
+        CompositionLocalProvider(
+            LocalViewWidth provides maxWidth.value,
+            LocalViewHeight provides maxHeight.value,
+            LocalSideWidth provides if (mobile) 0f else sideWidth,
+        ) {
         Row(Modifier.fillMaxSize()) {
-            if (!mobile) {
-                NavigationRail(containerColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme)) {
-                    items.forEachIndexed { i, (label, glyph) ->
-                        NavigationRailItem(
-                            selected = i == index,
-                            onClick = { select(i) },
-                            icon = { GlyphIcon(glyph) },
-                            label = { Text(tr(label)) },
-                            colors = NavigationRailItemDefaults.colors(indicatorColor = SurfaceLevel.Block.colorOf(BoxTheme.scheme)),
-                        )
-                    }
-                }
+            // AppSidebarContainer: the sidebar slides in from the start edge as the window widens past a phone's.
+            androidx.compose.animation.AnimatedVisibility(
+                visible = !mobile,
+                enter = androidx.compose.animation.expandHorizontally(expandFrom = Alignment.Start) + androidx.compose.animation.slideInHorizontally { -it },
+                exit = androidx.compose.animation.shrinkHorizontally(shrinkTowards = Alignment.Start) + androidx.compose.animation.slideOutHorizontally { -it },
+            ) {
+                NavigationSidebar(
+                    destinations = destinations,
+                    selectedIndex = index,
+                    expanded = canExpand && sidebarExpanded,
+                    onSelected = select,
+                    onToggle = if (canExpand) ({ box.launch { box.setPreference("sidebarExpanded", !sidebarExpanded) } }) else null,
+                    overlay = overlay,
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .background(chromeSurface())
+                        .sidebarDivider()
+                        .onSizeChanged { sideWidthPx.intValue = it.width },
+                )
             }
             Column(Modifier.weight(1f).fillMaxSize()) {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -202,6 +225,8 @@ fun HomePage(box: BoxController) {
                 }
             }
         }
+        }
+        if (!mobile) SidebarOverlay(overlay, destinations, index, select)
     }
 }
 

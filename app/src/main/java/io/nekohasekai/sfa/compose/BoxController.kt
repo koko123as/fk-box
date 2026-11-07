@@ -28,7 +28,7 @@ fun Any?.asLong(): Long? = (this as? Number)?.toLong()
 
 fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
 
-enum class BoxData { Memory, Logs }
+enum class BoxData { Memory, Logs, Connections }
 
 /**
  * Compose port of flutter/lib/box.dart's BoxController: the same state fields,
@@ -84,6 +84,9 @@ class BoxController(private val bridge: BoxBridge) {
     val pendingIntents = ArrayDeque<String>()
     private val profileStats = HashMap<Long, Deferred<Json>>()
 
+    /** The dashboard's service checks, shared by the card and its sheet. */
+    val serviceStatus = io.nekohasekai.sfa.compose.pages.ServiceStatusModel(this)
+
     val ipQualities = IpQualityCache(
         read = { ip -> call("dashboard.qualityCache.get", mapOf("ip" to ip)) },
         write = { ip, record -> call("dashboard.qualityCache.put", mapOf("ip" to ip, "value" to record)) },
@@ -99,10 +102,13 @@ class BoxController(private val bridge: BoxBridge) {
     }
 
     private fun syncData(data: BoxData) {
-        launchAct(
-            if (data == BoxData.Memory) "dashboard.memory.visible" else "logs.visible",
-            mapOf("visible" to (dataOwners[data]?.isNotEmpty() == true)),
-        )
+        val method = when (data) {
+            BoxData.Memory -> "dashboard.memory.visible"
+            BoxData.Logs -> "logs.visible"
+            // The connections page and the dashboard's connection cards share one native subscription.
+            BoxData.Connections -> "connections.visible"
+        }
+        launchAct(method, mapOf("visible" to (dataOwners[data]?.isNotEmpty() == true)))
     }
 
     fun profileStats(id: Long): Deferred<Json> = profileStats.getOrPut(id) {

@@ -296,6 +296,16 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         return mapOf("status" to response.status, "body" to response.content.toString(Charsets.UTF_8))
     }
 
+    /** FlClash's service checks (libbox ui_service.go) through the probe's route. */
+    suspend fun services(id: String, names: String, timeoutMillis: Long): List<Map<String, Any?>> {
+        require(names.length <= 1024 && timeoutMillis in 0..30_000) { "Invalid service check" }
+        val active = session(id)
+        val text = withContext(Dispatchers.IO) { active.get().checkServices(names, timeoutMillis) }
+        check(session(id) === active) { "IP probe changed during service check" }
+        val array = org.json.JSONArray(text)
+        return (0 until array.length()).map { jsonObject(array.getJSONObject(it)) }
+    }
+
     fun closeProbe(id: String) { egressSessions.remove(id)?.close() }
 
     fun readQualityCache(ip: String): Map<String, Any?>? = runCatching {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -31,6 +32,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.key
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -96,19 +99,36 @@ import io.nekohasekai.sfa.compose.ui.tr
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.max
+import kotlin.math.min
 
 /*
  * pages/dashboard.dart and the dashboard panels in components/ (FlClash
  * v0.9.2 adaptations, GPL-3.0), over the native state BoxController carries.
  */
 
-val dashboardCards = listOf("Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy")
+// widget_registry.dart: the phone's card list. Service status and Connection
+// stats follow FlClash's registry; like FlClash on Android they start hidden
+// and stay addable, appended after the saved order.
+val dashboardCards = listOf(
+    "Status", "Network speed", "Outbound mode", "System HTTP proxy", "Service status", "Current profile",
+    "Proxy groups", "Connection stats", "Intranet IP", "Memory",
+)
 private val defaultDashboardCards = listOf("Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups")
 private val defaultHiddenCards = listOf("Memory", "Intranet IP")
+
+/** Cards added after a layout was saved; hidden until the user adds them, as FlClash keeps new widgets out of a saved list. */
+private val laterCards = setOf("Service status", "Connection stats")
 
 fun dashboardOrder(prefs: Json): List<String> {
     val saved = ((prefs["dashboardCards"] as? List<*>) ?: defaultDashboardCards).filterIsInstance<String>().filter { it in dashboardCards }
     return LinkedHashSet(saved + dashboardCards).toList()
+}
+
+private fun hiddenCards(prefs: Json): Set<String> {
+    val saved = (prefs["dashboardCards"] as? List<*>)?.filterIsInstance<String>().orEmpty().toSet()
+    val hidden = ((prefs["hiddenCards"] as? List<*>) ?: defaultHiddenCards).filterIsInstance<String>().toMutableSet()
+    for (card in laterCards) if (card !in saved) hidden.add(card)
+    return hidden
 }
 
 @Composable
@@ -118,12 +138,14 @@ fun DashboardPage(box: BoxController) {
         put("Intranet IP") { IntranetPanel(box) }
         put("Network speed") { SpeedPanel(box) }
         if ((box.dashboard["modes"] as? List<*>).orEmpty().isNotEmpty()) put("Outbound mode") { ModePanel(box) }
+        put("Service status") { ServiceStatusCard(box) }
         put("Current profile") { ProfilePanel(box) }
         put("Proxy groups") { ProxyGroupsPanel(box) }
+        put("Connection stats") { ConnectionStatsCard(box) }
         put("Memory") { MemoryPanel(box) }
         if (box.dashboard["systemProxyAvailable"] == true) put("System HTTP proxy") { SystemProxyPanel(box) }
     }
-    val hidden = (box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards
+    val hidden = hiddenCards(box.preferences)
     val shown = dashboardOrder(box.preferences).filter { available.containsKey(it) && (it == "Status" || it !in hidden) }
     var editor by remember { mutableStateOf<DashboardEditorState?>(null) }
     var saving by remember { mutableStateOf(false) }
@@ -133,8 +155,7 @@ fun DashboardPage(box: BoxController) {
         val availableKeys = available.keys
         val order = dashboardOrder(box.preferences)
         val result = next.toMutableList()
-        val hiddenSet = ((box.preferences["hiddenCards"] as? List<*>) ?: defaultHiddenCards)
-            .filterIsInstance<String>().filter { it in dashboardCards }.toMutableSet()
+        val hiddenSet = hiddenCards(box.preferences).filter { it in dashboardCards }.toMutableSet()
         var at = 0
         for (card in order) {
             if (card in availableKeys) {
@@ -149,7 +170,19 @@ fun DashboardPage(box: BoxController) {
         hiddenSet.remove("Status")
         return box.setPreferences(mapOf("dashboardCards" to result, "hiddenCards" to hiddenSet.toList()))
     }
+    // layout.dart: the window is measured after the side rail and divided by the text scale.
+    val fontScale = max(1f, LocalDensity.current.fontScale)
+    val viewWidth = LocalViewWidth.current
+    val sideWidth = LocalSideWidth.current
+    val editable = !DashboardDensity.of((viewWidth - sideWidth) / fontScale, LocalViewHeight.current / fontScale).isDesktop
+    if (!editable && editor != null) editor = null
     val editing = editor
+    // cardSpacingOf: 8 on a phone, 12 on a laptop-wide window and 16 wider.
+    val gap = when {
+        viewWidth <= MAX_MOBILE_WIDTH -> 8f
+        viewWidth <= MAX_LAPTOP_WIDTH -> 12f
+        else -> 16f
+    }
     CommonScaffold(
         title = tr(if (editing != null) "Edit dashboard" else "Dashboard"),
         backgroundColor = SurfaceLevel.Page.colorOf(BoxTheme.scheme),
@@ -157,61 +190,198 @@ fun DashboardPage(box: BoxController) {
         confirmationAction = editing?.let { state ->
             IconAction(AppGlyphs.check, tr("Done"), if (saving) null else ({ scope.launch { state.finish() } }))
         },
-        iconActions = if (editing == null) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
+        iconActions = if (editing == null && editable) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
     ) {
         val pageScroll = rememberScrollState()
         var viewportBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { viewportBounds = it.boundsInRoot() }) {
-            val mobile = maxWidth < 600.dp
-            val maxContent = if (mobile) 560.dp else 900.dp
-            val side = max(16f, (maxWidth.value - maxContent.value) / 2).dp
-            val gap = if (mobile) 8.dp else 12.dp
-            Column(
-                Modifier
-                    .fillMaxSize()
-                    .verticalScroll(pageScroll)
-                    .padding(PaddingValues(start = side, end = side, top = contentTopPadding(), bottom = 16.dp + bottomInset())),
-                verticalArrangement = Arrangement.spacedBy(if (editing != null) 0.dp else gap),
-            ) {
-              if (editing != null) {
-                DashboardEditor(
-                    state = editing,
-                    shown = shown,
-                    available = dashboardCards.filter { available.containsKey(it) },
-                    cardContent = { available[it] },
-                    gap = gap,
-                    onChanged = { saveLayout(it) },
-                    onBusyChanged = { saving = it },
-                    onDone = { editor = null },
-                    scrollState = pageScroll,
-                    viewport = { viewportBounds },
-                )
-              } else {
-                if (box.remote) {
-                    ListItem(
-                        title = { Text(box.dashboard["remote"].toString()) },
-                        subtitle = { Text(tr("Remote control")) },
-                        trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
-                    )
+            val roomWidth = maxWidth.value / fontScale
+            val roomHeight = maxHeight.value / fontScale
+            val density = DashboardDensity.of(roomWidth, roomHeight)
+            CompositionLocalProvider(LocalDashboardScope provides DashboardScope(density, fontScale)) {
+                if (density.isDesktop) {
+                    DesktopDashboard(box, dashboardColumnsOf(roomWidth), gap, maxWidth.value, maxHeight.value)
+                } else {
+                    val side = dashboardMobileSideOf(maxWidth.value).dp
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .verticalScroll(pageScroll)
+                            .padding(PaddingValues(start = side, end = side, top = contentTopPadding(), bottom = 16.dp + bottomInset())),
+                        verticalArrangement = Arrangement.spacedBy(if (editing != null) 0.dp else gap.dp),
+                    ) {
+                        if (editing != null) {
+                            DashboardEditor(
+                                state = editing,
+                                shown = shown,
+                                available = dashboardCards.filter { available.containsKey(it) },
+                                cardContent = { available[it] },
+                                gap = gap.dp,
+                                onChanged = { saveLayout(it) },
+                                onBusyChanged = { saving = it },
+                                onDone = { editor = null },
+                                scrollState = pageScroll,
+                                viewport = { viewportBounds },
+                            )
+                        } else {
+                            DashboardNotices(box)
+                            // RepaintBoundary per card: a card's per-second redraw stays in its own layer.
+                            for (card in shown) {
+                                val content = available[card] ?: continue
+                                key(card) { DashboardRepaintBoundary { content() } }
+                            }
+                            for (note in rows(box.dashboard["deprecated"])) {
+                                ListItem(
+                                    title = { Text(note["message"].toString()) },
+                                    onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
+                                )
+                            }
+                        }
+                    }
                 }
-                if (box.applyRequired != null) {
-                    ListItem(
-                        title = { Text(tr("Restart required")) },
-                        trailing = {
-                            TextPillButton(tr("Apply"), {
-                                box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
-                            })
-                        },
-                    )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DashboardNotices(box: BoxController) {
+    if (box.remote) {
+        ListItem(
+            title = { Text(box.dashboard["remote"].toString()) },
+            subtitle = { Text(tr("Remote control")) },
+            trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
+        )
+    }
+    if (box.applyRequired != null) {
+        ListItem(
+            title = { Text(tr("Restart required")) },
+            trailing = {
+                TextPillButton(tr("Apply"), {
+                    box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
+                })
+            },
+        )
+    }
+}
+
+private const val SERVICE_PAIR_COLUMN_MIN = 290f
+private const val MAX_COLUMN_WIDTH = 440f
+
+/**
+ * dashboard.dart's _DesktopDashboard: four columns fill the window, the tables
+ * taking what the rows above them leave. A window too short for the tables,
+ * and every two-column one, gets the summary cards instead, so no list
+ * scrolls inside a page that scrolls. Editing is phone-only, as in FlClash.
+ */
+@Composable
+private fun DesktopDashboard(box: BoxController, columns: Int, gap: Float, maxWidth: Float, maxHeight: Float) {
+    val density = dashboardDensity
+    val compact = density.isCompact
+    val scale = dashboardScale
+    val top = contentTopPadding().value
+    val bottom = 24f + bottomInset().value
+    val topHeight = (if (compact) 176f else 208f) * scale
+    val controlHeight = (if (compact) 56f else 64f) * scale
+    val middleHeight = (if (compact) 152f else 176f) * scale
+    val tablesHeight = connectionsTableMinHeight(density, scale)
+    val summaryHeight = (if (compact) 112f else 120f) * scale
+    val room = maxWidth - 16f - 24f - gap * (columns - 1)
+    val column = min(room / columns, MAX_COLUMN_WIDTH * scale)
+    val inset = (room - column * columns) / 2
+    val padStart = 16f + inset
+    val padEnd = 24f + inset
+    fun span(count: Int): Float = column * count + gap * (count - 1)
+    val modes = (box.dashboard["modes"] as? List<*>).orEmpty().isNotEmpty()
+    val systemProxy = box.dashboard["systemProxyAvailable"] == true && !box.remote
+
+    @Composable
+    fun Cell(count: Int, content: @Composable () -> Unit) {
+        DashboardRepaintBoundary(Modifier.width(span(count).dp).fillMaxHeight()) { content() }
+    }
+
+    @Composable
+    fun CardRow(height: Float?, modifier: Modifier = Modifier, cells: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+        Row(
+            modifier.fillMaxWidth().then(if (height != null) Modifier.height(height.dp) else Modifier),
+            horizontalArrangement = Arrangement.spacedBy(gap.dp),
+        ) { cells() }
+    }
+    val fill = Modifier.fillMaxSize()
+    val half = columns / 2
+
+    @Composable
+    fun Summaries(height: Float?, modifier: Modifier = Modifier) {
+        CardRow(height, modifier) {
+            Cell(half) { ConnectionStatsCard(box, fill) }
+            Cell(half) { ProxyGroupsSummaryCard(box) }
+        }
+    }
+    val scroll = rememberScrollState()
+    if (columns == 2) {
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(scroll)
+                .padding(start = padStart.dp, top = top.dp, end = padEnd.dp, bottom = bottom.dp),
+            verticalArrangement = Arrangement.spacedBy(gap.dp),
+        ) {
+            DashboardNotices(box)
+            CardRow(topHeight) { Cell(2) { StatusPanel(box, fill) } }
+            CardRow(topHeight) {
+                Cell(1) { SpeedCard(box, upload = true) }
+                Cell(1) { SpeedCard(box, upload = false) }
+            }
+            if (modes) CardRow(controlHeight) { Cell(2) { OutboundModeBar(box) } }
+            if (systemProxy) CardRow(controlHeight) { Cell(2) { SystemProxyTile(box) } }
+            CardRow(middleHeight) {
+                Cell(1) { IntranetPanel(box, fill) }
+                Cell(1) { ProfilePanel(box, fill) }
+            }
+            CardRow(middleHeight) {
+                Cell(1) { ServiceStatusCard(box, modifier = fill) }
+                Cell(1) { MemoryPanel(box, fill) }
+            }
+            Summaries(summaryHeight)
+        }
+        return
+    }
+    val hasControls = modes || systemProxy
+    val rowsHeight = top + bottom + topHeight + (if (hasControls) controlHeight + gap else 0f) + middleHeight + gap * 2
+    val tablesFit = maxHeight >= rowsHeight + gap + tablesHeight
+    val fills = maxHeight >= rowsHeight + gap + summaryHeight
+    Column(Modifier.fillMaxSize().verticalScroll(scroll)) {
+        Column(
+            (if (fills) Modifier.height(maxHeight.dp) else Modifier)
+                .fillMaxWidth()
+                .padding(start = padStart.dp, top = top.dp, end = padEnd.dp, bottom = bottom.dp),
+            verticalArrangement = Arrangement.spacedBy(gap.dp),
+        ) {
+            DashboardNotices(box)
+            CardRow(topHeight) {
+                Cell(2) { StatusPanel(box, fill) }
+                Cell(1) { SpeedCard(box, upload = true) }
+                Cell(1) { SpeedCard(box, upload = false) }
+            }
+            if (hasControls) {
+                CardRow(controlHeight) {
+                    if (modes) Cell(if (systemProxy) 2 else 4) { OutboundModeBar(box) }
+                    if (systemProxy) Cell(if (modes) 2 else 4) { SystemProxyTile(box) }
                 }
-                for (card in shown) available[card]?.invoke()
-                for (note in rows(box.dashboard["deprecated"])) {
-                    ListItem(
-                        title = { Text(note["message"].toString()) },
-                        onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
-                    )
+            }
+            CardRow(middleHeight) {
+                Cell(1) { IntranetPanel(box, fill) }
+                Cell(1) { ProfilePanel(box, fill) }
+                Cell(1) { ServiceStatusCard(box, columns = if (column >= SERVICE_PAIR_COLUMN_MIN * scale) 2 else 1, modifier = fill) }
+                Cell(1) { MemoryPanel(box, fill) }
+            }
+            when {
+                tablesFit -> CardRow(null, Modifier.weight(1f)) {
+                    DashboardRepaintBoundary(Modifier.weight(3f).fillMaxHeight()) { ConnectionsTableCard(box) }
+                    DashboardRepaintBoundary(Modifier.weight(2f).fillMaxHeight()) { ProxyGroupsCard(box) }
                 }
-              }
+                fills -> Summaries(null, Modifier.weight(1f))
+                else -> Summaries(summaryHeight)
             }
         }
     }
@@ -220,9 +390,9 @@ fun DashboardPage(box: BoxController) {
 // Adapted from FlClash v0.9.2 dashboard/widgets/traffic.dart.
 @Composable
 private fun SpeedPanel(box: BoxController) {
-    BoxPanel {
+    DashboardCard(semanticLabel = tr("Network speed")) {
         Column {
-            PanelTitle("Network speed", AppGlyphs.speed)
+            DashboardCardHeader(tr("Network speed"), AppGlyphs.speed)
             Spacer(Modifier.height(12.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 for (upload in listOf(true, false)) Box(Modifier.weight(1f)) { SpeedTile(box, upload) }
@@ -285,9 +455,9 @@ private fun ModePanel(box: BoxController) {
     val selected = (box.dashboard["mode"] as? String ?: "").lowercase()
     val labels = mapOf("rule" to "Rule", "global" to "Global", "direct" to "Direct")
     val glyphs = mapOf("rule" to AppGlyphs.rules, "global" to AppGlyphs.proxies, "direct" to AppGlyphs.target)
-    BoxPanel {
+    DashboardCard(semanticLabel = tr("Outbound mode")) {
         Column {
-            PanelTitle("Outbound mode", AppGlyphs.split)
+            DashboardCardHeader(tr("Outbound mode"), AppGlyphs.split)
             Spacer(Modifier.height(12.dp))
             ConnectedGroup {
                 modes.forEachIndexed { index, mode ->
@@ -320,58 +490,91 @@ private fun ModePanel(box: BoxController) {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun ProfilePanel(box: BoxController) {
+private fun ProfilePanel(box: BoxController, modifier: Modifier = Modifier) {
     val scheme = BoxTheme.scheme
     val navigator = LocalBoxNavigator.current
+    val density = dashboardDensity
+    val mobile = !density.isDesktop
+    val compact = density.isCompact
     val profile = if (box.remote) null else box.selectedProfile
     val name = if (box.remote) tr("Remote configuration") else profile?.get("name")?.toString()
     val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
+    val nameStyle = if (mobile || !compact) AppTextStyle.Headline else AppTextStyle.Callout
+    val figure = if (mobile) AppTextStyle.Title3 else if (compact) AppTextStyle.Callout else AppTextStyle.Headline
     var updating by remember { mutableStateOf(false) }
-    BoxPanel(onClick = {
+    val open = {
         navigator?.openForm { if (box.remote) ProfileDetailsPage(box, null) else if (profile == null) AddProfilePage(box) else ProfileDetailsPage(box, profile) }
-    }) {
-        Column {
-            PanelTitle("Profile", AppGlyphs.profiles, trailing = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (profile?.get("remote") == true) {
-                        Box(Modifier.size(26.dp), contentAlignment = Alignment.Center) {
-                            if (updating) {
-                                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
-                            } else {
-                                GlyphButton(AppGlyphs.sync, tr("Update"), {
-                                    updating = true
-                                    box.launchAct("profiles.update", mapOf("id" to profile?.get("id"))) { updating = false }
-                                }, size = 26.dp, iconSize = 18.dp)
-                            }
-                        }
-                    }
-                    GlyphIcon(AppGlyphs.chevronForward, size = 18.dp)
-                }
-            })
-            Spacer(Modifier.height(12.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Headline.of(true).copy(color = scheme.onSurface))
-                if (!box.remote && box.profiles.size > 1) {
-                    GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.openForm { ProfilesPage(box, picker = true) } }), size = 32.dp, iconSize = 18.dp)
+        Unit
+    }
+    // dashboard/widgets/profiles.dart: days left replaces the source once the provider reports an expiry,
+    // and the usage meter replaces the counts once it reports a quota.
+    val info = profile?.subscriptionInfo()
+    val days = subscriptionDaysLabel(info)
+    val endText: @Composable () -> Unit = {
+        if (days != null) {
+            Text(days.first, maxLines = 1, style = days.second?.let { label.copy(color = it) } ?: label)
+        } else {
+            Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), maxLines = 1, style = label)
+        }
+    }
+    val sync: (@Composable () -> Unit)? = if (profile?.get("remote") == true) {
+        {
+            Box(Modifier.size(if (mobile) 26.dp else 32.dp), contentAlignment = Alignment.Center) {
+                if (updating) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                } else {
+                    GlyphButton(AppGlyphs.sync, tr("Update"), {
+                        updating = true
+                        box.launchAct("profiles.update", mapOf("id" to profile["id"])) { updating = false }
+                    }, size = if (mobile) 26.dp else 32.dp, iconSize = 18.dp, color = scheme.onSurfaceVariant)
                 }
             }
-            if (profile != null || box.remote) {
-                // dashboard/widgets/profiles.dart: days left replaces the source once the provider reports an expiry,
-                // and the usage meter replaces the counts once it reports a quota.
-                val info = profile?.subscriptionInfo()
-                val days = subscriptionDaysLabel(info)
+        }
+    } else {
+        null
+    }
+    val nameRow: @Composable () -> Unit = {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = nameStyle.of(true).copy(color = scheme.onSurface))
+            if (!box.remote && box.profiles.size > 1) {
+                GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.openForm { ProfilesPage(box, picker = true) } }), size = 32.dp, iconSize = 18.dp)
+            }
+        }
+    }
+    DashboardCard(modifier, onTap = if (mobile || profile == null) open else null, semanticLabel = tr("Profile")) {
+        Column(if (mobile) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+            DashboardCardHeader(
+                title = tr("Profile"),
+                glyph = AppGlyphs.profiles,
+                chevron = mobile,
+                trailing = {
+                    if (mobile) {
+                        sync?.invoke()
+                    } else {
+                        Row(Modifier.headerNudge(), verticalAlignment = Alignment.CenterVertically) {
+                            sync?.invoke()
+                            DashboardIconButton(AppGlyphs.chevronForward, tr("Profile"), open)
+                        }
+                    }
+                },
+            )
+            Spacer(Modifier.height((if (mobile) 12 else 10).dp))
+            if (compact && (profile != null || box.remote)) {
+                DashboardCappedRow(start = nameRow, end = endText, spacing = 12.dp)
+            } else {
+                nameRow()
+            }
+            if ((profile != null || box.remote) && !compact) {
                 Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     Box(Modifier.weight(1f)) {
                         if (profile != null) ProfileUpdateTime(profile["updatedAt"].asLong(), label, showLabel = true)
                     }
-                    if (days != null) {
-                        Text(days.first, maxLines = 1, style = days.second?.let { label.copy(color = it) } ?: label)
-                    } else {
-                        Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), style = label)
-                    }
+                    endText()
                 }
-                Spacer(Modifier.height(14.dp))
-                if (info?.usage != null) SubscriptionUsageMeter(info) else ProfileStats(box, profile)
+            }
+            if (profile != null || box.remote) {
+                if (mobile) Spacer(Modifier.height(14.dp)) else Spacer(Modifier.weight(1f))
+                if (info?.usage != null) SubscriptionUsageMeter(info) else ProfileStats(box, profile, figure)
             }
         }
     }
@@ -405,7 +608,7 @@ internal fun ProfileUpdateTime(milliseconds: Long?, style: androidx.compose.ui.t
 }
 
 @Composable
-internal fun ProfileStats(box: BoxController, profile: Json?) {
+internal fun ProfileStats(box: BoxController, profile: Json?, figureStyle: AppTextStyle = AppTextStyle.Title3) {
     val scheme = BoxTheme.scheme
     var stats by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf<Json?>(null) }
     var waiting by remember(profile?.get("id"), box.profilesRevision) { mutableStateOf(profile != null) }
@@ -414,7 +617,7 @@ internal fun ProfileStats(box: BoxController, profile: Json?) {
         stats = runCatching { box.profileStats(id).await() }.getOrNull()
         waiting = false
     }
-    val figure = AppTextStyle.Title3.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
+    val figure = figureStyle.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
     val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
         for ((key, name) in listOf("groups" to "Proxy groups", "outbounds" to "Outbounds", "rules" to "Routing rules")) {
@@ -438,9 +641,9 @@ private fun ProxyGroupsPanel(box: BoxController) {
     val timeout = groups.flatMap { rows(it["items"]) }
         .filter { (it["testedAt"].asLong() ?: 0) > 0 && (it["delay"].asLong() ?: 0) <= 0 }
         .map { it["tag"].toString() }.toSet()
-    BoxPanel(onClick = if (groups.isEmpty()) null else ({ navigator?.openForm { ProxiesPage(box) } })) {
+    DashboardCard(onTap = if (groups.isEmpty()) null else ({ navigator?.openForm { ProxiesPage(box) } }), semanticLabel = tr("Proxy groups")) {
         Column {
-            PanelTitle("Proxy groups", AppGlyphs.layers, trailing = {
+            DashboardCardHeader(tr("Proxy groups"), AppGlyphs.layers, trailing = {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
                     if (timeout.isNotEmpty()) DashboardChip("${tr("Timeout")} ${timeout.size}", tone = ChipTone.Warn)
                     if (groups.isNotEmpty()) GlyphIcon(AppGlyphs.chevronForward, size = 18.dp)
@@ -530,39 +733,49 @@ fun BoxDataSubscription(box: BoxController, data: BoxData) {
 }
 
 @Composable
-private fun MemoryPanel(box: BoxController) {
+private fun MemoryPanel(box: BoxController, modifier: Modifier = Modifier) {
     val navigator = LocalBoxNavigator.current
+    val density = dashboardDensity
+    val mobile = !density.isDesktop
     if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Memory)
-    BoxPanel(onClick = { navigator?.openForm { MemoryDetails(box) } }) {
-        Column(Modifier.fillMaxWidth()) {
-            PanelTitle("Memory", AppGlyphs.memory, trailing = { GlyphIcon(AppGlyphs.chevronForward, size = 18.dp) })
-            Spacer(Modifier.height(12.dp))
-            MemorySummary(box.memory)
+    val open = { navigator?.openForm { MemoryDetails(box) }; Unit }
+    DashboardCard(modifier, onTap = if (mobile) open else null, semanticLabel = tr("Memory")) {
+        Column(if (mobile) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+            DashboardCardHeader(
+                title = tr("Memory"),
+                glyph = AppGlyphs.memory,
+                chevron = mobile,
+                trailing = if (mobile) null else ({ Box(Modifier.headerNudge()) { DashboardIconButton(AppGlyphs.chevronForward, tr("Memory"), open) } }),
+            )
+            Spacer(Modifier.height((if (mobile) 12 else if (density.isCompact) 4 else 6).dp))
+            if (mobile) MemorySummary(box.memory) else Box(Modifier.weight(1f)) { MemorySummary(box.memory, density) }
         }
     }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun MemorySummary(snapshot: Json) {
+private fun MemorySummary(snapshot: Json, density: DashboardDensity = DashboardDensity.Mobile) {
+    val mobile = !density.isDesktop
+    val figureStyle = if (mobile) AppTextStyle.Title1 else AppTextStyle.Title2
     val scheme = BoxTheme.scheme
     val total = bytes(snapshot["total"] as? Number ?: 0).split(" ")
     val parts = buildList {
         if (snapshot["remote"] != true) add(Triple("App", snapshot["app"] as? Number ?: 0, scheme.primary))
         add(Triple("Core", snapshot["core"] as? Number ?: 0, alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme))))
     }
-    Column {
+    Column(if (mobile) Modifier else Modifier.fillMaxSize()) {
         Text(
             buildAnnotatedString {
-                withStyle(AppTextStyle.Title1.of(true).tabular.copy(color = scheme.onSurface).toSpanStyle()) { append(if (snapshot.isEmpty()) "—" else total.first()) }
+                withStyle(figureStyle.of(true).tabular.copy(color = scheme.onSurface).toSpanStyle()) { append(if (snapshot.isEmpty()) "—" else total.first()) }
                 if (snapshot.isNotEmpty()) withStyle(AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant).toSpanStyle()) { append(" ${total.last()}") }
             },
             maxLines = 1,
-            style = AppTextStyle.Title1.of(true),
+            style = figureStyle.of(true),
         )
-        Spacer(Modifier.height(14.dp))
+        if (mobile) Spacer(Modifier.height(14.dp)) else Spacer(Modifier.weight(1f))
         MemoryBar(parts)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height((if (density.isCompact) 8 else 10).dp))
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for ((name, value, color) in parts) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -693,29 +906,37 @@ private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.
 }
 
 @Composable
-private fun IntranetPanel(box: BoxController) {
+private fun IntranetPanel(box: BoxController, modifier: Modifier = Modifier) {
     val scheme = BoxTheme.scheme
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
+    val density = dashboardDensity
+    val mobile = !density.isDesktop
     val addresses = box.lanAddresses
     val copy = box.lanCopyText
-    val figure = AppTextStyle.Title1.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
+    val figureStyle = if (mobile) AppTextStyle.Title1 else AppTextStyle.Title2
+    val figureTop = if (mobile) 12f else if (density.isCompact) 8f else 10f
+    val figure = figureStyle.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
     val copied = tr("Copied")
-    BoxPanel {
-        Column(Modifier.fillMaxWidth()) {
-            PanelTitle("Intranet IP", AppGlyphs.devices, trailing = {
-                Box(Modifier.offset(x = 8.dp)) {
-                    GlyphButton(AppGlyphs.copy, tr("Copy"), if (copy == null) null else ({
-                        box.lanCopyText?.let {
-                            copyText(context, it)
-                            box.message(copied)
-                        }
-                    }), size = 32.dp, iconSize = 18.dp, color = scheme.onSurfaceVariant)
-                }
-            })
-            Spacer(Modifier.height(12.dp))
+    DashboardCard(modifier, semanticLabel = tr("Intranet IP")) {
+        Column(if (mobile) Modifier.fillMaxWidth() else Modifier.fillMaxSize()) {
+            DashboardCardHeader(
+                title = tr("Intranet IP"),
+                glyph = AppGlyphs.devices,
+                trailing = {
+                    Box(Modifier.headerNudge()) {
+                        DashboardIconButton(AppGlyphs.copy, tr("Copy"), if (copy == null) null else ({
+                            box.lanCopyText?.let {
+                                copyText(context, it)
+                                box.message(copied)
+                            }
+                        }))
+                    }
+                },
+            )
+            Spacer(Modifier.height(figureTop.dp))
             Box(
-                Modifier.fillMaxWidth().height((AppTextStyle.Title1.leading * LocalDensity.current.fontScale).dp)
+                Modifier.fillMaxWidth().height((figureStyle.leading * max(1f, LocalDensity.current.fontScale)).dp)
                     .clickable { navigator?.openForm { IntranetDetails(box) } },
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -726,11 +947,12 @@ private fun IntranetPanel(box: BoxController) {
                         addresses.first(),
                         style = figure,
                         maxLines = 1,
-                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = AppTextStyle.Title1.size.sp, stepSize = 0.5.sp),
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = (figureStyle.size * .75f).sp, maxFontSize = figureStyle.size.sp, stepSize = 0.5.sp),
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            if (mobile) Spacer(Modifier.height(14.dp)) else Spacer(Modifier.weight(1f))
             if (box.remote) {
                 Box(Modifier.fillMaxWidth().clip(AppShape.all(20f)).background(SurfaceLevel.Block.colorOf(scheme))) {
                     ListItem(
@@ -746,33 +968,30 @@ private fun IntranetPanel(box: BoxController) {
     }
 }
 
-/** FlClash's mobile switch row: an enabled cookie badge, disabled circle and a compact switch. */
+/** intranet_ip.dart's LAN row: DashboardSwitchRow with the density's metrics; the icon yields its room to larger text. */
 @Composable
 private fun LanProxyRow(value: Boolean, subtitle: String, onChanged: ((Boolean) -> Unit)?) {
-    val scheme = BoxTheme.scheme
+    val compact = dashboardDensity.isCompact
     val title = tr("LAN proxy")
-    val shape = AppShape.all(20f)
-    BoxWithConstraints(Modifier.fillMaxWidth().clip(shape).background(SurfaceLevel.Block.colorOf(scheme)).clickable(enabled = onChanged != null) { onChanged?.invoke(!value) }) {
-        // The icon yields its room to larger text.
-        val showIcon = title.length * 15 * LocalDensity.current.fontScale * .6f <= maxWidth.value - 22 - 38 - 24 - SWITCH_TRACK_WIDTH
-        Row(
-            Modifier.padding(start = if (showIcon) 10.dp else 14.dp, top = 10.dp, end = 12.dp, bottom = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            if (showIcon) {
-                AnimatedContent(value, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "lan") { on ->
-                    ShapeBadge(if (on) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (on) scheme.primary else SurfaceLevel.Card.colorOf(scheme), 38.dp) {
-                        GlyphIcon(AppGlyphs.wifi, size = 19.dp, color = if (on) scheme.onPrimary else scheme.onSurfaceVariant)
-                    }
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
-                Text(subtitle, maxLines = 1, overflow = TextOverflow.Ellipsis, style = ListStyles.caption)
-            }
-            Box(Modifier.width(SWITCH_TRACK_WIDTH.dp).height(SWITCH_TRACK_HEIGHT.dp)) { CommonSwitch(value, onChanged) }
-        }
+    val icon = if (compact) 32f else 38f
+    val start = if (compact) 8f else 10f
+    val end = if (compact) 8f else 12f
+    val vertical = if (compact) 6f else 10f
+    val titleStart = if (compact) 12f else 14f
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val showIcon = dashboardSwitchIconFits(maxWidth.value, icon, start + end, listOf(title))
+        DashboardSwitchRow(
+            glyph = AppGlyphs.wifi,
+            title = title,
+            subtitle = subtitle,
+            value = value,
+            onChanged = onChanged,
+            iconSize = icon,
+            padding = PaddingValues(start = (if (showIcon) start else titleStart).dp, top = vertical.dp, end = end.dp, bottom = vertical.dp),
+            radius = if (compact) 16f else 20f,
+            showIcon = showIcon,
+            onTap = onChanged?.let { { it(!value) } },
+        )
     }
 }
 
@@ -911,7 +1130,7 @@ private fun SystemProxyPanel(box: BoxController) {
     val enabled = box.dashboard["systemProxy"] == true
     val title = tr("System HTTP proxy")
     val change: (Boolean) -> Unit = { box.launchAct("systemProxy.set", mapOf("enabled" to it)) }
-    BoxPanel(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), clip = false, onClick = { change(!enabled) }) {
+    DashboardCard(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), onTap = { change(!enabled) }, semanticLabel = title) {
         Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
             ShapeBadge(if (enabled) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (enabled) scheme.primary else SurfaceLevel.Block.colorOf(scheme), 48.dp) {
                 GlyphIcon(dashboardSystemProxyGlyph, size = 22.dp, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)

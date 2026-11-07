@@ -2,7 +2,16 @@ package io.nekohasekai.sfa.flutter
 
 internal object BoxPreferences {
     // Keep accepting the retired Connections key so older layouts and backups retain their other preferences.
-    private val cards = setOf("Status", "Network speed", "Outbound mode", "Current profile", "Connections", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy")
+    private val cards = setOf(
+        "Status", "Network speed", "Outbound mode", "Current profile", "Connections", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy",
+        "Service status", "Connection stats",
+    )
+
+    // ServiceTarget ids from compose/pages/ServiceStatus.kt (libbox ui_service.go checker names).
+    private val services = setOf(
+        "google", "github", "youtube", "chatgpt", "claude", "gemini", "netflix", "disney-plus", "prime-video",
+        "spotify", "tiktok", "discord", "bilibili",
+    )
     private val choices = mapOf(
         "theme" to setOf("system", "light", "dark"),
         "colorStyle" to setOf("vivid", "tinted", "soft", "monochrome"),
@@ -22,7 +31,8 @@ internal object BoxPreferences {
         activeValues.forEach { (key, value) ->
             val valid = when (key) {
                 in choices -> value in choices.getValue(key)
-                "floatingNavigation", "closeConnectionsOnSelect", "hideTimeoutProxies", "pureBlack", "systemColor", "customFontScale" -> value is Boolean
+                "floatingNavigation", "closeConnectionsOnSelect", "hideTimeoutProxies", "pureBlack", "systemColor", "customFontScale", "sidebarExpanded" -> value is Boolean
+                "serviceOrder", "disabledServices" -> value is List<*> && value.all { it in services } && value.distinct().size == value.size
                 "proxyColumns" -> value is Number && value.toDouble() == value.toInt().toDouble() && value.toInt() in 1..4
                 "proxyUnfolded" -> value is Map<*, *> && value.size <= 128 && value.all { (profile, groups) ->
                     profile is String && profile.length in 1..4096 && groups is List<*> && groups.size <= 4096 &&

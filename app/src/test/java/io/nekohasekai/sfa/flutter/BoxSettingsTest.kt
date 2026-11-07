@@ -41,6 +41,17 @@ class BoxSettingsTest {
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("hiddenCards" to listOf("Status"))) }
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("proxyColumns" to 1.5)) }
         BoxPreferences.validate(mapOf("theme" to "dark", "proxyColumns" to 2, "hiddenCards" to listOf("Memory")))
+        BoxPreferences.validate(
+            mapOf(
+                "sidebarExpanded" to false,
+                "hiddenCards" to listOf("Service status", "Connection stats"),
+                "serviceOrder" to listOf("netflix", "google"),
+                "disabledServices" to listOf("bilibili"),
+            ),
+        )
+        assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("serviceOrder" to listOf("google", "google"))) }
+        assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("disabledServices" to listOf("unknown"))) }
+        assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("sidebarExpanded" to "yes")) }
     }
 
     @Test

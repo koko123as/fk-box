@@ -106,6 +106,7 @@ private val dashboardDescriptions = mapOf(
     "Current profile" to "Selected sing-box configuration",
     "Proxy groups" to "Groups and selected nodes",
     "Outbound mode" to "Available routing modes",
+    "Connection stats" to "Live connections and recent requests",
 )
 
 /** DashboardEditorState: the edited order, with cards still animating in or out. */
@@ -447,5 +448,7 @@ private fun dashboardGlyph(card: String): Glyph = when (card) {
     "Proxy groups" -> AppGlyphs.layers
     "Memory" -> AppGlyphs.cpu
     "Intranet IP" -> AppGlyphs.devices
+    "Service status" -> AppGlyphs.verified
+    "Connection stats" -> AppGlyphs.connections
     else -> dashboardSystemProxyGlyph
 }

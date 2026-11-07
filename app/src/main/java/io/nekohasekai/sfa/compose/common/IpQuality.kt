@@ -6,6 +6,7 @@ import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.json
+import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.flutter.jsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -75,6 +76,14 @@ class RoutedIpProbe(private val box: BoxController) : IpProbeTransport {
             if (error.message?.contains("deadline exceeded") == true) throw IpProbeTimeout()
             throw error
         }
+    }
+
+    /** libbox's CheckServices: FlClash's service checks through this probe's route. */
+    suspend fun services(names: List<String>, timeoutMillis: Long): List<Json> {
+        if (cancelled) throw IpProbeCancelled()
+        val result = rows(box.call("dashboard.probe.services", mapOf("id" to id, "names" to names.joinToString(","), "timeoutMillis" to timeoutMillis)))
+        if (cancelled) throw IpProbeCancelled()
+        return result
     }
 
     fun cancel() {

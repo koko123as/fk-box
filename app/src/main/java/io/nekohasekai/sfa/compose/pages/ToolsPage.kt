@@ -153,16 +153,13 @@ private fun matchesWords(text: String, query: String): Boolean {
 }
 
 @Composable
-fun ConnectionsPage(box: BoxController) {
+fun ConnectionsPage(box: BoxController, initialFilter: String = "Active") {
     val dialogs = LocalDialogs.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf("Active") }
-    var sort by remember { mutableStateOf("Speed") }
-    DisposableEffect(Unit) {
-        box.launchAct("connections.visible", mapOf("visible" to true))
-        onDispose { box.launchAct("connections.visible", mapOf("visible" to false)) }
-    }
+    var filter by remember { mutableStateOf(initialFilter) }
+    var sort by remember { mutableStateOf(if (initialFilter == "Closed") "Created" else "Speed") }
+    BoxDataSubscription(box, io.nekohasekai.sfa.compose.BoxData.Connections)
     val key = mapOf("Created" to "createdAt", "Upload" to "uploadTotal", "Download" to "downloadTotal")[sort]
     fun rank(c: Json): Double = if (key == null) (c["upload"].asDouble() ?: 0.0) + (c["download"].asDouble() ?: 0.0) else c[key].asDouble() ?: 0.0
     val list = box.connections.filter { connection ->

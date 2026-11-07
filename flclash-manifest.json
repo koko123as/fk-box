@@ -532,6 +532,368 @@
           "changes": "Same four resources and parser checks as mihomo's updater (protobuf GeoIP/GeoSite, MaxMind DB); the file is written beside the target and renamed so a failed download keeps the old file."
         }
       ]
+    },
+    {
+      "name": "dashboard-desktop",
+      "repository": "https://github.com/chen08209/FlClash",
+      "commit": "be84736605527034689c95bf27828ff27d912c5e",
+      "relatedCommits": [],
+      "scope": "Tablet dashboard grid, the dashboard cards added after v0.9.2, service checks and the tablet sidebar. The overall UI, Android and core baselines stay unchanged. Local paths are relative to the repository root.",
+      "files": [
+        {
+          "source": "lib/views/dashboard/layout.dart",
+          "sourceSHA256": "c99e02e44ab64ea7ca8785ec50cbff6305087f6ecf4cddb3e4ffec2cc768ac59",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardLayout.kt"
+          ],
+          "changes": "DashboardDensity, column count, mobile side inset and the text-scale DashboardScope translated as is."
+        },
+        {
+          "source": "lib/views/dashboard/style.dart",
+          "sourceSHA256": "b8910af0d3f1c112269e07b8780a02bf0bcefb98094a22b71d3516cc818d0109",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardLayout.kt"
+          ],
+          "changes": "Dashboard colors, corners, e1 shadows, count/traffic formats and text roles mapped onto FK-box SurfaceLevel and AppTextStyle."
+        },
+        {
+          "source": "lib/views/dashboard/dashboard.dart",
+          "sourceSHA256": "772810ca1dafd31dc2163cee922625494896d44103b10ff78d57835fc828de1c",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardPage.kt"
+          ],
+          "changes": "_DesktopDashboard rows, heights, column cap, tables-or-summaries rule and the phone-only editor; RepaintBoundary per card becomes a graphicsLayer per card. The control row carries the System HTTP proxy tile in place of the Android VPN tile and gives its room to the mode bar when one of them is unavailable."
+        },
+        {
+          "source": "lib/views/dashboard/widget_registry.dart",
+          "sourceSHA256": "fc81f8714a2d994b5a83754b2edf0bbbf2c53ec495939225d458c97b89f73d19",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardPage.kt",
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardEditor.kt"
+          ],
+          "changes": "Service status and Connection stats join the phone's card list; hidden by default as on Android and appended after a saved order."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/card.dart",
+          "sourceSHA256": "0b2e8ec0da7adaf98e2e8ce135eadff9e9c1ab7907e8aff9fee4cfcf2cbaf664",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardLayout.kt"
+          ],
+          "changes": "DashboardCard (ink press of PressSurface), header, capped row, fit text, block, switch row, icon button and fade-out; Android press sparkles are not drawn."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/traffic.dart",
+          "sourceSHA256": "0d9b65b6ec78bb81df7eea3f262ef0e6e109698db39094e446af168989202413",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "SpeedCard per direction with peak and total over BoxController's rate history."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/outbound_mode.dart",
+          "sourceSHA256": "e07a06f7c8c75903450d63d01225705589a3310dd60bf76b269b33e62574d51d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "OutboundModeBar over the core's reported modes."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/network_takeover.dart",
+          "sourceSHA256": "0f3bee19a4673164540be28469f9c5f9acf8ca030de89c9b3cb4fc4fc1357d37",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "VpnTile metrics used for the System HTTP proxy switch."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/connection_stats.dart",
+          "sourceSHA256": "5e495b40238ca7b47aaa1655b60ae13d52749a683c18db0766cce6071d914e5d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "Live connection and recent request counts; no DNS query feed exists in sing-box."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/connections_table.dart",
+          "sourceSHA256": "6d3f13317d559f29bd5563b1567efc09d31031fa6827871cc1b36a8b9ee36879",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "Live connections and recent (closed) connections tables with FlClash's columns and sorting; no DNS tab and no column resizing."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/proxy_groups.dart",
+          "sourceSHA256": "7ed6bc3e3613e1f5040b86895155c7066e22e28f898dcbe81195c72402355c03",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardCards.kt"
+          ],
+          "changes": "Desktop group tiles and the summary card; groups have no icons, so tiles use monograms."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/service_status.dart",
+          "sourceSHA256": "03cb655b8e4c7c0e3f73904863cecd130e0a338bc32df934c3d14dbafa3bdd4a",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceStatus.kt"
+          ],
+          "changes": "Service status card, sheet and manage page; rows show the reported region instead of the node's outbound IP."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/current_outbound.dart",
+          "sourceSHA256": "1fb47cc2e4274dc940ba9876c1736410183bbdf867d9d863b46a0e3b8db77974",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/StatusPanel.kt"
+          ],
+          "changes": "_OutboundMetrics per density applied to the existing status card."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/intranet_ip.dart",
+          "sourceSHA256": "ae59cd18e1e2fd99abccbe1d27da9fbdbf9be9f1c7e05acbb6a32bac7b3ca44b",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardPage.kt"
+          ],
+          "changes": "Desktop figure and LAN row metrics."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/profiles.dart",
+          "sourceSHA256": "b7be96228167a2e4e13506df4a1b6cb031ab313e4fa6edee299d5d26e321539d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardPage.kt"
+          ],
+          "changes": "Desktop name, figure and compact layout."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/memory_info.dart",
+          "sourceSHA256": "e79c8de55b1250b972900b63477b2ab66ffea26bcb297f4d0b5c4e24f05826c6",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/DashboardPage.kt"
+          ],
+          "changes": "Desktop summary layout."
+        },
+        {
+          "source": "lib/common/service_probe.dart",
+          "sourceSHA256": "52020885051ee456ac48f1ab5f0164bdefbbcb628d1c3c5ef6204ee8d063ab41",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceStatus.kt"
+          ],
+          "changes": "ServiceTarget and ServiceProbeStatus ids and labels."
+        },
+        {
+          "source": "core/service_check.go",
+          "sourceSHA256": "d955596a7b247510754415f77e250ee53af23c88216357695f4d0998044f9ed0",
+          "usage": "adapted",
+          "localPaths": [
+            "libbox/ui_service.go"
+          ],
+          "changes": "Check sweep, slots, timeout retry and status rules over the UIEgressProbe route; no route hits or chains."
+        },
+        {
+          "source": "core/service_rules.go",
+          "sourceSHA256": "e22e4ca4692c2c8c7fcd42ac69b57c77841449b0eabc17b84f148a3de4612e4d",
+          "usage": "adapted",
+          "localPaths": [
+            "libbox/ui_service.go"
+          ],
+          "changes": "Per-service rules unchanged apart from names."
+        },
+        {
+          "source": "core/region.go",
+          "sourceSHA256": "4463b32e6f0dd62e962bac7d99249006412b23cc2fc777b0c966f5a50010a1e2",
+          "usage": "adapted",
+          "localPaths": [
+            "libbox/ui_service.go"
+          ],
+          "changes": "normalizeRegion table copied."
+        },
+        {
+          "source": "core/probe.go",
+          "sourceSHA256": "dc38c8c7020b625ca204269bc7d8ba714cf529dd029a4da9a9fb8d1ffdda01fe",
+          "usage": "adapted",
+          "localPaths": [
+            "libbox/ui_service.go"
+          ],
+          "changes": "Request, no-redirect and scan body reading over Go net/http."
+        },
+        {
+          "source": "lib/manager/app_manager.dart",
+          "sourceSHA256": "4bb7d7afdcc0e95907db944ab848778bf2ec11b1eb8db1a71d4550a85a5b1d02",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/HomePage.kt",
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/Sidebar.kt"
+          ],
+          "changes": "_Sidebar and AppSidebarContainer: sidebar for windows wider than a phone, expansion only on desktop-wide windows, sidebarExpanded preference, side width for the dashboard."
+        },
+        {
+          "source": "lib/common/layout.dart",
+          "sourceSHA256": "70317b4ff2f9c9c5cf1b8cc7bca2b5334a303552a77b9c13f8dd78141064fb8f",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/Sidebar.kt"
+          ],
+          "changes": "getViewMode, canExpandSidebar and cardSpacingOf."
+        },
+        {
+          "source": "assets/images/services/bilibili.svg",
+          "sourceSHA256": "6b9374744835ecb15cbe9970ee0ce49980d0547ce042c01db359fb1021b3e6a8",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/claude.svg",
+          "sourceSHA256": "95f3a12133237000a503be974502eec512e986c4349439435c6580dc93c90528",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/discord.svg",
+          "sourceSHA256": "9ea371055e0c5c65326b924d12e056c8d9df94e082ed881ea76d026461187143",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/disneyplus.svg",
+          "sourceSHA256": "53a2677d3e07c8dc78f57596b57c9f143ba43fee447fe34771e80741d2842ba7",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/gemini.svg",
+          "sourceSHA256": "940894f2875905e6273196638cf038913540546a6eb34a85ba2efc690c704ff4",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/github.svg",
+          "sourceSHA256": "5e2d81ef6b15846ab74e2ef09d270d98e6d6cd0caf16d7016b56b514de96352d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/google.svg",
+          "sourceSHA256": "004b71c373203f75f5e8bcde379da7bf921d4a26521ed4ab1c399d6f3c1ee45d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/netflix.svg",
+          "sourceSHA256": "cd9b51dfbb03052f5a048020517733136da979740ebb3707af3fe1606d33ef1b",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/openai.svg",
+          "sourceSHA256": "01d8c0d1875a09920773d4047dd6e2f88bc47a3d343011edbaf6b6dd7de9d59b",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/primevideo.svg",
+          "sourceSHA256": "9ff20cfdf246622c1fb97b73f4ad1efa9844da91fad32928a4bfb6307512ec95",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/spotify.svg",
+          "sourceSHA256": "b7310b438337b3c5b073d62f04c32214e73fafab0d4b7e5ba5e57c5323d12f8c",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/tiktok.svg",
+          "sourceSHA256": "7e6fcda0740c11dc77f7861a59132d04886e2ccbe1a96f59bf0b5023133ae60c",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/youtube.svg",
+          "sourceSHA256": "b1ec1aded379c09bde7af1ce08e12d0593b86f7d7cd49083528123cfa5cb551e",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ServiceIcons.kt"
+          ],
+          "changes": "Path data turned into an ImageVector."
+        },
+        {
+          "source": "assets/images/services/LICENSE.md",
+          "sourceSHA256": "b1358dd06b375eb96df3dff0332c1e932fbd96882918de239bf2e50c179c0c5c",
+          "usage": "verbatim",
+          "localPaths": [
+            "licenses/service-icons.md"
+          ],
+          "changes": "Copied unchanged."
+        },
+        {
+          "source": "lib/sidebar.dart (prism_ui 63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)",
+          "sourceSHA256": "cd277371c5fd4c7e278745201887b2ebdb9ad6e9db5b1886c9e23e0d237b5f94",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/Sidebar.kt"
+          ],
+          "changes": "NavigationSidebar, its overlay pane, buttons and selection indicator; prism_ui is FlClash's plugins/prism_ui submodule at this commit."
+        },
+        {
+          "source": "lib/navigation_dock.dart (prism_ui 63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)",
+          "sourceSHA256": "acafc3ed461f46fd81d0cd72f3f09fd9d86480ba37924fd2cab7e9baa3768cec",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Kit.kt"
+          ],
+          "changes": "ElasticPress swell and drag pull (rubber band, track and press springs) for Modifier.elasticPress."
+        }
+      ]
     }
   ],
   "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation. Local paths under files/adaptedFiles name the former flutter/ tree (see Git history before the removal); their Compose translations live in app/src/main/java/io/nekohasekai/sfa/compose."
