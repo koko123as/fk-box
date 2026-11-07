@@ -101,6 +101,8 @@ internal object BoxStrings {
         map["Domain only"] = "仅域名"
         map["Original URL"] = "原始 URL"
         map["Requests"] = "请求"
+        map["Recent requests"] = "最近请求"
+        map["Captured"] = "已抓取"
         map["Capture requests"] = "抓取请求"
         map["Capturing new connections"] = "正在抓取新连接"
         map["Capture stopped"] = "抓包已停止"

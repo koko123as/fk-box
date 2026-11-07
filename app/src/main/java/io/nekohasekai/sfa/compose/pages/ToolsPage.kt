@@ -51,7 +51,6 @@ import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
-import io.nekohasekai.sfa.compose.ui.ListItemUnavailable
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.LocalDialogs
 import io.nekohasekai.sfa.compose.ui.NullStatus
@@ -108,25 +107,18 @@ private val reportKinds = listOf("crash", "oom", "power")
 @Composable
 fun ToolsPage(box: BoxController) {
     BoxPage("Tools") {
-        // Requests (HTTP capture) is a sing-box feature: shown greyed on Xray/mihomo.
-        val core = box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box"
-        // tools.dart: what the sidebar shows (Requests on sing-box, Logs) leaves the list outside the mobile layout.
+        // tools.dart: what the sidebar shows (Requests, Logs) leaves the list outside the mobile layout.
         val sidebar = io.nekohasekai.sfa.compose.ui.LocalViewMode.current != io.nekohasekai.sfa.compose.ui.ViewMode.Mobile
         val entries = buildList {
-            if (!sidebar || core != "sing-box") add("Requests")
-            add("Connections")
+            // requests.dart: one Requests page for recent, running and captured requests.
+            if (!sidebar) add("Requests")
             if (!sidebar) add("Logs")
             add("Terminal")
             add("Remote control")
         }
         Section(count = entries.size) { index, position ->
             when (entries[index]) {
-                "Requests" -> if (core == "sing-box") {
-                    ListItemOpen(tr("Requests"), position, leading = AppGlyphs.filter) { RequestsPage(box) }
-                } else {
-                    ListItemUnavailable(tr("Requests"), position, leading = AppGlyphs.filter, reason = tr("HTTP capture needs the sing-box core"))
-                }
-                "Connections" -> ListItemOpen(tr("Connections"), position, leading = AppGlyphs.connections) { ConnectionsPage(box) }
+                "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.requests) { RequestsPage(box) }
                 "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
                 "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppGlyphs.proxies) { RemotePage(box) }
@@ -203,18 +195,24 @@ val connectionGroupers: List<RecordGrouper<Json>> = listOf(
     RecordGrouper<Json>(RecordGrouping.Exit) { connectionChain(it).lastOrNull().orEmpty() },
 )
 
+/**
+ * requests.dart's _RecentFeed ([recent]: closed connections, the kept history,
+ * or every connection when "All" is chosen) and _LiveFeed (running
+ * connections with close-all), each with its own record filter and grouping.
+ */
 @Composable
-fun ConnectionsPage(box: BoxController) {
+internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String, titleMenuItems: List<PopupMenuItem>) {
     val dialogs = LocalDialogs.current
     val scope = rememberCoroutineScope()
     var query by remember { mutableStateOf("") }
-    var filter by remember { mutableStateOf("Active") }
-    var sort by remember { mutableStateOf("Speed") }
+    var filter by remember { mutableStateOf(if (recent) "Closed" else "Active") }
+    var sort by remember { mutableStateOf(if (recent) "Created" else "Speed") }
+    val pageId = if (recent) "recentRequests" else "connections"
     val filters = rememberRecordFilterController(
         connectionFacets,
         connectionGroupers,
-        grouping = savedRecordGrouping(box.preferences, "connections"),
-        onGroupingChanged = { grouping -> scope.launch { box.setPreference("recordGroupings", recordGroupingsWith(box.preferences, "connections", grouping)) } },
+        grouping = savedRecordGrouping(box.preferences, pageId),
+        onGroupingChanged = { grouping -> scope.launch { box.setPreference("recordGroupings", recordGroupingsWith(box.preferences, pageId, grouping)) } },
     )
     val pinned = LocalViewMode.current != ViewMode.Mobile
     DisposableEffect(Unit) {
@@ -234,18 +232,20 @@ fun ConnectionsPage(box: BoxController) {
     val groups = filters.groupsOf(list)
     val folds = rememberRecordGroupFolds(filters.grouping)
     CommonScaffold(
-        title = tr("Connections"),
+        title = title,
+        titleMenuItems = titleMenuItems,
         searchState = SearchState { query = it },
         keywords = filters.keywords(pinned),
-        iconActions = listOf(
+        iconActions = if (recent) emptyList() else listOf(
             IconAction(AppGlyphs.clearAll, tr("Close all connections"), if (box.running) ({
                 scope.launch {
                     if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act("connections.closeAll")
                 }
             }) else null),
         ),
-        menuItems = listOf("Active", "Closed", "All").map { item ->
-            PopupMenuItem(tr(item), checked = item == filter, section = if (item == "Active") PopupMenuSection(tr("Connections")) else null, onPressed = { filter = item })
+        // The running feed is the active list; the recent feed keeps its closed/all choice.
+        menuItems = (if (recent) listOf("Closed", "All") else emptyList<String>()).map { item ->
+            PopupMenuItem(tr(item), checked = item == filter, section = if (item == "Closed") PopupMenuSection(tr("Connections")) else null, onPressed = { filter = item })
         } + listOf("Speed", "Created", "Upload", "Download").map { item ->
             PopupMenuItem(tr(item), AppGlyphs.sort, checked = item == sort, onPressed = { sort = item })
         } + filters.menuItems(pinned),

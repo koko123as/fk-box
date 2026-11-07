@@ -78,6 +78,23 @@ import io.nekohasekai.sfa.compose.ui.rememberCapturePoll
 import io.nekohasekai.sfa.compose.ui.rememberPageActive
 import io.nekohasekai.sfa.compose.ui.setClipboard
 import io.nekohasekai.sfa.compose.ui.tr
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.key
+import io.nekohasekai.sfa.compose.ui.LocalViewMode
+import io.nekohasekai.sfa.compose.ui.RecordFacet
+import io.nekohasekai.sfa.compose.ui.RecordFacetKind
+import io.nekohasekai.sfa.compose.ui.RecordFilter
+import io.nekohasekai.sfa.compose.ui.RecordFilterScope
+import io.nekohasekai.sfa.compose.ui.RecordGrouper
+import io.nekohasekai.sfa.compose.ui.RecordGrouping
+import io.nekohasekai.sfa.compose.ui.ViewMode
+import io.nekohasekai.sfa.compose.ui.recordFilterAction
+import io.nekohasekai.sfa.compose.ui.recordGroupingsWith
+import io.nekohasekai.sfa.compose.ui.recordGroups
+import io.nekohasekai.sfa.compose.ui.rememberRecordFilterController
+import io.nekohasekai.sfa.compose.ui.rememberRecordGroupFolds
+import io.nekohasekai.sfa.compose.ui.savedRecordGrouping
 import kotlinx.coroutines.launch
 
 private const val LOCAL_ONLY = "HTTP debugging is only available for the local service"
@@ -91,9 +108,93 @@ private fun LocalOnlyPage(title: String) {
 // pages/requests.dart
 // ---------------------------------------------------------------------------
 
+/** enum.dart's RequestFeed, with fk-box's HTTP capture list as a third feed. */
+private val requestFeeds = listOf("recent", "live", "captured")
+
+private fun requestFeedLabel(feed: String): String = when (feed) {
+    "recent" -> "Recent requests"
+    "live" -> "Running"
+    else -> "Captured"
+}
+
+/**
+ * requests.dart's RequestsPage: one page whose title menu switches between
+ * recent (closed) and running connections and the captured HTTP requests.
+ * The chosen feed persists as `requestFeed` unless [initialFeed] opens one.
+ * HTTP capture is a sing-box feature: its feed stays greyed on Xray/mihomo.
+ */
 @Composable
-fun RequestsPage(box: BoxController) {
-    if (box.remote) return LocalOnlyPage("Requests")
+fun RequestsPage(box: BoxController, initialFeed: String? = null) {
+    val scope = rememberCoroutineScope()
+    val captureAvailable = (box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box") == "sing-box"
+    var feed by remember { mutableStateOf(initialFeed ?: box.preferences["requestFeed"] as? String ?: "recent") }
+    val shown = if (feed !in requestFeeds || feed == "captured" && !captureAvailable) "recent" else feed
+    val captureReason = tr("HTTP capture needs the sing-box core")
+    val titleMenuItems = requestFeeds.map { item ->
+        val unavailable = item == "captured" && !captureAvailable
+        PopupMenuItem(
+            tr(requestFeedLabel(item)),
+            subtitle = if (unavailable) captureReason else null,
+            checked = item == shown,
+            onPressed = if (unavailable) null else ({
+                if (item != shown) {
+                    feed = item
+                    if (initialFeed == null) scope.launch { box.setPreference("requestFeed", item) }
+                }
+            }),
+        )
+    }
+    val title = tr(requestFeedLabel(shown))
+    // Each feed owns its search, record filter and grouping.
+    key(shown) {
+        if (shown == "captured") {
+            CapturedFeed(box, title, titleMenuItems)
+        } else {
+            ConnectionsFeed(box, recent = shown == "recent", title, titleMenuItems)
+        }
+    }
+}
+
+private fun captureApp(item: Json): String = (item["packages"] as? List<*>)?.firstOrNull { it is String && it.isNotEmpty() } as? String ?: ""
+
+/** How a captured request was read: HTTPS through the MITM CA, plain HTTP, or the domain only. */
+private fun captureMitm(item: Json): String = when {
+    item["domainOnly"] == true -> "domain"
+    (item["url"] as? String)?.startsWith("https://", ignoreCase = true) == true -> "mitm"
+    else -> "http"
+}
+
+private fun captureHost(item: Json): String {
+    val url = item["url"] as? String ?: return ""
+    return url.substringAfter("://", url).substringBefore('/').substringBefore('?').substringAfterLast('@')
+}
+
+/** common.dart's mitm facet for fk-box's capture records, with the app they came from. */
+private val captureFacets: List<RecordFacet<Json>> = listOf(
+    RecordFacet<Json>(RecordFacetKind.Mitm, { listOf(captureMitm(it)) }, offered = true, order = listOf("mitm", "http", "domain"), labelOf = { mitmLabel(it) }),
+    RecordFacet<Json>(RecordFacetKind.App, { (it["packages"] as? List<*>).orEmpty().mapNotNull { p -> (p as? String)?.takeIf(String::isNotEmpty) } }),
+)
+
+private val captureGroupers: List<RecordGrouper<Json>> = listOf(
+    RecordGrouper<Json>(RecordGrouping.App) { captureApp(it) },
+    RecordGrouper<Json>(RecordGrouping.Host) { captureHost(it) },
+)
+
+private fun mitmLabel(value: String): String = when (value) {
+    "mitm" -> "MITM"
+    "http" -> "HTTP"
+    else -> "Domain only"
+}
+
+/** The HTTP capture list (the former Requests page), its settings, certificate and logs menu unchanged. */
+@Composable
+private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List<PopupMenuItem>) {
+    if (box.remote) {
+        CommonScaffold(title = title, titleMenuItems = titleMenuItems) {
+            Column(Modifier.fillMaxSize().padding(top = contentTopPadding())) { EmptyState(LOCAL_ONLY) }
+        }
+        return
+    }
     val navigator = LocalBoxNavigator.current
     val dialogs = LocalDialogs.current
     val scope = rememberCoroutineScope()
@@ -118,8 +219,21 @@ fun RequestsPage(box: BoxController) {
     val entries = rows(page["items"])
     val styles = recordTextStyles()
     val scheme = BoxTheme.scheme
+    val filters = rememberRecordFilterController(
+        captureFacets,
+        captureGroupers,
+        grouping = savedRecordGrouping(box.preferences, "captured"),
+        onGroupingChanged = { grouping -> scope.launch { box.setPreference("recordGroupings", recordGroupingsWith(box.preferences, "captured", grouping)) } },
+    )
+    val pinned = LocalViewMode.current != ViewMode.Mobile
+    SideEffect { filters.offer(entries) }
+    val shownEntries = filters.apply(entries)
+    val groups = filters.groupsOf(shownEntries)
+    val folds = rememberRecordGroupFolds(filters.grouping)
     CommonScaffold(
-        title = tr("Requests"),
+        title = title,
+        titleMenuItems = titleMenuItems,
+        keywords = filters.keywords(pinned),
         loading = busy,
         searchState = SearchState {
             query = it
@@ -149,8 +263,9 @@ fun RequestsPage(box: BoxController) {
             PopupMenuItem(tr("Clear requests"), AppGlyphs.delete, onPressed = if (busy) null else ({
                 scope.launch { if (dialogs?.confirm("Clear captured requests?") == true) act("capture.clear") }
             })),
-        ),
+        ) + filters.menuItems(pinned),
     ) {
+      RecordFilterScope(filters::add) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = contentTopPadding(), bottom = 24.dp + bottomInset())) {
             item(key = "header") {
                 Column(Modifier.padding(horizontal = 16.dp)) {
@@ -179,43 +294,19 @@ fun RequestsPage(box: BoxController) {
                     if (pageError.isNotEmpty()) Text(pageError, style = ListStyles.subtitle.copy(color = scheme.error))
                     poll.error?.let { ErrorState(describe(it), poll.refresh) }
                     if (snapshot == null && poll.error == null) CenteredLoading()
-                    if (snapshot != null && entries.isEmpty()) {
+                    if (snapshot != null && shownEntries.isEmpty()) {
                         EmptyState(
-                            if (query.isEmpty()) "No captured requests" else "No results",
+                            if (query.isEmpty() && !filters.isFiltering) "No captured requests" else "No results",
                             message = if (query.isEmpty()) "HTTP and HTTPS capture follow the local service. HTTPS requires a trusted MITM CA. Start capture, then reconnect the target app." else null,
                         )
                     }
                 }
             }
-            items(entries, key = { it["id"].toString() }) { item ->
-                Column(Modifier.padding(bottom = RECORD_LIST_GAP.dp)) {
-                    RecordListItem(
-                        onTap = { navigator?.push { RequestDetailPage(box, item["id"].toString()) } },
-                        header = {
-                            RecordHeader {
-                                RecordTimestamp(recordTime(item["startedAt"]))
-                                RecordLabel(item["method"]?.toString() ?: "")
-                                val status = item["status"].asLong() ?: 0
-                                RecordLabel(
-                                    when {
-                                        item["domainOnly"] == true -> tr("Domain only")
-                                        status > 0 -> status.toString()
-                                        else -> tr(if (item["complete"] == true) "Error" else "Active")
-                                    },
-                                )
-                            }
-                        },
-                        body = {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                Text(item["url"]?.toString() ?: "", maxLines = 2, overflow = TextOverflow.Ellipsis, style = styles.title)
-                                Text("${item["protocol"] ?: ""} · ${item["durationMs"] ?: 0} ms · ${bytes(item["bytes"] as? Number ?: 0)}", style = styles.secondary)
-                                val packages = item["packages"] as? List<*> ?: emptyList<Any>()
-                                if (packages.isNotEmpty()) Text(packages.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis, style = styles.secondary)
-                                val error = item["error"] as? String ?: ""
-                                if (error.isNotEmpty()) Text(error, maxLines = 2, overflow = TextOverflow.Ellipsis, style = styles.secondary.copy(color = scheme.error))
-                            }
-                        },
-                    )
+            if (groups != null) {
+                recordGroups(groups, folds, keyOf = { it["id"].toString() }) { item -> CapturedRecord(box, item) }
+            } else {
+                items(shownEntries, key = { it["id"].toString() }) { item ->
+                    Box(Modifier.animateItem()) { CapturedRecord(box, item) }
                 }
             }
             item(key = "more") {
@@ -224,6 +315,50 @@ fun RequestsPage(box: BoxController) {
                 }
             }
         }
+      }
+    }
+}
+
+@Composable
+private fun CapturedRecord(box: BoxController, item: Json) {
+    val navigator = LocalBoxNavigator.current
+    val styles = recordTextStyles()
+    val scheme = BoxTheme.scheme
+    Column(Modifier.padding(bottom = RECORD_LIST_GAP.dp)) {
+        RecordListItem(
+            onTap = { navigator?.push { RequestDetailPage(box, item["id"].toString()) } },
+            header = {
+                RecordHeader {
+                    RecordTimestamp(recordTime(item["startedAt"]))
+                    RecordLabel(item["method"]?.toString() ?: "")
+                    val status = item["status"].asLong() ?: 0
+                    // Tapping how the request was read (MITM, HTTP, domain only) or its app filters on it.
+                    val mitm = captureMitm(item)
+                    val onMitm = recordFilterAction(RecordFilter(RecordFacetKind.Mitm, mitm))
+                    RecordLabel(
+                        when {
+                            item["domainOnly"] == true -> tr("Domain only")
+                            status > 0 -> status.toString()
+                            else -> tr(if (item["complete"] == true) "Error" else "Active")
+                        },
+                        onPressed = if (mitm == "domain") onMitm else null,
+                    )
+                    if (mitm != "domain") RecordLabel(mitmLabel(mitm), onPressed = onMitm)
+                    val app = captureApp(item)
+                    if (app.isNotEmpty()) RecordLabel(app, onPressed = recordFilterAction(RecordFilter(RecordFacetKind.App, app)))
+                }
+            },
+            body = {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(item["url"]?.toString() ?: "", maxLines = 2, overflow = TextOverflow.Ellipsis, style = styles.title)
+                    Text("${item["protocol"] ?: ""} · ${item["durationMs"] ?: 0} ms · ${bytes(item["bytes"] as? Number ?: 0)}", style = styles.secondary)
+                    val packages = item["packages"] as? List<*> ?: emptyList<Any>()
+                    if (packages.isNotEmpty()) Text(packages.joinToString(", "), maxLines = 1, overflow = TextOverflow.Ellipsis, style = styles.secondary)
+                    val error = item["error"] as? String ?: ""
+                    if (error.isNotEmpty()) Text(error, maxLines = 2, overflow = TextOverflow.Ellipsis, style = styles.secondary.copy(color = scheme.error))
+                }
+            },
+        )
     }
 }
 

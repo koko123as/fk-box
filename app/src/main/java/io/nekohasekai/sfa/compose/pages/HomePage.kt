@@ -74,16 +74,15 @@ private val mobileDestinations = listOf(
 
 /**
  * The destinations of [mode]: FlClash v0.9.3 lib/views/navigation.dart. Requests
- * (HTTP capture) is a sing-box feature, so it joins the sidebar only on that core
- * and otherwise stays greyed in Tools.
+ * is the merged requests page (recent, running, captured) on every core; its
+ * Captured feed is greyed on Xray/mihomo.
  */
 @Composable
-private fun destinationsOf(box: BoxController, mode: ViewMode): List<HomeDestination> {
+private fun destinationsOf(@Suppress("UNUSED_PARAMETER") box: BoxController, mode: ViewMode): List<HomeDestination> {
     if (mode == ViewMode.Mobile) return mobileDestinations
-    val core = box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box"
     return buildList {
         addAll(mobileDestinations.take(3))
-        if (core == "sing-box") add(HomeDestination("Requests", AppGlyphs.requests, false))
+        add(HomeDestination("Requests", AppGlyphs.requests, false))
         add(HomeDestination("Logs", AppGlyphs.logs, false))
         add(mobileDestinations.last())
     }

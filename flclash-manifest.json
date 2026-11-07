@@ -681,6 +681,16 @@
             "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
           ],
           "changes": "_KeywordStrip (36 dp chips, 16 dp inset, 8/20 dp gaps, 4/16 dp padding) and _TitleMenuButton (chevron 20/16 dp, focus overlay only)."
+        },
+        {
+          "source": "lib/views/connection/requests.dart",
+          "sourceSHA256": "5048001beed275ab3f12341a4499c2bc186d1a50d4480eac358bc597d2f05872",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt",
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ToolsPage.kt"
+          ],
+          "changes": "RequestsPage with title-menu feeds Recent requests (closed connections, Closed/All menu), Running (active, close-all) and fk-box's Captured HTTP list (sing-box only, greyed with the reason elsewhere; capture menu unchanged); requestFeed persisted; each feed keeps its own search, RecordFilterController and grouping (captured: MITM and app facets, app/host grouping). The connections.dart page is folded in; no per-connection exchange tabs (capture records carry no connection id)."
         }
       ]
     },

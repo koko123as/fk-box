@@ -14,6 +14,8 @@ internal object BoxPreferences {
         "restoreStrategy" to setOf("Compatible", "Override"),
         "tabAnimation" to setOf("slide", "fade"),
         "liquidGlass" to setOf("none", "standard", "ultra"),
+        // requests.dart's requestFeed, with fk-box's captured HTTP feed.
+        "requestFeed" to setOf("recent", "live", "captured"),
     )
 
     fun validate(values: Map<String, Any?>): Map<String, Any?> {
