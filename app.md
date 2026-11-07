@@ -9,6 +9,7 @@
 | 仓库 | [koko123as/fk-box](https://github.com/koko123as/fk-box)（`main`；直接前身 [giturass/B-box](https://github.com/giturass/B-box)，经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入并保留完整历史） |
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
+| FlClash 界面参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e) + [prism_ui `63450c0`](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)，见 [flclash.md](flclash.md#参考版本与来源清单) |
 | FK-box 版本 / versionCode | `1.15.1` / `751`，以 [version.properties](version.properties) 为准 |
 | 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
@@ -135,7 +136,7 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 - 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.updateGeoResource`，失败保留原文件并显示错误；成功后记为“已下载”。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。
 - 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
 - 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
-- 界面：工具页设置分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
+- 界面：工具页顶部分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
 - 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/flutter/BoxSettingsTest.kt) 覆盖三项设置的校验。
 - APK 体积：内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），APK 中压缩存放；首次解压约占 38 MB 存储。2026-11-06 实测（ARM64 debug，Artifact 未压缩打包）：630f444 为 78,069,486 字节，59d5b01 为 93,208,464 字节，增加 15,138,978 字节（约 14.4 MiB）；源码 SHA 59d5b01 的 [newui.yml](https://github.com/koko123as/fk-box/actions/runs/42207100362) 与 [build-debug-apk.yml](https://github.com/koko123as/fk-box/actions/runs/42207110939) 均通过（含 `TestCoreGeo*` 与 JVM 测试）。未覆盖：真机解压耗时、下载、自动更新、Xray/mihomo 实际读取 geo 规则。
 

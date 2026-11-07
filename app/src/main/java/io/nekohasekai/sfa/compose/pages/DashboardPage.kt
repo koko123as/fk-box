@@ -386,6 +386,10 @@ internal fun ProfilePanel(box: BoxController) {
             Spacer(Modifier.height(if (density.isDesktop) 10.dp else 12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = (if (density.isCompact) AppTextStyle.Callout else AppTextStyle.Headline).of(true).copy(color = scheme.onSurface))
+                if (profile != null) {
+                    Spacer(Modifier.width(8.dp))
+                    ProfileCoreChip(profile)
+                }
                 if (!box.remote && box.profiles.size > 1) {
                     GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.openForm { ProfilesPage(box, picker = true) } }), size = 32.dp, iconSize = 18.dp)
                 }

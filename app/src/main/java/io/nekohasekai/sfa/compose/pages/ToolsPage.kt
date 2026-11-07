@@ -103,56 +103,60 @@ import kotlinx.coroutines.launch
 private val endpointKinds = listOf("tailscale", "openvpn", "openconnect", "usbip")
 private val reportKinds = listOf("crash", "oom", "power")
 
-/** tools.dart's ToolsPage: the fourth top-level destination. */
+/**
+ * tools.dart's ToolsView (v0.9.3): the "more" navigation items first
+ * (Requests, Resources, Logs; whatever the sidebar shows is left out), then
+ * Settings and Other. fk-box's own tools (endpoints such as Tailscale with
+ * Taildrop, OpenVPN, OpenConnect and USB/IP, the terminal and remote control)
+ * join the top section; diagnostics and reports sit under Other, where
+ * FlClash keeps its developer page.
+ */
 @Composable
 fun ToolsPage(box: BoxController) {
     BoxPage("Tools") {
-        // tools.dart: what the sidebar shows (Requests, Logs) leaves the list outside the mobile layout.
         val sidebar = io.nekohasekai.sfa.compose.ui.LocalViewMode.current != io.nekohasekai.sfa.compose.ui.ViewMode.Mobile
+        val endpoints = if (box.running) endpointKinds.filter { rows(box.toolState[it]).isNotEmpty() } else emptyList()
         val entries = buildList {
-            // requests.dart: one Requests page for recent, running and captured requests.
             if (!sidebar) add("Requests")
+            add("Resources")
             if (!sidebar) add("Logs")
+            endpoints.forEach { add("endpoint:$it") }
             add("Terminal")
             add("Remote control")
         }
         Section(count = entries.size) { index, position ->
-            when (entries[index]) {
-                "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.requests) { RequestsPage(box) }
-                "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
-                "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
+            val entry = entries[index]
+            when {
+                entry == "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.requests) { RequestsPage(box) }
+                entry == "Resources" -> ListItemOpen(tr("Resources"), position, leading = AppGlyphs.resources) { ResourcesPage(box) }
+                entry == "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
+                entry.startsWith("endpoint:") -> {
+                    val kind = entry.removePrefix("endpoint:")
+                    ListItemOpen(endpointName(kind), position, leading = AppGlyphs.devices) { EndpointsPage(box, kind) }
+                }
+                entry == "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppGlyphs.proxies) { RemotePage(box) }
             }
         }
-        Section(title = tr("Settings"), count = 5) { index, position ->
+        // tools.dart _getSettingList: theme, access, backup, general (fk-box follows the system language).
+        Section(title = tr("Settings"), count = 4) { index, position ->
             when (index) {
                 0 -> ListItemOpen(tr("Appearance"), position, leading = AppGlyphs.paintbrush) { AppearancePage(box) }
-                1 -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { GeneralSettingsPage(box) }
-                2 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { AccessPage(box) }
-                3 -> ListItemOpen(tr("Resources"), position, leading = AppGlyphs.resources) { ResourcesPage(box) }
-                else -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { BackupPage(box) }
+                1 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { AccessPage(box) }
+                2 -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { BackupPage(box) }
+                else -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { GeneralSettingsPage(box) }
             }
         }
-        Section(title = tr("Network diagnostics"), count = 2) { index, position ->
-            if (index == 0) {
-                ListItemOpen(tr("Network quality"), position, leading = AppGlyphs.speed) { DiagnosticsPage(box, quality = true) }
-            } else {
-                ListItemOpen(tr("STUN test"), position, leading = AppGlyphs.proxies) { DiagnosticsPage(box, quality = false) }
+        Section(title = tr("Other"), count = 3 + reportKinds.size) { index, position ->
+            when (index) {
+                0 -> ListItemOpen(tr("Network quality"), position, leading = AppGlyphs.speed) { DiagnosticsPage(box, quality = true) }
+                1 -> ListItemOpen(tr("STUN test"), position, leading = AppGlyphs.proxies) { DiagnosticsPage(box, quality = false) }
+                in 2 until 2 + reportKinds.size -> {
+                    val kind = reportKinds[index - 2]
+                    ListItemOpen(tr(reportTitle(kind)), position, leading = AppGlyphs.profiles) { ReportsPage(box, kind) }
+                }
+                else -> ListItemOpen(tr("About"), position, leading = AppGlyphs.info) { AboutPage(box) }
             }
-        }
-        Section(title = tr("Reports"), count = reportKinds.size) { index, position ->
-            val kind = reportKinds[index]
-            ListItemOpen(tr(reportTitle(kind)), position, leading = AppGlyphs.profiles) { ReportsPage(box, kind) }
-        }
-        if (box.running) {
-            val kinds = endpointKinds.filter { rows(box.toolState[it]).isNotEmpty() }
-            Section(title = tr("Endpoints"), count = kinds.size) { index, position ->
-                val kind = kinds[index]
-                ListItemOpen(endpointName(kind), position, leading = AppGlyphs.devices) { EndpointsPage(box, kind) }
-            }
-        }
-        Section(title = tr("Other"), count = 1) { _, position ->
-            ListItemOpen(tr("About"), position, leading = AppGlyphs.info) { AboutPage(box) }
         }
     }
 }

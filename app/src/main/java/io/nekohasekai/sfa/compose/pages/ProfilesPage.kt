@@ -19,6 +19,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -62,6 +63,7 @@ import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.qr.ZxingQRCodeAnalyzer
 import io.nekohasekai.sfa.compose.theme.AppCorner
+import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
@@ -338,12 +340,17 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
                 Column(Modifier.weight(1f)) {
                     SubscriptionChipTitle(profile["name"].toString(), info, AppTextStyle.Headline.of().copy(color = scheme.onSurface))
                     Spacer(Modifier.height(4.dp))
-                    Text(
-                        info?.let { subscriptionTrafficLine(it) } ?: tr(if (profile["remote"] == true) "Remote" else "Local"),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = AppTextStyle.Footnote.of().copy(color = scheme.onSurface.copy(alpha = 0.6f)),
-                    )
+                    // fk-box: the core the profile runs on, as a chip before the subtitle.
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        ProfileCoreChip(profile)
+                        Text(
+                            info?.let { subscriptionTrafficLine(it) } ?: tr(if (profile["remote"] == true) "Remote" else "Local"),
+                            Modifier.weight(1f, fill = false),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            style = AppTextStyle.Footnote.of().copy(color = scheme.onSurface.copy(alpha = 0.6f)),
+                        )
+                    }
                     if (info != null && usage != null) {
                         Spacer(Modifier.height(PROFILE_METER_GAP.dp))
                         SubscriptionProgressBar(usage, subscriptionColor(info, scheme, System.currentTimeMillis()))
@@ -367,6 +374,17 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
                 }
             }
         }
+    }
+}
+
+/** The core a profile resolves to (sing-box, Xray or mihomo), in the expiry chip's shape. */
+@Composable
+fun ProfileCoreChip(profile: Json) {
+    val core = profile["resolvedCore"] as? String ?: return
+    val label = coreLabels().firstOrNull { it.first == core }?.second ?: core
+    val color = BoxTheme.scheme.secondary
+    Box(Modifier.background(color.copy(alpha = 0.15f), AppShape.full).padding(horizontal = 8.dp, vertical = 2.dp)) {
+        Text(label, maxLines = 1, style = AppTextStyle.Caption1.of(true).copy(color = color))
     }
 }
 

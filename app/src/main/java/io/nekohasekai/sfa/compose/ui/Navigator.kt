@@ -247,9 +247,6 @@ class BoxNavigator internal constructor(
     val canPop: Boolean get() = entries.any { !it.closing }
 
     companion object {
-        /** About how long a push takes to settle (page_transition.dart's _settlingTimeOf). */
-        const val PAGE_DURATION = 300
-
         // snap_sheet.dart's presentation: a critically damped spring of stiffness 1000/3.
         val sheetSpring = spring<Float>(dampingRatio = 1f, stiffness = 1000f / 3f, visibilityThreshold = 0.001f)
     }
@@ -284,13 +281,6 @@ internal val LocalSheetController = compositionLocalOf<SheetController?> { null 
 fun rememberBoxNavigator(): BoxNavigator {
     val scope = rememberCoroutineScope()
     return remember { BoxNavigator(scope) }
-}
-
-/** A destination's own navigator under [parent], for pages pushed inside the content pane. */
-@Composable
-fun rememberNestedNavigator(parent: BoxNavigator): BoxNavigator {
-    val scope = rememberCoroutineScope()
-    return remember(parent) { BoxNavigator(scope, parent) }
 }
 
 /** widgets.dart's BoxEditGuard: system back, the sheet's close and its dismissal ask first. */
