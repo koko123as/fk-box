@@ -5,6 +5,13 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -90,6 +97,23 @@ class IconAction(
     val loading: Boolean = false,
 )
 
+/**
+ * scaffold.dart's ScaffoldKeyword: a chip in the header strip. A removable
+ * one ([onDeleted]) shows a close mark; a toggle ([onPressed]) fills when
+ * [selected]. [startsSection] widens the gap before it to 20 dp.
+ */
+class ScaffoldKeyword(
+    val key: Any,
+    val label: String,
+    val onDeleted: (() -> Unit)? = null,
+    val onPressed: (() -> Unit)? = null,
+    val selected: Boolean = false,
+    val startsSection: Boolean = false,
+)
+
+/** _KeywordStrip's padding: 4 dp over the 36 dp chips, 16 dp under. */
+private const val KEYWORD_STRIP_HEIGHT = 4f + 36f + 16f
+
 /** AppBarSearchState: what the field reports as it changes. */
 class SearchState(val onSearch: (String) -> Unit)
 
@@ -162,6 +186,8 @@ fun CommonScaffold(
     sorting: Boolean = false,
     onSortingChange: ((Boolean) -> Unit)? = null,
     loading: Boolean = false,
+    titleMenuItems: List<PopupMenuItem> = emptyList(),
+    keywords: List<ScaffoldKeyword> = emptyList(),
     body: @Composable () -> Unit,
 ) {
     val navigator = LocalBoxNavigator.current
@@ -193,12 +219,17 @@ fun CommonScaffold(
     val toolbar = if (compact) SHEET_TOOLBAR_HEIGHT else PAGE_TOOLBAR_HEIGHT
     val headerHeight = if (compact) SHEET_APP_BAR_HEIGHT.dp else top + PAGE_TOOLBAR_HEIGHT.dp
     val inset = LocalBottomInset.current
+    // PrismScaffold's header: under the bar, which the body then no longer runs under.
+    val hasHeader = keywords.isNotEmpty()
     Box(modifier.fillMaxSize().background(backgroundColor)) {
-        CompositionLocalProvider(
-            LocalBarInset provides headerHeight,
-            LocalSorting provides sorting,
-            LocalBottomInset provides if (docked && !sorting) inset + DOCKED_SEARCH_INSET.dp else inset,
-        ) { body() }
+        // One wrapper either way, so toggling the header does not remount the body.
+        Box(Modifier.fillMaxSize().padding(top = if (hasHeader) headerHeight + KEYWORD_STRIP_HEIGHT.dp else 0.dp)) {
+            CompositionLocalProvider(
+                LocalBarInset provides if (hasHeader) 0.dp else headerHeight,
+                LocalSorting provides sorting,
+                LocalBottomInset provides if (docked && !sorting) inset + DOCKED_SEARCH_INSET.dp else inset,
+            ) { body() }
+        }
         // FloatingHeader: the page color at 90% fading out toward the bar's foot.
         val total = headerHeight.value + HEADER_OVERHANG
         val fadeStart = if (compact) 0.5f else top.value / (top.value + PAGE_TOOLBAR_HEIGHT)
@@ -261,13 +292,16 @@ fun CommonScaffold(
                     } else {
                         Spacer(Modifier.width(16.dp))
                     }
-                    Text(
-                        title,
-                        Modifier.weight(1f),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = (if (pushed || compact) AppTextStyle.Headline.of() else AppTextStyle.PageTitle.of()).copy(color = BoxTheme.scheme.onSurface),
-                    )
+                    val titleStyle = (if (pushed || compact) AppTextStyle.Headline.of() else AppTextStyle.PageTitle.of()).copy(color = BoxTheme.scheme.onSurface)
+                    if (titleMenuItems.isEmpty()) {
+                        Text(title, Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis, style = titleStyle)
+                    } else {
+                        Box(Modifier.weight(1f)) {
+                            CommonPopupBox(titleMenuItems, placement = PopupPlacement.OverAnchorStart) { open ->
+                                TitleMenuButton(title, titleStyle, compact = pushed || compact, onPressed = open)
+                            }
+                        }
+                    }
                     if (sorting) {
                         Row(horizontalArrangement = Arrangement.spacedBy(BAR_BUTTON_GAP.dp)) {
                             if (canSort) TonalIconButton(IconAction(AppGlyphs.check, tr("Done"), { onSortingChange?.invoke(false) }, selected = true))
@@ -300,6 +334,9 @@ fun CommonScaffold(
             }
             if (loading) LinearProgressIndicator(Modifier.fillMaxWidth())
         }
+        if (hasHeader) {
+            KeywordStrip(keywords, Modifier.padding(top = headerHeight + 4.dp))
+        }
         if (docked && !sorting) {
             DockedSearch(
                 text = dockedText,
@@ -314,6 +351,67 @@ fun CommonScaffold(
                 },
                 modifier = Modifier.align(Alignment.BottomCenter),
             )
+        }
+    }
+}
+
+/** scaffold_actions.dart's _TitleMenuButton: the title and a chevron; no ink, so the title keeps its place. */
+@Composable
+private fun TitleMenuButton(title: String, style: androidx.compose.ui.text.TextStyle, compact: Boolean, onPressed: () -> Unit) {
+    val interaction = remember { MutableInteractionSource() }
+    Row(
+        Modifier
+            .clip(AppShape.sm)
+            .clickable(interactionSource = interaction, indication = focusPressIndication(AppShape.sm), role = Role.Button, onClick = onPressed),
+        horizontalArrangement = Arrangement.spacedBy(if (compact) 2.dp else 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = style)
+        GlyphIcon(AppGlyphs.chevronDown, size = if (compact) 16.dp else 20.dp, color = BoxTheme.scheme.onSurfaceVariant)
+    }
+}
+
+/** scaffold_actions.dart's _KeywordStrip: a horizontal row of chips, 16 dp in from each side. */
+@Composable
+private fun KeywordStrip(keywords: List<ScaffoldKeyword>, modifier: Modifier) {
+    BoxWithConstraints(modifier.fillMaxWidth().height(TonalButtonSize.Section.button.dp)) {
+        val maxChip = max(0f, (maxWidth - 32.dp).value).dp
+        LazyRow(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp)) {
+            itemsIndexed(keywords, key = { _, keyword -> keyword.key.toString() }) { index, keyword ->
+                Row(Modifier.animateItem()) {
+                    if (index > 0) Spacer(Modifier.width(if (keyword.startsSection) 20.dp else 8.dp))
+                    Box(Modifier.widthIn(max = maxChip)) { KeywordChip(keyword) }
+                }
+            }
+        }
+    }
+}
+
+/** prism_ui chip.dart's Chip: a 36 dp pill; removable chips end in a close mark, a selected toggle fills. */
+@Composable
+fun KeywordChip(keyword: ScaffoldKeyword) {
+    val scheme = BoxTheme.scheme
+    val deletable = keyword.onDeleted != null
+    val filled = keyword.selected && !deletable
+    CommonCard(
+        modifier = Modifier.height(TonalButtonSize.Section.button.dp),
+        shape = AppShape.full,
+        isSelected = filled,
+        fillsSelection = true,
+        inert = !deletable && keyword.onPressed == null,
+        padding = PaddingValues(start = 16.dp, end = if (deletable) 12.dp else 16.dp),
+        onPressed = keyword.onDeleted ?: keyword.onPressed,
+        onLongPress = null,
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                keyword.label,
+                Modifier.weight(1f, fill = false),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                style = AppTextStyle.Subheadline.of(emphasized = true).copy(color = if (filled) scheme.onPrimary else scheme.onSurface),
+            )
+            if (deletable) GlyphIcon(AppGlyphs.close, size = 16.dp, color = scheme.onSurfaceVariant)
         }
     }
 }

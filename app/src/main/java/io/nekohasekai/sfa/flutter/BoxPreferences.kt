@@ -28,6 +28,10 @@ internal object BoxPreferences {
                     profile is String && profile.length in 1..4096 && groups is List<*> && groups.size <= 4096 &&
                         groups.distinct().size == groups.size && groups.all { it is String && it.length in 1..4096 }
                 }
+                // record_filter.dart's recordGroupings: a page id to its grouping.
+                "recordGroupings" -> value is Map<*, *> && value.size <= 16 && value.all { (page, grouping) ->
+                    page is String && page.length in 1..64 && grouping in setOf("app", "host", "rule", "exit")
+                }
                 "fontScale" -> value is Number && value.toDouble().isFinite() && value.toDouble() in 0.8..1.4
                 "fontFamily" -> value == null || value is String && value.length in 1..128
                 "accentColors" -> value is List<*> && value.size <= 64 && value.distinct().size == value.size && value.all { it is Number && it.toLong() in 0..0xffffffffL }

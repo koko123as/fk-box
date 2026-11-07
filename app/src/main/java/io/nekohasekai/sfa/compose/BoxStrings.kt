@@ -708,5 +708,10 @@ internal object BoxStrings {
         map["Built in"] = "内置"
         map["Downloaded"] = "已下载"
         map["Xray and mihomo share these files. A failed update keeps the current file; changes apply when the core next starts."] = "Xray 和 mihomo 共用这些文件。更新失败时保留现有文件；更新后在内核下次启动时生效。"
+        map["Filter"] = "筛选"
+        map["Group by"] = "分组方式"
+        map["Host"] = "主机"
+        map["Exit"] = "出口"
+        map["Proxy"] = "代理"
     }
 }

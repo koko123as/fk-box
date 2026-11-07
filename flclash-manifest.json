@@ -635,6 +635,83 @@
           "changes": "BannerHost queue (3/5/6 s by level, 3150 ms queued hold, 8 buffered, errors first, repeats merged), drop-in spring, 170 ms exit, stacked mode up to 3 on non-mobile widths, swipe-up dismiss with pull rubber band; keeps fk-box's glyph badge, 4 text lines and close button."
         }
       ]
+    },
+    {
+      "name": "flclash-record-filters",
+      "repository": "https://github.com/chen08209/FlClash",
+      "commit": "be84736605527034689c95bf27828ff27d912c5e",
+      "relatedCommits": [
+        "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185"
+      ],
+      "scope": "FlClash v0.9.3 list infrastructure (scaffold title menu and keyword chips, record filters, grouping) translated to Kotlin + Jetpack Compose; no Dart or Flutter code is included.",
+      "files": [
+        {
+          "source": "lib/models/record_filter.dart",
+          "sourceSHA256": "fe536f9e0b197766a4461b981fe0760273f5fa0396e6a317b2b571616f93ac8f",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt"
+          ],
+          "changes": "RecordFilter, RecordFacet (offered values by frequency, 12 max, fixed order then name), RecordGrouper, groupRecords and whereFilters (one facet widens, facets narrow)."
+        },
+        {
+          "source": "lib/widgets/record_filter.dart",
+          "sourceSHA256": "ee74a9aef2552d6435092ad9b3a64e60e9906b19383bd4bcb9c0d101d7c143a9",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt",
+            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ToolsPage.kt"
+          ],
+          "changes": "RecordFilterController as Compose state, removable and pinned keyword lists, Filter and Group by menus (menus close on toggle: fk-box PopupMenuItem has no keepsOpen), RecordFilterScope as a CompositionLocal, recordGroupings saved per page in the interface preferences; RecordGroupedList as a LazyListScope extension with animateItem rows instead of SliverCollapsibleGroups' unfold fade."
+        },
+        {
+          "source": "lib/ui/scaffold/scaffold.dart",
+          "sourceSHA256": "9ebbfb1bb0293e97ff366f52834dd6a8a31b4357b6afe067ea2a6bfbb2b9d52e",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+          ],
+          "changes": "titleMenuItems (title opens a popup over its start) and keywords (header strip under the bar; the body no longer runs under the bar while it shows)."
+        },
+        {
+          "source": "lib/ui/scaffold/scaffold_actions.dart",
+          "sourceSHA256": "0d3fee5a534de3f5b5e101c91e887558deb6145358544ae10fde7d213c9e2557",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+          ],
+          "changes": "_KeywordStrip (36 dp chips, 16 dp inset, 8/20 dp gaps, 4/16 dp padding) and _TitleMenuButton (chevron 20/16 dp, focus overlay only)."
+        }
+      ]
+    },
+    {
+      "name": "prism_ui-chip-collapsible",
+      "repository": "https://github.com/chen08209/prism_ui",
+      "commit": "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185",
+      "relatedCommits": [
+        "be84736"
+      ],
+      "scope": "Keyword chip and collapsible group header used by FlClash v0.9.3 (be84736) record lists, translated to Kotlin + Jetpack Compose; no Dart or Flutter code is included.",
+      "files": [
+        {
+          "source": "lib/chip.dart",
+          "sourceSHA256": "a8a7462ca5b03ebfb6182253d38c0eb0190e00b63fd6b1be216f0e2efc96297e",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+          ],
+          "changes": "Chip as KeywordChip on CommonCard: 36 dp full pill, 16/12 dp padding, close mark 16 dp, filled primary when a selected toggle."
+        },
+        {
+          "source": "lib/collapsible_section.dart",
+          "sourceSHA256": "0c6b4d1e0f473381d843b60ddcc1c28bb29612920e979ebd7bafbdb7c13f824d",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt"
+          ],
+          "changes": "CollapsibleHeader (label (count), trailing caption, chevron turning a quarter, 8/12 dp padding); groups start folded; no keyboard activate action."
+        }
+      ]
     }
   ],
   "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation. Local paths under files/adaptedFiles name the former flutter/ tree (see Git history before the removal); their Compose translations live in app/src/main/java/io/nekohasekai/sfa/compose."

@@ -19,7 +19,7 @@
 | appearance、theme_preview、palette、segmented_control | `pages/AppearancePage.kt` |
 | record.dart、data_subscription.dart | `ui/Records.kt`、`DashboardPage.kt` 的 `BoxDataSubscription` |
 
-已知与 Flutter 版的差异：搜索水滴变形和液态玻璃弹窗以弹簧缩放近似；列表行展开用侧滑；抽屉不随内容变短，宽屏列表单列；开关不支持拖动；导航坞和外观预览没有液态玻璃模糊（预览只画色调和高光边）；仪表盘卡片编辑器的进出场用 Compose 展开动画近似，拖动时不自动滚动；记录卡片标签点击不追加搜索关键词；开源许可页改为列出主要组件及其许可和源码链接。
+已知与 Flutter 版的差异：搜索水滴变形和液态玻璃弹窗以弹簧缩放近似；列表行展开用侧滑；抽屉不随内容变短，宽屏列表单列；开关不支持拖动；导航坞和外观预览没有液态玻璃模糊（预览只画色调和高光边）；仪表盘卡片编辑器的进出场用 Compose 展开动画近似，拖动时不自动滚动；开源许可页改为列出主要组件及其许可和源码链接。
 
 ## 参考版本与来源清单
 
@@ -64,6 +64,7 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 - 按压反馈按 prism_ui `63450c0`（FlClash v0.9.3 `be84736` 用其替换全部 `InkWell`）：`ui/Press.kt` 的 `PressIndication` 是应用默认 `LocalIndication`，Material 波纹（`LocalRippleConfiguration`）全局关闭。卡片、列表行、记录行和标签用 ink：按下 150 ms 后以 200 ms 显出 10% 墨色，悬停 4%，在内容下方绘制，Android 13+ 另从按下点发出 617 ms 的 InkSparkle（`ink_sparkle.frag` 的 AGSL 移植）；图标按钮、文字/填充按钮和确认对话框按钮用 tint：浅色淡出 25%、深色提亮 20%，松开 250 ms 回落；键盘移动焦点时绘制 2 dp 主色焦点环。侧边栏和弹出菜单行用 `PressRegionIndication`（按下 6%/焦点 10%/悬停 4%，50 ms 渐变；菜单行的按下仍由菜单自身填充）。按下膨胀（`elasticPress`）只保留在 prism_ui 使用 `ElasticPress` 的位置：Tonal 按钮及按钮组、工具栏操作、搜索框、启停按钮和出站模式连接按钮。功能与点击行为不变。
 - 文本选择按 prism_ui `63450c0` `text_selection_menu.dart`/`edit_menu.dart`：`ui/TextSelection.kt` 的 `EditMenuHost` 在应用根部提供 Compose `LocalTextContextMenuToolbarProvider`，所有 `SelectionArea`（原 `SelectionContainer` 的位置，另加订阅信息详情和错误页消息，对应 FlClash 的 `SelectionArea`/`SelectableText`）及输入框的触摸选择菜单都改为 iOS 27 编辑菜单：44 dp 胶囊，按钮间 18 dp 分隔线，放在选区上方或下方 15 dp，以 0.2 倍缩放 405 ms 弹簧弹出、150 ms 收起；放不下时显示更多箭头，展开为 250 dp 宽、42 dp 行高带字形的卡片。剪切/复制/粘贴/全选使用 prism 文案和字形，内核提供的其他项（如自动填充）保留原文；菜单外按下即关闭。放大镜沿用平台实现，未使用液态玻璃变体。复制、粘贴等操作仍由 Compose 文本控件执行。
 - 消息横幅按 prism_ui `63450c0` `banner.dart` 的 `BannerHost`（`ui/MessageBanner.kt`），替换原底部 Snackbar：从状态栏下方顶部弹簧落下（stiffness 256、damping 27.2），170 ms 升出；手机一次一条，非手机宽度最多叠放三条（FlClash `application.dart` 的 `stackedBanners`）。普通消息 3 s、错误 6 s；队列最多缓存 8 条（先丢弃非错误），错误优先；位置占满后最早一条显示 3150 ms 即让位；与正在显示的同文同级消息合并并重新计时。向上轻扫或拖过一半即关闭，向下拖为橡皮筋。消息文本、中文翻译、错误样式（errorContainer 底色）、字形徽章、最多 4 行与关闭按钮保持原有内容和行为。
+- 列表基础设施按 FlClash v0.9.3（`be84736`）`lib/models/record_filter.dart`、`lib/widgets/record_filter.dart` 和 `lib/ui/scaffold/`：`CommonScaffold` 新增 `titleMenuItems`（点按标题弹出菜单切换视图，标题后带 20/16 dp 下拉箭头，供第 6 阶段合并后的请求页切换 最近/运行中/抓包）和 `keywords`（栏下的关键词条，36 dp 胶囊，显示时正文不再位于栏下）。`ui/RecordFilter.kt` 的 `RecordFilterController`：点按行内的值（日志级别；连接的网络、规则、应用、代理链各出站）添加筛选条件，同一维度内为“或”、不同维度为“且”；手机宽度只显示已选条件（可移除），非手机宽度固定显示所有可选值作切换；菜单中有“筛选”（网络、规则；日志为级别，按出现次数取前 12 个）和“分组方式”（连接：应用/主机/规则/出口），分组以可折叠标题（名称和数量，默认折叠）显示，所选分组按页面保存在 `recordGroupings` 界面偏好。列表行以 `animateItem` 键控增删和位移。原有关键词搜索、活动/已关闭、排序、日志级别菜单、暂停、清除、导出及关闭连接保持不变；连接记录没有 MITM 标记，MITM 维度留给抓包列表。
 - 首次启动直接进入仪表盘，没有免责声明接受门槛。Android 默认显示状态、网络速度、出站模式、配置和代理组五张卡；内存与内网 IP 可选。连接从工具页进入，不提供首页连接卡，旧布局/备份忽略该卡，下一次布局保存清理其键。
 - 出站模式只显示内核提供的值。规则、全局、直连使用参考版字形，名称和选中态忽略大小写，排列和切换参数保留内核原值。系统 HTTP 代理卡片按内核能力显示，支持首页编辑中的排序、移除和重新添加；能力暂不可用时保留顺序和隐藏偏好。卡片沿用参考版 VPN 卡片的 48 像素徽章、加粗标题、启用/禁用副标题及紧凑开关；启用时徽章为主题色六瓣形，禁用时为低强调圆形。卡片和首页编辑列表共用 `system_proxy_glyph.dart` 中的大陆轮廓地球字形，使用共享 Glyph 的线宽与圆角；全局出站模式保留参考版经纬线球体字形。
 - 服务按钮的暂停图形表示停止服务，不新增暂停核心能力。远程会话、启停过渡和不可用操作必须反映真实状态。

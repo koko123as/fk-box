@@ -75,6 +75,26 @@ import io.nekohasekai.sfa.compose.ui.recordTextStyles
 import io.nekohasekai.sfa.compose.ui.recordTime
 import io.nekohasekai.sfa.compose.ui.setClipboard
 import io.nekohasekai.sfa.compose.ui.tr
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.SideEffect
+import io.nekohasekai.sfa.compose.theme.AppShape
+import io.nekohasekai.sfa.compose.ui.LocalViewMode
+import io.nekohasekai.sfa.compose.ui.ViewMode
+import io.nekohasekai.sfa.compose.ui.RecordFacet
+import io.nekohasekai.sfa.compose.ui.RecordFacetKind
+import io.nekohasekai.sfa.compose.ui.RecordFilter
+import io.nekohasekai.sfa.compose.ui.RecordFilterScope
+import io.nekohasekai.sfa.compose.ui.RecordGrouper
+import io.nekohasekai.sfa.compose.ui.RecordGrouping
+import io.nekohasekai.sfa.compose.ui.TonalChip
+import io.nekohasekai.sfa.compose.ui.raisedSurfaceLevel
+import io.nekohasekai.sfa.compose.ui.recordFilterAction
+import io.nekohasekai.sfa.compose.ui.recordGroups
+import io.nekohasekai.sfa.compose.ui.rememberRecordFilterController
+import io.nekohasekai.sfa.compose.ui.rememberRecordGroupFolds
+import io.nekohasekai.sfa.compose.ui.savedRecordGrouping
+import io.nekohasekai.sfa.compose.ui.recordGroupingsWith
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
@@ -154,6 +174,35 @@ private fun matchesWords(text: String, query: String): Boolean {
     return query.lowercase().split(' ').all { search.contains(it) }
 }
 
+/** The app a connection came from: its first package, else the process path's last segment. */
+private fun connectionApp(c: Json): String {
+    val process = c["process"] as? Map<*, *> ?: return ""
+    (process["packages"] as? List<*>)?.firstOrNull { it is String && it.isNotEmpty() }?.let { return it as String }
+    return (process["path"] as? String)?.substringAfterLast('/').orEmpty()
+}
+
+/** The outbounds a connection went through, the matched outbound first. */
+private fun connectionChain(c: Json): List<String> {
+    val chain = (c["chain"] as? List<*>).orEmpty().mapNotNull { (it as? String)?.takeIf(String::isNotEmpty) }
+    return chain.ifEmpty { listOfNotNull((c["outbound"] as? String)?.takeIf(String::isNotEmpty)) }
+}
+
+/** common.dart's trackerInfoFacets for fk-box's connection records (no MITM flag on a connection). */
+val connectionFacets: List<RecordFacet<Json>> = listOf(
+    RecordFacet<Json>(RecordFacetKind.Network, { listOf(it["network"]?.toString()?.lowercase().orEmpty()) }, offered = true, order = listOf("tcp", "udp"), labelOf = { it.uppercase() }),
+    RecordFacet<Json>(RecordFacetKind.Rule, { listOf((it["rule"] as? String).orEmpty()) }, offered = true),
+    RecordFacet<Json>(RecordFacetKind.App, { listOf(connectionApp(it)) }),
+    RecordFacet<Json>(RecordFacetKind.Proxy, { connectionChain(it) }),
+)
+
+/** common.dart's trackerInfoGroupers. */
+val connectionGroupers: List<RecordGrouper<Json>> = listOf(
+    RecordGrouper<Json>(RecordGrouping.App) { connectionApp(it) },
+    RecordGrouper<Json>(RecordGrouping.Host) { (it["displayDestination"] ?: it["destination"])?.toString().orEmpty() },
+    RecordGrouper<Json>(RecordGrouping.Rule) { (it["rule"] as? String).orEmpty() },
+    RecordGrouper<Json>(RecordGrouping.Exit) { connectionChain(it).lastOrNull().orEmpty() },
+)
+
 @Composable
 fun ConnectionsPage(box: BoxController) {
     val dialogs = LocalDialogs.current
@@ -161,21 +210,33 @@ fun ConnectionsPage(box: BoxController) {
     var query by remember { mutableStateOf("") }
     var filter by remember { mutableStateOf("Active") }
     var sort by remember { mutableStateOf("Speed") }
+    val filters = rememberRecordFilterController(
+        connectionFacets,
+        connectionGroupers,
+        grouping = savedRecordGrouping(box.preferences, "connections"),
+        onGroupingChanged = { grouping -> scope.launch { box.setPreference("recordGroupings", recordGroupingsWith(box.preferences, "connections", grouping)) } },
+    )
+    val pinned = LocalViewMode.current != ViewMode.Mobile
     DisposableEffect(Unit) {
         box.launchAct("connections.visible", mapOf("visible" to true))
         onDispose { box.launchAct("connections.visible", mapOf("visible" to false)) }
     }
     val key = mapOf("Created" to "createdAt", "Upload" to "uploadTotal", "Download" to "downloadTotal")[sort]
     fun rank(c: Json): Double = if (key == null) (c["upload"].asDouble() ?: 0.0) + (c["download"].asDouble() ?: 0.0) else c[key].asDouble() ?: 0.0
-    val list = box.connections.filter { connection ->
+    val searched = box.connections.filter { connection ->
         val closed = (connection["closedAt"].asDouble() ?: 0.0) > 0
         if (filter == "Active" && closed || filter == "Closed" && !closed) return@filter false
         val search = listOf("destination", "domain", "outbound", "network", "rule", "source", "process").joinToString(" ") { connection[it]?.toString() ?: "null" }
         matchesWords(search, query)
-    }.sortedByDescending(::rank)
+    }
+    SideEffect { filters.offer(searched) }
+    val list = filters.apply(searched).sortedByDescending(::rank)
+    val groups = filters.groupsOf(list)
+    val folds = rememberRecordGroupFolds(filters.grouping)
     CommonScaffold(
         title = tr("Connections"),
         searchState = SearchState { query = it },
+        keywords = filters.keywords(pinned),
         iconActions = listOf(
             IconAction(AppGlyphs.clearAll, tr("Close all connections"), if (box.running) ({
                 scope.launch {
@@ -187,19 +248,27 @@ fun ConnectionsPage(box: BoxController) {
             PopupMenuItem(tr(item), checked = item == filter, section = if (item == "Active") PopupMenuSection(tr("Connections")) else null, onPressed = { filter = item })
         } + listOf("Speed", "Created", "Upload", "Download").map { item ->
             PopupMenuItem(tr(item), AppGlyphs.sort, checked = item == sort, onPressed = { sort = item })
-        },
+        } + filters.menuItems(pinned),
     ) {
-        NullStatusSwitcher(
-            isEmpty = list.isEmpty(),
-            isSearching = query.isNotBlank(),
-            nullStatus = { NullStatus(label = tr("No connections"), illustration = NullStatusIllustration.Connections) },
-        ) {
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(top = contentTopPadding(), bottom = 16.dp + bottomInset()),
-                verticalArrangement = Arrangement.spacedBy(RECORD_LIST_GAP.dp),
+        RecordFilterScope(filters::add) {
+            NullStatusSwitcher(
+                isEmpty = list.isEmpty(),
+                isSearching = query.isNotBlank() || filters.isFiltering,
+                nullStatus = { NullStatus(label = tr("No connections"), illustration = NullStatusIllustration.Connections) },
             ) {
-                items(list, key = { it["id"].toString() }) { connection -> ConnectionRecord(box, connection) }
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(top = contentTopPadding(), bottom = 16.dp + bottomInset()),
+                    verticalArrangement = Arrangement.spacedBy(RECORD_LIST_GAP.dp),
+                ) {
+                    if (groups != null) {
+                        recordGroups(groups, folds, keyOf = { it["id"].toString() }) { connection -> ConnectionRecord(box, connection) }
+                    } else {
+                        items(list, key = { it["id"].toString() }) { connection ->
+                            Box(Modifier.animateItem()) { ConnectionRecord(box, connection) }
+                        }
+                    }
+                }
             }
         }
     }
@@ -224,21 +293,37 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
                     null
                 },
             ) {
+                val network = c["network"]?.toString()?.lowercase().orEmpty()
+                val app = connectionApp(c)
                 RecordTimestamp(recordTime(c["createdAt"]))
-                RecordLabel(c["network"].toString().uppercase())
+                RecordLabel(network.uppercase(), onPressed = recordFilterAction(RecordFilter(RecordFacetKind.Network, network)))
+                if (app.isNotEmpty()) RecordLabel(app, onPressed = recordFilterAction(RecordFilter(RecordFacetKind.App, app)))
                 if (closed) RecordLabel(tr("Closed"))
             }
         },
         body = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(c["displayDestination"]?.toString() ?: c["destination"]?.toString() ?: "—", style = styles.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // tracker_info_item.dart: the rule, then each outbound of the chain; a tap filters on it.
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                     val rule = c["rule"] as? String ?: ""
+                    val chain = connectionChain(c)
                     if (rule.isNotEmpty()) {
-                        Text(rule, style = styles.secondary)
+                        val onRule = recordFilterAction(RecordFilter(RecordFacetKind.Rule, rule))
+                        Text(rule, Modifier.then(if (onRule != null) Modifier.clip(AppShape.sm).clickable(onClick = onRule) else Modifier), style = styles.secondary)
                         RecordArrow()
                     }
-                    Text(c["outbound"]?.toString() ?: "—", style = AppTextStyle.Footnote.of(emphasized = true).copy(color = scheme.primary))
+                    if (chain.isEmpty()) Text("—", style = AppTextStyle.Footnote.of(emphasized = true).copy(color = scheme.primary))
+                    chain.forEachIndexed { index, outbound ->
+                        if (index > 0) RecordArrow()
+                        val last = index == chain.lastIndex
+                        TonalChip(
+                            outbound,
+                            color = if (last) scheme.primary.copy(alpha = 0.12f) else raisedSurfaceLevel.colorOf(scheme),
+                            foregroundColor = if (last) scheme.primary else scheme.onSurfaceVariant,
+                            onPressed = recordFilterAction(RecordFilter(RecordFacetKind.Proxy, outbound)),
+                        )
+                    }
                 }
                 Text(c["source"]?.toString() ?: "—", style = styles.secondary, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -314,6 +399,8 @@ fun LogsPage(box: BoxController) {
     var level by remember { mutableStateOf("Default") }
     var paused by remember { mutableStateOf<List<Json>?>(null) }
     val scope = rememberCoroutineScope()
+    val filters = rememberRecordFilterController(logFacets)
+    val pinned = LocalViewMode.current != ViewMode.Mobile
     fun matchesLevel(item: Json, defaultLevel: String?): Boolean {
         val itemLevel = item["level"].toString().lowercase()
         if (level == "Default") {
@@ -325,9 +412,11 @@ fun LogsPage(box: BoxController) {
         return level == "All" || itemLevel == level.lowercase()
     }
     val words = query.lowercase().trim().split(Regex("\\s+"))
-    val logs = (paused ?: box.logs).filter { item ->
+    val searched = (paused ?: box.logs).filter { item ->
         matchesLevel(item, box.defaultLogLevel) && words.all { "${item["level"]} ${item["message"]}".lowercase().contains(it) }
     }
+    SideEffect { filters.offer(searched) }
+    val logs = filters.apply(searched)
     // reverse: true, as the Flutter list: the newest record sits at the bottom and the view follows it.
     val reversed = logs.asReversed()
     val state = rememberLazyListState()
@@ -343,6 +432,7 @@ fun LogsPage(box: BoxController) {
     CommonScaffold(
         title = tr("Logs"),
         searchState = SearchState { query = it },
+        keywords = filters.keywords(pinned),
         iconActions = listOf(
             IconAction(AppGlyphs.export, tr("Export"), {
                 box.launchAct(
@@ -375,43 +465,57 @@ fun LogsPage(box: BoxController) {
                 }
                 add(PopupMenuItem(label, checked = level == item, section = if (item == "Default") PopupMenuSection(tr("Log level")) else null, onPressed = { level = item }))
             }
+            addAll(filters.menuItems(pinned))
         },
     ) {
-        NullStatusSwitcher(
-            isEmpty = logs.isEmpty(),
-            isSearching = query.isNotBlank() || level !in listOf("Default", "All"),
-            nullStatus = { NullStatus(label = tr("No logs"), illustration = NullStatusIllustration.Logs) },
-        ) {
-            val styles = recordTextStyles()
-            LazyColumn(
-                Modifier.fillMaxSize(),
-                state = state,
-                reverseLayout = true,
-                contentPadding = PaddingValues(top = contentTopPadding(), bottom = 16.dp + bottomInset()),
-                verticalArrangement = Arrangement.spacedBy(RECORD_LIST_GAP.dp, Alignment.Bottom),
+        RecordFilterScope(filters::add) {
+            NullStatusSwitcher(
+                isEmpty = logs.isEmpty(),
+                isSearching = query.isNotBlank() || level !in listOf("Default", "All") || filters.isFiltering,
+                nullStatus = { NullStatus(label = tr("No logs"), illustration = NullStatusIllustration.Logs) },
             ) {
-                itemsIndexed(reversed, key = { _, log -> log["id"].toString() }) { _, log ->
-                    val itemLevel = log["level"].toString().lowercase()
-                    val tone = when (itemLevel) {
-                        "error", "fatal", "panic" -> RecordTone.Error
-                        "warn", "warning" -> RecordTone.Warning
-                        else -> RecordTone.Neutral
+                val styles = recordTextStyles()
+                LazyColumn(
+                    Modifier.fillMaxSize(),
+                    state = state,
+                    reverseLayout = true,
+                    contentPadding = PaddingValues(top = contentTopPadding(), bottom = 16.dp + bottomInset()),
+                    verticalArrangement = Arrangement.spacedBy(RECORD_LIST_GAP.dp, Alignment.Bottom),
+                ) {
+                    itemsIndexed(reversed, key = { _, log -> log["id"].toString() }) { _, log ->
+                        val itemLevel = log["level"].toString().lowercase()
+                        val tone = when (itemLevel) {
+                            "error", "fatal", "panic" -> RecordTone.Error
+                            "warn", "warning" -> RecordTone.Warning
+                            else -> RecordTone.Neutral
+                        }
+                        RecordListItem(
+                            onTap = {},
+                            modifier = Modifier.animateItem(),
+                            header = {
+                                RecordHeader {
+                                    if ((log["receivedAt"].asDouble() ?: 0.0) > 0) RecordTimestamp(recordTime(log["receivedAt"]))
+                                    RecordLabel(itemLevel, tone, onPressed = recordFilterAction(RecordFilter(RecordFacetKind.Level, itemLevel)))
+                                }
+                            },
+                            body = { SelectionArea { Text(log["message"].toString(), style = styles.primary) } },
+                        )
                     }
-                    RecordListItem(
-                        onTap = {},
-                        header = {
-                            RecordHeader {
-                                if ((log["receivedAt"].asDouble() ?: 0.0) > 0) RecordTimestamp(recordTime(log["receivedAt"]))
-                                RecordLabel(itemLevel, tone)
-                            }
-                        },
-                        body = { SelectionArea { Text(log["message"].toString(), style = styles.primary) } },
-                    )
                 }
             }
         }
     }
 }
+
+/** common.dart's logFacets: the level, in the core's order. */
+private val logFacets: List<RecordFacet<Json>> = listOf(
+    RecordFacet<Json>(
+        RecordFacetKind.Level,
+        { listOf(it["level"].toString().lowercase()) },
+        offered = true,
+        order = listOf("trace", "debug", "info", "warn", "warning", "error", "fatal", "panic"),
+    ),
+)
 
 @Composable
 private fun trLevel(level: String): String = tr(level)
