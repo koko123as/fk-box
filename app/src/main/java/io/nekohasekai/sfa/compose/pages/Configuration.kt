@@ -57,6 +57,13 @@ import io.nekohasekai.sfa.compose.ui.ListFooter
 import io.nekohasekai.sfa.compose.ui.ListItem
 import io.nekohasekai.sfa.compose.ui.ListItemInput
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
+import io.nekohasekai.sfa.compose.ui.ListQuickEditPage
+import io.nekohasekai.sfa.compose.ui.QUICK_EDIT_MAX_SHOWN_ISSUES
+import io.nekohasekai.sfa.compose.ui.QuickEditCancelled
+import io.nekohasekai.sfa.compose.ui.QuickEditInvalid
+import io.nekohasekai.sfa.compose.ui.QuickEditPage
+import io.nekohasekai.sfa.compose.ui.lineIssue
+import io.nekohasekai.sfa.compose.ui.parseLineInput
 import io.nekohasekai.sfa.compose.ui.ListItemOptions
 import io.nekohasekai.sfa.compose.ui.ListItemToggle
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
@@ -88,6 +95,11 @@ import kotlinx.serialization.json.longOrNull
 // ---------------------------------------------------------------------------
 // JSON as plain values, in order (dart:convert's jsonDecode / JsonEncoder.withIndent('  '))
 // ---------------------------------------------------------------------------
+
+/** One JSON value a line, for the quick edit of object lists. */
+private val compactJson = KJson { prettyPrint = false }
+
+fun encodeJsonLine(value: Any?): String = compactJson.encodeToString(JsonElement.serializer(), toElement(value))
 
 private val configJson = KJson {
     prettyPrint = true
@@ -329,12 +341,22 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
             item { ListFooter(tr("Rules belong to this JSON profile and run with the local service. Request recording is controlled separately.")) }
             item { StoreError(store) }
             item {
-                Section(count = 3) { index, position ->
+                Section(count = 5) { index, position ->
                     when (index) {
                         0 -> ListItemToggle(tr("Enable HTTP rewriting"), store.value(HTTP_REWRITE + "enabled") == true, position, onChanged = if (store.saving) null else ({ store.launchSet(HTTP_REWRITE + "enabled", it) }))
                         1 -> ListItemOpen("MITM", position, leading = AppGlyphs.lock, subtitle = tr("Choose HTTPS hosts in this profile")) {
                             ConfigValueEditor("MITM", store.value(HTTP_REWRITE + "mitm") ?: mapOf("enabled" to false, "hosts" to emptyList<Any>(), "excluded_hosts" to emptyList<Any>(), "block_quic" to false)) {
                                 store.set(HTTP_REWRITE + "mitm", it, expectedRevision = revision, rethrowFailure = true)
+                            }
+                        }
+                        2, 3 -> {
+                            // quick_edit.dart's list quick edit over the profile's mitm.hosts / mitm.excluded_hosts string arrays.
+                            val (label, key) = if (index == 2) "MITM hosts" to "hosts" else "MITM excluded hosts" to "excluded_hosts"
+                            val hosts = ((store.value(HTTP_REWRITE + "mitm" + key) as? List<*>) ?: emptyList<Any>()).map { it.toString() }
+                            ListItemOpen(tr(label), position, leading = AppGlyphs.compose, subtitle = "${hosts.size}") {
+                                ListQuickEditPage(tr(label), hosts, hint = "*.example.com") { items ->
+                                    if (!store.set(HTTP_REWRITE + "mitm" + key, items, expectedRevision = revision, rethrowFailure = true)) throw QuickEditCancelled()
+                                }
                             }
                         }
                         else -> ListItemOpen(tr("MITM certificate"), position, leading = AppGlyphs.key) { MitmCertificatePage() }
@@ -498,11 +520,35 @@ fun ConfigListPage(store: ProfileConfigStore, title: String, path: List<String>,
             }
         }
     }
+    // quick_edit.dart over a list of objects: one compact JSON object a line (parseLineInput keeps each line whole).
+    fun quickEdit() {
+        val current = store.entries(path)
+        val revision = store.revision
+        navigator?.openForm {
+            QuickEditPage(t(title), current.joinToString("\n") { encodeJsonLine(it) }, hint = "{\"tag\": \"example\"}") { content ->
+                val issues = mutableListOf<String>()
+                val next = parseLineInput(content).mapNotNull { (line, text) ->
+                    val value = try {
+                        decodeJson(text)
+                    } catch (failure: Exception) {
+                        null
+                    }
+                    if (value is Map<*, *>) json(value) else {
+                        issues.add(lineIssue(t, line, t("JSON object required")))
+                        null
+                    }
+                }
+                if (issues.isNotEmpty()) throw QuickEditInvalid(issues.take(QUICK_EDIT_MAX_SHOWN_ISSUES).joinToString("\n"))
+                if (!store.set(path, next, expectedRevision = revision, rethrowFailure = true)) throw QuickEditCancelled()
+            }
+        }
+    }
     CommonScaffold(
         title = tr(title),
         loading = store.saving,
         primaryAction = IconAction(AppGlyphs.add, tr("Add"), if (store.saving) null else ({ edit() })),
         iconActions = listOfNotNull(
+            IconAction(AppGlyphs.compose, tr("Quick edit"), if (store.saving) null else ({ quickEdit() })),
             IconAction(AppGlyphs.refresh, tr("Reload"), if (store.saving) null else ({ store.load() })),
             if (entries.size > 1) IconAction(AppGlyphs.sort, tr("Reorder"), if (store.saving) null else ({ navigator?.openForm { ConfigOrderPage(store, title, path) } })) else null,
         ),

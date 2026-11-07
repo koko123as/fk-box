@@ -715,5 +715,11 @@ internal object BoxStrings {
         map["Host"] = "主机"
         map["Exit"] = "出口"
         map["Proxy"] = "代理"
+        map["Quick edit"] = "快速编辑"
+        map["One item per line."] = "每行一项。"
+        map["Line %1\$d: %2\$s"] = "第 %1\$d 行：%2\$s"
+        map["Value must be at most %d characters"] = "值最多 %d 个字符"
+        map["MITM hosts"] = "MITM 域名"
+        map["MITM excluded hosts"] = "MITM 排除域名"
     }
 }

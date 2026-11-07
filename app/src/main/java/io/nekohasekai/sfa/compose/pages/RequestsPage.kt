@@ -51,6 +51,7 @@ import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListFooter
 import io.nekohasekai.sfa.compose.ui.ListItem
+import io.nekohasekai.sfa.compose.ui.ListQuickEditPage
 import io.nekohasekai.sfa.compose.ui.ListItemCheckbox
 import io.nekohasekai.sfa.compose.ui.ListItemOptions
 import io.nekohasekai.sfa.compose.ui.ListItemToggle
@@ -605,12 +606,38 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
         }
     }
     @Composable
-    fun Field(value: String, onChanged: (String) -> Unit, label: String, footer: String? = null, hint: String? = null, multiline: Boolean = true) {
-        Section(title = tr(label), count = 1, footer = footer?.let { tr(it) }) { _, position ->
-            BareField(value, {
-                onChanged(it)
-                dirty = true
-            }, hint, multiline, position)
+    fun Field(
+        value: String,
+        onChanged: (String) -> Unit,
+        label: String,
+        footer: String? = null,
+        hint: String? = null,
+        multiline: Boolean = true,
+        validator: ((String) -> String?)? = null,
+        joiner: String = "\n",
+    ) {
+        // quick_edit.dart: the list opens as text, one item a line; the result lands in this draft.
+        Section(title = tr(label), count = 2, footer = footer?.let { tr(it) }) { index, position ->
+            if (index == 0) {
+                BareField(value, {
+                    onChanged(it)
+                    dirty = true
+                }, hint, multiline, position)
+            } else {
+                ListItem(
+                    title = { Text(tr("Quick edit")) },
+                    leading = { GlyphIcon(AppGlyphs.compose) },
+                    position = position,
+                    onClick = {
+                        navigator?.push {
+                            ListQuickEditPage(tr(label), lines(value), hint = hint, validator = validator) { items ->
+                                onChanged(items.joinToString(joiner))
+                                dirty = true
+                            }
+                        }
+                    },
+                )
+            }
         }
     }
     BoxEditGuard(dirty = dirty, busy = busy) {
@@ -677,7 +704,10 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
                     }
                 }
             }
-            Field(ports, { ports = it }, "Capture ports", hint = "80, 443, 8080, 8443", multiline = false, footer = "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. Port filters use the connection destination.")
+            Field(
+                ports, { ports = it }, "Capture ports", hint = "80, 443, 8080, 8443", multiline = false,
+                validator = { item -> if ((item.toIntOrNull() ?: -1) in 1..65535) null else portsError }, joiner = ", ",
+                footer = "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. Port filters use the connection destination.")
         }
     }
 }
@@ -706,7 +736,17 @@ fun CaptureAppsPage(box: BoxController, initial: List<String>) {
         title = tr("Capture applications"),
         searchState = SearchState { query = it.lowercase() },
         confirmationAction = IconAction(AppGlyphs.check, tr("Done"), { navigator?.pop(selected.toList().sorted()) }),
-        iconActions = listOf(IconAction(AppGlyphs.clearAll, tr("All applications"), { selected.clear() })),
+        iconActions = listOf(
+            IconAction(AppGlyphs.compose, tr("Quick edit"), {
+                navigator?.push {
+                    ListQuickEditPage(tr("Capture applications"), selected.toList(), hint = "com.example.app") { items ->
+                        selected.clear()
+                        selected.addAll(items)
+                    }
+                }
+            }),
+            IconAction(AppGlyphs.clearAll, tr("All applications"), { selected.clear() }),
+        ),
     ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = contentTopPadding(), bottom = 24.dp + bottomInset())) {
             item(key = "header") {
