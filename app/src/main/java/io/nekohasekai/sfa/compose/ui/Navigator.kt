@@ -1,11 +1,19 @@
 package io.nekohasekai.sfa.compose.ui
 
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.unit.LayoutDirection
+import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -81,11 +89,35 @@ class NavLevel internal constructor(
     val content: @Composable () -> Unit,
     val sheet: SheetType?,
     internal val onClosed: ((Any?) -> Unit)?,
+    internal val transition: PageTransition = PageTransition.Push,
+    /** A zoom's source tile, in root coordinates, and its corner radius in px. */
+    internal val origin: Rect? = null,
+    internal val originRadius: Float = 0f,
 ) {
     internal val children = mutableStateListOf<NavLevel>()
     internal val presentation = Animatable(0f)
     internal var closing by mutableStateOf(false)
     internal var result: Any? = null
+
+    /** The drag back following the finger, while there is one (drag_back.dart). */
+    internal var drag by mutableStateOf<DragBackState?>(null)
+
+    /** The route's width in px, which a drag back is measured against. */
+    internal var width = 1f
+
+    /** How far the route has come in: its presentation, or where a drag back holds it. */
+    internal val progress: Float
+        get() {
+            val dragged = drag ?: return presentation.value
+            return (1 - dragged.offset.value / width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+        }
+
+    /** How far a drag back has stretched the page past rest toward the leading edge, as a share of the width. */
+    internal val overdrag: Float
+        get() {
+            val dragged = drag ?: return 0f
+            return (-dragged.offset.value / width.coerceAtLeast(1f)).coerceAtLeast(0f)
+        }
 
     /** BoxEditGuard's question before the route may close. */
     var guard: (suspend () -> Boolean)? = null
@@ -99,6 +131,9 @@ class BoxNavigator internal constructor(
     val entries = mutableStateListOf<NavLevel>()
 
     private var ownMobile by mutableStateOf(true)
+
+    /** Where this navigator's host sits in the window, for a zoom's source tile. */
+    internal var hostOrigin = Offset.Zero
 
     /** True in the mobile layout, where a form is a bottom sheet. */
     var mobile: Boolean
@@ -115,14 +150,19 @@ class BoxNavigator internal constructor(
     /** showExtend / openPage: a page, inside the sheet on top when there is one. */
     fun push(page: @Composable () -> Unit) = pushPage(page, null)
 
-    fun pushPage(page: @Composable () -> Unit, onClosed: ((Any?) -> Unit)?) {
+    fun pushPage(page: @Composable () -> Unit, onClosed: ((Any?) -> Unit)?) = pushRoute(NavLevel(page, null, onClosed))
+
+    /** OpenContainer with transition: zoom: the page grows out of [source] and the page under it recedes. */
+    fun pushZoom(source: ZoomSource?, onClosed: ((Any?) -> Unit)? = null, page: @Composable () -> Unit) =
+        pushRoute(NavLevel(page, null, onClosed, PageTransition.Zoom, source?.bounds, source?.radius ?: 0f))
+
+    private fun pushRoute(level: NavLevel) {
         // A sheet over the whole window keeps its pushes, as its nested navigator does.
         val root = parent
-        if (root != null && root.topSheet != null) return root.pushPage(page, onClosed)
-        val level = NavLevel(page, null, onClosed)
+        if (root != null && root.topSheet != null) return root.pushRoute(level)
         val sheet = topSheet
         if (sheet != null) sheet.children.add(level) else entries.add(level)
-        scope.launch { level.presentation.animateTo(1f, tween(PAGE_DURATION, easing = FastOutSlowInEasing)) }
+        scope.launch { level.presentation.settleTo(level, 1f) }
     }
 
     /** showFormSheet / openForm. */
@@ -173,21 +213,57 @@ class BoxNavigator internal constructor(
             if (level.sheet != null) {
                 level.presentation.animateTo(0f, sheetSpring)
             } else {
-                level.presentation.animateTo(0f, tween(PAGE_DURATION, easing = FastOutSlowInEasing))
+                level.drag = null
+                level.presentation.settleTo(level, 0f)
             }
-            if (parent != null) parent.children.remove(level) else entries.remove(level)
-            level.onClosed?.invoke(level.result)
+            finishClose(level, parent)
         }
+    }
+
+    /** Takes a closed route out of its navigator and reports its result. */
+    internal fun finishClose(level: NavLevel, parent: NavLevel? = ownerOf(level)) {
+        if (parent != null) parent.children.remove(level) else entries.remove(level)
+        level.onClosed?.invoke(level.result)
+    }
+
+    private fun ownerOf(level: NavLevel): NavLevel? = entries.firstOrNull { level in it.children }
+
+    /** _canDragBack: the route is on top, settled, and nothing is over it in this navigator or its root. */
+    internal fun canDragBack(level: NavLevel): Boolean {
+        if (level.closing || level.drag != null || level.sheet != null || level.presentation.isRunning) return false
+        // A route open on the root navigator (a form or sheet) is over a destination's own navigator.
+        if (parent?.canPop == true) return false
+        val (top, child) = current() ?: return false
+        return (child ?: top) === level
+    }
+
+    /** The page the system back gesture moves, when one would pop without asking. */
+    internal fun predictiveBackTarget(): NavLevel? {
+        val (top, child) = current() ?: return null
+        val level = child ?: top
+        return level.takeIf { it.sheet == null && it.guard == null && canDragBack(it) }
     }
 
     val canPop: Boolean get() = entries.any { !it.closing }
 
     companion object {
+        /** About how long a push takes to settle (page_transition.dart's _settlingTimeOf). */
         const val PAGE_DURATION = 300
 
         // snap_sheet.dart's presentation: a critically damped spring of stiffness 1000/3.
         val sheetSpring = spring<Float>(dampingRatio = 1f, stiffness = 1000f / 3f, visibilityThreshold = 0.001f)
     }
+}
+
+/** CardRouteMixin.settleTo: a push or pop springs from where the route is, launched at its multiple of the distance a second. */
+private suspend fun Animatable<Float, AnimationVector1D>.settleTo(level: NavLevel, target: Float) {
+    val opens = target == 1f
+    val (spec, speed) = when {
+        level.transition == PageTransition.Zoom && opens -> ZOOM_OPEN_SPRING to ZOOM_OPEN_SPEED
+        level.transition == PageTransition.Zoom -> ZOOM_CLOSE_SPRING to 0f
+        else -> PUSH_SPRING to PUSH_SPEED
+    }
+    animateTo(target, spec, (target - value) * speed)
 }
 
 val LocalBoxNavigator = staticCompositionLocalOf<BoxNavigator?> { null }
@@ -251,33 +327,68 @@ internal fun <T> rememberUpdated(value: T): androidx.compose.runtime.MutableStat
 }
 
 /**
- * Hosts [home] and the routes over it. A page slides in with the shared
- * axis X transition (300 ms, 30% of the width, fading in after 90 ms) and
- * pushes the one under it the other way; a sheet rises over the modal scrim.
+ * The system back gesture: on a page that would pop without asking, the page
+ * follows the gesture's progress (Android 14+) as a drag back does and lets
+ * go on commit or cancel; otherwise back is Navigator.maybePop.
+ */
+@Composable
+private fun NavigatorBackHandler(navigator: BoxNavigator, enabled: Boolean) {
+    val scope = rememberCoroutineScope()
+    PredictiveBackHandler(enabled = enabled) { progress ->
+        val target = navigator.predictiveBackTarget()
+        if (target == null) {
+            progress.collect { }
+            navigator.maybePop()
+            return@PredictiveBackHandler
+        }
+        var followed = false
+        try {
+            progress.collect { event ->
+                if (!followed) target.startDragBack()
+                followed = true
+                target.dragBackTo(scope, event.progress * PREDICTIVE_BACK_REACH * target.width)
+            }
+            // Without the gesture's progress (before Android 14) back pops as a tap on back does.
+            // The release runs in the host's scope: the handler is disabled as the page starts to close.
+            if (followed) scope.launch { navigator.endDragBack(target, 0f, commit = true) } else navigator.maybePop()
+        } catch (cancelled: CancellationException) {
+            scope.launch { navigator.endDragBack(target, 0f, commit = false) }
+            throw cancelled
+        }
+    }
+}
+
+/**
+ * Hosts [home] and the routes over it. A page comes in with iOS 27's push
+ * (page_transition.dart): from the trailing edge on a 300 ms critically
+ * damped spring while the page under it slides 30% back and dims, and pops
+ * by dragging anywhere on it (drag_back.dart); a sheet rises over the modal
+ * scrim.
  */
 @Composable
 fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
     val dialogs = rememberDialogHost()
     val popups = remember { PopupHost() }
     CompositionLocalProvider(LocalBoxNavigator provides navigator, LocalDialogs provides dialogs, LocalPopups provides popups) {
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { navigator.hostOrigin = it.positionInRoot() }) {
             val viewMode = viewModeOf(maxWidth)
             navigator.mobile = viewMode == ViewMode.Mobile
-            BackHandler(enabled = navigator.canPop) { navigator.maybePop() }
+            NavigatorBackHandler(navigator, enabled = navigator.canPop)
             CompositionLocalProvider(LocalViewMode provides viewMode) {
             val entries = navigator.entries.toList()
             // What a popup's or an alert's glass bends: everything under them.
             val glassOn = LocalLiquidGlass.current.shaded
             val appBackdrop = rememberGlassBackdrop()
+            val motion = rememberCardMotion(navigator)
             Box(Modifier.fillMaxSize().glassBackdropSource(appBackdrop, glassOn)) {
             // A page over the home page covers it; sheets leave it in view.
-            Box(Modifier.fillMaxSize().coveredBy(entries.firstOrNull()?.takeIf { it.sheet == null })) { home() }
+            Box(Modifier.fillMaxSize().covered(motion, entries.firstOrNull()?.takeIf { it.sheet == null })) { home() }
             entries.forEachIndexed { index, level ->
                 val above = entries.getOrNull(index + 1)?.takeIf { it.sheet == null }
                 key(level) {
                     CompositionLocalProvider(LocalNavLevel provides level) {
                         if (level.sheet == null) {
-                            PageRoute(level, above)
+                            PageRoute(navigator, motion, level, above)
                         } else {
                             SheetRoute(navigator, level)
                         }
@@ -297,20 +408,22 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
 /**
  * home.dart's _NavigationPage outside the mobile layout: a destination's own
  * navigator, so pages pushed from it stay in the content pane beside the
- * sidebar. Sheets, dialogs and popups stay with the root navigator.
+ * sidebar, with the same push and drag back. Sheets, dialogs and popups stay
+ * with the root navigator.
  */
 @Composable
 fun NestedNavigatorHost(navigator: BoxNavigator, active: Boolean, home: @Composable () -> Unit) {
     val parentBusy = navigator.parent?.canPop == true
-    BackHandler(enabled = active && navigator.canPop && !parentBusy) { navigator.maybePop() }
+    NavigatorBackHandler(navigator, enabled = active && navigator.canPop && !parentBusy)
     CompositionLocalProvider(LocalBoxNavigator provides navigator) {
         val entries = navigator.entries.toList()
-        Box(Modifier.fillMaxSize()) {
-            Box(Modifier.fillMaxSize().coveredBy(entries.firstOrNull())) { home() }
+        val motion = rememberCardMotion(navigator)
+        Box(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { navigator.hostOrigin = it.positionInRoot() }) {
+            Box(Modifier.fillMaxSize().covered(motion, entries.firstOrNull())) { home() }
             entries.forEachIndexed { index, level ->
                 key(level) {
                     CompositionLocalProvider(LocalNavLevel provides level) {
-                        PageRoute(level, entries.getOrNull(index + 1))
+                        PageRoute(navigator, motion, level, entries.getOrNull(index + 1))
                     }
                 }
             }
@@ -321,34 +434,46 @@ fun NestedNavigatorHost(navigator: BoxNavigator, active: Boolean, home: @Composa
 @Composable
 private fun <T> key(value: T, content: @Composable () -> Unit) = androidx.compose.runtime.key(value) { content() }
 
-/** commonSharedXPageTransitions for the route under [above]. */
-private fun Modifier.coveredBy(above: NavLevel?): Modifier = if (above == null) {
-    this
-} else {
-    graphicsLayer {
-        val covered = above.presentation.value
-        translationX = -size.width * SHARED_AXIS_SHIFT * covered
-        alpha = 1f - (covered / 0.3f).coerceIn(0f, 1f)
-    }
-}
-
-private const val SHARED_AXIS_SHIFT = 0.3f
-
-private fun Modifier.entering(level: NavLevel): Modifier = graphicsLayer {
-    val shown = level.presentation.value
-    translationX = size.width * SHARED_AXIS_SHIFT * (1 - shown)
-    alpha = ((shown - 0.3f) / 0.7f).coerceIn(0f, 1f)
-}
+/** What every card transition of one host reads: its navigator, the display corners, the page colour and the light theme's shadow. */
+private class CardMotion(
+    val navigator: BoxNavigator,
+    val scope: CoroutineScope,
+    val displayRadius: Float,
+    val surface: Color,
+    val shadow: Boolean,
+    val rtl: Boolean,
+)
 
 @Composable
-private fun PageRoute(level: NavLevel, above: NavLevel?) {
+private fun rememberCardMotion(navigator: BoxNavigator): CardMotion {
+    val scheme = BoxTheme.scheme
+    val scope = rememberCoroutineScope()
+    val radius = displayCornerRadius()
+    val surface = SurfaceLevel.Page.colorOf(scheme)
+    val light = !scheme.dark
+    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+    return remember(navigator, scope, radius, surface, light, rtl) { CardMotion(navigator, scope, radius, surface, light, rtl) }
+}
+
+/** The page under [above] (the home page, or a route's root) as the route over it covers it. */
+private fun Modifier.covered(motion: CardMotion, above: NavLevel?): Modifier = if (above == null) {
+    this
+} else {
+    cardTransition(null, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl)
+}
+
+private fun Modifier.route(motion: CardMotion, level: NavLevel, above: NavLevel?): Modifier = this
+    .onSizeChanged { level.width = it.width.toFloat() }
+    .cardTransition(level, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl)
+    .dragBack(motion.navigator, level, motion.scope, motion.rtl)
+
+@Composable
+private fun PageRoute(navigator: BoxNavigator, motion: CardMotion, level: NavLevel, above: NavLevel?) {
     CompositionLocalProvider(LocalPushedPage provides true, LocalBottomInset provides 0.dp, LocalSheetType provides SheetType.Page) {
         Box(
             Modifier
                 .fillMaxSize()
-                .entering(level)
-                .coveredBy(above)
-                .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme))
+                .route(motion, level, above)
                 .absorbPointer(),
         ) { level.content() }
     }
@@ -357,8 +482,10 @@ private fun PageRoute(level: NavLevel, above: NavLevel?) {
 /** The pages of one sheet, the first one its root. */
 @Composable
 private fun SheetPages(level: NavLevel) {
+    val navigator = LocalBoxNavigator.current ?: return
+    val motion = rememberCardMotion(navigator)
     val children = level.children.toList()
-    Box(Modifier.fillMaxSize().coveredBy(children.firstOrNull())) {
+    Box(Modifier.fillMaxSize().covered(motion, children.firstOrNull())) {
         CompositionLocalProvider(LocalSheetRoot provides true) { level.content() }
     }
     children.forEachIndexed { index, child ->
@@ -367,9 +494,7 @@ private fun SheetPages(level: NavLevel) {
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .entering(child)
-                        .coveredBy(children.getOrNull(index + 1))
-                        .background(SurfaceLevel.Page.colorOf(BoxTheme.scheme))
+                        .route(motion, child, children.getOrNull(index + 1))
                         .absorbPointer(),
                 ) { child.content() }
             }

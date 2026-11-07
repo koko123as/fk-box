@@ -256,7 +256,7 @@ fun CommonScaffold(
                     }
                     if (leading != null) {
                         Spacer(Modifier.width(16.dp))
-                        TonalIconButton(leading)
+                        Box(Modifier.barItemPresence(leading.glyph)) { TonalIconButton(leading) }
                         Spacer(Modifier.width(16.dp))
                     } else {
                         Spacer(Modifier.width(16.dp))
@@ -335,15 +335,20 @@ private fun BarActions(shown: List<IconAction>, widgets: List<@Composable () -> 
     if (shown.isEmpty() && widgets.isEmpty() && overflow.isEmpty()) return
     val grouped = if (shown.size > 1) shown.take(MAX_GROUPED_ACTIONS) else emptyList()
     Row(horizontalArrangement = Arrangement.spacedBy(BAR_BUTTON_GAP.dp), verticalAlignment = Alignment.CenterVertically) {
+        // bar_item_presence.dart: each item springs in with its page and swells when its glyph changes.
         if (grouped.isNotEmpty()) {
-            TonalButtonGroup {
-                for (action in grouped) TonalIconButton(action, grouped = true)
+            Box(Modifier.barItemPresence(grouped.map { it.glyph })) {
+                TonalButtonGroup {
+                    for (action in grouped) TonalIconButton(action, grouped = true)
+                }
             }
         }
-        for (action in shown.drop(grouped.size)) TonalIconButton(action)
-        for (widget in widgets) Box(Modifier.elasticPress()) { widget() }
+        for (action in shown.drop(grouped.size)) Box(Modifier.barItemPresence(action.glyph)) { TonalIconButton(action) }
+        for (widget in widgets) Box(Modifier.barItemPresence().elasticPress()) { widget() }
         if (overflow.isNotEmpty()) {
-            CommonPopupBox(overflow) { open -> TonalIconButton(IconAction(AppGlyphs.more, tr("More"), open)) }
+            Box(Modifier.barItemPresence()) {
+                CommonPopupBox(overflow) { open -> TonalIconButton(IconAction(AppGlyphs.more, tr("More"), open)) }
+            }
         }
     }
 }
