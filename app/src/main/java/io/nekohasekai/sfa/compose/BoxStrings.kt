@@ -182,6 +182,8 @@ internal object BoxStrings {
         map["Network speed"] = "网络速度"
         map["Upload"] = "上传"
         map["Download"] = "下载"
+        map["Peak"] = "峰值"
+        map["Live connections"] = "实时连接"
         map["Total"] = "累计"
         map["Outbound mode"] = "出站模式"
         map["Rule"] = "规则"

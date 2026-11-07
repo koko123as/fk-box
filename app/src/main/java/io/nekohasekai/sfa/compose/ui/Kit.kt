@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -207,6 +208,13 @@ private fun panelShadows(dark: Boolean): List<BoxShadowSpec> = if (dark) {
 
 val PanelShape = AppShape.all(34f)
 
+/** The panel shape for the dashboard density: 34 on the phone, 32 in the desktop grid. */
+@Composable
+fun panelShape(): androidx.compose.ui.graphics.Shape {
+    val density = LocalDashboardDensity.current
+    return if (density.isDesktop) AppShape.all(dashboardCardRadius(density)) else PanelShape
+}
+
 @Composable
 fun BoxPanel(
     modifier: Modifier = Modifier,
@@ -216,13 +224,17 @@ fun BoxPanel(
     content: @Composable () -> Unit,
 ) {
     val scheme = BoxTheme.scheme
+    val density = LocalDashboardDensity.current
+    val shape = panelShape()
     Box(
         modifier
             .fillMaxWidth()
-            .boxShadows(PanelShape, panelShadows(scheme.dark))
-            .background(SurfaceLevel.Card.colorOf(scheme), PanelShape)
-            .then(if (clip || onClick != null) Modifier.clip(PanelShape) else Modifier)
-            .then(if (onClick != null) Modifier.clickable(interactionSource = null, indication = PressIndication(PressLook.Ink, PanelShape), onClick = onClick) else Modifier)
+            // The desktop grid gives every card a fixed row height.
+            .then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)
+            .boxShadows(shape, panelShadows(scheme.dark))
+            .background(SurfaceLevel.Card.colorOf(scheme), shape)
+            .then(if (clip || onClick != null) Modifier.clip(shape) else Modifier)
+            .then(if (onClick != null) Modifier.clickable(interactionSource = null, indication = PressIndication(PressLook.Ink, shape), onClick = onClick) else Modifier)
             .padding(padding),
     ) {
         CompositionLocalProvider(LocalSurfaceLevelForContent provides SurfaceLevel.Card) { content() }

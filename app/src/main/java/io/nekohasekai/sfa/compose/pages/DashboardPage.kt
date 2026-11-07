@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -149,6 +150,9 @@ fun DashboardPage(box: BoxController) {
         hiddenSet.remove("Status")
         return box.setPreferences(mapOf("dashboardCards" to result, "hiddenCards" to hiddenSet.toList()))
     }
+    // dashboard.dart: the desktop grid has no editing; the content size is known a frame late.
+    var desktopLayout by remember { mutableStateOf(false) }
+    if (desktopLayout && editor != null) editor = null
     val editing = editor
     CommonScaffold(
         title = tr(if (editing != null) "Edit dashboard" else "Dashboard"),
@@ -157,15 +161,33 @@ fun DashboardPage(box: BoxController) {
         confirmationAction = editing?.let { state ->
             IconAction(AppGlyphs.check, tr("Done"), if (saving) null else ({ scope.launch { state.finish() } }))
         },
-        iconActions = if (editing == null) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
+        iconActions = if (editing == null && !desktopLayout) listOf(IconAction(AppGlyphs.edit, tr("Dashboard cards"), { editor = DashboardEditorState(shown) })) else emptyList(),
     ) {
         val pageScroll = rememberScrollState()
         var viewportBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { viewportBounds = it.boundsInRoot() }) {
-            val mobile = maxWidth < 600.dp
-            val maxContent = if (mobile) 560.dp else 900.dp
-            val side = max(16f, (maxWidth.value - maxContent.value) / 2).dp
+            // layout.dart's DashboardDensity, read from the content room over the text scale.
+            val scale = max(1f, LocalDensity.current.fontScale)
+            val density = io.nekohasekai.sfa.compose.ui.dashboardDensityOf(maxWidth.value / scale, maxHeight.value / scale)
+            if (density.isDesktop != desktopLayout) androidx.compose.runtime.SideEffect { desktopLayout = density.isDesktop }
+            // dashboardMobileSideOf: the phone's one centred column.
+            val side = max(16f, (maxWidth.value - io.nekohasekai.sfa.compose.ui.DASHBOARD_MOBILE_MAX_WIDTH) / 2).dp
             val gap = io.nekohasekai.sfa.compose.ui.cardSpacingOf(io.nekohasekai.sfa.compose.ui.LocalViewMode.current)
+            val banners: @Composable () -> Unit = { DashboardBanners(box) }
+            if (density.isDesktop && editing == null) {
+                DashboardGrid(
+                    box = box,
+                    density = density,
+                    scale = scale,
+                    columns = io.nekohasekai.sfa.compose.ui.dashboardColumnsOf(maxWidth.value / scale),
+                    gap = gap,
+                    top = contentTopPadding(),
+                    bottom = bottomInset(),
+                    banners = banners,
+                    hasBanners = box.remote || box.applyRequired != null || rows(box.dashboard["deprecated"]).isNotEmpty(),
+                )
+                return@BoxWithConstraints
+            }
             Column(
                 Modifier
                     .fillMaxSize()
@@ -187,39 +209,50 @@ fun DashboardPage(box: BoxController) {
                     viewport = { viewportBounds },
                 )
               } else {
-                if (box.remote) {
-                    ListItem(
-                        title = { Text(box.dashboard["remote"].toString()) },
-                        subtitle = { Text(tr("Remote control")) },
-                        trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
-                    )
-                }
-                if (box.applyRequired != null) {
-                    ListItem(
-                        title = { Text(tr("Restart required")) },
-                        trailing = {
-                            TextPillButton(tr("Apply"), {
-                                box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
-                            })
-                        },
-                    )
-                }
+                if (box.remote || box.applyRequired != null) DashboardBanners(box, deprecated = false)
                 for (card in shown) available[card]?.invoke()
-                for (note in rows(box.dashboard["deprecated"])) {
-                    ListItem(
-                        title = { Text(note["message"].toString()) },
-                        onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
-                    )
-                }
+                DashboardBanners(box, remoteAndApply = false)
               }
             }
         }
     }
 }
 
+/** The remote, restart and deprecation rows above (and below) the cards. */
+@Composable
+private fun DashboardBanners(box: BoxController, remoteAndApply: Boolean = true, deprecated: Boolean = true) {
+    if (remoteAndApply) {
+        if (box.remote) {
+            ListItem(
+                title = { Text(box.dashboard["remote"].toString()) },
+                subtitle = { Text(tr("Remote control")) },
+                trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
+            )
+        }
+        if (box.applyRequired != null) {
+            ListItem(
+                title = { Text(tr("Restart required")) },
+                trailing = {
+                    TextPillButton(tr("Apply"), {
+                        box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
+                    })
+                },
+            )
+        }
+    }
+    if (deprecated) {
+        for (note in rows(box.dashboard["deprecated"])) {
+            ListItem(
+                title = { Text(note["message"].toString()) },
+                onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
+            )
+        }
+    }
+}
+
 // Adapted from FlClash v0.9.2 dashboard/widgets/traffic.dart.
 @Composable
-private fun SpeedPanel(box: BoxController) {
+internal fun SpeedPanel(box: BoxController) {
     BoxPanel {
         Column {
             PanelTitle("Network speed", AppGlyphs.speed)
@@ -320,17 +353,19 @@ private fun ModePanel(box: BoxController) {
 // ---------------------------------------------------------------------------
 
 @Composable
-private fun ProfilePanel(box: BoxController) {
+internal fun ProfilePanel(box: BoxController) {
     val scheme = BoxTheme.scheme
     val navigator = LocalBoxNavigator.current
     val profile = if (box.remote) null else box.selectedProfile
     val name = if (box.remote) tr("Remote configuration") else profile?.get("name")?.toString()
     val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
     var updating by remember { mutableStateOf(false) }
+    // dashboard/widgets/profiles.dart: the grid's fixed height puts the usage at the bottom.
+    val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     BoxPanel(onClick = {
         navigator?.openForm { if (box.remote) ProfileDetailsPage(box, null) else if (profile == null) AddProfilePage(box) else ProfileDetailsPage(box, profile) }
     }) {
-        Column {
+        Column(Modifier.fillMaxWidth().then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)) {
             PanelTitle("Profile", AppGlyphs.profiles, trailing = {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (profile?.get("remote") == true) {
@@ -348,9 +383,9 @@ private fun ProfilePanel(box: BoxController) {
                     GlyphIcon(AppGlyphs.chevronForward, size = 18.dp)
                 }
             })
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(if (density.isDesktop) 10.dp else 12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Headline.of(true).copy(color = scheme.onSurface))
+                Text(name ?: tr("Add profile"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = (if (density.isCompact) AppTextStyle.Callout else AppTextStyle.Headline).of(true).copy(color = scheme.onSurface))
                 if (!box.remote && box.profiles.size > 1) {
                     GlyphButton(AppGlyphs.swap, tr("Switch profile"), if (box.transitioning) null else ({ navigator?.openForm { ProfilesPage(box, picker = true) } }), size = 32.dp, iconSize = 18.dp)
                 }
@@ -370,7 +405,7 @@ private fun ProfilePanel(box: BoxController) {
                         Text(tr(if (box.remote || profile?.get("remote") == true) "Remote" else "Local"), style = label)
                     }
                 }
-                Spacer(Modifier.height(14.dp))
+                if (density.isDesktop) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(14.dp))
                 if (info?.usage != null) SubscriptionUsageMeter(info) else ProfileStats(box, profile)
             }
         }
@@ -478,19 +513,20 @@ private fun ProxyGroupsPanel(box: BoxController) {
 }
 
 @Composable
-private fun GroupIconStack(groups: List<Json>) {
+internal fun GroupIconStack(groups: List<Json>, size: Float = 40f) {
     val scheme = BoxTheme.scheme
     val shown = groups.take(4)
     val rest = groups.size - shown.size
     val count = shown.size + if (rest > 0) 1 else 0
     val tile = AppShape.all(14f)
     val ring = AppShape.all(14f + 3f)
-    Box(Modifier.width((count * 40 - (count - 1) * 8).dp).height(40.dp)) {
+    val step = size - 8
+    Box(Modifier.width((count * size - (count - 1) * 8).dp).height(size.dp)) {
         shown.forEachIndexed { index, group ->
             // The 3 dp ring outside the tile in the card color.
-            Box(Modifier.offset(x = (index * 32 - 3).dp, y = (-3).dp).requiredSize(46.dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
+            Box(Modifier.offset(x = (index * step - 3).dp, y = (-3).dp).requiredSize((size + 6).dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
             Box(
-                Modifier.offset(x = (index * 32).dp).size(40.dp).background(SurfaceLevel.Inset.colorOf(scheme), tile).padding(6.dp),
+                Modifier.offset(x = (index * step).dp).size(size.dp).background(SurfaceLevel.Inset.colorOf(scheme), tile).padding(6.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 val tag = group["tag"].toString()
@@ -499,8 +535,8 @@ private fun GroupIconStack(groups: List<Json>) {
             }
         }
         if (rest > 0) {
-            Box(Modifier.offset(x = (shown.size * 32 - 3).dp, y = (-3).dp).requiredSize(46.dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
-            Box(Modifier.offset(x = (shown.size * 32).dp).size(40.dp).background(SurfaceLevel.Block.colorOf(scheme), tile), contentAlignment = Alignment.Center) {
+            Box(Modifier.offset(x = (shown.size * step - 3).dp, y = (-3).dp).requiredSize((size + 6).dp).background(SurfaceLevel.Card.colorOf(scheme), ring))
+            Box(Modifier.offset(x = (shown.size * step).dp).size(size.dp).background(SurfaceLevel.Block.colorOf(scheme), tile), contentAlignment = Alignment.Center) {
                 Text("+$rest", style = AppTextStyle.Caption1.of(true).tabular.copy(color = scheme.onSurfaceVariant))
             }
         }
@@ -530,39 +566,41 @@ fun BoxDataSubscription(box: BoxController, data: BoxData) {
 }
 
 @Composable
-private fun MemoryPanel(box: BoxController) {
+internal fun MemoryPanel(box: BoxController) {
     val navigator = LocalBoxNavigator.current
     if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Memory)
+    val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     BoxPanel(onClick = { navigator?.openForm { MemoryDetails(box) } }) {
-        Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)) {
             PanelTitle("Memory", AppGlyphs.memory, trailing = { GlyphIcon(AppGlyphs.chevronForward, size = 18.dp) })
-            Spacer(Modifier.height(12.dp))
-            MemorySummary(box.memory)
+            Spacer(Modifier.height(if (density.isCompact) 4.dp else if (density.isDesktop) 6.dp else 12.dp))
+            if (density.isDesktop) Box(Modifier.weight(1f)) { MemorySummary(box.memory, desktop = true) } else MemorySummary(box.memory)
         }
     }
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun MemorySummary(snapshot: Json) {
+private fun MemorySummary(snapshot: Json, desktop: Boolean = false) {
     val scheme = BoxTheme.scheme
     val total = bytes(snapshot["total"] as? Number ?: 0).split(" ")
     val parts = buildList {
         if (snapshot["remote"] != true) add(Triple("App", snapshot["app"] as? Number ?: 0, scheme.primary))
         add(Triple("Core", snapshot["core"] as? Number ?: 0, alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme))))
     }
-    Column {
+    val figure = if (desktop) AppTextStyle.Title2 else AppTextStyle.Title1
+    Column(if (desktop) Modifier.fillMaxSize() else Modifier) {
         Text(
             buildAnnotatedString {
-                withStyle(AppTextStyle.Title1.of(true).tabular.copy(color = scheme.onSurface).toSpanStyle()) { append(if (snapshot.isEmpty()) "—" else total.first()) }
+                withStyle(figure.of(true).tabular.copy(color = scheme.onSurface).toSpanStyle()) { append(if (snapshot.isEmpty()) "—" else total.first()) }
                 if (snapshot.isNotEmpty()) withStyle(AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant).toSpanStyle()) { append(" ${total.last()}") }
             },
             maxLines = 1,
-            style = AppTextStyle.Title1.of(true),
+            style = figure.of(true),
         )
-        Spacer(Modifier.height(14.dp))
+        if (desktop) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(14.dp))
         MemoryBar(parts)
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(if (desktop && io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current.isCompact) 8.dp else 10.dp))
         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             for ((name, value, color) in parts) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -684,16 +722,19 @@ private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.
 }
 
 @Composable
-private fun IntranetPanel(box: BoxController) {
+internal fun IntranetPanel(box: BoxController) {
     val scheme = BoxTheme.scheme
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
     val addresses = box.lanAddresses
     val copy = box.lanCopyText
-    val figure = AppTextStyle.Title1.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
+    // intranet_ip.dart: the grid uses Title2 and, when compact, a tighter LAN row.
+    val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
+    val figureText = if (density.isDesktop) AppTextStyle.Title2 else AppTextStyle.Title1
+    val figure = figureText.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
     val copied = tr("Copied")
     BoxPanel {
-        Column(Modifier.fillMaxWidth()) {
+        Column(Modifier.fillMaxWidth().then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)) {
             PanelTitle("Intranet IP", AppGlyphs.devices, trailing = {
                 Box(Modifier.offset(x = 8.dp)) {
                     GlyphButton(AppGlyphs.copy, tr("Copy"), if (copy == null) null else ({
@@ -704,9 +745,9 @@ private fun IntranetPanel(box: BoxController) {
                     }), size = 32.dp, iconSize = 18.dp, color = scheme.onSurfaceVariant)
                 }
             })
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(if (density.isCompact) 8.dp else if (density.isDesktop) 10.dp else 12.dp))
             Box(
-                Modifier.fillMaxWidth().height((AppTextStyle.Title1.leading * LocalDensity.current.fontScale).dp)
+                Modifier.fillMaxWidth().height((figureText.leading * LocalDensity.current.fontScale).dp)
                     .clickable { navigator?.openForm { IntranetDetails(box) } },
                 contentAlignment = Alignment.CenterStart,
             ) {
@@ -717,11 +758,11 @@ private fun IntranetPanel(box: BoxController) {
                         addresses.first(),
                         style = figure,
                         maxLines = 1,
-                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = AppTextStyle.Title1.size.sp, stepSize = 0.5.sp),
+                        autoSize = androidx.compose.foundation.text.TextAutoSize.StepBased(minFontSize = 8.sp, maxFontSize = figureText.size.sp, stepSize = 0.5.sp),
                     )
                 }
             }
-            Spacer(Modifier.height(14.dp))
+            if (density.isDesktop) Spacer(Modifier.weight(1f)) else Spacer(Modifier.height(14.dp))
             if (box.remote) {
                 Box(Modifier.fillMaxWidth().clip(AppShape.all(20f)).background(SurfaceLevel.Block.colorOf(scheme))) {
                     ListItem(
@@ -731,7 +772,7 @@ private fun IntranetPanel(box: BoxController) {
                     )
                 }
             } else {
-                LanProxyRow(box.lan["enabled"] == true, lanSubtitle(box), if (box.canSetLanProxy) ({ value: Boolean -> changeLan(box, navigator, value) }) else null)
+                LanProxyRow(box.lan["enabled"] == true, lanSubtitle(box), if (box.canSetLanProxy) ({ value: Boolean -> changeLan(box, navigator, value) }) else null, compact = density.isCompact)
             }
         }
     }
@@ -739,22 +780,24 @@ private fun IntranetPanel(box: BoxController) {
 
 /** FlClash's mobile switch row: an enabled cookie badge, disabled circle and a compact switch. */
 @Composable
-private fun LanProxyRow(value: Boolean, subtitle: String, onChanged: ((Boolean) -> Unit)?) {
+private fun LanProxyRow(value: Boolean, subtitle: String, onChanged: ((Boolean) -> Unit)?, compact: Boolean = false) {
     val scheme = BoxTheme.scheme
     val title = tr("LAN proxy")
-    val shape = AppShape.all(20f)
+    val shape = AppShape.all(if (compact) 16f else 20f)
+    val icon = if (compact) 32 else 38
     BoxWithConstraints(Modifier.fillMaxWidth().clip(shape).background(SurfaceLevel.Block.colorOf(scheme)).clickable(enabled = onChanged != null) { onChanged?.invoke(!value) }) {
         // The icon yields its room to larger text.
-        val showIcon = title.length * 15 * LocalDensity.current.fontScale * .6f <= maxWidth.value - 22 - 38 - 24 - SWITCH_TRACK_WIDTH
+        val showIcon = title.length * 15 * LocalDensity.current.fontScale * .6f <= maxWidth.value - 22 - icon - 24 - SWITCH_TRACK_WIDTH
         Row(
-            Modifier.padding(start = if (showIcon) 10.dp else 14.dp, top = 10.dp, end = 12.dp, bottom = 10.dp),
+            if (compact) Modifier.padding(start = if (showIcon) 8.dp else 12.dp, top = 6.dp, end = 8.dp, bottom = 6.dp)
+            else Modifier.padding(start = if (showIcon) 10.dp else 14.dp, top = 10.dp, end = 12.dp, bottom = 10.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showIcon) {
                 AnimatedContent(value, transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) }, label = "lan") { on ->
-                    ShapeBadge(if (on) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (on) scheme.primary else SurfaceLevel.Card.colorOf(scheme), 38.dp) {
-                        GlyphIcon(AppGlyphs.wifi, size = 19.dp, color = if (on) scheme.onPrimary else scheme.onSurfaceVariant)
+                    ShapeBadge(if (on) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (on) scheme.primary else SurfaceLevel.Card.colorOf(scheme), icon.dp) {
+                        GlyphIcon(AppGlyphs.wifi, size = (icon / 2).dp, color = if (on) scheme.onPrimary else scheme.onSurfaceVariant)
                     }
                 }
             }
@@ -897,19 +940,26 @@ internal val dashboardSystemProxyGlyph by lazy {
 }
 
 @Composable
-private fun SystemProxyPanel(box: BoxController) {
+internal fun SystemProxyPanel(box: BoxController) {
     val scheme = BoxTheme.scheme
     val enabled = box.dashboard["systemProxy"] == true
     val title = tr("System HTTP proxy")
     val change: (Boolean) -> Unit = { box.launchAct("systemProxy.set", mapOf("enabled" to it)) }
-    BoxPanel(padding = PaddingValues(horizontal = 20.dp, vertical = 16.dp), clip = false, onClick = { change(!enabled) }) {
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
-            ShapeBadge(if (enabled) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (enabled) scheme.primary else SurfaceLevel.Block.colorOf(scheme), 48.dp) {
-                GlyphIcon(dashboardSystemProxyGlyph, size = 22.dp, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)
+    // network_takeover.dart's _tileMetricsOf: the grid's control-row tile, the icon and switch inset as from the edges.
+    val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
+    val tile = density.isDesktop
+    val icon = if (!tile) 48.dp else if (density.isCompact) 36.dp else 40.dp
+    val padding = if (!tile) PaddingValues(horizontal = 20.dp, vertical = 16.dp) else if (density.isCompact) PaddingValues(start = 10.dp, end = 12.dp) else PaddingValues(start = 12.dp, end = 16.dp)
+    BoxPanel(padding = padding, clip = false, onClick = { change(!enabled) }) {
+        Row(Modifier.then(if (tile) Modifier.fillMaxHeight() else Modifier), horizontalArrangement = Arrangement.spacedBy(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            ShapeBadge(if (enabled) MaterialShapes.Cookie6Sided else MaterialShapes.Circle, if (enabled) scheme.primary else SurfaceLevel.Block.colorOf(scheme), icon) {
+                GlyphIcon(dashboardSystemProxyGlyph, size = icon * 22 / 48, color = if (enabled) scheme.onPrimary else scheme.onSurfaceVariant)
             }
             Column(Modifier.weight(1f)) {
-                Text(title, style = AppTextStyle.Callout.of(true).copy(color = scheme.onSurface))
-                Text(tr(if (enabled) "Enabled" else "Disabled"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant))
+                Text(title, maxLines = if (tile) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Callout.of(true).copy(color = scheme.onSurface))
+                if (!density.isCompact) {
+                    Text(tr(if (enabled) "Enabled" else "Disabled"), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Footnote.of().copy(color = scheme.onSurfaceVariant))
+                }
             }
             Box(Modifier.width(SWITCH_TRACK_WIDTH.dp).height(SWITCH_TRACK_HEIGHT.dp)) { CommonSwitch(enabled, change) }
         }

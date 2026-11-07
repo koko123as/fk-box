@@ -28,7 +28,7 @@ fun Any?.asLong(): Long? = (this as? Number)?.toLong()
 
 fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
 
-enum class BoxData { Memory, Logs }
+enum class BoxData { Memory, Logs, Connections }
 
 /**
  * Compose port of flutter/lib/box.dart's BoxController: the same state fields,
@@ -100,7 +100,11 @@ class BoxController(private val bridge: BoxBridge) {
 
     private fun syncData(data: BoxData) {
         launchAct(
-            if (data == BoxData.Memory) "dashboard.memory.visible" else "logs.visible",
+            when (data) {
+                BoxData.Memory -> "dashboard.memory.visible"
+                BoxData.Logs -> "logs.visible"
+                BoxData.Connections -> "connections.visible"
+            },
             mapOf("visible" to (dataOwners[data]?.isNotEmpty() == true)),
         )
     }

@@ -215,9 +215,11 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
         onGroupingChanged = { grouping -> scope.launch { box.setPreference("recordGroupings", recordGroupingsWith(box.preferences, pageId, grouping)) } },
     )
     val pinned = LocalViewMode.current != ViewMode.Mobile
+    // Shared with the dashboard's connection stats, so either one leaving keeps the other's feed.
+    val connectionsOwner = remember { Any() }
     DisposableEffect(Unit) {
-        box.launchAct("connections.visible", mapOf("visible" to true))
-        onDispose { box.launchAct("connections.visible", mapOf("visible" to false)) }
+        box.setDataVisible(BoxData.Connections, connectionsOwner, true)
+        onDispose { box.setDataVisible(BoxData.Connections, connectionsOwner, false) }
     }
     val key = mapOf("Created" to "createdAt", "Upload" to "uploadTotal", "Download" to "downloadTotal")[sort]
     fun rank(c: Json): Double = if (key == null) (c["upload"].asDouble() ?: 0.0) + (c["download"].asDouble() ?: 0.0) else c[key].asDouble() ?: 0.0

@@ -35,3 +35,47 @@ fun cardSpacingOf(mode: ViewMode): Dp = when (mode) {
 
 /** viewModeProvider: set by the root navigator host from the window width. */
 val LocalViewMode = staticCompositionLocalOf { ViewMode.Mobile }
+
+/*
+ * FlClash v0.9.3 lib/views/dashboard/layout.dart (DashboardDensity,
+ * dashboardColumnsOf, dashboardMobileSideOf), GPL-3.0.
+ */
+
+/** [Compact] shrinks type, the start button and tiles, and drops subtitles. */
+enum class DashboardDensity {
+    Standard,
+    Compact,
+    Mobile;
+
+    val isDesktop: Boolean get() = this != Mobile
+    val isCompact: Boolean get() = this == Compact
+}
+
+private const val MIN_DESKTOP_WIDTH = 640f
+private const val MIN_FOUR_COLUMN_WIDTH = 860f
+private const val MIN_STANDARD_FOUR_COLUMN_WIDTH = 1040f
+private const val MIN_STANDARD_HEIGHT = 824f
+const val DASHBOARD_MOBILE_MAX_WIDTH = 560f
+
+fun dashboardColumnsOf(width: Float): Int = if (width < MIN_FOUR_COLUMN_WIDTH) 2 else 4
+
+/** The content room divided by the text scale, as layout.dart's DashboardDensity.of reads it. */
+fun dashboardDensityOf(width: Float, height: Float): DashboardDensity {
+    if (width < MIN_DESKTOP_WIDTH) return DashboardDensity.Mobile
+    val narrowColumns = dashboardColumnsOf(width) == 4 && width < MIN_STANDARD_FOUR_COLUMN_WIDTH
+    return if (narrowColumns || height < MIN_STANDARD_HEIGHT) DashboardDensity.Compact else DashboardDensity.Standard
+}
+
+/** DashboardDensityScope: the density and the text scale every fixed height grows by. */
+val LocalDashboardDensity = staticCompositionLocalOf { DashboardDensity.Mobile }
+val LocalDashboardScale = staticCompositionLocalOf { 1f }
+
+/** widgets/card.dart's dashboardCardPadding: (horizontal, vertical). */
+fun dashboardCardPadding(density: DashboardDensity): Pair<Dp, Dp> = when (density) {
+    DashboardDensity.Standard -> 22.dp to 20.dp
+    DashboardDensity.Compact -> 20.dp to 16.dp
+    DashboardDensity.Mobile -> 20.dp to 18.dp
+}
+
+/** style.dart's DashboardCorner: desktop card 32, mobile card 34. */
+fun dashboardCardRadius(density: DashboardDensity): Float = if (density.isDesktop) 32f else 34f
