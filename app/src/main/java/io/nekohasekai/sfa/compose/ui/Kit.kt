@@ -129,7 +129,7 @@ data class BoxShadowSpec(val color: Color, val dy: Float, val blur: Float, val s
  * canvas support from API 28; below that the shadows are left out.
  */
 fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier =
-    if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
+    if (true || Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) { // GPU memory test: no blurred shadows
         this
     } else {
         // The paths and paints are built once per size: HWUI caches each blurred

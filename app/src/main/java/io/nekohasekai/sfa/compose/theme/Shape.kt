@@ -50,7 +50,15 @@ class SuperellipseShape(
             val tr = (if (ltr) topEnd else topStart).toPx()
             val br = (if (ltr) bottomEnd else bottomStart).toPx()
             val bl = (if (ltr) bottomStart else bottomEnd).toPx()
-            return Outline.Generic(superellipsePath(Rect(0f, 0f, size.width, size.height), tl, tr, br, bl))
+            // GPU memory test: a rounded-rect outline lets HWUI clip natively
+            // instead of rasterizing a path clip mask on every frame.
+            return Outline.Rounded(
+                androidx.compose.ui.geometry.RoundRect(
+                    Rect(0f, 0f, size.width, size.height),
+                    androidx.compose.ui.geometry.CornerRadius(tl), androidx.compose.ui.geometry.CornerRadius(tr),
+                    androidx.compose.ui.geometry.CornerRadius(br), androidx.compose.ui.geometry.CornerRadius(bl),
+                ),
+            )
         }
     }
 
