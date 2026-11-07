@@ -165,7 +165,7 @@ fun DashboardPage(box: BoxController) {
             val mobile = maxWidth < 600.dp
             val maxContent = if (mobile) 560.dp else 900.dp
             val side = max(16f, (maxWidth.value - maxContent.value) / 2).dp
-            val gap = if (mobile) 8.dp else 12.dp
+            val gap = io.nekohasekai.sfa.compose.ui.cardSpacingOf(io.nekohasekai.sfa.compose.ui.LocalViewMode.current)
             Column(
                 Modifier
                     .fillMaxSize()

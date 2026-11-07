@@ -287,8 +287,7 @@ private fun ProfilesGrid(box: BoxController, profiles: List<Json>, selectedId: L
     val state = rememberLazyGridState()
     val height = profileCardHeight(withMeter = profiles.any { it.subscriptionInfo()?.usage != null })
     var revealed by remember { mutableStateOf(false) }
-    val mobile = LocalBoxNavigator.current?.mobile ?: true
-    val spacing = if (mobile) 8f else 12f
+    val spacing = io.nekohasekai.sfa.compose.ui.cardSpacingOf(io.nekohasekai.sfa.compose.ui.LocalViewMode.current).value
     val top = contentTopPadding()
     val bottom = 16.dp + bottomInset()
     val density = LocalDensity.current.density

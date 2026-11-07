@@ -525,7 +525,7 @@ fun ProxyListView(
         }
     }
     BoxWithConstraints(Modifier.fillMaxSize().padding(top = contentTopPadding())) {
-        val gap = 8f
+        val gap = io.nekohasekai.sfa.compose.ui.cardSpacingOf(io.nekohasekai.sfa.compose.ui.LocalViewMode.current).value
         val width = max(maxWidth.value - GROUP_INSET * 2, 0f)
         val columns = proxyColumns(max(width - HEADER_INSET * 2, 0f), box.preferences)
         val locate: (String) -> Unit = locate@{ name ->

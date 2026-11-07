@@ -90,10 +90,12 @@ fun ToolsPage(box: BoxController) {
     BoxPage("Tools") {
         // Requests (HTTP capture) is a sing-box feature: shown greyed on Xray/mihomo.
         val core = box.selectedProfile?.get("resolvedCore") as? String ?: "sing-box"
+        // tools.dart: what the sidebar shows (Requests on sing-box, Logs) leaves the list outside the mobile layout.
+        val sidebar = io.nekohasekai.sfa.compose.ui.LocalViewMode.current != io.nekohasekai.sfa.compose.ui.ViewMode.Mobile
         val entries = buildList {
-            add("Requests")
+            if (!sidebar || core != "sing-box") add("Requests")
             add("Connections")
-            add("Logs")
+            if (!sidebar) add("Logs")
             add("Terminal")
             add("Remote control")
         }

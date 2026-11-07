@@ -91,12 +91,21 @@ class NavLevel internal constructor(
     var guard: (suspend () -> Boolean)? = null
 }
 
-class BoxNavigator internal constructor(private val scope: CoroutineScope) {
+class BoxNavigator internal constructor(
+    private val scope: CoroutineScope,
+    /** The root navigator of a destination's own navigator (home.dart's _NavigationPage). */
+    val parent: BoxNavigator? = null,
+) {
     val entries = mutableStateListOf<NavLevel>()
 
+    private var ownMobile by mutableStateOf(true)
+
     /** True in the mobile layout, where a form is a bottom sheet. */
-    var mobile by mutableStateOf(true)
-        internal set
+    var mobile: Boolean
+        get() = parent?.mobile ?: ownMobile
+        internal set(value) {
+            ownMobile = value
+        }
 
     /** The phase-1 name: the routes over the home page. */
     val pages: List<NavLevel> get() = entries
@@ -107,6 +116,9 @@ class BoxNavigator internal constructor(private val scope: CoroutineScope) {
     fun push(page: @Composable () -> Unit) = pushPage(page, null)
 
     fun pushPage(page: @Composable () -> Unit, onClosed: ((Any?) -> Unit)?) {
+        // A sheet over the whole window keeps its pushes, as its nested navigator does.
+        val root = parent
+        if (root != null && root.topSheet != null) return root.pushPage(page, onClosed)
         val level = NavLevel(page, null, onClosed)
         val sheet = topSheet
         if (sheet != null) sheet.children.add(level) else entries.add(level)
@@ -115,6 +127,8 @@ class BoxNavigator internal constructor(private val scope: CoroutineScope) {
 
     /** showFormSheet / openForm. */
     fun openForm(onClosed: ((Any?) -> Unit)? = null, page: @Composable () -> Unit) {
+        // Sheets and form cards belong to the root navigator, over the sidebar too.
+        if (parent != null) return parent.openForm(onClosed, page)
         val level = NavLevel(page, if (mobile) SheetType.BottomSheet else SheetType.FormSheet, onClosed)
         entries.add(level)
         scope.launch { level.presentation.animateTo(1f, sheetSpring) }
@@ -196,6 +210,13 @@ fun rememberBoxNavigator(): BoxNavigator {
     return remember { BoxNavigator(scope) }
 }
 
+/** A destination's own navigator under [parent], for pages pushed inside the content pane. */
+@Composable
+fun rememberNestedNavigator(parent: BoxNavigator): BoxNavigator {
+    val scope = rememberCoroutineScope()
+    return remember(parent) { BoxNavigator(scope, parent) }
+}
+
 /** widgets.dart's BoxEditGuard: system back, the sheet's close and its dismissal ask first. */
 @Composable
 fun BoxEditGuard(dirty: Boolean, busy: Boolean = false, content: @Composable () -> Unit) {
@@ -240,8 +261,10 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
     val popups = remember { PopupHost() }
     CompositionLocalProvider(LocalBoxNavigator provides navigator, LocalDialogs provides dialogs, LocalPopups provides popups) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
-            navigator.mobile = maxWidth < 600.dp
+            val viewMode = viewModeOf(maxWidth)
+            navigator.mobile = viewMode == ViewMode.Mobile
             BackHandler(enabled = navigator.canPop) { navigator.maybePop() }
+            CompositionLocalProvider(LocalViewMode provides viewMode) {
             val entries = navigator.entries.toList()
             // What a popup's or an alert's glass bends: everything under them.
             val glassOn = LocalLiquidGlass.current.shaded
@@ -265,6 +288,31 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
             CompositionLocalProvider(LocalGlassBackdrop provides if (glassOn) appBackdrop else null) {
                 PopupLayer(popups)
                 DialogLayer(dialogs)
+            }
+            }
+        }
+    }
+}
+
+/**
+ * home.dart's _NavigationPage outside the mobile layout: a destination's own
+ * navigator, so pages pushed from it stay in the content pane beside the
+ * sidebar. Sheets, dialogs and popups stay with the root navigator.
+ */
+@Composable
+fun NestedNavigatorHost(navigator: BoxNavigator, active: Boolean, home: @Composable () -> Unit) {
+    val parentBusy = navigator.parent?.canPop == true
+    BackHandler(enabled = active && navigator.canPop && !parentBusy) { navigator.maybePop() }
+    CompositionLocalProvider(LocalBoxNavigator provides navigator) {
+        val entries = navigator.entries.toList()
+        Box(Modifier.fillMaxSize()) {
+            Box(Modifier.fillMaxSize().coveredBy(entries.firstOrNull())) { home() }
+            entries.forEachIndexed { index, level ->
+                key(level) {
+                    CompositionLocalProvider(LocalNavLevel provides level) {
+                        PageRoute(level, entries.getOrNull(index + 1))
+                    }
+                }
             }
         }
     }
