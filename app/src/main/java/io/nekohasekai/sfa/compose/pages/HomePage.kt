@@ -35,15 +35,10 @@ import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.ui.AnimatedGlyph
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
-import io.nekohasekai.sfa.compose.ui.BoxPage
-import io.nekohasekai.sfa.compose.ui.CommonScaffold
 import io.nekohasekai.sfa.compose.ui.DockDestination
-import io.nekohasekai.sfa.compose.ui.EmptyState
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.LocalBottomInset
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.NavigationDock
-import io.nekohasekai.sfa.compose.ui.bottomInset
 import io.nekohasekai.sfa.compose.ui.BoxNavigator
 import io.nekohasekai.sfa.compose.ui.LocalViewMode
 import io.nekohasekai.sfa.compose.ui.NestedNavigatorHost
@@ -51,7 +46,6 @@ import io.nekohasekai.sfa.compose.ui.SidebarDestination
 import io.nekohasekai.sfa.compose.ui.SidebarLayout
 import io.nekohasekai.sfa.compose.ui.ViewMode
 import io.nekohasekai.sfa.compose.ui.canExpandSidebar
-import io.nekohasekai.sfa.compose.ui.contentTopPadding
 import io.nekohasekai.sfa.compose.ui.tr
 import kotlinx.coroutines.launch
 

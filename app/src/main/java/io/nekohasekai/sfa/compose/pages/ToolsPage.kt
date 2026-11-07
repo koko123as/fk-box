@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -46,7 +45,6 @@ import io.nekohasekai.sfa.compose.theme.tabular
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
-import io.nekohasekai.sfa.compose.ui.EmptyState
 import io.nekohasekai.sfa.compose.ui.GlyphButton
 import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.IconAction

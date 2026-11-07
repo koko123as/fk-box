@@ -2,17 +2,13 @@ package io.nekohasekai.sfa.compose.ui
 
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.unit.LayoutDirection
 import kotlin.coroutines.cancellation.CancellationException
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.AnimationVector1D
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
@@ -36,7 +32,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -56,7 +51,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -69,7 +63,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
-import kotlin.math.min
 
 /*
  * The routes of flutter/lib/ui: pages pushed over the home page (showExtend,
@@ -89,10 +82,6 @@ class NavLevel internal constructor(
     val content: @Composable () -> Unit,
     val sheet: SheetType?,
     internal val onClosed: ((Any?) -> Unit)?,
-    internal val transition: PageTransition = PageTransition.Push,
-    /** A zoom's source tile, in root coordinates, and its corner radius in px. */
-    internal val origin: Rect? = null,
-    internal val originRadius: Float = 0f,
 ) {
     internal val children = mutableStateListOf<NavLevel>()
     internal val presentation = Animatable(0f)
@@ -132,9 +121,6 @@ class BoxNavigator internal constructor(
 
     private var ownMobile by mutableStateOf(true)
 
-    /** Where this navigator's host sits in the window, for a zoom's source tile. */
-    internal var hostOrigin = Offset.Zero
-
     /** True in the mobile layout, where a form is a bottom sheet. */
     var mobile: Boolean
         get() = parent?.mobile ?: ownMobile
@@ -151,10 +137,6 @@ class BoxNavigator internal constructor(
     fun push(page: @Composable () -> Unit) = pushPage(page, null)
 
     fun pushPage(page: @Composable () -> Unit, onClosed: ((Any?) -> Unit)?) = pushRoute(NavLevel(page, null, onClosed))
-
-    /** OpenContainer with transition: zoom: the page grows out of [source] and the page under it recedes. */
-    fun pushZoom(source: ZoomSource?, onClosed: ((Any?) -> Unit)? = null, page: @Composable () -> Unit) =
-        pushRoute(NavLevel(page, null, onClosed, PageTransition.Zoom, source?.bounds, source?.radius ?: 0f))
 
     private fun pushRoute(level: NavLevel) {
         // A sheet over the whole window keeps its pushes, as its nested navigator does.
@@ -271,12 +253,7 @@ private suspend fun Animatable<Float, AnimationVector1D>.settleTo(level: NavLeve
         animateTo(target, if (opens) tokens.fade<Float>() else tokens.fadeOut<Float>())
         return
     }
-    val (spec, speed) = when {
-        level.transition == PageTransition.Zoom && opens -> ZOOM_OPEN_SPRING to ZOOM_OPEN_SPEED
-        level.transition == PageTransition.Zoom -> ZOOM_CLOSE_SPRING to 0f
-        else -> PUSH_SPRING to PUSH_SPEED
-    }
-    animateTo(target, spec, (target - value) * speed)
+    animateTo(target, PUSH_SPRING, (target - value) * PUSH_SPEED)
 }
 
 val LocalBoxNavigator = staticCompositionLocalOf<BoxNavigator?> { null }
@@ -376,7 +353,7 @@ fun NavigatorHost(navigator: BoxNavigator, home: @Composable () -> Unit) {
     val dialogs = rememberDialogHost()
     val popups = remember { PopupHost() }
     CompositionLocalProvider(LocalBoxNavigator provides navigator, LocalDialogs provides dialogs, LocalPopups provides popups) {
-        BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { navigator.hostOrigin = it.positionInRoot() }) {
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val viewMode = viewModeOf(maxWidth)
             navigator.mobile = viewMode == ViewMode.Mobile
             NavigatorBackHandler(navigator, enabled = navigator.canPop)
@@ -424,7 +401,7 @@ fun NestedNavigatorHost(navigator: BoxNavigator, active: Boolean, home: @Composa
     CompositionLocalProvider(LocalBoxNavigator provides navigator) {
         val entries = navigator.entries.toList()
         val motion = rememberCardMotion(navigator)
-        Box(Modifier.fillMaxSize().clipToBounds().onGloballyPositioned { navigator.hostOrigin = it.positionInRoot() }) {
+        Box(Modifier.fillMaxSize().clipToBounds()) {
             Box(Modifier.fillMaxSize().covered(motion, entries.firstOrNull())) { home() }
             entries.forEachIndexed { index, level ->
                 key(level) {
@@ -469,12 +446,12 @@ private fun rememberCardMotion(navigator: BoxNavigator): CardMotion {
 private fun Modifier.covered(motion: CardMotion, above: NavLevel?): Modifier = if (above == null) {
     this
 } else {
-    cardTransition(null, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
+    cardTransition(null, above, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
 }
 
 private fun Modifier.route(motion: CardMotion, level: NavLevel, above: NavLevel?): Modifier = this
     .onSizeChanged { level.width = it.width.toFloat() }
-    .cardTransition(level, above, { motion.navigator.hostOrigin }, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
+    .cardTransition(level, above, motion.displayRadius, motion.surface, motion.shadow, motion.rtl, motion.minimal)
     .dragBack(motion.navigator, level, motion.scope, motion.rtl)
 
 @Composable

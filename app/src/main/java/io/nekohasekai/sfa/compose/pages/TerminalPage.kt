@@ -69,7 +69,6 @@ import io.nekohasekai.sfa.compose.ui.ListItemToggle
 import io.nekohasekai.sfa.compose.ui.ListStyles
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.LocalDialogs
-import io.nekohasekai.sfa.compose.ui.LocalNavLevel
 import io.nekohasekai.sfa.compose.ui.SearchState
 import io.nekohasekai.sfa.compose.ui.Section
 import io.nekohasekai.sfa.compose.ui.SelectionCheck

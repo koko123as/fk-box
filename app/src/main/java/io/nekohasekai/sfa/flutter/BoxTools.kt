@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.flutter
 
-import android.net.Uri
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox

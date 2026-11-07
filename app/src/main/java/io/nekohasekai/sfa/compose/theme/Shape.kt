@@ -20,8 +20,6 @@ import kotlin.math.tan
 
 /** flutter/lib/ui/shape.dart: the corner scale of the FlClash UI kit. */
 object AppCorner {
-    const val NONE = 0f
-    const val XS = 4f
     const val SM = 8f
     const val MD = 16f
     const val LG = 20f
@@ -69,7 +67,6 @@ object AppShape {
     private fun c(corner: Float): Dp = AppearanceTokens.active.corner(corner).dp
 
     val none = SuperellipseShape(0.dp)
-    val xs: Shape get() = SuperellipseShape(c(AppCorner.XS))
     val sm: Shape get() = SuperellipseShape(c(AppCorner.SM))
     val md: Shape get() = SuperellipseShape(c(AppCorner.MD))
     val lg: Shape get() = SuperellipseShape(c(AppCorner.LG))

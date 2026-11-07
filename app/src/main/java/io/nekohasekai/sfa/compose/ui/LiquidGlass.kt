@@ -103,18 +103,6 @@ data class LiquidGlassStyle(
     companion object {
         private fun darkTint(scheme: BoxScheme) = scheme.surfaceContainer.shiftTone(7.0)
 
-        fun regular(scheme: BoxScheme) = if (scheme.dark) {
-            LiquidGlassStyle(
-                tint = darkTint(scheme).copy(alpha = .62f), contrast = -.4f, saturation = 2.84f,
-                rim = .28f, rimWidth = 1.2f, rimTail = .17f, rimFocus = 1f, rimAdded = .38f, hairlineSide = .75f,
-            )
-        } else {
-            LiquidGlassStyle(
-                tint = Color(0x8AFDFDFD), contrast = .4f, saturation = 2.08f,
-                rim = .28f, rimWidth = 1.2f, rimTail = .17f, rimFocus = 1f, rimAdded = .38f, hairline = .25f, hairlineSide = .75f,
-            )
-        }
-
         fun pill(scheme: BoxScheme) = if (scheme.dark) {
             LiquidGlassStyle(
                 tint = darkTint(scheme).copy(alpha = .48f), contrast = -.4f, blur = 0f, haze = .72f, hazeBlur = 15.6f,
@@ -141,10 +129,6 @@ data class LiquidGlassStyle(
             endShade = .045f, dispersion = 6.5f, rimBlur = 1.5f, hairline = .42f,
         )
 
-        fun lensContent(scheme: BoxScheme) = LiquidGlassStyle(
-            tint = Color.Transparent, blur = 0f, refraction = 14f, bevel = 11.2f, saturation = 1f,
-            brightness = if (scheme.dark) 1.33f else 1f, rim = 0f, dispersion = 3.6f, rimBlur = 2.5f,
-        )
     }
 }
 

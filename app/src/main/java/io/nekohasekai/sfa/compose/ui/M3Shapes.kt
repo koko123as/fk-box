@@ -22,7 +22,6 @@ import androidx.graphics.shapes.CornerRounding
 import androidx.graphics.shapes.RoundedPolygon
 import androidx.graphics.shapes.TransformResult
 import androidx.graphics.shapes.circle
-import androidx.graphics.shapes.rectangle
 import androidx.graphics.shapes.star
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -56,105 +55,12 @@ internal object M3Shapes {
     val Flower: RoundedPolygon by lazy { flower().normalized() }
 
         private val cornerRound15 = CornerRounding(radius = .15f)
-        private val cornerRound20 = CornerRounding(radius = .2f)
-        private val cornerRound30 = CornerRounding(radius = .3f)
         private val cornerRound50 = CornerRounding(radius = .5f)
-        private val cornerRound100 = CornerRounding(radius = 1f)
 
-        private val rotateNeg45 = Matrix().apply { rotateZ(-45f) }
         private val rotateNeg90 = Matrix().apply { rotateZ(-90f) }
-        private val rotateNeg135 = Matrix().apply { rotateZ(-135f) }
 
         private fun circle(numVertices: Int = 10): RoundedPolygon {
             return RoundedPolygon.circle(numVertices = numVertices)
-        }
-
-        private fun square(): RoundedPolygon {
-            return RoundedPolygon.rectangle(width = 1f, height = 1f, rounding = cornerRound30)
-        }
-
-        private fun slanted(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.926f, 0.970f), CornerRounding(0.189f, 0.811f)),
-                    PointNRound(Offset(-0.021f, 0.967f), CornerRounding(0.187f, 0.057f)),
-                ),
-                2,
-            )
-        }
-
-        private fun arch(): RoundedPolygon {
-            return RoundedPolygon(
-                    numVertices = 4,
-                    perVertexRounding =
-                        listOf(cornerRound100, cornerRound100, cornerRound20, cornerRound20),
-                )
-                .transformed(rotateNeg135)
-        }
-
-        private fun fan(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(1.004f, 1.000f), CornerRounding(0.148f, 0.417f)),
-                    PointNRound(Offset(0.000f, 1.000f), CornerRounding(0.151f)),
-                    PointNRound(Offset(0.000f, -0.003f), CornerRounding(0.148f)),
-                    PointNRound(Offset(0.978f, 0.020f), CornerRounding(0.803f)),
-                ),
-                1,
-            )
-        }
-
-        private fun arrow(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, 0.892f), CornerRounding(0.313f)),
-                    PointNRound(Offset(-0.216f, 1.050f), CornerRounding(0.207f)),
-                    PointNRound(Offset(0.499f, -0.160f), CornerRounding(0.215f, 1.000f)),
-                    PointNRound(Offset(1.225f, 1.060f), CornerRounding(0.211f)),
-                ),
-                1,
-            )
-        }
-
-        private fun semiCircle(): RoundedPolygon {
-            return RoundedPolygon.rectangle(
-                width = 1.6f,
-                height = 1f,
-                perVertexRounding =
-                    listOf(cornerRound20, cornerRound20, cornerRound100, cornerRound100),
-            )
-        }
-
-        private fun oval(): RoundedPolygon {
-            val m = Matrix().apply { scale(1f, 0.64f) }
-            return RoundedPolygon.circle().transformed(m).transformed(rotateNeg45)
-        }
-
-        private fun pill(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.961f, 0.039f), CornerRounding(0.426f)),
-                    PointNRound(Offset(1.001f, 0.428f)),
-                    PointNRound(Offset(1.000f, 0.609f), CornerRounding(1.000f)),
-                ),
-                reps = 2,
-                mirroring = true,
-            )
-        }
-
-        private fun triangle(): RoundedPolygon {
-            return RoundedPolygon(numVertices = 3, rounding = cornerRound20)
-                .transformed(rotateNeg90)
-        }
-
-        private fun diamond(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, 1.096f), CornerRounding(0.151f, 0.524f)),
-                    PointNRound(Offset(0.040f, 0.500f), CornerRounding(0.159f)),
-                ),
-                2,
-            )
         }
 
         private fun clamShell(): RoundedPolygon {
@@ -260,19 +166,6 @@ internal object M3Shapes {
                 .transformed(rotateNeg90)
         }
 
-        private fun ghostish(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, 0f), CornerRounding(1.000f)),
-                    PointNRound(Offset(1f, 0f), CornerRounding(1.000f)),
-                    PointNRound(Offset(1f, 1.140f), CornerRounding(0.254f, 0.106f)),
-                    PointNRound(Offset(0.575f, 0.906f), CornerRounding(0.253f)),
-                ),
-                reps = 1,
-                mirroring = true,
-            )
-        }
-
         private fun clover4(): RoundedPolygon {
             return customPolygon(
                 listOf(
@@ -294,16 +187,6 @@ internal object M3Shapes {
             )
         }
 
-        private fun burst(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, -0.006f), CornerRounding(0.006f)),
-                    PointNRound(Offset(0.592f, 0.158f), CornerRounding(0.006f)),
-                ),
-                reps = 12,
-            )
-        }
-
         private fun softBurst(): RoundedPolygon {
             return customPolygon(
                 listOf(
@@ -311,29 +194,6 @@ internal object M3Shapes {
                     PointNRound(Offset(0.176f, 0.055f), CornerRounding(0.053f)),
                 ),
                 reps = 10,
-            )
-        }
-
-        private fun boom(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.457f, 0.296f), CornerRounding(0.007f)),
-                    PointNRound(Offset(0.500f, -0.051f), CornerRounding(0.007f)),
-                ),
-                reps = 15,
-            )
-        }
-
-        private fun softBoom(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.733f, 0.454f)),
-                    PointNRound(Offset(0.839f, 0.437f), CornerRounding(0.532f)),
-                    PointNRound(Offset(0.949f, 0.449f), CornerRounding(0.439f, 1.000f)),
-                    PointNRound(Offset(0.998f, 0.478f), CornerRounding(0.174f)),
-                ),
-                reps = 16,
-                mirroring = true,
             )
         }
 
@@ -384,72 +244,7 @@ internal object M3Shapes {
         }
 
         @Suppress("ListIterator", "PrimitiveInCollection")
-        private fun pixelCircle(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, 0.000f)),
-                    PointNRound(Offset(0.704f, 0.000f)),
-                    PointNRound(Offset(0.704f, 0.065f)),
-                    PointNRound(Offset(0.843f, 0.065f)),
-                    PointNRound(Offset(0.843f, 0.148f)),
-                    PointNRound(Offset(0.926f, 0.148f)),
-                    PointNRound(Offset(0.926f, 0.296f)),
-                    PointNRound(Offset(1.000f, 0.296f)),
-                ),
-                reps = 2,
-                mirroring = true,
-            )
-        }
-
         @Suppress("ListIterator", "PrimitiveInCollection")
-        private fun pixelTriangle(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.110f, 0.500f)),
-                    PointNRound(Offset(0.113f, 0.000f)),
-                    PointNRound(Offset(0.287f, 0.000f)),
-                    PointNRound(Offset(0.287f, 0.087f)),
-                    PointNRound(Offset(0.421f, 0.087f)),
-                    PointNRound(Offset(0.421f, 0.170f)),
-                    PointNRound(Offset(0.560f, 0.170f)),
-                    PointNRound(Offset(0.560f, 0.265f)),
-                    PointNRound(Offset(0.674f, 0.265f)),
-                    PointNRound(Offset(0.675f, 0.344f)),
-                    PointNRound(Offset(0.789f, 0.344f)),
-                    PointNRound(Offset(0.789f, 0.439f)),
-                    PointNRound(Offset(0.888f, 0.439f)),
-                ),
-                reps = 1,
-                mirroring = true,
-            )
-        }
-
-        private fun bun(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.796f, 0.500f)),
-                    PointNRound(Offset(0.853f, 0.518f), CornerRounding(1f)),
-                    PointNRound(Offset(0.992f, 0.631f), CornerRounding(1f)),
-                    PointNRound(Offset(0.968f, 1.000f), CornerRounding(1f)),
-                ),
-                reps = 2,
-                mirroring = true,
-            )
-        }
-
-        private fun heart(): RoundedPolygon {
-            return customPolygon(
-                listOf(
-                    PointNRound(Offset(0.500f, 0.268f), CornerRounding(0.016f)),
-                    PointNRound(Offset(0.792f, -0.066f), CornerRounding(0.958f)),
-                    PointNRound(Offset(1.064f, 0.276f), CornerRounding(1.000f)),
-                    PointNRound(Offset(0.501f, 0.946f), CornerRounding(0.129f)),
-                ),
-                reps = 1,
-                mirroring = true,
-            )
-        }
-
         private data class PointNRound(
             val o: Offset,
             val r: CornerRounding = CornerRounding.Unrounded,

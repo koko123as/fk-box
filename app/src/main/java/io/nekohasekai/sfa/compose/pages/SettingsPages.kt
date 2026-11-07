@@ -55,7 +55,6 @@ import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxPage
-import io.nekohasekai.sfa.compose.ui.CenteredLoading
 import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
 import io.nekohasekai.sfa.compose.ui.CommonDialog
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
@@ -70,7 +69,6 @@ import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItem
-import io.nekohasekai.sfa.compose.ui.ListItemCheckbox
 import io.nekohasekai.sfa.compose.ui.ListItemInput
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
 import io.nekohasekai.sfa.compose.ui.ListItemOptions
