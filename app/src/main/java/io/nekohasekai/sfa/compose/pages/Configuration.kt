@@ -15,7 +15,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
+import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -301,7 +301,7 @@ fun ProfileConfigurationPage(box: BoxController, profile: Json? = null, resource
 private fun StoreError(store: ProfileConfigStore) {
     val error = store.error ?: return
     Box(Modifier.padding(bottom = 12.dp)) {
-        SelectionContainer { Text(error, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
+        SelectionArea { Text(error, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
     }
 }
 
@@ -579,7 +579,7 @@ fun ConfigOrderPage(store: ProfileConfigStore, title: String, path: List<String>
             Column(Modifier.fillMaxSize()) {
                 if (error != null) {
                     Box(Modifier.padding(start = 16.dp, top = contentTopPadding(), end = 16.dp, bottom = 8.dp)) {
-                        SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
+                        SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
                     }
                 }
                 ReorderableColumn(
@@ -643,7 +643,7 @@ fun ConfigValueEditor(title: String, initial: Any?, onSave: suspend (Any?) -> Bo
         ) {
             if (error != null) {
                 Box(Modifier.padding(bottom = 12.dp)) {
-                    SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.error)) }
+                    SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.error)) }
                 }
             }
             // An outlined field 8–16 lines tall, labelled Configuration, in JetBrains Mono 13 at 1.6.

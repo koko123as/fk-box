@@ -21,7 +21,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
+import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -139,7 +139,7 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
                 add { position ->
                     ListItem(
                         title = { Text(tr("URL")) },
-                        subtitle = { SelectionContainer { Text(p["url"].toString()) } },
+                        subtitle = { SelectionArea { Text(p["url"].toString()) } },
                         trailing = {
                             GlyphButton(AppGlyphs.copy, tr("Copy"), {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -435,7 +435,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
                 }
                 if (error != null) {
                     Box(Modifier.fillMaxWidth().background(scheme.errorContainer).padding(12.dp)) {
-                        SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.onErrorContainer)) }
+                        SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.onErrorContainer)) }
                     }
                 }
                 if (profile["remote"] == true) {

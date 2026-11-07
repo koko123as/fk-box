@@ -536,13 +536,15 @@ fun ListFooter(text: String) {
 // ---------------------------------------------------------------------------
 
 @Composable
-fun EmptyState(title: String, message: String? = null, glyph: Glyph = AppGlyphs.info, action: (@Composable () -> Unit)? = null) {
+fun EmptyState(title: String, message: String? = null, glyph: Glyph = AppGlyphs.info, selectable: Boolean = false, action: (@Composable () -> Unit)? = null) {
     Column(Modifier.fillMaxWidth().padding(vertical = 64.dp, horizontal = 24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         GlyphIcon(glyph, size = 56.dp, color = BoxTheme.scheme.onSurfaceVariant)
         Spacer(Modifier.height(20.dp))
         Text(tr(title), style = AppTextStyle.Title3.of().copy(color = BoxTheme.scheme.onSurface), textAlign = TextAlign.Center)
         if (message != null) {
-            Text(tr(message), Modifier.padding(vertical = 12.dp), textAlign = TextAlign.Center, style = ListStyles.subtitle)
+            val text = @Composable { Text(tr(message), Modifier.padding(vertical = 12.dp), textAlign = TextAlign.Center, style = ListStyles.subtitle) }
+            // error.dart shows the error as SelectableText.
+            if (selectable) SelectionArea(text) else text()
         }
         if (action != null) Box(Modifier.padding(top = 16.dp)) { action() }
     }
@@ -567,9 +569,9 @@ fun TextPillButton(text: String, onClick: (() -> Unit)?, modifier: Modifier = Mo
 @Composable
 fun ErrorState(error: String, retry: (() -> Unit)? = null) {
     if (retry == null) {
-        EmptyState("Error", message = error)
+        EmptyState("Error", message = error, selectable = true)
     } else {
-        EmptyState("Error", message = error, action = { FilledPillButton(tr("Retry"), retry) })
+        EmptyState("Error", message = error, selectable = true, action = { FilledPillButton(tr("Retry"), retry) })
     }
 }
 

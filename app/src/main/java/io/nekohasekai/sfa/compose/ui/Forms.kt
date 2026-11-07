@@ -21,7 +21,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
@@ -234,7 +233,7 @@ fun DetailRows(values: List<Pair<String, Any?>>) {
         values.forEachIndexed { index, (key, value) ->
             ListItem(
                 title = { Text(tr(key)) },
-                subtitle = { SelectionContainer { Text(value?.toString() ?: "—") } },
+                subtitle = { SelectionArea { Text(value?.toString() ?: "—") } },
                 position = ItemPosition.of(index, values.size),
             )
         }

@@ -241,7 +241,8 @@ fun SubscriptionInfoSection(info: SubscriptionInfo, webPage: String?, openWebPag
             }
         }
     }
-    Section(title = tr("Subscription info"), rows = rows)
+    // subscription_info_view.dart wraps the detail in a SelectionArea.
+    io.nekohasekai.sfa.compose.ui.SelectionArea { Section(title = tr("Subscription info"), rows = rows) }
 }
 
 /** profiles.dart's dashboard _UsageMeter: percent used, used / total, and the wavy quota bar. */

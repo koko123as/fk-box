@@ -588,6 +588,53 @@
           "changes": "Flutter's ink_sparkle.frag (BSD-3-Clause) rewritten in AGSL."
         }
       ]
+    },
+    {
+      "name": "prism_ui-selection-banner",
+      "repository": "https://github.com/chen08209/prism_ui",
+      "commit": "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185",
+      "relatedCommits": [
+        "be84736"
+      ],
+      "scope": "Text selection menu and top banners used by FlClash v0.9.3 (be84736): behaviour and numbers translated to Kotlin + Jetpack Compose; no Dart or Flutter code is included.",
+      "files": [
+        {
+          "source": "lib/edit_menu.dart",
+          "sourceSHA256": "a7c450ea2166d019f24e2f2b6879fa26a8da1bcea336f5ec3b7f18d2c92bdd75",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/TextSelection.kt"
+          ],
+          "changes": "EditMenu capsule (44 dp, 4 dp inset, 16 dp cells, 18 dp separators, 15 dp line gap, above/below placement, 0.2 scale, 405 ms open spring / 150 ms close) and its 250 dp unfolded card, drawn as a root overlay; floating surface only (no liquid glass variant)."
+        },
+        {
+          "source": "lib/text_selection_menu.dart",
+          "sourceSHA256": "04aeee55b0c304ccb1af33fdb8af13583e7a934e1f312e623429e1fb6149a4e0",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/TextSelection.kt"
+          ],
+          "changes": "Mirrors Compose's text context menu session (LocalTextContextMenuToolbarProvider) instead of Flutter's toolbar builders; cut/copy/paste/select all mapped to prism labels and glyphs, other platform items kept with their own labels; the desktop popup variant is not used on Android."
+        },
+        {
+          "source": "lib/selectable_text.dart",
+          "sourceSHA256": "1dbbc58c2e37176925fdf0de6d1d12c9d7f2d54459355dfd8ed3b51fe6ba6cf3",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/TextSelection.kt"
+          ],
+          "changes": "SelectionArea wraps Compose SelectionContainer; the platform magnifier is kept."
+        },
+        {
+          "source": "lib/banner.dart",
+          "sourceSHA256": "c3aa285d14b0a6b87787c9df13889e22ef11323e559ed2507bd71098a26521ad",
+          "usage": "adapted",
+          "localPaths": [
+            "app/src/main/java/io/nekohasekai/sfa/compose/ui/MessageBanner.kt"
+          ],
+          "changes": "BannerHost queue (3/5/6 s by level, 3150 ms queued hold, 8 buffered, errors first, repeats merged), drop-in spring, 170 ms exit, stacked mode up to 3 on non-mobile widths, swipe-up dismiss with pull rubber band; keeps fk-box's glyph badge, 4 text lines and close button."
+        }
+      ]
     }
   ],
   "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation. Local paths under files/adaptedFiles name the former flutter/ tree (see Git history before the removal); their Compose translations live in app/src/main/java/io/nekohasekai/sfa/compose."

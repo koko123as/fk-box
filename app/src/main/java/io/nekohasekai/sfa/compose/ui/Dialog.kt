@@ -159,7 +159,7 @@ internal fun DialogLayer(host: DialogHost) {
                 CommonDialog(
                     title = request.title,
                     actions = request.actions.map { (label, value) -> DialogAction(label, { request.result.complete(value); Unit }) },
-                    content = request.message?.let { message -> { androidx.compose.foundation.text.selection.SelectionContainer { Text(message) } } },
+                    content = request.message?.let { message -> { SelectionArea { Text(message) } } },
                 )
             }
             is DialogRequest.Input -> FloatingDialog(onDismiss = { request.result.complete(null) }) { InputDialog(request) }

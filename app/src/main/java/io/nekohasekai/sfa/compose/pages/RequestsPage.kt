@@ -772,7 +772,7 @@ fun CaptureLogsPage(box: BoxController) {
                                 RecordLabel(level, if (level == "error") RecordTone.Error else if (level == "warn") RecordTone.Warning else RecordTone.Neutral)
                             }
                         },
-                        body = { androidx.compose.foundation.text.selection.SelectionContainer { Text(log["message"]?.toString() ?: "", style = styles.primary) } },
+                        body = { io.nekohasekai.sfa.compose.ui.SelectionArea { Text(log["message"]?.toString() ?: "", style = styles.primary) } },
                     )
                 }
             }

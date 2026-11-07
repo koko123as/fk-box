@@ -18,7 +18,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
+import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -184,7 +184,7 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
                             color = if (progress["state"] == "ERROR") scheme.error else scheme.primary,
                         )
                     }
-                    activeSession["banner"]?.let { banner -> SelectionContainer { Text(banner.toString(), Modifier.padding(12.dp)) } }
+                    activeSession["banner"]?.let { banner -> SelectionArea { Text(banner.toString(), Modifier.padding(12.dp)) } }
                     Box(Modifier.weight(1f)) {
                         if (active) GhosttySurface(box, activeSession["id"] as String, settingsRevision)
                     }

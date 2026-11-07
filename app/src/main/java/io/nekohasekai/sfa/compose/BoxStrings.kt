@@ -302,6 +302,7 @@ internal object BoxStrings {
         map["Update all"] = "全部更新"
         map["Share"] = "分享"
         map["Copy"] = "复制"
+        map["Cut"] = "剪切"
         map["Copied"] = "已复制"
         map["Copy link"] = "复制链接"
         map["Export"] = "导出"

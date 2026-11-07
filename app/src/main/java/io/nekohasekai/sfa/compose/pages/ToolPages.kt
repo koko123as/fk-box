@@ -11,7 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.text.selection.SelectionContainer
+import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -311,7 +311,7 @@ private fun ReportText(box: BoxController, args: Map<String, Any?>, title: Strin
     BoxPage(title) {
         when {
             error != null -> ErrorState(describe(error!!))
-            content != null -> SelectionContainer { Text(content!!, style = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = BoxTheme.scheme.onSurface)) }
+            content != null -> SelectionArea { Text(content!!, style = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = BoxTheme.scheme.onSurface)) }
             else -> CenteredLoading()
         }
     }
@@ -731,7 +731,7 @@ fun TransfersPage(box: BoxController) {
                     }
                 }
                 if (transfer["error"] != null) {
-                    add { p -> ListItem(title = { Text(tr("Error")) }, subtitle = { SelectionContainer { Text(transfer["error"].toString()) } }, position = p) }
+                    add { p -> ListItem(title = { Text(tr("Error")) }, subtitle = { SelectionArea { Text(transfer["error"].toString()) } }, position = p) }
                 }
                 add { p ->
                     val finished = transfer["finished"] == true
@@ -830,7 +830,7 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
     val browser = json(challenge["browser"])
     BoxPage("Authentication", loading = busy) {
         for (key in listOf("banner", "message", "error", "previousError")) {
-            if ((challenge[key] ?: "") != "") SelectionContainer { Text(challenge[key].toString(), Modifier.padding(16.dp)) }
+            if ((challenge[key] ?: "") != "") SelectionArea { Text(challenge[key].toString(), Modifier.padding(16.dp)) }
         }
         if (kind == "openconnect") {
             if (browser.isNotEmpty()) {
@@ -858,7 +858,7 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
         } else if (challenge["kind"] == "open-url") {
             ListItem(
                 title = { Text(tr("Open sign-in page")) },
-                subtitle = { SelectionContainer { Text((challenge["url"] ?: "").toString()) } },
+                subtitle = { SelectionArea { Text((challenge["url"] ?: "").toString()) } },
                 onClick = { box.launchAct("url.open", mapOf("url" to challenge["url"])) },
             )
         } else {

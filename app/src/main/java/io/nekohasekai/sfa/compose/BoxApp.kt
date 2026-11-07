@@ -9,17 +9,11 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -40,13 +34,14 @@ import io.nekohasekai.sfa.compose.theme.Theme
 import io.nekohasekai.sfa.compose.theme.appFontFamily
 import io.nekohasekai.sfa.compose.theme.seededColorScheme
 import io.nekohasekai.sfa.compose.ui.ErrorState
-import io.nekohasekai.sfa.compose.ui.NavigationDock
 import io.nekohasekai.sfa.compose.ui.NavigatorHost
 import io.nekohasekai.sfa.compose.ui.rememberBoxNavigator
-import io.nekohasekai.sfa.compose.ui.MessageBanner
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.mutableStateOf
+import io.nekohasekai.sfa.compose.ui.BannerHost
+import io.nekohasekai.sfa.compose.ui.BannerLevel
+import io.nekohasekai.sfa.compose.ui.EditMenuHost
+import io.nekohasekai.sfa.compose.ui.ViewMode
+import io.nekohasekai.sfa.compose.ui.rememberBannerHostState
+import io.nekohasekai.sfa.compose.ui.viewModeOf
 
 /** theme_settings.dart's appTextScale: the custom or system scale, kept within 0.8–1.4. */
 fun appTextScale(prefs: Json, systemScale: Float): Float {
@@ -75,27 +70,29 @@ fun BoxApp(box: BoxController) {
     )
     androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalLiquidGlass provides glass) {
     Theme(scheme = scheme, fontFamily = appFontFamily(prefs["fontFamily"]), textScale = appTextScale(prefs, systemScale)) {
-        val snackbar = remember { SnackbarHostState() }
-        var lastMessage by remember { mutableStateOf(BoxMessage("")) }
+        val banners = rememberBannerHostState()
         val chinese = LocalConfiguration.current.locales.let { !it.isEmpty && it[0].language == "zh" }
         LaunchedEffect(box) {
             box.messages.collect { message ->
-                lastMessage = message
-                snackbar.showSnackbar(if (chinese) BoxStrings.zh[message.text] ?: message.text else message.text)
+                banners.show(
+                    if (chinese) BoxStrings.zh[message.text] ?: message.text else message.text,
+                    if (message.error) BannerLevel.Error else BannerLevel.Info,
+                )
             }
         }
         val navigator = rememberBoxNavigator()
-        Box(Modifier.fillMaxSize().background(SurfaceLevel.Page.colorOf(scheme))) {
-            when {
-                box.ready -> androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalBoxController provides box) { NavigatorHost(navigator) { HomePage(box) } }
-                box.startupError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    ErrorState(box.startupError!!) { box.retryInitialize() }
+        // prism_ui app.dart: banners stack when not mobile; the edit menu covers every text widget.
+        val stacked = viewModeOf(LocalConfiguration.current.screenWidthDp.dp) != ViewMode.Mobile
+        EditMenuHost {
+            Box(Modifier.fillMaxSize().background(SurfaceLevel.Page.colorOf(scheme))) {
+                when {
+                    box.ready -> androidx.compose.runtime.CompositionLocalProvider(io.nekohasekai.sfa.compose.ui.LocalBoxController provides box) { NavigatorHost(navigator) { HomePage(box) } }
+                    box.startupError != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        ErrorState(box.startupError!!) { box.retryInitialize() }
+                    }
+                    else -> SplashScreen()
                 }
-                else -> SplashScreen()
-            }
-            val bottom = if (navigator.pages.isEmpty()) NavigationDock.inset() else WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            SnackbarHost(snackbar, Modifier.align(Alignment.BottomCenter).padding(bottom = bottom)) { data ->
-                MessageBanner(data.visuals.message, lastMessage.error) { data.dismiss() }
+                BannerHost(banners, stacked = stacked)
             }
         }
     }

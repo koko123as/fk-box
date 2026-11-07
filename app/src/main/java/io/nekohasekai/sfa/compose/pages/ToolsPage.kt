@@ -16,7 +16,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.text.selection.SelectionContainer
+import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -405,7 +405,7 @@ fun LogsPage(box: BoxController) {
                                 RecordLabel(itemLevel, tone)
                             }
                         },
-                        body = { SelectionContainer { Text(log["message"].toString(), style = styles.primary) } },
+                        body = { SelectionArea { Text(log["message"].toString(), style = styles.primary) } },
                     )
                 }
             }

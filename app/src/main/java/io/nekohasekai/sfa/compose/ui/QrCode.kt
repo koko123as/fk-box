@@ -5,7 +5,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -43,7 +42,7 @@ private fun encode(data: String): ByteMatrix? = try {
 fun QrCodeView(data: String, size: Dp = 240.dp) {
     val matrix = remember(data) { encode(data) }
     if (matrix == null) {
-        SelectionContainer { Text(data, textAlign = TextAlign.Center) }
+        SelectionArea { Text(data, textAlign = TextAlign.Center) }
         return
     }
     Canvas(
