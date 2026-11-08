@@ -9,6 +9,7 @@ package com.follow.clash
 
 import com.follow.clash.models.SharedState
 import com.follow.clash.plugins.ServicePlugin
+import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bridge.BoxActivity
 import io.nekohasekai.sfa.constant.Status
@@ -79,7 +80,10 @@ object FkHost {
         withTimeoutOrNull(SETTLE_TIMEOUT_MS) {
             statusFlow.first { it == Status.Started || it == Status.Stopped }
         }
-        return startedAtMillis.takeIf { isRunRequested && statusFlow.value == Status.Started } ?: 0L
+        if (!isRunRequested || statusFlow.value != Status.Started) return 0L
+        val libboxStart = runCatching { Libbox.newStandaloneCommandClient().startedAt }.getOrDefault(0L)
+        if (libboxStart > 0L) startedAtMillis = libboxStart
+        return startedAtMillis
     }
 
     fun onServiceStatusChanged(status: Status) {

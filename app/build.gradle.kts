@@ -346,6 +346,8 @@ dependencies {
 
     // FlClash host plugins (com.follow.clash.*), ported with FlClash's Gson models.
     implementation("com.google.code.gson:gson:2.13.2")
+    // YAML nodes for FlClash's profile methods (com.follow.clash.core.FkYaml).
+    implementation("org.snakeyaml:snakeyaml-engine:2.10")
     // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on
     // sideloaded installs, which get no Play cloud profiles.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

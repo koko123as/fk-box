@@ -90,8 +90,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private val webdav = BoxWebDAV(activity)
     private val backups = BoxBackups(activity, ::settings, ::patchSettings,
         { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit, webdav)
+    /** The latest status message (traffic, memory, connections) for FlClash's Core methods. */
+    @Volatile internal var lastStatus: StatusMessage? = null
+        private set
+    internal val groupsState get() = groups.uiState
+    internal val connectionsState get() = connections.uiState
+    internal val dashboardState get() = dashboard.uiState
+
     private val rates = object : CommandClient.Handler {
         override fun updateStatus(status: StatusMessage) {
+            lastStatus = status
             if (::dashboardDetails.isInitialized) dashboardDetails.remoteMemory = status.memory
             // Traffic totals change every second, so they ride with the rates
             // instead of the dashboard state that most pages read.
