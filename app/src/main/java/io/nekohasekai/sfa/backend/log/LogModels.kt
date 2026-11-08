@@ -27,7 +27,8 @@ internal class LogBuffer(private val limit: Int = 3000, private val now: () -> L
     fun append(entries: List<LogEntryData>) {
         for (entry in entries.takeLast(limit)) {
             if (records.size == limit) records.removeFirst()
-            records.addLast(ProcessedLogEntry(++nextId, entry.copy(message = entry.message.replace(ansi, "")), now()))
+            val clean = if (entry.message.indexOf('\u001B') >= 0) entry.copy(message = entry.message.replace(ansi, "")) else entry
+            records.addLast(ProcessedLogEntry(++nextId, clean, now()))
         }
     }
 

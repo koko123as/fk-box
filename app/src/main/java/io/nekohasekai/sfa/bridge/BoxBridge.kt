@@ -122,6 +122,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 if (it == Status.Stopped) emit("rates", mapOf("upload" to 0L, "download" to 0L))
             }
         }
+        // The Log client follows the Logs page instead of running on every page.
+        scope.launch { logsVisible.collect { logs.setVisible(it) } }
         scope.launch {
             GlobalEventBus.events.collect { event ->
                 when (event) {
@@ -759,6 +761,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
             if (connectionsVisible) connections.setVisible(false)
+            logs.setVisible(false)
             toolBridge.close()
             dashboardDetails.close()
         }
