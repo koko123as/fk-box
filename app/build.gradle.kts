@@ -10,6 +10,21 @@ import java.time.Instant
 import java.util.Base64
 import java.util.Properties
 
+// The Flutter Gradle plugin (flutter/, included from the Flutter SDK) depends
+// on kotlin-gradle-plugin 2.0.0, which would put that version's compiler jar on
+// this script's classpath next to the project's Kotlin. The project's version
+// (root build.gradle.kts) is the one that loads, so the classpath takes it too.
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    dependencies {
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:2.4.10")
+    }
+}
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
