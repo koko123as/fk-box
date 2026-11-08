@@ -29,6 +29,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/emptypb"
 )
 
@@ -157,9 +158,15 @@ func (s *coreStartedService) SubscribeStatus(request *daemon.SubscribeStatusRequ
 			if running.core == CoreMihomo || running.xrayTrack != nil {
 				current.TrafficAvailable = true
 				if running.core == CoreMihomo {
-					snapshot := mihomoStatistic.DefaultManager.Snapshot()
-					current.UplinkTotal, current.DownlinkTotal = snapshot.UploadTotal, snapshot.DownloadTotal
-					current.ConnectionsIn = int32(len(snapshot.Connections))
+					// Totals and a count only: Snapshot() would build an
+					// info record for every connection each tick.
+					current.UplinkTotal, current.DownlinkTotal = mihomoStatistic.DefaultManager.Total()
+					var count int32
+					mihomoStatistic.DefaultManager.Range(func(mihomoStatistic.Tracker) bool {
+						count++
+						return true
+					})
+					current.ConnectionsIn = count
 				} else {
 					up, down, count := running.xrayTrack.totals()
 					current.UplinkTotal, current.DownlinkTotal = up, down
@@ -193,10 +200,16 @@ func (s *coreStartedService) SubscribeGroups(empty *emptypb.Empty, server grpc.S
 		// Xray observatory), so the list is also refreshed periodically.
 		ticker := time.NewTicker(5 * time.Second)
 		defer ticker.Stop()
+		var last *daemon.Groups
 		for {
 			_, groups := currentCoreChange()
-			if err := send(readCoreGroups(running)); err != nil {
-				return err
+			// Send only when something changed; the periodic refresh mostly
+			// finds the same list.
+			if current := readCoreGroups(running); last == nil || !proto.Equal(current, last) {
+				if err := send(current); err != nil {
+					return err
+				}
+				last = current
 			}
 			select {
 			case <-ctx.Done():
