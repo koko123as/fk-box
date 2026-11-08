@@ -21,7 +21,7 @@
     "lib/bootstrap.dart": "FK-box: no first-launch disclaimer on Android (_isDisclaimerAcceptedByEnvironment is true there, so the consent page never shows and the accepted version is stored as FlClash does), and startFkBox (lib/fkbox/fkbox.dart) runs after init for the legacy profile move and split imports. Two additive lines and one import.",
     "lib/common/constant.dart": "FK-box: repository points to koko123as/fk-box, so About's project link, the update check and the self-update download use FK-box's Releases.",
     "lib/common/app_update.dart": "FK-box: release asset names are FK-box-<version>-arm64-v8a.apk (tools/publish_release.py also uploads the SHA256SUMS this flow verifies).",
-    "lib/views/tools.dart": "FK-box: the disclaimer entry is removed from Tools › Other (with its import and _DisclaimerItem).",
+    "lib/views/tools.dart": "FK-box: the disclaimer entry is removed from Tools › Other (with its import and _DisclaimerItem), and one additive line (Android only) puts FK-box's own entry (FkToolsItem, lib/fkbox/tools/tools.dart) first in that section; no FlClash item changes.",
     "lib/views/profiles/profiles.dart": "FK-box: the profile card shows the core that runs the profile (FkCoreBadge, a TonalChip like _GroupsCountChip) and its menu gains a Core entry (fkProfileCoreMenuItem) to pick automatic/sing-box/Xray for a JSON profile. Two additive lines and one import; nothing of FlClash's card changes."
   },
   "fkboxFiles": {
@@ -30,7 +30,15 @@
     "android/app/src/main/AndroidManifest.xml": "Marks flutter/ as an Android v2-embedding app for the Flutter tool, so pub get writes the plugin list and GeneratedPluginRegistrant that app/ builds; FlClash's own android/ host is ported to app/ instead.",
     "lib/fkbox/fkbox.dart": "FK-box channel client (io.fkbox/bridge, io.fkbox/events → FkBoxPlugin.kt), startup hook: split JSON array imports into one profile per configuration named by remarks, first-launch move of FK-box's Room profiles into FlClash's list.",
     "lib/fkbox/core.dart": "Per-profile core: badge on the profile card and the Core menu entry (sing-box/Xray/automatic), applied through FlClash's own setup action.",
-    "lib/fkbox/strings.dart": "English/Simplified Chinese strings of the FK-box additions, so FlClash's arb files and generated l10n stay unchanged."
+    "lib/fkbox/strings.dart": "English/Simplified Chinese strings of the FK-box additions, so FlClash's arb files and generated l10n stay unchanged.",
+    "lib/fkbox/tools/tools.dart": "The single FK-box entry on Tools › Other (FkToolsItem, a FlClash ListItem) and the page it opens: Tailscale, SSH, HTTP capture/MITM, USB/IP, network diagnostics, diagnostic reports and FK-box service settings.",
+    "lib/fkbox/tools/common.dart": "Shared pieces of the FK-box tool pages built from FlClash's Scaffold, generateSection and prism_ui rows (page body, error banners, byte/date text, text viewer, input dialog).",
+    "lib/fkbox/tools/tailscale.dart": "Tailscale endpoints of the running sing-box profile: status, login, exit node, peers, ping, logout (BoxTools via FkBoxPlugin).",
+    "lib/fkbox/tools/ssh.dart": "Tailscale SSH sessions; the terminal is the native libghostty view registered as io.fkbox/terminal.",
+    "lib/fkbox/tools/capture.dart": "HTTP(S) request capture and the MITM CA (generate, export, install), capture settings, export (BoxCapture via FkBoxPlugin).",
+    "lib/fkbox/tools/usbip.dart": "USB/IP: attach/detach this device's USB devices to a USB/IP server endpoint (BoxTools/BoxUsb).",
+    "lib/fkbox/tools/diagnostics.dart": "Network diagnostics through the running profile: STUN NAT type and the network quality test (BoxTools).",
+    "lib/fkbox/tools/reports.dart": "Crash, OOM and battery reports (BoxReports): list, read, save a profile file, export with config and logs, delete, clear."
   },
   "androidHost": {
     "ported": {

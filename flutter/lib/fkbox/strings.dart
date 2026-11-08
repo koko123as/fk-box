@@ -19,14 +19,10 @@ class FkStrings {
 
   String get core => _t('Core', '内核');
   String get coreAuto => _t('Automatic', '自动');
-  String coreNotAllowed(String core) => _t(
-    "This profile's content can't run on $core",
-    '该配置的内容不能由 $core 运行',
-  );
-  String splitImported(int count) => _t(
-    'Imported $count profiles from one file',
-    '已从一个文件导入 $count 个配置',
-  );
+  String coreNotAllowed(String core) =>
+      _t("This profile's content can't run on $core", '该配置的内容不能由 $core 运行');
+  String splitImported(int count) =>
+      _t('Imported $count profiles from one file', '已从一个文件导入 $count 个配置');
   String legacyMigrated(int count) => _t(
     'Moved $count FK-box profiles into the profile list',
     '已将 $count 个 FK-box 旧配置迁移到配置列表',
@@ -40,12 +36,9 @@ class FkStrings {
   String get usbip => 'USB/IP';
   String get diagnostics => _t('Network diagnostics', '网络诊断');
   String get reports => _t('Diagnostic reports', '诊断报告');
-  String get serviceNotRunning =>
-      _t('Start the service first', '请先启动服务');
-  String get noEndpoints => _t(
-    'The running profile has no endpoint of this kind',
-    '当前运行的配置没有此类端点',
-  );
+  String get serviceNotRunning => _t('Start the service first', '请先启动服务');
+  String get noEndpoints =>
+      _t('The running profile has no endpoint of this kind', '当前运行的配置没有此类端点');
   String get refresh => _t('Refresh', '刷新');
   String get start => _t('Start', '开始');
   String get stop => _t('Stop', '停止');
@@ -87,10 +80,8 @@ class FkStrings {
   String get oom => 'OOM';
   String get battery => _t('Battery', '电量');
   String get empty => _t('Nothing here', '暂无内容');
-  String get perAppManaged => _t(
-    'FK-box managed per-app list (China apps)',
-    'FK-box 托管分应用列表（国内应用）',
-  );
+  String get perAppManaged =>
+      _t('FK-box managed per-app list (China apps)', 'FK-box 托管分应用列表（国内应用）');
   String get bootAutostart => _t('Start on boot', '开机自启');
   String get coreSwitches => _t('Cores', '内核');
   String get done => _t('Done', '完成');

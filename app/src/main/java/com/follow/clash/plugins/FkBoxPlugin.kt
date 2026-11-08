@@ -155,6 +155,7 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
             "reports.delete" -> bridge().call { reports.delete(string("kind") ?: error("Missing kind"), string("id")) }
             "reports.files" -> bridge().call { reports.files(string("kind") ?: error("Missing kind"), string("id")) }
             "reports.read" -> bridge().call { reports.read(string("kind") ?: error("Missing kind"), string("id"), string("name")) }
+            "reports.save" -> bridge().call { reports.save(string("kind") ?: error("Missing kind"), string("id"), string("name")) }
             "reports.export" -> bridge().call {
                 reports.export(string("kind") ?: error("Missing kind"), string("id"), bool("config"), bool("logs"), bool("encrypt"))
             }

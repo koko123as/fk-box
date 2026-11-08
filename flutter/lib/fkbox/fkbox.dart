@@ -168,7 +168,8 @@ Future<void> _renameFirst(
       }
       if (text != content) continue;
       final current = profile.label;
-      if (current.isNotEmpty && current != profile.defaultLabel &&
+      if (current.isNotEmpty &&
+          current != profile.defaultLabel &&
           !_looksLikeFileName(current)) {
         return;
       }
@@ -214,8 +215,7 @@ Future<void> _migrateLegacyProfiles(ProviderContainer container) async {
     if (content.isEmpty) continue;
     final existing = container.read(profilesProvider);
     if (existing.any(
-      (profile) =>
-          profile.label == name && (url.isEmpty || profile.url == url),
+      (profile) => profile.label == name && (url.isEmpty || profile.url == url),
     )) {
       continue;
     }

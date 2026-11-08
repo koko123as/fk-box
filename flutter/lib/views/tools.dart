@@ -1,5 +1,6 @@
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/fkbox/tools/tools.dart'; // FK-box
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -38,6 +39,7 @@ class _ToolViewState extends ConsumerState<ToolsView> {
     return generateSection(
       title: context.appLocalizations.other,
       items: [
+        if (system.isAndroid) const FkToolsItem(), // FK-box
         if (enableDeveloperMode) const _DeveloperItem(),
         const _InfoItem(),
       ],
