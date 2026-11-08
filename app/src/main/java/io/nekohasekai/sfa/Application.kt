@@ -87,6 +87,26 @@ class Application : Application() {
         )
     }
 
+    /**
+     * UI, VPN service and the Go cores share this process. When the UI goes
+     * to the background or the system runs low, hand Go's idle heap back to
+     * the kernel (what Dashboard → Memory → Release memory does). HWUI frees
+     * the window's render targets, including the Liquid Glass layers, itself
+     * when the UI is hidden.
+     */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (!setupCompleted || level < TRIM_MEMORY_RUNNING_LOW) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastTrim < 10_000L) return
+        lastTrim = now
+        @Suppress("OPT_IN_USAGE")
+        GlobalScope.launch(Dispatchers.IO) { runCatching { Libbox.collectUIRuntimeMemory() } }
+    }
+
+    @Volatile private var lastTrim = 0L
+
     private fun installWorkingDir(): File? {
         workingDir?.let { return it }
         val dir = getExternalFilesDir(null) ?: return null

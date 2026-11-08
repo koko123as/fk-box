@@ -28,7 +28,7 @@ fun Any?.asLong(): Long? = (this as? Number)?.toLong()
 
 fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
 
-enum class BoxData { Memory, Logs, Connections }
+enum class BoxData { Memory, Lan, Logs, Connections }
 
 /**
  * Compose port of flutter/lib/box.dart's BoxController: the same state fields,
@@ -102,6 +102,7 @@ class BoxController(private val bridge: BoxBridge) {
         launchAct(
             when (data) {
                 BoxData.Memory -> "dashboard.memory.visible"
+                BoxData.Lan -> "dashboard.lan.visible"
                 BoxData.Logs -> "logs.visible"
                 BoxData.Connections -> "connections.visible"
             },

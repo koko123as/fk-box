@@ -15,10 +15,7 @@ import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -65,17 +62,18 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         val snapshot = withContext(Dispatchers.IO) { memory() }
         emit("memory", snapshot)
     }
-    private val polling = activity.lifecycleScope.launch {
-        AppLifecycleObserver.isForeground.collectLatest { foreground ->
-            if (!foreground) return@collectLatest
-            while (isActive) {
-                refreshNetwork()
-                delay(2000)
-            }
-        }
+    // The LAN/intranet snapshot is only shown by the Intranet IP card and its
+    // page; poll it while one of them is on screen, as the memory card is.
+    private val lanVisible = MutableStateFlow(false)
+    private val polling = activity.lifecycleScope.pollWhileVisible(
+        lanVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn,
+    ) {
+        refreshNetwork()
     }
 
     fun setMemoryVisible(visible: Boolean) { memoryVisible.value = visible }
+
+    fun setLanVisible(visible: Boolean) { lanVisible.value = visible }
 
     private fun memory(): Map<String, Any?> {
         if (CommandTarget.isRemote) return mapOf("remote" to true, "total" to remoteMemory, "core" to remoteMemory)
@@ -83,10 +81,15 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
             ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024) ?: 0L }
         val running = activity.serviceStatus.value == Status.Started
         val core = if (running) Libbox.readUIRuntimeMemory() else null
-        val accounted = core?.total ?: 0L
+        // What the kernel keeps resident for Go's own mappings can exceed Go's
+        // accounting (huge pages refilling released memory); count that as
+        // core rather than letting it inflate the app share. The excess is
+        // runtime memory outside the heap and stack rows.
+        val accounted = core?.let { maxOf(it.total, it.resident) } ?: 0L
+        val excess = core?.let { maxOf(0L, it.resident - it.total) } ?: 0L
         return mapOf("total" to maxOf(rss, accounted), "rss" to rss, "app" to maxOf(0L, rss - accounted), "core" to accounted,
             "remote" to false, "running" to running, "heapInuse" to core?.heapInuse, "heapIdle" to core?.heapIdle,
-            "stack" to core?.stackInuse, "runtimeOther" to core?.runtimeOther, "goroutines" to core?.goroutines)
+            "stack" to core?.stackInuse, "runtimeOther" to core?.let { it.runtimeOther + excess }, "goroutines" to core?.goroutines)
     }
 
     @Suppress("DEPRECATION")

@@ -726,6 +726,7 @@ private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.
 
 @Composable
 internal fun IntranetPanel(box: BoxController) {
+    if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Lan)
     val scheme = BoxTheme.scheme
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
@@ -821,6 +822,7 @@ private fun protocol(binding: Json, tr: (String) -> String): String = when (bind
 
 @Composable
 private fun IntranetDetails(box: BoxController) {
+    BoxDataSubscription(box, BoxData.Lan)
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
     val active = !box.remote && box.running && box.lan["running"] == true

@@ -179,7 +179,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         streamJob?.cancel()
         logsVisible.value = false
-        if (::dashboardDetails.isInitialized) dashboardDetails.setMemoryVisible(false)
+        if (::dashboardDetails.isInitialized) {
+            dashboardDetails.setMemoryVisible(false)
+            dashboardDetails.setLanVisible(false)
+        }
         if (::connections.isInitialized && connectionsVisible) {
             connectionsVisible = false
             connections.setVisible(false)
@@ -212,6 +215,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             }
             "dashboard.releaseMemory" -> dashboardDetails.releaseMemory()
             "dashboard.memory.visible" -> { dashboardDetails.setMemoryVisible(args["visible"] == true); null }
+            "dashboard.lan.visible" -> { dashboardDetails.setLanVisible(args["visible"] == true); null }
             "dashboard.lan.refresh" -> dashboardDetails.refreshNetwork(force = true)
             "dashboard.lan.set" -> localProfiles {
                 val enabled = args["enabled"] as? Boolean ?: error("Missing LAN proxy state")
