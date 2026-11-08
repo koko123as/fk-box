@@ -1,6 +1,7 @@
 // FK-box: the one FK-box entry on FlClash's Tools page and the page it opens:
-// Tailscale, SSH terminal, HTTP capture/MITM, USB/IP, network diagnostics,
-// diagnostic reports, and FK-box's own service settings.
+// Tailscale (with Taildrop), OpenVPN, OpenConnect, SSH terminal, HTTP
+// capture/MITM, USB/IP, network diagnostics, diagnostic reports, remote
+// control, and FK-box's own service settings.
 //
 // Copyright (C) FK-box contributors. GPL-3.0, as FlClash.
 
@@ -14,6 +15,8 @@ import '../fkbox.dart';
 import 'capture.dart';
 import 'common.dart';
 import 'diagnostics.dart';
+import 'endpoints.dart';
+import 'remote.dart';
 import 'reports.dart';
 import 'ssh.dart';
 import 'tailscale.dart';
@@ -95,6 +98,16 @@ class _FkToolsViewState extends State<FkToolsView> with FkEvents<FkToolsView> {
         generateSection(
           items: [
             _open(AppGlyphs.vpn, fkStrings.tailscale, const FkTailscaleView()),
+            _open(
+              AppGlyphs.lock,
+              fkStrings.openvpn,
+              const FkEndpointsView(kind: 'openvpn'),
+            ),
+            _open(
+              AppGlyphs.lock,
+              fkStrings.openconnect,
+              const FkEndpointsView(kind: 'openconnect'),
+            ),
             _open(AppGlyphs.code, fkStrings.ssh, const FkSshView()),
             _open(AppGlyphs.requests, fkStrings.capture, const FkCaptureView()),
             _open(AppGlyphs.devices, fkStrings.usbip, const FkUsbView()),
@@ -104,6 +117,7 @@ class _FkToolsViewState extends State<FkToolsView> with FkEvents<FkToolsView> {
               const FkDiagnosticsView(),
             ),
             _open(AppGlyphs.warning, fkStrings.reports, const FkReportsView()),
+            _open(AppGlyphs.link, fkStrings.remote, const FkRemoteView()),
           ],
         ),
         generateSection(

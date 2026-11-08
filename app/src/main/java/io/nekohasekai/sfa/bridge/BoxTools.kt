@@ -96,19 +96,25 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         jobs += scope.launch { quality.uiState.collect { emit("quality", it.toWire()) } }
         jobs += scope.launch { ping.uiState.collect { emit("ping", it.toWire()) } }
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
-        jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
-            emit("transfers", sessions.map { session ->
-                mapOf("id" to session.id, "endpointTag" to session.endpointTag, "peerName" to session.peerName,
-                    "finished" to session.finished, "error" to session.errorMessage,
-                    "files" to session.files.map { mapOf("name" to it.name, "size" to it.size, "sentBytes" to it.sentBytes, "completed" to it.completed) })
-            })
-        } }
+        jobs += scope.launch { TaildropSendManager.sessions.collect { sessions -> emit("transfers", transfersWire(sessions)) } }
         jobs += scope.launch { USBIPManager.state.collect { state ->
             emit("usbDevices", state.devices.map {
                 mapOf("id" to it.deviceId, "server" to it.serverTag, "label" to it.label, "state" to it.state.name, "error" to it.error)
             })
         } }
     }
+
+    private fun transfersWire(sessions: List<io.nekohasekai.sfa.backend.tools.TaildropSendState>) = sessions.map { session ->
+        mapOf("id" to session.id, "endpointTag" to session.endpointTag, "peerName" to session.peerName,
+            "finished" to session.finished, "error" to session.errorMessage,
+            "files" to session.files.map { mapOf("name" to it.name, "size" to it.size, "sentBytes" to it.sentBytes, "completed" to it.completed) })
+    }
+
+    /** The Taildrop send sessions now (the "transfers" event's value). */
+    fun transfers() = transfersWire(TaildropSendManager.sessions.value)
+
+    /** The Taildrop inbox now (the "inbox" event's value). */
+    fun inboxSnapshot() = inbox.uiState.value.toWire()
 
     fun snapshot(): Map<String, Any?> = mapOf(
         "tailscale" to tailscale.uiState.value.endpoints.map { it.toWire() },

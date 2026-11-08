@@ -148,8 +148,68 @@ Widget fkNote(BuildContext context, String text) {
   );
 }
 
-Future<String?> fkInput(String title, {String value = '', String? label}) {
+Future<String?> fkInput(
+  String title, {
+  String value = '',
+  String? label,
+  bool obscure = false,
+}) {
   return dialogs.showCommonDialog<String>(
-    child: InputDialog(title: title, value: value, labelText: label),
+    child: InputDialog(
+      title: title,
+      value: value,
+      labelText: label,
+      obscureText: obscure,
+    ),
   );
+}
+
+/// A short list of choices as a FlClash dialog; pops the chosen key.
+class FkChoiceDialog extends StatelessWidget {
+  const FkChoiceDialog({super.key, required this.title, required this.choices});
+
+  final String title;
+  final Map<String, String> choices;
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: title,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          generateGroup([
+            for (final entry in choices.entries)
+              ListItem(
+                title: Text(entry.value),
+                onTap: () => Navigator.of(context).pop(entry.key),
+              ),
+          ]),
+        ],
+      ),
+    );
+  }
+}
+
+Future<String?> fkChoose(String title, Map<String, String> choices) {
+  return dialogs.showCommonDialog<String>(
+    child: FkChoiceDialog(title: title, choices: choices),
+  );
+}
+
+/// Key/value rows (tunnel info, details) as one FlClash section.
+Widget fkDetails(String? title, Map<String, Object?> values) {
+  final items = <Widget>[
+    for (final entry in values.entries)
+      if (entry.value != null && '${entry.value}'.isNotEmpty)
+        ListItem(
+          title: Text(entry.key),
+          subtitle: Text(
+            entry.value is List
+                ? (entry.value as List).join('\n')
+                : '${entry.value}',
+          ),
+        ),
+  ];
+  return generateSection(title: title, items: items);
 }

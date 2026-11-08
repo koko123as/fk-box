@@ -91,6 +91,7 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
     private suspend fun dispatch(method: String, args: Map<*, *>): Any? {
         fun string(key: String) = args[key] as? String
         fun bool(key: String) = args[key] == true
+        fun long(key: String) = (args[key] as? Number)?.toLong() ?: error("Missing $key")
         return when (method) {
             "info" -> mapOf(
                 "version" to BuildConfig.VERSION_NAME, "singBoxVersion" to Libbox.version(),
@@ -182,6 +183,57 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
             "geo.setUrl" -> bridge().call { geoSetUrl(string("name") ?: error("Missing name"), string("url").orEmpty()) }
             "updates.check" -> bridge().call { checkUpdates() }
             "url.open" -> bridge().call { openUrl(string("url")) }
+
+            // Intents FK-box's activity received (links, opened files, the share sheet).
+            "intent.take" -> FkHost.activity?.takeIntent()
+            "intent.link" -> bridge().call { decodeProfileIntent(string("value") ?: error("Missing value")) }
+            "intent.read" -> {
+                val activity = FkHost.activity ?: error("FK-box is not ready")
+                val uri = android.net.Uri.parse(string("value") ?: error("Missing value"))
+                withContext(Dispatchers.IO) {
+                    val (name, bytes) = activity.readDocument(uri)
+                    mapOf("name" to name, "content" to bytes)
+                }
+            }
+            "share.text" -> FkHost.activity?.shareText(string("token") ?: error("Missing token"))
+            "share.discard" -> bridge().call { toolBridge.discardShare(string("token")) }
+            "share.send" -> bridge().call { toolBridge.sendShare(string("token"), string("endpoint"), string("peer")) != null }
+
+            // Taildrop
+            "taildrop.inbox" -> bridge().call { toolBridge.inboxSnapshot() }
+            "taildrop.subscribe" -> bridge().call { toolBridge.subscribeTaildrop(string("endpoint")) }
+            "taildrop.unsubscribe" -> bridge().call { toolBridge.unsubscribeTaildrop() }
+            "taildrop.save" -> bridge().call { toolBridge.saveTaildropFile(string("endpoint"), string("name")) }
+            "taildrop.delete" -> bridge().call { toolBridge.deleteTaildropFile(string("endpoint"), string("name")) }
+            "taildrop.cancelReceive" -> bridge().call { toolBridge.cancelTaildropReceive(string("endpoint"), string("sender"), string("name")) }
+            "taildrop.send" -> bridge().call { toolBridge.sendTaildropFile(string("endpoint"), string("peer")) != null }
+            "taildrop.transfers" -> bridge().call { toolBridge.transfers() }
+            "taildrop.cancelSend" -> bridge().call { toolBridge.cancelTaildropSend(long("id")) }
+            "taildrop.dismissSend" -> bridge().call { toolBridge.dismissTaildropSend(long("id")) }
+
+            // OpenVPN / OpenConnect authentication challenges
+            "openvpn.submit" -> bridge().call {
+                toolBridge.submitOpenVPN(string("endpoint"), string("challenge"), string("username"), string("password"), string("secret"))
+            }
+            "openvpn.cancel" -> bridge().call { toolBridge.cancelOpenVPN(string("endpoint"), string("challenge")) }
+            "openconnect.submit" -> bridge().call {
+                val values = (args["values"] as? Map<*, *>).orEmpty().entries.associate { it.key.toString() to (it.value?.toString() ?: "") }
+                toolBridge.submitOpenConnect(string("endpoint"), string("challenge"), values)
+            }
+            "openconnect.cancel" -> bridge().call { toolBridge.cancelOpenConnect(string("endpoint"), string("challenge")) }
+
+            // Remote control of another FK-box / sing-box instance
+            "remote.list" -> bridge().call { remoteServers() }
+            "remote.save" -> bridge().call {
+                saveRemoteServer((args["id"] as? Number)?.toLong(), string("name").orEmpty(), string("url").orEmpty(), string("secret").orEmpty())
+            }
+            "remote.delete" -> bridge().call { deleteRemoteServer(long("id")) }
+            "remote.connect" -> bridge().call { connectRemoteServer(long("id")) }
+            "remote.disconnect" -> bridge().call { disconnectRemoteServer() }
+            "remote.state" -> mapOf(
+                "server" to io.nekohasekai.sfa.utils.RemoteControlManager.remoteServer.value?.let { mapOf("id" to it.id, "name" to it.name, "url" to it.url) },
+                "connected" to io.nekohasekai.sfa.utils.RemoteControlManager.isConnected.value,
+            )
             else -> error("Unknown FK-box method: $method")
         }
     }
@@ -302,6 +354,12 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
                 json && (chosen == TypedProfile.CORE_SING_BOX || chosen == TypedProfile.CORE_XRAY) -> chosen
                 else -> detected
             }
+        }
+
+        /** Tells Dart (lib/fkbox/fkbox.dart) that FK-box's activity queued an intent to take. */
+        fun notifyIntent() {
+            val plugin = instance ?: return
+            plugin.scope.launch { plugin.channel.invokeMethod("intentAvailable", null) }
         }
 
         @Volatile

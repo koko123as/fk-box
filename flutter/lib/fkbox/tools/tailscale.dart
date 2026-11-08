@@ -1,5 +1,5 @@
 // FK-box: Tailscale endpoints of the running sing-box profile (status,
-// login, exit node, peers, ping, SSH), answered by BoxTools through
+// login, exit node, peers, ping, SSH, Taildrop), answered by BoxTools through
 // FkBoxPlugin.
 //
 // Copyright (C) FK-box contributors. GPL-3.0, as FlClash.
@@ -14,6 +14,7 @@ import 'package:flutter/widgets.dart';
 import '../fkbox.dart';
 import 'common.dart';
 import 'ssh.dart';
+import 'taildrop.dart';
 
 class FkTailscaleView extends StatefulWidget {
   const FkTailscaleView({super.key});
@@ -69,9 +70,13 @@ class _FkTailscaleViewState extends State<FkTailscaleView>
     final ssh = (peer['sshHostKeys'] as List?)?.isNotEmpty ?? false;
     final name = (peer['hostName'] as String?) ?? id;
     final action = await dialogs.showCommonDialog<String>(
-      child: _ChoiceDialog(
+      child: FkChoiceDialog(
         title: name,
-        choices: {'ping': fkStrings.ping, if (ssh) 'ssh': fkStrings.ssh},
+        choices: {
+          'ping': fkStrings.ping,
+          if (ssh) 'ssh': fkStrings.ssh,
+          if (peer['canReceiveFiles'] == true) 'send': fkStrings.sendFile,
+        },
       ),
     );
     switch (action) {
@@ -85,6 +90,16 @@ class _FkTailscaleViewState extends State<FkTailscaleView>
       case 'ssh':
         if (!mounted) return;
         await startSshSession(context, endpointTag, id);
+      case 'send':
+        final sent = await run(
+          () => FkBox.call<bool>('taildrop.send', {
+            'endpoint': endpointTag,
+            'peer': id,
+          }),
+        );
+        if (sent == true && mounted) {
+          await BaseNavigator.push(context, const FkTransfersView());
+        }
     }
   }
 
@@ -127,6 +142,19 @@ class _FkTailscaleViewState extends State<FkTailscaleView>
               onTap: () =>
                   run(() => FkBox.call<void>('url.open', {'url': authUrl})),
             ),
+          if (endpoint['canShareFiles'] == true) ...[
+            ListItem.open(
+              leading: const GlyphIcon(AppGlyphs.cloudDownload),
+              title: Text(fkStrings.receivedFiles),
+              subtitle: Text('${endpoint['waitingFileCount'] ?? 0}'),
+              widget: FkInboxView(endpoint: tag),
+            ),
+            ListItem.open(
+              leading: const GlyphIcon(AppGlyphs.send),
+              title: Text(fkStrings.transfers),
+              widget: const FkTransfersView(),
+            ),
+          ],
           if (exitOptions.isNotEmpty || currentExit != null)
             ListItem<String?>.options(
               title: Text(fkStrings.exitNode),
@@ -246,33 +274,6 @@ class _FkTailscaleViewState extends State<FkTailscaleView>
           fkNote(context, fkStrings.noEndpoints),
         for (final endpoint in _endpoints) ..._endpointSections(endpoint),
       ],
-    );
-  }
-}
-
-/// A short list of choices as a FlClash dialog.
-class _ChoiceDialog extends StatelessWidget {
-  const _ChoiceDialog({required this.title, required this.choices});
-
-  final String title;
-  final Map<String, String> choices;
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: title,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          generateGroup([
-            for (final entry in choices.entries)
-              ListItem(
-                title: Text(entry.value),
-                onTap: () => Navigator.of(context).pop(entry.key),
-              ),
-          ]),
-        ],
-      ),
     );
   }
 }

@@ -181,6 +181,20 @@ open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
         }
         pendingIntents.addLast(value)
         bridge?.notifyIntent()
+        com.follow.clash.plugins.FkBoxPlugin.notifyIntent()
+    }
+
+    /**
+     * The text of a shared intent when it carries no files (links or a configuration to import),
+     * null when it shares files (those go to Taildrop) or no longer exists.
+     */
+    fun shareText(token: String): String? {
+        val shared = shares[token] ?: return null
+        val streams = if (shared.action == Intent.ACTION_SEND_MULTIPLE) {
+            IntentCompat.getParcelableArrayListExtra(shared, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
+        } else listOfNotNull(IntentCompat.getParcelableExtra(shared, Intent.EXTRA_STREAM, Uri::class.java))
+        if (streams.isNotEmpty()) return null
+        return shared.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.takeIf { it.isNotBlank() }
     }
 
     fun takeIntent(): String? = pendingIntents.removeFirstOrNull()

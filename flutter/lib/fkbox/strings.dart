@@ -86,4 +86,41 @@ class FkStrings {
   String get coreSwitches => _t('Cores', '内核');
   String get done => _t('Done', '完成');
   String get failed => _t('Failed', '失败');
+
+  // Endpoints, Taildrop, remote control, intents
+  String get openvpn => 'OpenVPN';
+  String get openconnect => 'OpenConnect';
+  String get authenticate => _t('Authenticate', '认证');
+  String get authentication => _t('Authentication', '认证');
+  String get password => _t('Password', '密码');
+  String get verificationCode => _t('Verification code', '验证码');
+  String get openSignIn => _t('Open sign-in page', '打开登录页面');
+  String get signInBrowserOnly => _t(
+    'This server signs in through a web page; open it in the browser.',
+    '此服务器需通过网页登录，请在浏览器中打开。',
+  );
+  String get submit => _t('Submit', '提交');
+  String get cancel => _t('Cancel', '取消');
+  String get error => _t('Error', '错误');
+  String get tunnel => _t('Tunnel', '隧道');
+  String get taildrop => 'Taildrop';
+  String get receivedFiles => _t('Received files', '收到的文件');
+  String get transfers => _t('Transfers', '传输');
+  String get sendFile => _t('Send file', '发送文件');
+  String get sendWithTaildrop => _t('Send with Taildrop', '通过 Taildrop 发送');
+  String get noRecipients => _t('No device can receive files', '没有可接收文件的设备');
+  String get save => _t('Save', '保存');
+  String get remote => _t('Remote control', '远程控制');
+  String get addServer => _t('Add server', '添加服务器');
+  String get name => _t('Name', '名称');
+  String get address => _t('Address', '地址');
+  String get secret => _t('Secret', '密钥');
+  String get connect => _t('Connect', '连接');
+  String get disconnect => _t('Disconnect', '断开');
+  String get connected => _t('Connected', '已连接');
+  String get connecting => _t('Connecting', '正在连接');
+  String get edit => _t('Edit', '编辑');
+  String get importProfile => _t('Import profile', '导入配置');
+  String importProfileFrom(String source) =>
+      _t('Add a profile from $source?', '从 $source 添加配置？');
 }
