@@ -18,6 +18,7 @@ package com.follow.clash.core
 import android.os.Debug
 import com.follow.clash.FkHost
 import com.follow.clash.common.GlobalState
+import com.follow.clash.plugins.FkBoxPlugin
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.backend.model.Connection
 import io.nekohasekai.sfa.backend.model.Group
@@ -171,6 +172,19 @@ object FkCore {
             "config.validate" -> validateConfig(args.getString("path"))
             "config.read" -> readConfig(args.getString("path"))
             "config.decrypt" -> throw CoreMethodError("unsupported", "Encrypted profiles are not supported by FK-box")
+            "proxy.definition" -> proxyDefinition(args.getString("name"))
+            "proxy.validate" -> validateProxies(args.optJSONArray("proxies") ?: JSONArray())
+            "shareLink.decode" -> decodeShareLinks(args.optJSONArray("lines") ?: JSONArray())
+            "shareLink.encode" -> FkShareLinks.encode(args.optJSONArray("proxies") ?: JSONArray())
+            "filter.validate" -> validateFilters(args.optJSONArray("filters") ?: JSONArray())
+            "mitm.certificate" -> withContext(Dispatchers.IO) { FkMitm.certificate() }
+            "mitm.generateCertificate" -> withContext(Dispatchers.IO) { FkMitm.generate() }
+            "mitm.exchanges" -> JSONObject().put("capturing", false).put("exchanges", JSONArray()).put("closed", false)
+            "mitm.exchange", "mitm.body" -> null
+            "mitm.validate", "mitm.issueCertificate", "mitm.runScript" -> throw CoreMethodError(
+                "unsupported",
+                "FlClash MITM modules are not run by FK-box's cores; use Tools › FK-box › HTTP capture for HTTPS capture and rewrite",
+            )
             "config.setup" -> setupConfig(args)
             "config.update" -> updateConfig(args)
             "profile.base" -> profileBase(args.getString("path"))
@@ -282,10 +296,19 @@ object FkCore {
      * libbox merges into one profile is rewritten into it.
      */
     private fun validateConfig(path: String): String? = runCatching {
+        val linksCore = FkBoxPlugin.takeLinksCore()
         val file = File(path)
         var content = file.readText()
         when (coreOf(content)) {
             Libbox.CoreLinks -> {
+                // A core chosen for this download (FK-box import or a profile set to sing-box/Xray)
+                // turns the links into a profile of that core, as FK-box's import did.
+                val chosen = linksCore
+                if (chosen != null && chosen != TypedProfile.CORE_MIHOMO) {
+                    content = Libbox.convertCoreShareLinksFor(chosen, content).content
+                    file.writeText(content)
+                    return@runCatching ProfileContent.prepare(Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content), content).let { }
+                }
                 val converted = Libbox.convertCoreShareLinksEnabled(TypedProfile.CORE_AUTO, "xray,mihomo", content)
                 if (converted.core != TypedProfile.CORE_XRAY) {
                     throw IllegalArgumentException("Share links are converted to mihomo proxies")
@@ -294,14 +317,23 @@ object FkCore {
                 file.writeText(content)
             }
             Libbox.CoreArray -> {
+                // As FK-box did: one profile per configuration, named by its remarks. This file keeps
+                // the first; the others go to Dart, which adds each as its own profile (fkbox/fkbox.dart).
                 val split = Libbox.splitCoreConfigArray(content)
-                if (split.len() != 1) {
-                    throw IllegalArgumentException(
-                        "This file holds ${split.len()} separate configurations; import each one as its own profile",
-                    )
-                }
                 content = split.content(0)
                 file.writeText(content)
+                if (split.len() > 1) {
+                    for (index in 1 until split.len()) ProfileContent.prepare(
+                        Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, split.content(index)), split.content(index),
+                    )
+                    FkBoxPlugin.publishSplit(
+                        split.remarks(0),
+                        content,
+                        (1 until split.len()).map { index ->
+                            split.remarks(index).ifEmpty { "${split.remarks(0).ifEmpty { "Profile" }} ${index + 1}" } to split.content(index)
+                        },
+                    )
+                }
             }
         }
         val core = Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content)
@@ -310,6 +342,60 @@ object FkCore {
         ProfileContent.prepare(core, content)
         Unit
     }.exceptionOrNull()?.let { it.message ?: it.toString() }
+
+    /** mihomo's definition of a proxy of the set-up Clash config (FlClash's proxy.definition); null for JSON cores. */
+    private fun proxyDefinition(name: String): JSONObject? {
+        if (isJsonCore(currentCore)) return null
+        val proxies = currentConfig?.optJSONArray("proxies") ?: return null
+        for (index in 0 until proxies.length()) {
+            val proxy = proxies.optJSONObject(index) ?: continue
+            if (proxy.optString("name") == name) return proxy
+        }
+        return null
+    }
+
+    /** proxy.validate: each definition built by mihomo's parser; the issues by index. */
+    private fun validateProxies(proxies: JSONArray): JSONArray {
+        val issues = JSONArray()
+        for (index in 0 until proxies.length()) {
+            val proxy = proxies.optJSONObject(index)
+            val message = if (proxy == null) {
+                "Not a proxy definition"
+            } else {
+                runCatching {
+                    Libbox.checkCoreConfig(
+                        TypedProfile.CORE_MIHOMO,
+                        JSONObject().put("proxies", JSONArray().put(proxy)).put("rules", JSONArray().put("MATCH,DIRECT")).toString(),
+                    )
+                }.exceptionOrNull()?.let { it.message ?: it.toString() }
+            }
+            if (message != null) issues.put(JSONObject().put("index", index).put("message", message))
+        }
+        return issues
+    }
+
+    /** shareLink.decode: each line's share links (or Base64 list) as mihomo proxies; an unreadable line answers []. */
+    private fun decodeShareLinks(lines: JSONArray): JSONArray {
+        val result = JSONArray()
+        for (index in 0 until lines.length()) {
+            val proxies = runCatching {
+                val converted = Libbox.convertCoreShareLinksFor(TypedProfile.CORE_MIHOMO, lines.optString(index))
+                (FkYaml.toJson(FkYaml.mapping(converted.content)) as JSONObject).optJSONArray("proxies")
+            }.getOrNull() ?: JSONArray()
+            result.put(proxies)
+        }
+        return result
+    }
+
+    /** filter.validate: mihomo filters are regular expressions; the issues by index. */
+    private fun validateFilters(filters: JSONArray): JSONArray {
+        val issues = JSONArray()
+        for (index in 0 until filters.length()) {
+            val message = runCatching { Regex(filters.optString(index)) }.exceptionOrNull()?.let { it.message ?: it.toString() }
+            if (message != null) issues.put(JSONObject().put("index", index).put("message", message))
+        }
+        return issues
+    }
 
     /** FlClash's proxy.convert: share links or a Base64 node list as mihomo proxies. */
     private fun convertProxies(path: String): JSONArray {
@@ -429,11 +515,31 @@ object FkCore {
 
     /** The profile to run and its core: JSON profiles as they are, Clash YAML merged with FlClash's overlay. */
     private fun merged(base: JSONObject): Pair<String, String> {
-        val text = read(base.getString("path"))
-        val core = coreOf(text)
-        if (isJsonCore(core)) return core to text
+        val path = base.getString("path")
+        val text = read(path)
+        val core = FkBoxPlugin.effectiveCore(path, text)
+        if (isJsonCore(core)) return core to withLogLevel(core, text, base.optString("overlay"))
         return TypedProfile.CORE_MIHOMO to FkYaml.dump(FkYaml.mergeProfileBase(text, base.optString("overlay")))
     }
+
+    /**
+     * FlClash's log level (the overlay's log-level) for a sing-box or Xray profile that sets none
+     * itself; a profile's own level wins, and without either FK-box's default (warn) applies.
+     */
+    private fun withLogLevel(core: String, text: String, overlay: String): String = runCatching {
+        val level = (FkYaml.toJson(FkYaml.mapping(overlay)) as? JSONObject)?.optString("log-level").orEmpty()
+        if (level.isEmpty()) return text
+        val config = JSONObject(text)
+        val log = config.optJSONObject("log") ?: JSONObject()
+        if (core == TypedProfile.CORE_SING_BOX) {
+            if (log.has("level") || log.has("disabled")) return text
+            if (level == "silent") log.put("disabled", true) else log.put("level", if (level == "warning") "warn" else level)
+        } else {
+            if (log.has("loglevel")) return text
+            log.put("loglevel", if (level == "silent") "none" else level)
+        }
+        config.put("log", log).toString(2)
+    }.getOrDefault(text)
 
     /** The merged config goes to the spill directory; the Dart side reads and deletes it. */
     private fun buildProfile(base: JSONObject): String {
@@ -467,7 +573,17 @@ object FkCore {
             }
         } ?: configFile.takeIf { it.exists() }?.readText()
             ?: throw CoreMethodError("config_rejected", "No config to set up")
-        val core = coreOf(content).takeIf { isJsonCore(it) } ?: TypedProfile.CORE_MIHOMO
+        // The chosen core (sing-box or Xray for JSON) follows config.yaml across a setup without a base.
+        val chosen = args.optJSONObject("base")?.let { base ->
+            runCatching { FkBoxPlugin.effectiveCore(base.getString("path"), read(base.getString("path"))) }.getOrNull()
+                .also { preferences.edit().putString("setupCore", it).apply() }
+        } ?: preferences.getString("setupCore", null)
+        val detected = coreOf(content)
+        val core = when {
+            !isJsonCore(detected) -> TypedProfile.CORE_MIHOMO
+            chosen != null && isJsonCore(chosen) -> chosen
+            else -> detected
+        }
         currentCore = core
         currentContent = content
         currentConfig = runCatching { if (isJsonCore(core)) jsonConfig(content) else rawConfig(content) }.getOrNull()

@@ -621,7 +621,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
     }.getOrDefault(emptyMap())
 
-    private fun settings(): Map<String, Any?> = mapOf(
+    internal fun settings(): Map<String, Any?> = mapOf(
         "perAppEnabled" to Settings.perAppProxyEnabled, "perAppMode" to Settings.perAppProxyMode,
         "perAppList" to Settings.perAppProxyList.toList(), "perAppManaged" to Settings.perAppProxyManagedMode,
         "perAppManagedList" to Settings.perAppProxyManagedList.toList(),

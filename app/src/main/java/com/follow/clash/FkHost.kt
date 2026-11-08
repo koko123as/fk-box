@@ -7,7 +7,15 @@
 // a run that ends back to Dart.
 package com.follow.clash
 
+import com.follow.clash.common.AccessControlMode
+import com.follow.clash.common.GlobalState
 import com.follow.clash.models.SharedState
+import com.follow.clash.service.models.VpnOptions
+import io.nekohasekai.sfa.database.Settings
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import com.follow.clash.plugins.ServicePlugin
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.BoxService
@@ -59,6 +67,51 @@ object FkHost {
 
     fun syncSharedState(state: SharedState) {
         sharedState = state
+        state.vpnOptions?.let(::applyVpnOptions)
+    }
+
+    private val accessScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /**
+     * FlClash's access control and VPN bypass, applied to the per-app proxy settings
+     * BoxService reads. FK-box's own per-app list stays in effect until FlClash's
+     * access control is turned on once; FK-box's managed (China apps) mode keeps its list.
+     */
+    private fun applyVpnOptions(options: VpnOptions) {
+        accessScope.launch {
+            runCatching {
+                Settings.dataStore.initialize()
+                val props = options.accessControlProps
+                val preferences = GlobalState.application.getSharedPreferences("flclash_host", 0)
+                val adopted = preferences.getBoolean("accessControlAdopted", false)
+                var changed = false
+                if (props.enable || adopted) {
+                    if (!adopted) preferences.edit().putBoolean("accessControlAdopted", true).apply()
+                    val include = props.mode == AccessControlMode.ACCEPT_SELECTED
+                    val mode = if (include) Settings.PER_APP_PROXY_INCLUDE else Settings.PER_APP_PROXY_EXCLUDE
+                    val list = (if (include) props.acceptList else props.rejectList).toSet()
+                    if (Settings.perAppProxyEnabled != props.enable) {
+                        Settings.perAppProxyEnabled = props.enable
+                        changed = true
+                    }
+                    if (!Settings.perAppProxyManagedMode) {
+                        if (Settings.perAppProxyMode != mode) {
+                            Settings.perAppProxyMode = mode
+                            changed = true
+                        }
+                        if (Settings.perAppProxyList != list) {
+                            Settings.perAppProxyList = list
+                            changed = true
+                        }
+                    }
+                }
+                if (Settings.allowBypass != options.allowBypass) {
+                    Settings.allowBypass = options.allowBypass
+                    changed = true
+                }
+                if (changed) Settings.dataStore.flush()
+            }.onFailure { GlobalState.log("Access control sync failed: $it") }
+        }
     }
 
     fun requestStart(): Boolean {

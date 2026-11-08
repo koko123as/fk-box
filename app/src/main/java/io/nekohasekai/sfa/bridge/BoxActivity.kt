@@ -121,6 +121,7 @@ open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
         flutterEngine.plugins.add(BatteryPlugin())
         flutterEngine.plugins.add(ServicePlugin())
         flutterEngine.plugins.add(TilePlugin())
+        flutterEngine.plugins.add(com.follow.clash.plugins.FkBoxPlugin())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
