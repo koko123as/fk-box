@@ -1,0 +1,33 @@
+// CI only (flclash-ui.yml copies this into $GRADLE_USER_HOME/init.d).
+//
+// Maven Central answers some large JetBrains artifacts (kotlin-compiler-embeddable)
+// on GitHub runners with a redirect to github.com release downloads, which
+// time out. Every Maven Central repository of every build in the tree -- this
+// project's settings and plugin management, and the Flutter SDK's own included
+// Gradle build (packages/flutter_tools/gradle) -- is pointed at JetBrains'
+// cache redirector for Maven Central, which serves the same files from its
+// caching proxy. Other repositories (Google, the Gradle plugin portal, the
+// Flutter engine bucket, JitPack) are left alone.
+def mirror = 'https://cache-redirector.jetbrains.com/maven-central/'
+def central = ['repo.maven.apache.org', 'repo1.maven.org']
+
+def redirect = { repos ->
+    repos.withType(MavenArtifactRepository).configureEach { repo ->
+        if (central.contains(repo.url?.host)) {
+            repo.url = mirror
+        }
+    }
+}
+
+beforeSettings { settings ->
+    redirect(settings.pluginManagement.repositories)
+    redirect(settings.buildscript.repositories)
+}
+settingsEvaluated { settings ->
+    redirect(settings.pluginManagement.repositories)
+    redirect(settings.dependencyResolutionManagement.repositories)
+}
+allprojects {
+    redirect(buildscript.repositories)
+    redirect(repositories)
+}
