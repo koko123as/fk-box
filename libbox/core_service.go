@@ -286,7 +286,7 @@ func startXrayCore(running *runningCore, content string) error {
 	root["routing"] = routing
 	logConfig := xrayLogConfigWithDefault(root)
 	// Console output goes to the service log; files are not writable here.
-	delete(logConfig, "access")
+	xrayApplyAccessLog(logConfig)
 	delete(logConfig, "error")
 	root["log"] = logConfig
 	encoded, err := json.Marshal(root)
@@ -423,6 +423,13 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 			case event, ok := <-subscription:
 				if !ok {
 					return
+				}
+				// mihomo publishes every event whatever its level and only
+				// filters its own stdout print; apply the same rule here so
+				// debug/info lines below the configured level are not
+				// formatted into the service log.
+				if event.LogLevel < mihomoLog.Level() {
+					continue
 				}
 				level := log.LevelInfo
 				switch event.LogLevel {
