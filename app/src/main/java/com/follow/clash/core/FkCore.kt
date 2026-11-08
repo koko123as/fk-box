@@ -21,6 +21,7 @@ import com.follow.clash.common.GlobalState
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.backend.model.Connection
 import io.nekohasekai.sfa.backend.model.Group
+import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bridge.BoxBridge
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Profile
@@ -70,6 +71,47 @@ object FkCore {
 
     private val logs = FkLogs(::sendEvents)
 
+    // FlClash's route.watch/route.check (core/route.go): the epoch changes with
+    // each run of the core, the version with anything that can move a
+    // connection to another exit (config, selection, mode, providers, network).
+    @Volatile
+    private var coreEpoch = 0
+
+    @Volatile
+    private var routeVersion = 0
+
+    @Volatile
+    private var trafficBase = 0L to 0L
+
+    init {
+        scope.launch {
+            var last = FkHost.status.value
+            FkHost.status.collect { status ->
+                if (status != last && (status == Status.Started || status == Status.Stopped)) {
+                    coreEpoch++
+                    trafficBase = 0L to 0L
+                    routeChanged()
+                }
+                last = status
+            }
+        }
+    }
+
+    private fun routeChanged() {
+        routeVersion++
+        event("routeChanged", routeSnapshot())
+    }
+
+    private fun routeSnapshot(): JSONObject = JSONObject().put("core-epoch", coreEpoch).put("route-version", routeVersion)
+
+    /** Every route the caller still holds is reported held while the route version it saw is current. */
+    private fun routeCheck(args: JSONObject): JSONObject {
+        val routes = args.optJSONArray("routes") ?: JSONArray()
+        val held = JSONArray()
+        for (index in 0 until routes.length()) held.put(true)
+        return routeSnapshot().put("held", held)
+    }
+
     fun setEventListener(listener: ((ByteArray) -> Unit)?) {
         eventListener = listener
     }
@@ -114,6 +156,7 @@ object FkCore {
         return when (method) {
             "core.init" -> {
                 homeDir = args.optString("home-dir").takeIf { it.isNotEmpty() }
+                scope.launch { FkGeo.syncHome(homeDir) }
                 null
             }
             "core.initialized" -> homeDir != null
@@ -134,6 +177,7 @@ object FkCore {
             "profile.outbounds" -> profileOutbounds(args.getString("path"))
             "profile.build" -> buildProfile(args)
             "profile.clearEffect" -> null
+            "proxy.convert" -> convertProxies(args.getString("path"))
 
             "proxy.list" -> proxies()
             "proxy.select" -> selectProxy(args.getString("group-name"), args.getString("proxy-name"))
@@ -159,11 +203,42 @@ object FkCore {
                 logs.stop()
                 null
             }
-            "provider.list" -> JSONArray()
-            "provider.get" -> null
+            "provider.list" -> withContext(Dispatchers.IO) { JSONArray(Libbox.mihomoExternalProviders()) }
+            "provider.get" -> withContext(Dispatchers.IO) {
+                Libbox.mihomoExternalProvider(args.getString("name")).takeIf { it.isNotEmpty() }?.let(::JSONObject)
+            }
+            "provider.update" -> {
+                val name = args.getString("name")
+                withContext(Dispatchers.IO) {
+                    try {
+                        Libbox.updateMihomoProvider(name)
+                    } catch (error: Exception) {
+                        throw CoreMethodError("provider_update_failed", error.message ?: error.toString())
+                    }
+                }
+                routeChanged()
+                null
+            }
+            "geo.update" -> FkGeo.update(args.getString("type"), currentConfig?.optJSONObject("geox-url"), homeDir, ::sendEvents)
+            "traffic.reset" -> {
+                resetTraffic()
+                null
+            }
+            "connection.reset" -> {
+                if (running) withContext(Dispatchers.IO) { runCatching { CommandTarget.standaloneClient().closeConnections() } }
+                null
+            }
+            "route.watch" -> routeSnapshot()
+            "route.check" -> routeCheck(args)
+            "probe.outboundIp" -> FkProbe.outboundIp(args).put("core-epoch", coreEpoch).put("route-version", routeVersion)
+            "probe.services" -> JSONArray()
             // The Android service owns the listeners (FlClash's CoreLib does the same).
             "listener.start", "listener.stop" -> null
-            "network.changed", "dns.clearCache", "traffic.reset", "connection.reset" -> null
+            "network.changed" -> {
+                routeChanged()
+                null
+            }
+            "dns.clearCache" -> null
             else -> throw CoreMethodError("unsupported", "FK-box does not provide $method yet")
         }
     }
@@ -189,9 +264,59 @@ object FkCore {
 
     private fun read(path: String): String = File(path).readText()
 
+    // FlClash's profiles are files under its home directory. A file holding
+    // sing-box or Xray JSON is kept as it is and run by that core; mihomo
+    // YAML goes through FlClash's overlay merge (FkYaml) as in its own core.
+
+    private fun coreOf(content: String): String = Libbox.detectCoreConfig(content)
+
+    private fun isJsonCore(core: String) = core == TypedProfile.CORE_SING_BOX || core == TypedProfile.CORE_XRAY
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
+
+    /**
+     * Null when the file is a profile FK-box can run. Share links answer an issue so FlClash's
+     * validateProfile converts them through proxy.convert, except links only Xray can carry
+     * (xhttp), which are rewritten into an Xray profile here. A JSON array of configs that
+     * libbox merges into one profile is rewritten into it.
+     */
     private fun validateConfig(path: String): String? = runCatching {
-        ProfileContent.prepare(TypedProfile.CORE_MIHOMO, read(path))
+        val file = File(path)
+        var content = file.readText()
+        when (coreOf(content)) {
+            Libbox.CoreLinks -> {
+                val converted = Libbox.convertCoreShareLinksEnabled(TypedProfile.CORE_AUTO, "xray,mihomo", content)
+                if (converted.core != TypedProfile.CORE_XRAY) {
+                    throw IllegalArgumentException("Share links are converted to mihomo proxies")
+                }
+                content = converted.content
+                file.writeText(content)
+            }
+            Libbox.CoreArray -> {
+                val split = Libbox.splitCoreConfigArray(content)
+                if (split.len() != 1L) {
+                    throw IllegalArgumentException(
+                        "This file holds ${split.len()} separate configurations; import each one as its own profile",
+                    )
+                }
+                content = split.content(0)
+                file.writeText(content)
+            }
+        }
+        val core = Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content)
+        // Xray's and mihomo's checks open geoip.dat/geosite.dat for geo rules.
+        if (core != TypedProfile.CORE_SING_BOX) GeoResources.ensureBundledBlocking()
+        ProfileContent.prepare(core, content)
+        Unit
     }.exceptionOrNull()?.let { it.message ?: it.toString() }
+
+    /** FlClash's proxy.convert: share links or a Base64 node list as mihomo proxies. */
+    private fun convertProxies(path: String): JSONArray {
+        val converted = Libbox.convertCoreShareLinksFor(TypedProfile.CORE_MIHOMO, read(path))
+        val config = FkYaml.toJson(FkYaml.mapping(converted.content)) as JSONObject
+        return config.optJSONArray("proxies") ?: JSONArray()
+    }
 
     /** The JSON of mihomo's RawConfig: rules under "rule", as FlClash's core marshals it. */
     private fun rawConfig(text: String): JSONObject {
@@ -200,11 +325,72 @@ object FkCore {
         return config
     }
 
-    private fun readConfig(path: String): JSONObject = rawConfig(read(path))
+    private fun readConfig(path: String): JSONObject {
+        val text = read(path)
+        return if (isJsonCore(coreOf(text))) jsonConfig(text) else rawConfig(text)
+    }
+
+    private fun jsonConfig(text: String): JSONObject = JSONObject(text).also { config ->
+        // Rules where FlClash's views look for them ("rule"); the profile itself is untouched.
+        val rules = config.optJSONObject("route")?.optJSONArray("rules")
+            ?: config.optJSONObject("routing")?.optJSONArray("rules")
+        if (rules != null) config.put("rule", rules)
+    }
+
+    /** Groups and nodes of a sing-box or Xray profile, as FlClash lists a Clash config's. */
+    private class JsonOutbounds(val groups: List<Triple<String, String, List<String>>>, val nodes: List<Pair<String, String>>)
+
+    private fun jsonOutbounds(core: String, text: String): JsonOutbounds {
+        val config = JSONObject(text)
+        val outbounds = config.optJSONArray("outbounds") ?: JSONArray()
+        val groups = mutableListOf<Triple<String, String, List<String>>>()
+        val nodes = mutableListOf<Pair<String, String>>()
+        if (core == TypedProfile.CORE_SING_BOX) {
+            for (index in 0 until outbounds.length()) {
+                val item = outbounds.optJSONObject(index) ?: continue
+                val tag = item.optString("tag")
+                val type = item.optString("type")
+                when (type) {
+                    "selector", "urltest" -> {
+                        val members = item.optJSONArray("outbounds") ?: JSONArray()
+                        groups += Triple(tag, if (type == "selector") "Selector" else "URLTest", (0 until members.length()).map { members.optString(it) })
+                    }
+                    else -> nodes += tag to type
+                }
+            }
+        } else {
+            for (index in 0 until outbounds.length()) {
+                val item = outbounds.optJSONObject(index) ?: continue
+                nodes += item.optString("tag") to item.optString("protocol")
+            }
+            val balancers = config.optJSONObject("routing")?.optJSONArray("balancers") ?: JSONArray()
+            for (index in 0 until balancers.length()) {
+                val balancer = balancers.optJSONObject(index) ?: continue
+                val selectors = balancer.optJSONArray("selector") ?: JSONArray()
+                val prefixes = (0 until selectors.length()).map { selectors.optString(it) }
+                val members = nodes.map { it.first }.filter { tag -> prefixes.any { tag.startsWith(it) } }
+                groups += Triple(balancer.optString("tag"), "LoadBalance", members)
+            }
+        }
+        return JsonOutbounds(groups, nodes)
+    }
 
     private fun profileBase(path: String): JSONObject {
         val bytes = File(path).readBytes()
-        val config = rawConfig(String(bytes))
+        val text = String(bytes)
+        val core = coreOf(text)
+        if (isJsonCore(core)) {
+            val outbounds = jsonOutbounds(core, text)
+            val config = jsonConfig(text)
+            return JSONObject()
+                .put("digest", sha256(bytes))
+                .put("match-rules", JSONArray())
+                .put("proxies", outbounds.nodes.size)
+                .put("proxy-groups", outbounds.groups.size)
+                .put("rules", config.optJSONArray("rule")?.length() ?: 0)
+                .put("config", JSONObject())
+        }
+        val config = rawConfig(text)
         val rules = config.optJSONArray("rule") ?: JSONArray()
         val matchRules = JSONArray()
         for (index in 0 until rules.length()) {
@@ -212,7 +398,7 @@ object FkCore {
             if (rule.substringBefore(',').trim().equals("MATCH", ignoreCase = true)) matchRules.put(rule)
         }
         val base = JSONObject()
-            .put("digest", MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) })
+            .put("digest", sha256(bytes))
             .put("match-rules", matchRules)
             .put("proxies", config.optJSONArray("proxies")?.length() ?: 0)
             .put("proxy-groups", config.optJSONArray("proxy-groups")?.length() ?: 0)
@@ -222,7 +408,15 @@ object FkCore {
     }
 
     private fun profileOutbounds(path: String): JSONObject {
-        val config = rawConfig(read(path))
+        val text = read(path)
+        val core = coreOf(text)
+        if (isJsonCore(core)) {
+            val outbounds = jsonOutbounds(core, text)
+            return JSONObject()
+                .put("proxies", JSONArray(outbounds.nodes.map { JSONObject().put("name", it.first).put("type", it.second) }))
+                .put("proxy-groups", JSONArray(outbounds.groups.map { JSONObject().put("name", it.first).put("type", it.second) }))
+        }
+        val config = rawConfig(text)
         fun outbounds(key: String) = JSONArray().also { list ->
             val items = config.optJSONArray(key) ?: JSONArray()
             for (index in 0 until items.length()) {
@@ -233,17 +427,29 @@ object FkCore {
         return JSONObject().put("proxies", outbounds("proxies")).put("proxy-groups", outbounds("proxy-groups"))
     }
 
-    private fun merged(base: JSONObject): String =
-        FkYaml.dump(FkYaml.mergeProfileBase(read(base.getString("path")), base.optString("overlay")))
+    /** The profile to run and its core: JSON profiles as they are, Clash YAML merged with FlClash's overlay. */
+    private fun merged(base: JSONObject): Pair<String, String> {
+        val text = read(base.getString("path"))
+        val core = coreOf(text)
+        if (isJsonCore(core)) return core to text
+        return TypedProfile.CORE_MIHOMO to FkYaml.dump(FkYaml.mergeProfileBase(text, base.optString("overlay")))
+    }
 
     /** The merged config goes to the spill directory; the Dart side reads and deletes it. */
     private fun buildProfile(base: JSONObject): String {
         val home = homeDir ?: throw CoreMethodError("not_initialized", "Core is not initialized")
         val directory = File(home, "responses").apply { mkdirs() }
-        val file = File.createTempFile("profile-", ".yaml", directory)
-        file.writeText(merged(base))
+        val (core, content) = merged(base)
+        val file = File.createTempFile("profile-", if (isJsonCore(core)) ".json" else ".yaml", directory)
+        file.writeText(content)
         return file.path
     }
+
+    @Volatile
+    private var currentCore = TypedProfile.CORE_MIHOMO
+
+    @Volatile
+    private var currentContent: String? = null
 
     private suspend fun setupConfig(args: JSONObject): Any? = setupLock.withLock {
         val home = homeDir ?: throw CoreMethodError("not_initialized", "Core is not initialized")
@@ -252,7 +458,7 @@ object FkCore {
             map.keys().asSequence().associateWith { map.getString(it) }
         } ?: emptyMap()
         val configFile = File(home, "config.yaml")
-        val content = args.optJSONObject("base")?.let(::merged)?.also { text ->
+        val content = args.optJSONObject("base")?.let(::merged)?.second?.also { text ->
             val temporary = File(home, ".config-${System.nanoTime()}.yaml")
             temporary.writeText(text)
             if (!temporary.renameTo(configFile)) {
@@ -261,13 +467,20 @@ object FkCore {
             }
         } ?: configFile.takeIf { it.exists() }?.readText()
             ?: throw CoreMethodError("config_rejected", "No config to set up")
-        currentConfig = runCatching { rawConfig(content) }.getOrNull()
+        val core = coreOf(content).takeIf { isJsonCore(it) } ?: TypedProfile.CORE_MIHOMO
+        currentCore = core
+        currentContent = content
+        currentConfig = runCatching { if (isJsonCore(core)) jsonConfig(content) else rawConfig(content) }.getOrNull()
         val prepared = try {
-            withContext(Dispatchers.IO) { ProfileContent.prepare(TypedProfile.CORE_MIHOMO, content) }
+            withContext(Dispatchers.IO) {
+                if (core != TypedProfile.CORE_SING_BOX) GeoResources.ensureBundledBlocking()
+                ProfileContent.prepare(core, content)
+            }
         } catch (error: Exception) {
             throw CoreMethodError("config_rejected", error.message ?: error.toString())
         }
-        withContext(Dispatchers.IO) { saveRunningProfile(prepared.content) }
+        withContext(Dispatchers.IO) { saveRunningProfile(prepared.core, prepared.content) }
+        routeChanged()
         if (running) {
             withContext(Dispatchers.Main) { FkHost.activity?.applyProfile() }
             scope.launch { applySelections() }
@@ -276,7 +489,7 @@ object FkCore {
     }
 
     /** The one Room profile FlClash's UI runs; created on first use and selected. */
-    private suspend fun saveRunningProfile(content: String) {
+    private suspend fun saveRunningProfile(core: String, content: String) {
         Settings.dataStore.initialize()
         val id = preferences.getLong("profileId", 0L)
         val existing = if (id != 0L) ProfileManager.get(id) else null
@@ -284,11 +497,11 @@ object FkCore {
         val file = if (existing != null && existing.typed.path.isNotEmpty()) {
             File(existing.typed.path)
         } else {
-            File(GlobalState.application.filesDir, "configs/flclash.yaml")
+            File(GlobalState.application.filesDir, "configs/flclash.conf")
         }
         file.parentFile?.mkdirs()
         file.writeText(content)
-        profile.typed.core = TypedProfile.CORE_MIHOMO
+        profile.typed.core = core
         profile.typed.path = file.path
         profile.typed.type = TypedProfile.Type.Local
         if (existing == null) {
@@ -309,6 +522,7 @@ object FkCore {
         val modes = runCatching { bridge().call { dashboardState.value.clashModes } }.getOrDefault(emptyList())
         val target = modes.firstOrNull { it.equals(mode, ignoreCase = true) } ?: return null
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setClashMode(target) }
+        routeChanged()
         return null
     }
 
@@ -355,6 +569,23 @@ object FkCore {
 
     /** While the service is stopped, the groups the set-up config declares, as FlClash shows them before a start. */
     private fun staticProxies(): JSONObject {
+        val content = currentContent
+        if (isJsonCore(currentCore) && content != null) {
+            val outbounds = runCatching { jsonOutbounds(currentCore, content) }.getOrNull()
+                ?: return JSONObject().put("proxies", JSONObject()).put("all", JSONArray())
+            val proxies = JSONObject()
+            val all = JSONArray()
+            for ((name, type) in outbounds.nodes) proxies.put(name, JSONObject().put("name", name).put("type", type))
+            for ((name, type, members) in outbounds.groups) {
+                all.put(name)
+                proxies.put(
+                    name,
+                    JSONObject().put("name", name).put("type", type)
+                        .put("now", selectedMap[name] ?: members.firstOrNull() ?: "").put("all", JSONArray(members)),
+                )
+            }
+            return JSONObject().put("proxies", proxies).put("all", all)
+        }
         val config = currentConfig ?: return JSONObject().put("proxies", JSONObject()).put("all", JSONArray())
         val proxies = JSONObject()
         val all = JSONArray()
@@ -396,6 +627,7 @@ object FkCore {
         if (!group.selectable) return JSONObject().put("changed", false).put("message", "$groupName is selected automatically")
         if (group.selected == proxyName) return JSONObject().put("changed", false).put("message", "")
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().selectOutbound(groupName, proxyName) }
+        routeChanged()
         return JSONObject().put("changed", true).put("message", "")
     }
 
@@ -447,10 +679,16 @@ object FkCore {
         return if (status == null) {
             JSONObject().put("up", 0).put("down", 0)
         } else if (total) {
-            JSONObject().put("up", status.uplinkTotal).put("down", status.downlinkTotal)
+            val (up, down) = trafficBase
+            JSONObject().put("up", (status.uplinkTotal - up).coerceAtLeast(0)).put("down", (status.downlinkTotal - down).coerceAtLeast(0))
         } else {
             JSONObject().put("up", status.uplink).put("down", status.downlink)
         }
+    }
+
+    private suspend fun resetTraffic() {
+        val status = if (running) runCatching { bridge().lastStatus }.getOrNull() else null
+        trafficBase = if (status == null) 0L to 0L else status.uplinkTotal to status.downlinkTotal
     }
 
     private suspend fun activeConnections(): List<Connection> {
