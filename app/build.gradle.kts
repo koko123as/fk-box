@@ -189,6 +189,11 @@ android {
         fatal += "NewApi"
     }
 
+    sourceSets {
+        // GeneratedPluginRegistrant, written by `flutter pub get` (see flutter/android/).
+        getByName("main").java.srcDir("../flutter/android/app/src/main/java")
+    }
+
     applicationVariants.configureEach {
         outputs.configureEach {
             val output = this as com.android.build.gradle.internal.api.BaseVariantOutputImpl

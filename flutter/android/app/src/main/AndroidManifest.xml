@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FK-box: FlClash's Android host is app/ at the repository root, not this
+  directory. This manifest only tells the Flutter tool that flutter/ is an
+  Android (v2 embedding) app, so `flutter pub get` writes
+  .flutter-plugins-dependencies and android/app/src/main/java/io/flutter/plugins/
+  GeneratedPluginRegistrant.java, which app/build.gradle.kts compiles.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>

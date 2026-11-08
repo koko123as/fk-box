@@ -21,7 +21,8 @@
   },
   "fkboxFiles": {
     "assets/data/README.md": "Keeps the assets/data/ directory the pubspec lists; explains where the geo files come from.",
-    "core/Clash.Meta/component/ca/ca-certificates.crt": "FlClash lists this Clash.Meta submodule file as an asset; it is empty at the submodule commit 024245dc (only FlClash's release CI fills it), and FK-box keeps it empty, which lib/common/http.dart skips."
+    "core/Clash.Meta/component/ca/ca-certificates.crt": "FlClash lists this Clash.Meta submodule file as an asset; it is empty at the submodule commit 024245dc (only FlClash's release CI fills it), and FK-box keeps it empty, which lib/common/http.dart skips.",
+    "android/app/src/main/AndroidManifest.xml": "Marks flutter/ as an Android v2-embedding app for the Flutter tool, so pub get writes the plugin list and GeneratedPluginRegistrant that app/ builds; FlClash's own android/ host is ported to app/ instead."
   },
   "androidHost": {
     "ported": {

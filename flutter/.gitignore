@@ -8,3 +8,6 @@
 **/target/
 *.iml
 .idea/
+/android/app/src/main/java/
+/android/local.properties
+/android/.gradle/
