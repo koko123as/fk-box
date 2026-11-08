@@ -10,8 +10,8 @@ concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: false
 
-# FK-box builds the Kotlin + Jetpack Compose app; it no longer consumes the
-# Flutter AAR, so the debug APK only needs the patched core.
+# FK-box with FlClash's Flutter UI (flutter/); flclash-ui.yml builds the same
+# on every push with the source diff, this one is for manual runs.
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -39,15 +39,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Source guards
-        run: python3 tools/verify_newui.py
+      # The UI is FlClash's Flutter app in flutter/ (see flclash.md).
+      - name: Set up FlClash's Flutter UI
+        uses: ./.github/actions/setup-flutter-ui
 
       - name: Build debug APK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-          ./gradlew :app:assembleOtherDebug -Parm64Only=true \
+          ./gradlew :app:assembleOtherDebug -Parm64Only=true -Ptarget-platform=android-arm64 \
             --no-daemon --console=plain --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Report APK size
@@ -69,7 +70,7 @@ jobs:
         run: |
           ./gradlew :app:testOtherDebugUnitTest -Parm64Only=true \
             --no-daemon --console=plain --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Upload unit test reports

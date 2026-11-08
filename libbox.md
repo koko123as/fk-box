@@ -108,6 +108,10 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 ## 新增接口与行为
 
+### FlClash 界面的 mihomo 提供者
+
+[core_mihomo_provider.go](libbox/core_mihomo_provider.go) 移植 FlClash v0.9.3 `core/provider.go`（`be84736`，GPL-3.0）的外部提供者查询，供 `flclash-ui` 分支的 `FkCore` 回答 `provider.list`/`provider.get`/`provider.update`：`MihomoExternalProviders()` 返回进程内 mihomo 的所有非内联（`Compatible` 以外）代理/规则提供者，按名称排序，字段为 FlClash `ExternalProvider` 的 JSON（`name`、`type`、`count`、`vehicle-type`、`update-at`、代理提供者的 `subscription-info`）；`MihomoExternalProvider(name)` 返回单个（不存在时为空串）；`UpdateMihomoProvider(name)` 调用提供者的 `Update()`。mihomo 未运行时列表为空。FlClash 的 `provider.sideLoad` 未移植。地理数据更新沿用上文 `GeoUpdate`，不使用 mihomo 自带的 `updater`。
+
 ### 运行时内存
 
 `ReadUIRuntimeMemory` 返回 `UIRuntimeMemory`，包含总量、在用/空闲堆、栈、其他运行时内存及 goroutine 数；总量为 `Sys - HeapReleased`。`CollectUIRuntimeMemory` 调用 `debug.FreeOSMemory`。Android 的 `BoxDashboard` 将这些值与同进程 RSS 结合显示；它们不是独立核心进程的系统内存统计。

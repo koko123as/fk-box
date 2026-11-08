@@ -1,0 +1,43 @@
+name: Set up FlClash's Flutter UI
+description: >-
+  Flutter 3.47.6 (FlClash v0.9.3), Rust for rust_api, flutter pub get in
+  flutter/, package:sqlite3's Android library served locally, and the Gradle
+  Maven Central mirror with retries (see flclash.md "构建"). Run after
+  setup-gradle so GRADLE_USER_HOME is set.
+runs:
+  using: composite
+  steps:
+    - name: Set up Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        channel: stable
+        flutter-version: '3.47.6'
+        cache: true
+
+    - name: Set up Rust for rust_api
+      shell: bash
+      run: |
+        rustup toolchain install stable --profile minimal
+        rustup target add aarch64-linux-android
+
+    - name: Flutter packages
+      shell: bash
+      working-directory: flutter
+      run: flutter pub get
+
+    - name: Serve package:sqlite3's Android library locally
+      shell: bash
+      run: .github/ci/sqlite3-assets.sh
+
+    - name: Gradle repository mirror and retries
+      shell: bash
+      run: |
+        home="${GRADLE_USER_HOME:-$HOME/.gradle}"
+        mkdir -p "$home/init.d"
+        cp .github/ci/maven-mirror.init.gradle "$home/init.d/"
+        cat >> "$home/gradle.properties" <<'PROPS'
+        systemProp.org.gradle.internal.http.connectionTimeout=60000
+        systemProp.org.gradle.internal.http.socketTimeout=180000
+        systemProp.org.gradle.internal.repository.max.retries=8
+        systemProp.org.gradle.internal.repository.initial.backoff=2000
+        PROPS

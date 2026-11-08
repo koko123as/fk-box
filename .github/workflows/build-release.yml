@@ -45,12 +45,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The UI is FlClash's Flutter app in flutter/ (see flclash.md).
+      - name: Set up FlClash's Flutter UI
+        uses: ./.github/actions/setup-flutter-ui
+
       - name: Run unit tests
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           ./gradlew :app:testOtherDebugUnitTest -Parm64Only=true \
             --no-daemon --console=plain --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Upload unit test reports
@@ -88,9 +92,9 @@ jobs:
           ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-          ./gradlew :app:assembleOtherRelease -Parm64Only=true \
+          ./gradlew :app:assembleOtherRelease -Parm64Only=true -Ptarget-platform=android-arm64 \
             --no-daemon --console=plain --max-workers=2 \
-            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Verify APK identity, architecture and signature

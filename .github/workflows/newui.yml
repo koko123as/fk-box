@@ -46,5 +46,23 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5
-      - name: Compose source guards
-        run: python3 tools/verify_newui.py
+      - name: Checkout FlClash reference
+        uses: actions/checkout@v5
+        with:
+          repository: chen08209/FlClash
+          ref: be84736605527034689c95bf27828ff27d912c5e
+          path: .ref/FlClash
+          persist-credentials: false
+      - name: Checkout prism_ui reference
+        uses: actions/checkout@v5
+        with:
+          repository: chen08209/prism_ui
+          ref: 63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185
+          path: .ref/prism_ui
+          persist-credentials: false
+      # flutter/ must match FlClash v0.9.3 / prism_ui file by file except what
+      # flclash-manifest.json lists (see flclash.md).
+      - name: FlClash UI source diff
+        run: |
+          python3 tools/verify_flclash_ui.py .ref/FlClash .ref/prism_ui --report flclash-ui-diff.md
+          cat flclash-ui-diff.md >> "$GITHUB_STEP_SUMMARY"

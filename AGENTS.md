@@ -1,6 +1,6 @@
 # FK-box 项目约束
 
-本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 FlClash 界面（由 Flutter 组件翻译为 Kotlin + Jetpack Compose）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
+本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端；`flclash-ui` 分支的界面是 FlClash v0.9.3 的 Flutter 源码本身（`flutter/`，源码级复制，`main` 合并前仍为 Kotlin + Jetpack Compose 翻译版）；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
 
 ## 文档职责
 
@@ -9,7 +9,7 @@
 | [README.md](README.md) | 项目介绍、下载入口和许可声明 |
 | [AGENTS.md](AGENTS.md) | 项目约束、工作方式和验证要求 |
 | [libbox.md](libbox.md) | 相对上游 sing-box/libbox 的补丁、扩展绑定及核心构建差异 |
-| [flclash.md](flclash.md) | FlClash UI 的参考版本、组件使用、适配范围及视觉验证 |
+| [flclash.md](flclash.md) | FlClash UI 的参考版本、逐文件对应、Core 方法桥接及验证 |
 | [app.md](app.md) | 相对 sing-box-for-android 的应用差异、兼容性及构建发布 |
 
 开始任务先阅读适用的上级 `AGENTS.md`、本文件和所涉及领域的文档。修改跨越多个领域时同步更新对应文档；同一事实由所属文档维护，其他文档使用链接引用。文档描述当前源码，撤销或替代的实现不再列为当前要求；历史细节通过 Git 查询。
@@ -26,19 +26,19 @@
 
 ## 架构与兼容性约束
 
-1. 界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），已按原 `flutter/lib` 的 FlClash 界面逐项翻译完成；`flutter/` 目录已删除，翻译参考通过删除前的 Git 历史查询，应用不依赖 Flutter。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `flutter/BoxBridge.kt`（原通道协议不变的 Kotlin 门面）提供给 `compose/BoxController.kt`。
-2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
+1. 界面是 FlClash v0.9.3（`be84736`）与 prism_ui `63450c0` 的 Flutter 源码，位于 `flutter/`（Dart 包名 `fl_clash`、通道前缀 `com.follow.clash` 不变）。`flutter/lib/` 必须与 FlClash 逐字节一致，只有核心桥接层可以不同；桥接放在 Kotlin 侧（`app/src/main/java/com/follow/clash/`：`plugins/` 移植自 FlClash `android/`，`core/FkCore.kt` 按 `lib/core/method.dart` 回答 Core 方法）。确需改动的 FlClash 文件、新增文件都要写进 [flclash-manifest.json](flclash-manifest.json) 并说明原因，CI 的 [verify_flclash_ui.py](tools/verify_flclash_ui.py) 报告会列出并拒绝未说明的差异。不要在 Dart 侧仿写或“优化”FlClash 的页面。`BoxActivity` 是 `FlutterFragmentActivity`，`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名。
+2. Room 与 libbox 是服务和会话数据的来源；FlClash 界面的配置列表保存在其 Dart 数据库和 home 目录，启动时由 `FkCore` 写入一个 Room 配置交给 `BoxService`。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。按内容识别内核（Clash YAML → mihomo，Xray JSON → Xray，其余 JSON → sing-box），各自用本内核解析器校验；不能静默把一种内核的配置转换成另一种（分享链接按 FlClash 流程转为 mihomo，仅 Xray 支持的链接转为 Xray）。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
 5. FK-box 的安装身份为 `io.fkbox.app`，源码 namespace、类路径及 AIDL 描述符保留 `io.nekohasekai.sfa`。任务未涉及这些约定时保持兼容；不要重排或复用已退役的 Binder 方法编号，也不要清空无关设置和数据库。
 6. 保留完整 sing-box 协议和 Tailscale/Taildrop、终端、普通 Root/Shizuku 能力。历史核心裁剪与 Tailscale/终端移除已回退；Android 5/6、legacy AAR、Xposed/LSPosed 和旧更新下载/静默安装链路则已移除。具体范围见 [libbox.md](libbox.md) 和 [app.md](app.md)。
-7. 复用 FlClash 组件时保留来源和许可，按 [flclash-manifest.json](flclash-manifest.json) 区分直接导入与业务适配。共享源码复用、编译成功或预览声明都不能代替视觉和实机验收。
+7. FlClash 与 FK-box 均为 GPL-3.0：保留源文件版权头、`LICENSE`、`NOTICE` 及来源说明，按 [flclash-manifest.json](flclash-manifest.json) 区分原样导入、改动和新增。源码一致、编译成功都不能代替视觉和实机验收。只构建 `arm64-v8a`。
 
 ## 上游同步与验证
 
 - Android 上游比较基线维护在 [app.md](app.md)，核心标签由 [version.properties](version.properties) 决定，FlClash 参考提交维护在 [flclash.md](flclash.md) 和来源清单。更新其中一个上游时，不自动改变另两个基线。
 - 更新核心时核对 legacy 补丁、所有 `libbox/ui_*.go` 扩展及生成的绑定，并同步检查 Release、源码验证和 Android smoke 工作流。官方原版 AAR 缺少 FK-box（继承自 B-box）新增绑定，不能仅凭版本相同直接替换。
 - 更新 FlClash 时检查源文件及哈希、适配差异、字体/着色器和许可。改动直接导入文件后，应如实更新来源清单及改动说明，不把业务改动伪装为机械包名替换。
-- 按受影响范围验证。本机可运行 `git diff --check` 和 `python3 tools/verify_newui.py`；文档变更还应检查链接和旧引用。后者仅检查源码约束，不证明运行行为。
-- [.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及 Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
+- 按受影响范围验证。本机可运行 `git diff --check` 和 `python3 tools/verify_flclash_ui.py <FlClash 检出> <prism_ui 检出>`；文档变更还应检查链接和旧引用。后者仅检查源码约束，不证明运行行为。
+- [flclash-ui.yml](.github/workflows/flclash-ui.yml) 负责 FlClash 源码差异报告、`flutter analyze` 和 arm64 debug/profile APK；[.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及（`main` 上的）Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
 - 验证记录应说明源码 SHA、实际运行的检查、Actions 链接及未覆盖范围。已有 Release、旧提交的成功构建或测试代码的存在，都不等于当前源码已通过验收。仅构建下载产物时注意 Release 工作流的 `publish_release` 默认开启，具体发布规则见 [app.md](app.md)。

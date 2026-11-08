@@ -1,6 +1,6 @@
 # 与 sing-box-for-android 的差异
 
-本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，FlClash 界面的来源及 Compose 翻译情况见 [flclash.md](flclash.md)。
+本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，FlClash 界面的来源、逐文件对应和 Core 方法桥接见 [flclash.md](flclash.md)。
 
 ## 比较基线与应用身份
 
@@ -27,23 +27,23 @@
 ## FK-box（本仓库 main）
 
 - 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产。
-- 界面已从 Flutter 迁移到 Kotlin + Jetpack Compose（4 期完成：外壳与仪表盘；界面套件、代理与配置；工具及其子页；设置、关于、备份、访问控制和外观），`flutter/` 目录已删除，页面对应关系见 [flclash.md](flclash.md#kotlin--jetpack-compose-翻译)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
-- [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Compose 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行 Compose 源码检查。
+- `flclash-ui` 分支：界面换成 FlClash v0.9.3 的 Flutter 源码本身（`flutter/`，`lib/` 与上游逐字节一致），Compose 界面移除；FlClash 的 Android 宿主移植到 `app/src/main/java/com/follow/clash/`，Core 方法由 `FkCore` 经 libbox 回答，见 [flclash.md](flclash.md)。`main` 合并前仍是 Kotlin + Jetpack Compose 界面。
+- [flclash-ui.yml](.github/workflows/flclash-ui.yml) 在 `flclash-ui` 推送时生成源码差异报告、运行 `flutter analyze` 并构建 arm64 debug/profile APK；[build-debug-apk.yml](.github/workflows/build-debug-apk.yml)（手动）与 Release 通过 [setup-flutter-ui](.github/actions/setup-flutter-ui/action.yml) 准备 Flutter。
 
 ## 界面替换与 Android 桥接
 
-上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 `compose/pages` 的 FlClash 界面翻译提供（不是旧 SFA 页面）。`compose/` 保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。
-
-下表的原生路径以 `app/src/main/java/io/nekohasekai/sfa/` 为前缀。
+上游 Compose 页面及 FK-box 的 Compose 翻译均已移除，界面是 FlClash 的 Flutter 工程（`flutter/`），由 `BoxActivity`（`FlutterFragmentActivity`）承载。[MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定组件名保留，均继承 `BoxActivity`。
 
 | 区域 | 路径 | 当前职责 |
 | --- | --- | --- |
-| 界面宿主 | `flutter/BoxActivity.kt`（包名沿用 `flutter`，承载 Compose） | 启动器/分享入口、文档选择、权限、服务状态及配置应用 |
-| 通道与命令 | `flutter/BoxBridge.kt` | 保留原 MethodChannel 命令与 EventChannel 消息名，经 `call()` / `listen()`（不再注册平台通道）对接配置、工具和设置 |
-| 原生状态 | `backend/` | 仪表盘、分组、连接、日志、Tailscale/Taildrop、诊断和认证状态模型 |
-| 平台视图 | `flutter/BoxBrowserFactory.kt`、`flutter/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以 `AndroidView` 嵌入 Compose 页面 |
-| 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、Room、订阅更新及本地/远程命令目标 |
-| 应用查询 | [vendor/](app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
+| 界面宿主 | `io/nekohasekai/sfa/bridge/BoxActivity.kt` | Flutter 引擎、启动器/分享入口、VPN 授权、服务状态及配置应用 |
+| FlClash 插件 | `com/follow/clash/plugins/` | 移植自 FlClash `android/`，通道与方法不变（app、service、battery、tile） |
+| 服务通道 | `com/follow/clash/FkHost.kt` | FlClash 的 start/stop/getRunTime/syncState 交给 `BoxService` |
+| Core 方法 | `com/follow/clash/core/`（`FkCore`、`FkYaml`、`FkLogs`、`FkGeo`、`FkProbe`） | 按 `lib/core/method.dart` 回答配置、代理组、测速、模式、流量、连接、日志、提供者、地理数据、出口 IP 与路由版本 |
+| 原生状态 | `io/nekohasekai/sfa/backend/`、`bridge/BoxBridge.kt` | 分组、连接、日志、仪表盘状态及 Tailscale/终端/抓包/诊断等工具后端（工具页面尚未在 FlClash 界面中提供入口） |
+| 服务与数据 | `bg/`、`database/`、`utils/` | sing-box/Xray/mihomo 服务、Room、订阅更新及命令目标 |
+
+FlClash 的配置列表保存在其 Dart 数据库和 home 目录；`config.setup` 时 `FkCore` 把要运行的配置（Clash YAML 合并覆写层后，或原样的 sing-box/Xray JSON）写入一个名为 FlClash 的 Room 配置并交给 `BoxService`。此前保存在 Room 中的 FK-box 配置不会自动出现在 FlClash 的配置列表里，需要重新导入。
 
 配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
 
@@ -136,15 +136,15 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 - 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.newGeoUpdate().fetch(...)`，传入上次记录的 SHA-256、`ETag`、`Last-Modified`（`geo-resources.json` 的 `etag`/`lastModified`），文件仍与记录一致时发条件请求，304 视为“已是最新”且不下载。失败保留原文件并显示错误；成功后记为“已下载”。协程取消（离开资源页、WorkManager 停止任务）会调用 `cancel()` 中止 Go 侧下载。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。内置文件检查每个进程只完整做一次，之后 `geo.list` 只在有文件缺失时重新检查。
 - 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
 - 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
-- 界面：工具页顶部分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
+- 界面：FlClash 的资源页（`lib/views/resources.dart`）。其 `geo.update` 由 `FkGeo` 调用上面的下载流程，完成后把文件镜像到 FlClash home 的 `GEOIP.dat`/`GEOSITE.dat`/`GEOIP.metadb`/`ASN.mmdb`，并以 `geoUpdate` 事件回报；FlClash 配置中 `geox-url` 的地址写入 `geoUrls`。FlClash 首次运行的 `extractAsset` 从 APK 的 `assets/geo` 解压。Xray/mihomo 配置校验前也会先解压内置文件，避免校验时找不到 `geoip.dat`。
 - 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/BoxSettingsTest.kt) 覆盖三项设置的校验。
 - APK 体积：内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），APK 中压缩存放；首次解压约占 38 MB 存储。2026-11-06 实测（ARM64 debug，Artifact 未压缩打包）：630f444 为 78,069,486 字节，59d5b01 为 93,208,464 字节，增加 15,138,978 字节（约 14.4 MiB）；源码 SHA 59d5b01 的 [newui.yml](https://github.com/koko123as/fk-box/actions/runs/42207100362) 与 [build-debug-apk.yml](https://github.com/koko123as/fk-box/actions/runs/42207110939) 均通过（含 `TestCoreGeo*` 与 JVM 测试）。未覆盖：真机解压耗时、下载、自动更新、Xray/mihomo 实际读取 geo 规则。
 
 ## 构建与发布
 
-[app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心，界面为同一模块内的 Kotlin + Jetpack Compose 源码，不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
+[app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心；界面由 Flutter Gradle 插件从 `flutter/` 编入同一 APK，构建需要 Flutter SDK 3.47.6（`local.properties` 的 `flutter.sdk` 或 `FLUTTER_ROOT`）、先在 `flutter/` 运行 `flutter pub get`，以及 Rust（`rust_api` 插件）。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
 
-Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
+只发布 `arm64-v8a`。Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
 
 [build-release.yml](.github/workflows/build-release.yml) 仅手动触发，发布 Android 7.0+ 的 ARM64 `otherRelease`。Release 与模拟器构建共用 [build-libbox](.github/actions/build-libbox/action.yml)，核心使用 JDK 17，应用使用 JDK 21；具体 SDK/Build Tools/NDK 版本以共享 Action 和 Gradle 为准。本机未经明确要求不构建，见 [AGENTS.md](AGENTS.md)。
 
@@ -171,10 +171,11 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Compose 入口/字形/占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
-| [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及 Compose 源码检查 |
+| [verify_flclash_ui.py](tools/verify_flclash_ui.py) | `flutter/` 与 FlClash v0.9.3 / prism_ui 逐文件比较；未在 [flclash-manifest.json](flclash-manifest.json) 说明的差异使检查失败（Compose 时期的 `verify_newui.py` 已删除） |
+| [flclash-ui.yml](.github/workflows/flclash-ui.yml) | `flclash-ui` 推送或手动触发；源码差异报告、`flutter analyze`、ARM64 `otherDebug`（JIT）与 `otherProfile`（AOT）APK，Artifact `FK-box-flclash-ui-<SHA>-arm64-v8a-debug` / `-profile` 及 `flclash-ui-diff` |
+| [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及 FlClash 源码差异检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
-| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；Compose 源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
+| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；Flutter 准备（setup-flutter-ui）、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
 | [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用 newui.yml 的核心/源码验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
 
 JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界和 QRS；[ServiceSettingsChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/ServiceSettingsChangeTest.kt) 覆盖服务开关保存后的启动确认、失败/超时/取消恢复及恢复错误保留；[ProfileChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/database/ProfileChangeTest.kt) 覆盖配置持久化失败、应用超时/取消、恢复确认及恢复错误保留。[ProfileRecoveryTest.kt](app/src/androidTest/java/io/nekohasekai/sfa/bridge/ProfileRecoveryTest.kt) 覆盖实际 libbox 二进制导入、查询策略持久化、端口占用导致的 JSON 编辑/配置切换/手动与自动订阅/完整备份恢复失败，以及停服和未选中配置更新的服务状态。Flutter 视觉验证见 [flclash.md](flclash.md)。

@@ -49,7 +49,20 @@
     },
     "fkbox": {
       "app/src/main/java/com/follow/clash/FkHost.kt": "run intent and start time for the service channel, fed by BoxActivity's service status",
-      "app/src/main/java/com/follow/clash/core/FkCore.kt": "answers FlClash's Core wire methods (lib/core/method.dart) from the FK-box backend"
+      "app/src/main/java/com/follow/clash/core/FkCore.kt": "answers FlClash's Core wire methods (lib/core/method.dart) from the FK-box backend: Clash YAML merged as core/profile_base.go does and run by mihomo, sing-box/Xray JSON run as they are, groups/delay/mode/traffic/connections/logs from libbox, providers, geo, outbound IP and route versions",
+      "app/src/main/java/com/follow/clash/core/FkYaml.kt": "YAML reading/dumping and FlClash's profile overlay merge (core/profile_base.go) for config.setup and profile.build",
+      "app/src/main/java/com/follow/clash/core/FkLogs.kt": "Core log events from libbox's log stream while log.start is active",
+      "app/src/main/java/com/follow/clash/core/FkGeo.kt": "geo.update through libbox GeoUpdate into Libbox.geoDataDir() (mihomo home, Xray asset dir), mirrored into FlClash's home file names, reported as geoUpdate events (core/geo.go)",
+      "app/src/main/java/com/follow/clash/core/FkProbe.kt": "probe.outboundIp: the given IP-echo URLs fetched by the app (through the VPN while it runs), first answer wins"
     }
+  },
+  "nativePorts": {
+    "libbox/core_mihomo_provider.go": "FlClash v0.9.3 core/provider.go (be84736): external proxy/rule providers of the in-process mihomo for provider.list/get/update; sideLoad not ported"
+  },
+  "ci": {
+    ".github/workflows/flclash-ui.yml": "source diff (tools/verify_flclash_ui.py), flutter analyze, arm64 debug + profile APKs",
+    ".github/actions/setup-flutter-ui/action.yml": "Flutter 3.47.6, Rust, pub get, sqlite3 asset, Gradle mirror for build-debug-apk.yml and build-release.yml",
+    ".github/ci/maven-mirror.init.gradle": "Maven Central through JetBrains' cache redirector for every build in the tree, including the Flutter SDK's Gradle build",
+    ".github/ci/sqlite3-assets.sh": "package:sqlite3's Android library fetched with retries, checked against the package's pinned SHA-256 and served to its build hook on 127.0.0.1 (url_pattern added in the CI checkout only)"
   }
 }

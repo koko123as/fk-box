@@ -1,8 +1,8 @@
 # FK-box
 
-Kotlin+Jetpack Compose三内核客户端
+FlClash 界面（Flutter）三内核客户端（`flclash-ui` 分支；`main` 合并前为 Kotlin + Jetpack Compose 界面）
 
-FK-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面设计来自 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)：FlClash 原本是 Flutter/Dart 界面，FK-box 已用 Kotlin + Jetpack Compose 全部重写，仓库中不再有任何 Flutter/Dart 代码，只参考并翻译了其设计与组件行为。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
+FK-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面直接取自 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e) 的 Flutter 源码（`flutter/`，`lib/` 与上游逐字节一致，含平板布局），FlClash 原本对接 Go 核心（libclash）的 Core 方法改由 Kotlin 桥接到 libbox，见 [flclash.md](flclash.md)。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
 
 ## 致谢 / 来源
 
@@ -15,10 +15,10 @@ FK-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | GPL-3.0-or-later | 主代理内核（libbox，含 Tailscale 等协议），版本见 [version.properties](version.properties) |
 | [XTLS/Xray-core](https://github.com/XTLS/Xray-core) | MPL-2.0 | 第二内核，编入同一 `libbox.aar` |
 | [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | GPL-3.0（所用 v1.19.33） | 第三内核（Clash YAML），编入同一 `libbox.aar` |
-| [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（界面套件 [prism_ui `63450c0`](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)） | GPL-3.0 | 界面设计与组件行为：原 Flutter/Dart 界面已用 Kotlin + Jetpack Compose 全部重写，不含任何 Flutter 代码；另参考 FlClash `dev` [`63aa150`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6) 的 MITM 证书模块和 IP 质量查询。对应清单见 [flclash-manifest.json](flclash-manifest.json) 与 [flclash.md](flclash.md) |
+| [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（界面套件 [prism_ui `63450c0`](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)） | GPL-3.0 | 界面：Flutter 源码（`lib/`、`arb/`、`assets/`、`plugins/`、prism_ui）按固定提交原样收录于 `flutter/`，Android 宿主插件移植为 Kotlin（`app/src/main/java/com/follow/clash/`），`core/provider.go` 的提供者查询移植进 libbox；另参考 FlClash `dev` [`63aa150`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6) 的 MITM 证书模块和 IP 质量查询。对应清单见 [flclash-manifest.json](flclash-manifest.json) 与 [flclash.md](flclash.md) |
 | [shadowsocks/shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) | GPL-3.0 | `DefaultNetworkListener.kt`（经 sing-box-for-android 沿用） |
 | [Android Open Source Project](https://source.android.com/) / [androidx](https://github.com/androidx/androidx) | Apache-2.0 | `ParceledListSlice.java`；`M3Shapes.kt` / `MaterialShapes.kt` 移植自 androidx `compose/material3/MaterialShapes.kt` |
-| [Jetpack Compose、AndroidX](https://developer.android.com/jetpack)（含 Graphics Shapes、CameraX、Room、WorkManager）、[Material Components](https://github.com/material-components/material-components-android) | Apache-2.0 | 界面框架与 Android 组件；CameraX 用于扫码取景 |
+| [Flutter](https://github.com/flutter/flutter)（BSD-3-Clause）、[AndroidX](https://developer.android.com/jetpack)（含 CameraX、Room、WorkManager）、[Material Components](https://github.com/material-components/material-components-android) | Apache-2.0 | 界面框架与 Android 组件；CameraX 用于扫码取景 |
 | [ZXing](https://github.com/zxing/zxing) | Apache-2.0 | 二维码识别与生成 |
 | [ghostty-org/ghostty](https://github.com/ghostty-org/ghostty)（经 [SagerNet/libghostty-android](https://github.com/SagerNet/libghostty-android)） | MIT | 终端渲染 |
 | [RikkaApps/Shizuku-API](https://github.com/RikkaApps/Shizuku-API) | MIT | Shizuku 权限调用 |
@@ -32,14 +32,15 @@ FK-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 
 下载 APK：[GitHub Releases](https://github.com/koko123as/fk-box/releases)（Android 7.0+，ARM64）。已有 Release 不等同于当前源码。
 
-- Compose 负责仪表盘、代理、配置、工具、设置及所有子页面；启动器和 Android 分享入口均进入新界面。应用不再包含 Flutter。
+- 界面是 FlClash 的 Flutter 工程本身：仪表盘、代理、配置、请求/连接、日志、资源、设置与平板（laptop/desktop）布局均为 FlClash 原版代码；只打包 `arm64-v8a`。
+- FlClash 配置列表可导入 Clash YAML（mihomo，含覆写/自定义配置与提供者）、sing-box JSON 和 Xray JSON（含 MASQUE）；分享链接按 FlClash 流程转为 mihomo 代理，仅 Xray 支持的链接（xhttp）转为 Xray 配置。
 - 导入时按内容识别内核：sing-box JSON、Xray JSON（含 MASQUE 出站）、Clash YAML（mihomo）及分享链接/Base64 节点列表，也可手动指定内核；v2rayNG 式“多个完整配置的 JSON 数组”按元素拆成多个配置，以 `remarks` 命名；分享链接转换为对应内核的配置后再校验。Xray/mihomo 仅支持 VPN 模式。代理组、可选节点、测速和路由模式来自当前内核，自动组由内核选择。
 - 保留 VPN、分应用代理、Root/Shizuku 应用查询、远程控制、连接管理和日志。
 - 工具中的“请求”支持 HTTP 抓取、HTTPS MITM、域名筛选、请求详情及 HAR/cURL 导出；[支持范围和限制](libbox.md#httphttps-请求调试)。
 - JSON 配置支持 MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 和 JavaScript 请求/响应改写；[配置说明与示例](libbox.md#json-配置中的-http-改写)。
-- Tailscale、Taildrop、SSH、OpenConnect/OpenVPN 认证、USB/IP、网络诊断和报告通过新页面使用现有后端。
+- Tailscale、Taildrop、SSH、OpenConnect/OpenVPN 认证、USB/IP、HTTP 抓包/MITM 改写、网络诊断和报告的后端仍在，`flclash-ui` 分支的 FlClash 界面暂未提供这些工具页面入口。
 - 支持配置和设置备份（`bbox-1` 格式，含每个配置的内核与订阅信息）。
-- 旧 Compose 页面、导航、编辑器及更新下载/静默安装链路已移除。关于页检查 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产；配置订阅更新继续保留。
+- 旧 Compose 页面、导航、编辑器及更新下载/静默安装链路已移除；配置订阅更新继续保留。关于页与更新检查是 FlClash 原版代码，指向 FlClash 自己的仓库，不代表 FK-box 的发布。
 - Xposed/LSPosed 和 Android 5/6 支持已移除。
 
 项目约束：[AGENTS.md](AGENTS.md)。核心差异：[libbox.md](libbox.md)。FlClash UI 使用情况及来源：[flclash.md](flclash.md)。Android 应用差异与构建发布：[app.md](app.md)。组件许可证：[licenses](licenses)。
