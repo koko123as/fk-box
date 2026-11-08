@@ -27,6 +27,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
@@ -40,6 +41,7 @@ import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.GlassGpu
 import io.nekohasekai.sfa.compose.ui.GlyphIcon
 import io.nekohasekai.sfa.compose.ui.MaterialShapes
 import io.nekohasekai.sfa.compose.ui.elasticPress
@@ -79,23 +81,34 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
             .semanticsLabel(tooltip),
         contentAlignment = Alignment.Center,
     ) {
+        val cache = remember { StartToggleDrawCache() }
         Canvas(Modifier.size(size)) {
             val p = progress.value
-            val path = morphPathOf(startMorph, p)
+            // One Path per morph progress, reused across redraws: Skia keys a
+            // blurred path's mask texture by the Path's generation id.
+            val path = cache.path(p)
             val turn = Math.toDegrees(p * 2 * PI / 9).toFloat()
             val shadowDy = 6.dp.toPx()
             if (shadow.alpha > 0f && Build.VERSION.SDK_INT >= 28) {
-                withTransform({
-                    translate(0f, shadowDy)
-                    rotate(turn)
-                    scale(this@Canvas.size.width, this@Canvas.size.height, pivot = Offset.Zero)
-                }) {
+                if (GlassGpu.reducedHaze) {
+                    // MediaTek: the shadow is blurred from the circle that bounds
+                    // the shape (Skia's analytic circle blur, no per-path mask).
+                    // The button itself keeps its morphing shape.
+                    val paint = cache.circleShadowPaint(shadow, (7f - .5f) / .57735f * density)
                     drawIntoCanvas { canvas ->
-                        val paint = Paint().apply { color = shadow }
-                        // MaskFilter.blur(sigma 7 dp) in the unit square.
-                        val radius = (7f - .5f) / .57735f / this@Canvas.size.width * density
-                        paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
-                        canvas.drawPath(path, paint)
+                        canvas.drawCircle(Offset(this.size.width / 2, this.size.height / 2 + shadowDy), this.size.width / 2, paint)
+                    }
+                } else {
+                    withTransform({
+                        translate(0f, shadowDy)
+                        rotate(turn)
+                        scale(this@Canvas.size.width, this@Canvas.size.height, pivot = Offset.Zero)
+                    }) {
+                        drawIntoCanvas { canvas ->
+                            // MaskFilter.blur(sigma 7 dp) in the unit square.
+                            val radius = (7f - .5f) / .57735f / this@Canvas.size.width * density
+                            canvas.drawPath(path, cache.shadowPaint(shadow, radius))
+                        }
                     }
                 }
             }
@@ -110,6 +123,46 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
             GlyphIcon(AppGlyphs.wifiOff, size = size * 0.34f, color = ink, fill = 1f)
         } else {
             GlyphIcon(AppGlyphs.playPause(glyphProgress.toDouble()), size = size * 0.34f, color = ink, fill = 1f)
+        }
+    }
+}
+
+/**
+ * StartToggle's reusable draw objects: the morph path for the current
+ * progress and the blurred shadow paint for the current color and radius.
+ */
+private class StartToggleDrawCache {
+    private var pathProgress = Float.NaN
+    private var path: Path? = null
+    private var paint: Paint? = null
+    private var paintColor = Color.Unspecified
+    private var paintRadius = Float.NaN
+    private var paintCircle = false
+
+    fun path(progress: Float): Path {
+        val cached = path
+        if (cached != null && pathProgress == progress) return cached
+        return morphPathOf(startMorph, progress).also {
+            path = it
+            pathProgress = progress
+        }
+    }
+
+    fun shadowPaint(color: Color, radius: Float): Paint = paint(color, radius, circle = false)
+
+    fun circleShadowPaint(color: Color, radius: Float): Paint = paint(color, radius, circle = true)
+
+    private fun paint(color: Color, radius: Float, circle: Boolean): Paint {
+        val cached = paint
+        if (cached != null && paintColor == color && paintRadius == radius && paintCircle == circle) return cached
+        return Paint().apply {
+            this.color = color
+            asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
+        }.also {
+            paint = it
+            paintColor = color
+            paintRadius = radius
+            paintCircle = circle
         }
     }
 }
