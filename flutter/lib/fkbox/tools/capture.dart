@@ -77,9 +77,11 @@ class _FkCaptureViewState extends State<FkCaptureView>
     await _refresh();
   }
 
-  Future<void> _setHttps(bool value) async {
+  Future<void> _setHttps(bool value) => _configure('https', value);
+
+  Future<void> _configure(String key, Object? value) async {
     final config = Map<String, Object?>.from(FkBox.asMap(_settings['config']));
-    config['https'] = value;
+    config[key] = value;
     final saved = await run(
       () => FkBox.map('capture.configure', {
         'revision': _settings['revision'],
@@ -166,6 +168,159 @@ class _FkCaptureViewState extends State<FkCaptureView>
             ),
           ),
         ],
+      ],
+    );
+  }
+
+  List<String> _list(Object? value) => [
+    for (final item in (value as List?) ?? const []) '$item',
+  ];
+
+  /// A list setting edited as comma-separated text.
+  Future<void> _editList(
+    String key,
+    String title, {
+    bool numbers = false,
+  }) async {
+    final config = FkBox.asMap(_settings['config']);
+    final value = await fkInput(
+      title,
+      value: _list(config[key]).join(', '),
+      label: title,
+    );
+    if (value == null) return;
+    final items = [
+      for (final part in value.split(RegExp(r'[,\s]+')))
+        if (part.trim().isNotEmpty) part.trim(),
+    ];
+    if (numbers) {
+      final ports = <int>[];
+      for (final item in items) {
+        final port = int.tryParse(item);
+        if (port == null || port < 1 || port > 65535) {
+          dialogs.showBanner('$title: $item', level: BannerLevel.error);
+          return;
+        }
+        ports.add(port);
+      }
+      await _configure(key, ports);
+    } else {
+      await _configure(key, items);
+    }
+  }
+
+  /// Hosts seen in the captured requests, added to the HTTPS hosts.
+  Future<void> _pickSeenHost() async {
+    final hosts = await run(
+      () => FkBox.list('capture.domains', {'query': _query}),
+    );
+    if (hosts == null || !mounted) return;
+    final names = <String>[
+      for (final host in hosts)
+        if (host is Map) '${host['host'] ?? host['domain'] ?? ''}' else '$host',
+    ].where((name) => name.isNotEmpty).toList();
+    if (names.isEmpty) {
+      dialogs.showBanner(fkStrings.empty);
+      return;
+    }
+    final chosen = await fkChoose(fkStrings.seenHosts, {
+      for (final name in names) name: name,
+    });
+    if (chosen == null) return;
+    final config = FkBox.asMap(_settings['config']);
+    final current = _list(config['decryptHosts']);
+    if (current.contains(chosen)) return;
+    await _configure('decryptHosts', [...current, chosen]);
+  }
+
+  Widget _settingsSection() {
+    final active = _state['active'] == true;
+    final config = FkBox.asMap(_settings['config']);
+    String summary(String key) {
+      final items = _list(config[key]);
+      return items.isEmpty ? fkStrings.all : items.join(', ');
+    }
+
+    final bodyLimit = (config['bodyLimit'] as num?)?.toInt() ?? 0;
+    return generateSection(
+      title: fkStrings.captureSettings,
+      footer: active ? fkStrings.stopToEdit : null,
+      items: [
+        ListItem(
+          title: Text(fkStrings.captureApps),
+          subtitle: Text(summary('packages'), maxLines: 2),
+          onTap: active
+              ? null
+              : () => _editList('packages', fkStrings.captureApps),
+        ),
+        ListItem(
+          title: Text(fkStrings.capturePorts),
+          subtitle: Text(
+            _list(config['ports']).isEmpty
+                ? '80, 443, 8080, 8443'
+                : summary('ports'),
+            maxLines: 2,
+          ),
+          onTap: active
+              ? null
+              : () => _editList(
+                  'ports',
+                  fkStrings.capturePorts,
+                  numbers: true,
+                ),
+        ),
+        ListItem(
+          title: Text(fkStrings.decryptHosts),
+          subtitle: Text(summary('decryptHosts'), maxLines: 2),
+          onTap: active
+              ? null
+              : () => _editList('decryptHosts', fkStrings.decryptHosts),
+        ),
+        ListItem(
+          leading: const GlyphIcon(AppGlyphs.add),
+          title: Text(fkStrings.seenHosts),
+          onTap: active ? null : _pickSeenHost,
+        ),
+        ListItem(
+          title: Text(fkStrings.bypassHosts),
+          subtitle: Text(
+            _list(config['decryptBypassHosts']).isEmpty
+                ? fkStrings.noExitNode
+                : _list(config['decryptBypassHosts']).join(', '),
+            maxLines: 2,
+          ),
+          onTap: active
+              ? null
+              : () => _editList('decryptBypassHosts', fkStrings.bypassHosts),
+        ),
+        ListItem(
+          title: Text(fkStrings.bodyLimit),
+          subtitle: Text(bodyLimit > 0 ? fkBytes(bodyLimit) : '—'),
+          onTap: active
+              ? null
+              : () async {
+                  final value = await fkInput(
+                    fkStrings.bodyLimit,
+                    value: '${bodyLimit ~/ 1024}',
+                    label: 'KiB',
+                  );
+                  final kib = int.tryParse(value?.trim() ?? '');
+                  if (kib == null || kib < 0) return;
+                  await _configure('bodyLimit', kib * 1024);
+                },
+        ),
+        ListItem.toggle(
+          title: Text(fkStrings.blockQuic),
+          value: config['blockQUIC'] == true,
+          onChanged: active ? null : (value) => _configure('blockQUIC', value),
+        ),
+        ListItem.toggle(
+          title: Text(fkStrings.extractHosts),
+          value: config['extractHosts'] == true,
+          onChanged: active
+              ? null
+              : (value) => _configure('extractHosts', value),
+        ),
       ],
     );
   }
@@ -262,10 +417,7 @@ class _FkCaptureViewState extends State<FkCaptureView>
               if (detail == null || !mounted) return;
               await BaseNavigator.push(
                 context,
-                FkTextView(
-                  title: '${item['method'] ?? ''} ${item['status'] ?? ''}',
-                  text: fkPrettyJson(detail),
-                ),
+                FkRequestDetailView(detail: detail),
               );
             },
           ),
@@ -296,7 +448,120 @@ class _FkCaptureViewState extends State<FkCaptureView>
           onPressed: _load,
         ),
       ],
-      children: [_captureSection(), _caSection(), _requests()],
+      children: [
+        _captureSection(),
+        _settingsSection(),
+        _caSection(),
+        _requests(),
+      ],
+    );
+  }
+}
+
+/// One captured request: overview, connection, headers and body previews.
+class FkRequestDetailView extends StatelessWidget {
+  const FkRequestDetailView({super.key, required this.detail});
+
+  final Map<String, Object?> detail;
+
+  List<Widget> _message(
+    BuildContext context,
+    String title,
+    Map<String, Object?> message,
+    Map<String, Object?> preview,
+  ) {
+    final headers = FkBox.asMaps(message['headers']);
+    final text = '${preview['text'] ?? ''}';
+    return [
+      generateSection(
+        title: title,
+        items: [
+          for (final header in headers)
+            ListItem(
+              title: Text('${header['name'] ?? ''}'),
+              subtitle: Text('${header['value'] ?? ''}'),
+            ),
+          ListItem(
+            title: Text(fkStrings.body),
+            subtitle: Text(
+              [
+                fkBytes(message['bodyBytes']),
+                if (message['bodyTruncated'] == true ||
+                    preview['truncated'] == true)
+                  fkStrings.truncated,
+                if ('${preview['encoding'] ?? ''}'.isNotEmpty)
+                  '${preview['encoding']}',
+              ].join(' · '),
+            ),
+            onTap: text.isEmpty
+                ? null
+                : () => BaseNavigator.push(
+                    context,
+                    FkTextView(title: '$title · ${fkStrings.body}', text: text),
+                  ),
+          ),
+        ],
+      ),
+    ];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final request = FkBox.asMap(detail['request']);
+    final response = FkBox.asMap(detail['response']);
+    final metadata = FkBox.asMap(detail['metadata']);
+    final tls = FkBox.asMap(metadata['tls']);
+    final status = (response['status'] as num?)?.toInt() ?? 0;
+    return FkPage(
+      title: '${request['method'] ?? ''} ${status > 0 ? status : ''}'.trim(),
+      menuItems: [
+        PopupMenuItem(
+          label: fkStrings.rawJson,
+          onPressed: () => BaseNavigator.push(
+            context,
+            FkTextView(title: fkStrings.rawJson, text: fkPrettyJson(detail)),
+          ),
+        ),
+      ],
+      children: [
+        fkDetails(null, {
+          'URL': request['url'],
+          if ('${detail['originalUrl'] ?? ''}'.isNotEmpty)
+            fkStrings.originalUrl: detail['originalUrl'],
+          fkStrings.state: status > 0 ? '$status' : null,
+          fkStrings.protocol: response['protocol'] ?? request['protocol'],
+          fkStrings.duration: '${detail['durationMs'] ?? 0} ms',
+          fkStrings.time: fkDate(detail['startedAt']),
+          fkStrings.error: detail['error'],
+          fkStrings.note: detail['note'],
+        }),
+        fkDetails(fkStrings.connection, {
+          fkStrings.host: '${metadata['host'] ?? ''}:${metadata['port'] ?? ''}',
+          fkStrings.destination: metadata['destination'],
+          fkStrings.outbound: metadata['outbound'],
+          fkStrings.rule: metadata['rule'],
+          fkStrings.apps: metadata['packages'],
+          'TLS': tls.isEmpty
+              ? null
+              : [
+                  tls['serverName'],
+                  tls['clientVersion'],
+                  tls['alpn'],
+                ].where((v) => '${v ?? ''}'.isNotEmpty).join(' · '),
+        }),
+        ..._message(
+          context,
+          fkStrings.request,
+          request,
+          FkBox.asMap(detail['requestPreview']),
+        ),
+        ..._message(
+          context,
+          fkStrings.response,
+          response,
+          FkBox.asMap(detail['responsePreview']),
+        ),
+      ],
     );
   }
 }

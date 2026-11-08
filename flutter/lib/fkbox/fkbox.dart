@@ -87,10 +87,20 @@ abstract final class FkBox {
   }
 }
 
+ProviderContainer? _container;
+
+/// Moves FK-box's Room profiles (for instance from a restored FK-box backup)
+/// into FlClash's profile list, as the first launch does.
+Future<void> fkImportLegacyProfiles() async {
+  final container = _container;
+  if (container != null) await _migrateLegacyProfiles(container);
+}
+
 /// Runs once FlClash's app is initialized (bootstrap.dart): answers the
 /// channel's calls into Dart and moves FK-box's former profiles over.
 Future<void> startFkBox(ProviderContainer container) async {
   if (!FkBox.available) return;
+  _container = container;
   FkBox.channel.setMethodCallHandler((call) async {
     switch (call.method) {
       case 'splitProfiles':

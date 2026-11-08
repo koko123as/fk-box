@@ -173,6 +173,7 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
             "capture.stop" -> bridge().call { stopCapture() }
             "capture.clear" -> bridge().call { capture.clear() }
             "capture.detail" -> bridge().call { capture.detail(string("id")) }
+            "capture.domains" -> bridge().call { capture.domains(string("query")) }
             "capture.logs" -> bridge().call { capture.logs() }
             "capture.export" -> bridge().call { capture.export(string("format"), string("id"), string("query")) }
             "capture.exportCertificate" -> bridge().call { capture.exportCertificate(string("revision"), bool("module")) }
@@ -221,6 +222,30 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
                 toolBridge.submitOpenConnect(string("endpoint"), string("challenge"), values)
             }
             "openconnect.cancel" -> bridge().call { toolBridge.cancelOpenConnect(string("endpoint"), string("challenge")) }
+
+            // Terminal (Ghostty) settings of the SSH sessions
+            "terminal.settings" -> bridge().call { terminalSettings() }
+            "terminal.set" -> bridge().call { setTerminalSetting(string("key"), args["value"]) }
+            "terminal.themes" -> bridge().call { terminalThemes(bool("dark")) }
+            "terminal.fonts" -> bridge().call { terminalFonts() }
+            "terminal.importFont" -> bridge().call { importTerminalFont() }
+            "terminal.deleteFont" -> bridge().call { deleteTerminalFont(string("path")) }
+
+            // FK-box's own backup (bbox-1: service settings, terminal, remote servers, WebDAV account and
+            // the former Room profiles). FlClash's backup page keeps FlClash's profiles and settings.
+            "backup.export" -> bridge().call {
+                val backup = createBackup()
+                val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT).format(java.util.Date())
+                saveDocument("FK-box-backup-$stamp.json", org.json.JSONObject(backup).toString())
+            }
+            "backup.import" -> bridge().call {
+                @Suppress("UNCHECKED_CAST")
+                val backup = readBackup("all") as? Map<String, Any?> ?: return@call null
+                val count = restoreBackup(backup, "all", "Compatible")
+                // The restored Room profiles move into FlClash's list the way the first launch moved them.
+                preferences.edit().putBoolean(LEGACY_MIGRATED, false).apply()
+                count
+            }
 
             // Remote control of another FK-box / sing-box instance
             "remote.list" -> bridge().call { remoteServers() }

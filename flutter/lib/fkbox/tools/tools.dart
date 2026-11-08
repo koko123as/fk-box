@@ -7,6 +7,7 @@
 
 import 'dart:async';
 
+import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
@@ -20,6 +21,7 @@ import 'remote.dart';
 import 'reports.dart';
 import 'ssh.dart';
 import 'tailscale.dart';
+import 'terminal.dart';
 import 'usbip.dart';
 
 /// The Tools page row (views/tools.dart) that opens [FkToolsView].
@@ -72,6 +74,14 @@ class _FkToolsViewState extends State<FkToolsView> with FkEvents<FkToolsView> {
     }
   }
 
+  Future<void> _restore() async {
+    final count = await run(() => FkBox.call<int>('backup.import'));
+    if (count == null) return;
+    await fkImportLegacyProfiles();
+    await _load();
+    dialogs.showBanner(fkStrings.restored(count), level: BannerLevel.success);
+  }
+
   Widget _toggle(String key, String title, {bool restart = false}) {
     return ListItem.toggle(
       title: Text(title),
@@ -109,6 +119,11 @@ class _FkToolsViewState extends State<FkToolsView> with FkEvents<FkToolsView> {
               const FkEndpointsView(kind: 'openconnect'),
             ),
             _open(AppGlyphs.code, fkStrings.ssh, const FkSshView()),
+            _open(
+              AppGlyphs.keyboard,
+              fkStrings.terminalSettings,
+              const FkTerminalSettingsView(),
+            ),
             _open(AppGlyphs.requests, fkStrings.capture, const FkCaptureView()),
             _open(AppGlyphs.devices, fkStrings.usbip, const FkUsbView()),
             _open(
@@ -118,6 +133,22 @@ class _FkToolsViewState extends State<FkToolsView> with FkEvents<FkToolsView> {
             ),
             _open(AppGlyphs.warning, fkStrings.reports, const FkReportsView()),
             _open(AppGlyphs.link, fkStrings.remote, const FkRemoteView()),
+          ],
+        ),
+        generateSection(
+          title: fkStrings.fkBackup,
+          footer: fkStrings.fkBackupFooter,
+          items: [
+            ListItem(
+              leading: const GlyphIcon(AppGlyphs.export),
+              title: Text(fkStrings.exportBackup),
+              onTap: () => run(() => FkBox.call<bool>('backup.export')),
+            ),
+            ListItem(
+              leading: const GlyphIcon(AppGlyphs.importFile),
+              title: Text(fkStrings.restoreBackup),
+              onTap: _restore,
+            ),
           ],
         ),
         generateSection(

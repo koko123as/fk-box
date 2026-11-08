@@ -31,17 +31,18 @@
     "lib/fkbox/fkbox.dart": "FK-box channel client (io.fkbox/bridge, io.fkbox/events → FkBoxPlugin.kt), startup hook: split JSON array imports into one profile per configuration named by remarks, first-launch move of FK-box's Room profiles into FlClash's list; takes the intents FK-box's activity queued (sing-box://import-remote-profile and http(s) links, opened configuration files, share-sheet text) into FlClash's own profile import, and shared files into Taildrop.",
     "lib/fkbox/core.dart": "Per-profile core: badge on the profile card and the Core menu entry (sing-box/Xray/automatic), applied through FlClash's own setup action.",
     "lib/fkbox/strings.dart": "English/Simplified Chinese strings of the FK-box additions, so FlClash's arb files and generated l10n stay unchanged.",
-    "lib/fkbox/tools/tools.dart": "The single FK-box entry on Tools › Other (FkToolsItem, a FlClash ListItem) and the page it opens: Tailscale (Taildrop), OpenVPN, OpenConnect, SSH, HTTP capture/MITM, USB/IP, network diagnostics, reports, remote control, core switches and FK-box service settings.",
+    "lib/fkbox/tools/tools.dart": "The single FK-box entry on Tools › Other (FkToolsItem, a FlClash ListItem) and the page it opens: Tailscale (Taildrop), OpenVPN, OpenConnect, SSH, terminal settings, HTTP capture/MITM, USB/IP, network diagnostics, reports, remote control, FK-box backup export/restore, core switches and FK-box service settings.",
     "lib/fkbox/tools/common.dart": "Shared pieces of the FK-box tool pages built from FlClash's Scaffold, generateSection and prism_ui rows (page body, error banners, byte/date text, text viewer, input dialog).",
     "lib/fkbox/tools/tailscale.dart": "Tailscale endpoints of the running sing-box profile: status, login, exit node, peers, ping, SSH, Taildrop inbox/transfers and send file, logout (BoxTools via FkBoxPlugin).",
     "lib/fkbox/tools/ssh.dart": "Tailscale SSH sessions; the terminal is the native libghostty view registered as io.fkbox/terminal.",
-    "lib/fkbox/tools/capture.dart": "HTTP(S) request capture and the MITM CA (generate, export, install), capture settings, export (BoxCapture via FkBoxPlugin).",
+    "lib/fkbox/tools/capture.dart": "HTTP(S) request capture and the MITM CA (generate, export, install); capture settings (apps, ports, decrypted and bypassed hosts, body limit, QUIC blocking, host extraction); request detail (overview, connection, headers, body previews); HAR export and logs (BoxCapture via FkBoxPlugin).",
     "lib/fkbox/tools/usbip.dart": "USB/IP: attach/detach this device's USB devices to a USB/IP server endpoint (BoxTools/BoxUsb).",
     "lib/fkbox/tools/diagnostics.dart": "Network diagnostics through the running profile: STUN NAT type and the network quality test (BoxTools).",
     "lib/fkbox/tools/reports.dart": "Crash, OOM and battery reports (BoxReports): list, read, save a profile file, export with config and logs, delete, clear.",
     "lib/fkbox/tools/endpoints.dart": "OpenVPN and OpenConnect endpoints of the running profile: state, tunnel info and authentication challenges (credentials, verification code, auth form, sign-in URL) through BoxTools; FlClash has no page for them.",
     "lib/fkbox/tools/taildrop.dart": "Taildrop: received files (save, delete, cancel), send transfers (progress, cancel, dismiss) and sending share-sheet content to a Tailscale peer (BoxTools via FkBoxPlugin).",
-    "lib/fkbox/tools/remote.dart": "Remote control: saved remote servers (add, edit, delete) and connecting to or leaving one (RemoteControlManager via FkBoxPlugin)."
+    "lib/fkbox/tools/remote.dart": "Remote control: saved remote servers (add, edit, delete) and connecting to or leaving one (RemoteControlManager via FkBoxPlugin).",
+    "lib/fkbox/tools/terminal.dart": "Ghostty terminal settings of the SSH sessions: light/dark theme picker with colors, font (system, imported, theme), font size, raw Ghostty configuration (BoxTerminalSettings via FkBoxPlugin)."
   },
   "androidHost": {
     "ported": {
@@ -76,7 +77,8 @@
     }
   },
   "nativePorts": {
-    "libbox/core_mihomo_provider.go": "FlClash v0.9.3 core/provider.go (be84736): external proxy/rule providers of the in-process mihomo for provider.list/get/update; sideLoad not ported"
+    "libbox/core_mihomo_provider.go": "FlClash v0.9.3 core/provider.go (be84736): external proxy/rule providers of the in-process mihomo for provider.list/get/update; sideLoad is in core_mihomo_ruleset.go",
+    "libbox/core_mihomo_ruleset.go": "FlClash core/provider.go handleSideLoadExternalProvider (provider.sideLoad), core/rule_set.go (ruleSet.dump, ruleSet.compile) and core/connection.go handleClearDnsCache (dns.clearCache) on upstream mihomo; the rule-set cache directory is FlClash's home passed from FkCore. Adds CommandServer.ClearDNSCache for the sing-box side."
   },
   "ci": {
     ".github/workflows/flclash-ui.yml": "source diff (tools/verify_flclash_ui.py), flutter analyze, arm64 debug + profile APKs",

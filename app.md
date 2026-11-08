@@ -40,7 +40,7 @@
 | FlClash 插件 | `com/follow/clash/plugins/` | 移植自 FlClash `android/`，通道与方法不变（app、service、battery、tile） |
 | 服务通道 | `com/follow/clash/FkHost.kt` | FlClash 的 start/stop/getRunTime/syncState 交给 `BoxService` |
 | Core 方法 | `com/follow/clash/core/`（`FkCore`、`FkYaml`、`FkLogs`、`FkGeo`、`FkProbe`） | 按 `lib/core/method.dart` 回答配置、代理组、测速、模式、流量、连接、日志、提供者、地理数据、出口 IP 与路由版本 |
-| 原生状态 | `io/nekohasekai/sfa/backend/`、`bridge/BoxBridge.kt` | 分组、连接、日志、仪表盘状态及 Tailscale/终端/抓包/诊断等工具后端（工具页面尚未在 FlClash 界面中提供入口） |
+| 原生状态 | `io/nekohasekai/sfa/backend/`、`bridge/BoxBridge.kt` | 分组、连接、日志、仪表盘状态及 Tailscale/Taildrop/OpenVPN/OpenConnect/终端/抓包/USB/IP/诊断/远程控制/备份等工具后端（FlClash 界面中的入口见 [flclash.md](flclash.md#fk-box-功能入口)） |
 | 服务与数据 | `bg/`、`database/`、`utils/` | sing-box/Xray/mihomo 服务、Room、订阅更新及命令目标 |
 
 FlClash 的配置列表保存在其 Dart 数据库和 home 目录；`config.setup` 时 `FkCore` 把要运行的配置（Clash YAML 合并覆写层后，或原样的 sing-box/Xray JSON）写入一个名为 FlClash 的 Room 配置并交给 `BoxService`。此前保存在 Room 中的 FK-box 配置不会自动出现在 FlClash 的配置列表里，需要重新导入。
@@ -85,7 +85,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 ## 请求抓取与 MITM
 
-使用入口为“工具 → 请求”。先在“MITM 证书”中生成 CA，导出并通过 Android 设置或 Root 管理器安装，返回后刷新信任；随后在抓包设置中开启 HTTPS 并设置范围，启动本地服务和抓包，再重连目标应用。安装路径和目标应用的信任限制见下文；HTTP 抓取不需要 CA。
+使用入口为“工具 › 其他 › FK-box 工具 › HTTP 抓包与改写”。先在“MITM 证书”中生成 CA，导出并通过 Android 设置或 Root 管理器安装，返回后刷新信任；随后在抓包设置中开启 HTTPS 并设置范围，启动本地服务和抓包，再重连目标应用。安装路径和目标应用的信任限制见下文；HTTP 抓取不需要 CA。
 
 [BoxCapture.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxCapture.kt) 提供本地请求启停、筛选、列表/详情、域名、HAR/cURL 导出以及 CA 管理。开始抓包需本地服务已 Started；设置和证书准备完成后，在配置互斥区复核服务实例、运行配置和当前选择，再调用该服务的 MITM 绑定。启动失败、返回期间取消或状态确认失败会回收本次已启动会话。切换远程会话停止本地抓包，远程会话拒绝读取或操作本机记录与证书。核心协议、路由、限额和停止行为见 [libbox.md](libbox.md#httphttps-请求调试)。
 

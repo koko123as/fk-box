@@ -123,4 +123,56 @@ class FkStrings {
   String get importProfile => _t('Import profile', '导入配置');
   String importProfileFrom(String source) =>
       _t('Add a profile from $source?', '从 $source 添加配置？');
+
+  // Capture settings and request detail
+  String get captureSettings => _t('Capture settings', '抓包设置');
+  String get stopToEdit => _t('Stop capturing to edit', '停止抓包后可修改');
+  String get captureApps => _t('Apps (package names)', '应用（包名）');
+  String get capturePorts => _t('Ports', '端口');
+  String get decryptHosts => _t('HTTPS hosts to decrypt', '解密的 HTTPS 域名');
+  String get bypassHosts => _t('Hosts never decrypted', '不解密的域名');
+  String get seenHosts => _t('Add a captured host', '添加已抓到的域名');
+  String get bodyLimit => _t('Body limit', '正文上限');
+  String get blockQuic => _t('Block QUIC (force HTTPS over TCP)', '阻止 QUIC（强制 TCP 上的 HTTPS）');
+  String get extractHosts => _t('Record hosts of undecrypted TLS', '记录未解密 TLS 的域名');
+  String get all => _t('All', '全部');
+  String get body => _t('Body', '正文');
+  String get truncated => _t('truncated', '已截断');
+  String get rawJson => _t('Raw JSON', '原始 JSON');
+  String get originalUrl => _t('Original URL', '原始 URL');
+  String get protocol => _t('Protocol', '协议');
+  String get duration => _t('Duration', '耗时');
+  String get time => _t('Time', '时间');
+  String get note => _t('Note', '备注');
+  String get connection => _t('Connection', '连接');
+  String get host => _t('Host', '主机');
+  String get destination => _t('Destination', '目标');
+  String get rule => _t('Rule', '规则');
+  String get apps => _t('Apps', '应用');
+  String get request => _t('Request', '请求');
+  String get response => _t('Response', '响应');
+
+  // Terminal settings and FK-box backup
+  String get terminalSettings => _t('Terminal settings', '终端设置');
+  String get theme => _t('Theme', '主题');
+  String get lightTheme => _t('Light theme', '浅色主题');
+  String get darkTheme => _t('Dark theme', '深色主题');
+  String get font => _t('Font', '字体');
+  String get fontFromTheme => _t("The theme's font", '跟随主题');
+  String get importFont => _t('Import font…', '导入字体…');
+  String get deleteImportedFont => _t('Delete an imported font', '删除导入的字体');
+  String get fontSize => _t('Font size', '字号');
+  String get ghosttyConfig => _t('Ghostty configuration', 'Ghostty 配置');
+  String get lightConfig => _t('Light configuration', '浅色配置');
+  String get darkConfig => _t('Dark configuration', '深色配置');
+  String get defaultValue => _t('Default', '默认');
+  String get fkBackup => _t('FK-box backup', 'FK-box 备份');
+  String get fkBackupFooter => _t(
+    'FK-box settings, terminal, remote servers and FK-box profiles. FlClash profiles and settings are in Tools › Backup and restore.',
+    '包含 FK-box 设置、终端、远程服务器与 FK-box 配置；FlClash 配置与设置请用 工具 › 备份与恢复。',
+  );
+  String get exportBackup => _t('Export backup file', '导出备份文件');
+  String get restoreBackup => _t('Restore backup file', '恢复备份文件');
+  String restored(int count) =>
+      _t('Restored $count profiles', '已恢复 $count 个配置');
 }

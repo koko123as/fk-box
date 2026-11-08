@@ -7,6 +7,7 @@
 import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
+import 'package:fl_clash/state.dart';
 import 'package:fl_clash/ui/icons/icons.dart';
 import 'package:fl_clash/widgets/widgets.dart';
 import 'package:flutter/widgets.dart';
@@ -266,7 +267,10 @@ class _FkShareViewState extends State<FkShareView>
     if (ok == true) {
       _sent = true;
       Navigator.of(context).pop();
-      unawaited(BaseNavigator.push(context, const FkTransfersView()));
+      final root = globalState.navigatorKey.currentContext;
+      if (root != null && root.mounted) {
+        unawaited(BaseNavigator.push(root, const FkTransfersView()));
+      }
     }
   }
 

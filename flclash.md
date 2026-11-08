@@ -22,7 +22,26 @@
 - **界面文件逐字节一致**：`flutter/lib/` 下全部文件与 FlClash `be84736` 一致，包括交互逻辑、动画、阴影、导航、平板布局（`lib/common/layout.dart` 的 `ViewMode` mobile/laptop/desktop 断点、`lib/views/navigation.dart`、仪表盘网格/编辑/拖动）。`plugins/prism_ui` 与 prism_ui `63450c0` 一致。
 - **核心桥接层**：FlClash 在 Android 上把 `lib/core/` 的 Core 调用（`CoreMethodCall` JSON）经 `com.follow.clash/core` 通道交给进程内 Go 核心（libclash）。FK-box 不改 Dart 侧 `lib/core/interface.dart` 的任何方法签名，而是在 Kotlin 侧以同样的方法名和 JSON 结构回答（`app/src/main/java/com/follow/clash/core/`），见下文“Core 方法”。
 - **改动的 FlClash 文件**（由清单 `adaptedFiles` 列出原因）：`pubspec.yaml` 去掉构建 libclash 的 `setup` 依赖及其 `hooks.user_defines` 项；`assets/data/` 的四个地理数据文件不打进 Flutter 资源，由 APK 的 `assets/geo` 提供。
-- **FK-box 新增文件**（清单 `fkboxFiles`）：`assets/data/README.md`、空的 `core/Clash.Meta/component/ca/ca-certificates.crt`（FlClash 列为资源，子模块提交中本为空），以及让 Flutter 工具识别 v2 嵌入的 `android/app/src/main/AndroidManifest.xml`。
+- **FK-box 新增文件**（清单 `fkboxFiles`）：`assets/data/README.md`、空的 `core/Clash.Meta/component/ca/ca-certificates.crt`（FlClash 列为资源，子模块提交中本为空），让 Flutter 工具识别 v2 嵌入的 `android/app/src/main/AndroidManifest.xml`，以及 `lib/fkbox/`（见下文“FK-box 功能入口”）。
+
+## FK-box 功能入口
+
+FlClash 没有页面的 FK-box 功能放在 `lib/fkbox/`，只用 FlClash/prism_ui 的组件（`Scaffold`、`generateSection`、`ListItem`、`InputDialog`、`AlertDialog`）搭建，经独立通道 `io.fkbox/bridge`、`io.fkbox/events`（[FkBoxPlugin.kt](app/src/main/java/com/follow/clash/plugins/FkBoxPlugin.kt)）由现有后端（`BoxBridge`、`BoxTools`、`BoxCapture`、`BoxReports`）回答。入口只有“工具 › 其他”第一项 **FK-box 工具**（`lib/views/tools.dart` 加一行）和配置卡片上的内核标记/菜单项（`lib/views/profiles/profiles.dart` 加两行）：
+
+| FK-box 工具页 | 内容 |
+| --- | --- |
+| Tailscale | 状态、登录、出口节点、节点、Ping、SSH、退出；Taildrop 收件箱（保存/删除/取消接收）、发送文件、传输进度 |
+| OpenVPN / OpenConnect | 端点状态、隧道信息、认证（用户名密码、验证码、OpenConnect 表单、登录网址；OpenConnect 内嵌认证浏览器不提供，改为在浏览器打开） |
+| SSH 终端 / 终端设置 | Tailscale SSH 会话（原生 libghostty 视图）；Ghostty 浅/深色主题、字体（系统/导入/跟随主题）、字号、原始配置 |
+| HTTP 抓包与改写 | 开始/停止、请求列表与详情（概要、连接、头、正文预览）、HAR 导出、日志；应用、端口、解密域名、不解密域名、正文上限、阻止 QUIC、记录未解密域名；MITM CA 生成/导出/Magisk 模块/安装 |
+| USB/IP、网络诊断、诊断报告 | USB/IP 挂载；STUN NAT 类型与网络质量；崩溃/OOM/电量报告 |
+| 远程控制 | 远程服务器增删改、连接/断开 |
+| FK-box 备份 | 导出/恢复 `bbox-1` 备份（FK-box 设置、终端、远程服务器、WebDAV 账户、旧配置；恢复的配置按首次启动的迁移方式进入 FlClash 配置列表）。FlClash 自身的配置与设置走 FlClash 的“备份与恢复” |
+| 内核开关、FK-box 服务设置 | sing-box/Xray/mihomo 开关；托管分应用列表、自动重定向、动态通知、电量报告、OOM killer |
+
+`BoxActivity` 收到的链接、文件和分享（`sing-box://import-remote-profile`、http(s)、打开的配置文件、分享文本）由 `lib/fkbox/fkbox.dart` 确认后交给 FlClash 自己的配置导入（`addProfileFromLink` 等）；分享的文件进入 Taildrop 发送页。FlClash 的 `clash://install-config` 仍由 FlClash 自己处理。
+
+FK-box Compose 界面的“简约”外观风格不移植：它重写整套 Compose 主题令牌，而 FlClash 的主题（`lib/common/theme.dart` 与 prism_ui 令牌）没有可在不改动 FlClash 文件的情况下接入的钩子。
 
 CI（[flclash-ui.yml](.github/workflows/flclash-ui.yml)）检出两个固定参考，运行 [verify_flclash_ui.py](tools/verify_flclash_ui.py) 逐文件比较 SHA-256，把报告写入运行摘要并上传 `flclash-ui-diff` Artifact。未在清单中说明原因的改动、缺失或新增文件会使检查失败。
 
@@ -49,8 +68,14 @@ FlClash 的 `android/` 宿主（插件、服务、快捷方式）移植为 Kotli
 | `geo.update` | libbox `GeoUpdate` 下载到 `Libbox.geoDataDir()`（mihomo 的 home、Xray 的 `xray.location.asset`），再镜像到 FlClash home 的 `GEOIP.dat`/`GEOSITE.dat`/`GEOIP.metadb`/`ASN.mmdb`；以 `geoUpdate` 事件回报 |
 | `route.watch` / `route.check` / `network.changed` | 内核每次启停递增 epoch，配置、选择、模式、提供者和网络变化递增 route-version，并发 `routeChanged` 事件 |
 | `probe.outboundIp` | 应用进程按 URL 列表并发请求，取第一个成功的回答（服务运行时经 VPN） |
+| `proxy.definition` / `proxy.validate` / `filter.validate` | 当前 Clash 配置中的代理定义；每个定义经 mihomo 解析器校验；过滤器按正则校验 |
+| `shareLink.decode` / `shareLink.encode` | 分享链接经 libbox（mihomo `common/convert`）解码；ss/vmess/vless/trojan/hysteria2/tuic/socks5/http 按 mihomo 能读回的形式编码（`FkShareLinks`） |
+| `provider.sideLoad` | mihomo 外部提供者的 `SideUpdate`（libbox `SideLoadMihomoProvider`，移植自 FlClash `core/provider.go`） |
+| `ruleSet.dump` / `ruleSet.compile` | mrs 规则集转文本；下载或读取 FlClash home 的 `providers/rules/<name>`，判定行为并在旁边写 `.mrs`（libbox `DumpMihomoRuleSet`/`CompileMihomoRuleSet`，移植自 FlClash `core/rule_set.go`） |
+| `dns.clearCache` | mihomo 解析器缓存（`resolver.ClearCache`）；sing-box 运行时经 `CommandServer.ClearDNSCache` 重置路由网络状态（含 DNS 缓存）；Xray 无操作 |
+| `mitm.certificate` / `mitm.generateCertificate` | FK-box 的 MITM CA（`FkMitm`，密钥在 Android Keystore），与 FK-box 抓包共用 |
 
-尚未提供、回答 `unsupported` 或空结果的方法：`config.decrypt`（age 加密配置）、`proxy.definition`、`proxy.validate`、`shareLink.encode`/`decode`、`filter.validate`、`provider.sideLoad`、`ruleSet.*`、`probe.services`（返回空列表）、`dns.clearCache`（无操作）及 `mitm.*`。对应页面会显示 Core 错误，而不是虚构结果。
+尚未提供、回答 `unsupported` 或空结果的方法：`config.decrypt`（FlClash 的 age 加密配置格式）、`probe.services`（FlClash 自己 Go 核心的服务解锁检测，返回空列表）、`mitm.exchanges`/`mitm.exchange`/`mitm.body`（FK-box 抓包记录没有 FlClash 连接 ID，返回空；抓到的请求在 FK-box 工具 › HTTP 抓包查看）、`mitm.validate`/`mitm.issueCertificate`/`mitm.runScript`（FlClash 的 MITM 模块/脚本引擎属于其 Clash.Meta 分支，FK-box 的改写引擎是 sing-box `http_rewrite`）。对应页面会显示 Core 错误或空结果，而不是虚构结果。
 
 ## 构建
 
