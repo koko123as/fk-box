@@ -51,7 +51,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Paint
@@ -79,6 +81,7 @@ import io.nekohasekai.sfa.compose.theme.BoxScheme
 import io.nekohasekai.sfa.compose.theme.hairlineOutline
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
+import io.nekohasekai.sfa.compose.theme.SuperellipseShape
 import io.nekohasekai.sfa.compose.theme.tabular
 import kotlinx.coroutines.launch
 import kotlin.math.max
@@ -124,6 +127,17 @@ data class BoxShadowSpec(val color: Color, val dy: Float, val blur: Float, val s
 /**
  * Paints blurred shadows under [shape]. Blur mask filters need hardware
  * canvas support from API 28; below that the shadows are left out.
+ *
+ * The outline paths, paints and blur filters are built once per size, shape,
+ * density and shadow list (drawWithCache) and reused on every redraw: Skia
+ * caches each blurred non-rrect path as a GPU mask keyed by the Path object's
+ * generation id, so a fresh Path per draw minted a new mask texture every
+ * frame. The geometry and filters are the same as before, so the pixels are too.
+ *
+ * MediaTek GPUs only ([GlassGpu.reducedHaze]): a superellipse's shadow is
+ * blurred from a rounded rectangle with the same corner radii, which Skia
+ * draws through its analytic rrect blur with small, size-independent masks.
+ * The fill, clip and border of the surface keep the superellipse.
  */
 fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier = composed {
     val tokens = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
@@ -133,25 +147,54 @@ fun Modifier.boxShadows(shape: Shape, shadows: List<BoxShadowSpec>): Modifier = 
     } else if (Build.VERSION.SDK_INT < 28 || shadows.isEmpty()) {
         Modifier
     } else {
-        Modifier.drawBehind {
-            for (shadow in shadows) {
-                if (shadow.color.alpha <= 0f) continue
-                val spread = shadow.spread.dp.toPx()
-                val outline = shape.createOutline(Size(size.width + 2 * spread, size.height + 2 * spread), layoutDirection, this)
-                val path = Path().apply { addOutline(outline) }
-                val flutterBlur = if (shadow.flutterRadius) shadow.blur else if (shadow.blur <= 1f) 0f else (shadow.blur / 2 - .5f) / .57735f
-                val radius = flutterBlur.dp.toPx()
-                drawIntoCanvas { canvas ->
-                    val paint = Paint().apply { color = shadow.color }
-                    if (radius > 0f) paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
-                    canvas.save()
-                    canvas.translate(-spread, -spread + shadow.dy.dp.toPx())
-                    canvas.drawPath(path, paint)
-                    canvas.restore()
+        val rrectOutline = GlassGpu.reducedHaze && shape is SuperellipseShape
+        val shadowShape = if (rrectOutline) (shape as SuperellipseShape).toRoundedCornerShape() else shape
+        val density = androidx.compose.ui.platform.LocalDensity.current
+        val layoutDirection = androidx.compose.ui.platform.LocalLayoutDirection.current
+        remember(shadowShape, shadows, rrectOutline, density, layoutDirection) {
+            Modifier.cachedShadows(shadowShape, shadows, rrectOutline)
+        }
+    }
+}
+
+/** One prepared shadow: its outline at the shadow's spread, its blurred paint and its offset. */
+private class ShadowLayer(val path: Path, val roundRect: RoundRect?, val paint: Paint, val dx: Float, val dy: Float)
+
+private fun Modifier.cachedShadows(shape: Shape, shadows: List<BoxShadowSpec>, rrectOutline: Boolean): Modifier = drawWithCache {
+    val layers = ArrayList<ShadowLayer>(shadows.size)
+    for (shadow in shadows) {
+        if (shadow.color.alpha <= 0f) continue
+        val spread = shadow.spread.dp.toPx()
+        val outline = shape.createOutline(Size(size.width + 2 * spread, size.height + 2 * spread), layoutDirection, this)
+        val path = Path().apply { addOutline(outline) }
+        // MediaTek: a uniform rounded rectangle goes to the canvas as an rrect itself.
+        val roundRect = if (rrectOutline && outline is Outline.Rounded && outline.roundRect.isUniformCircular()) outline.roundRect else null
+        val flutterBlur = if (shadow.flutterRadius) shadow.blur else if (shadow.blur <= 1f) 0f else (shadow.blur / 2 - .5f) / .57735f
+        val radius = flutterBlur.dp.toPx()
+        val paint = Paint().apply { color = shadow.color }
+        if (radius > 0f) paint.asFrameworkPaint().maskFilter = BlurMaskFilter(radius, BlurMaskFilter.Blur.NORMAL)
+        layers += ShadowLayer(path, roundRect, paint, -spread, -spread + shadow.dy.dp.toPx())
+    }
+    onDrawBehind {
+        drawIntoCanvas { canvas ->
+            for (layer in layers) {
+                canvas.save()
+                canvas.translate(layer.dx, layer.dy)
+                val rr = layer.roundRect
+                if (rr != null) {
+                    canvas.drawRoundRect(rr.left, rr.top, rr.right, rr.bottom, rr.topLeftCornerRadius.x, rr.topLeftCornerRadius.y, layer.paint)
+                } else {
+                    canvas.drawPath(layer.path, layer.paint)
                 }
+                canvas.restore()
             }
         }
     }
+}
+
+private fun RoundRect.isUniformCircular(): Boolean {
+    val r = topLeftCornerRadius
+    return r.x == r.y && topRightCornerRadius == r && bottomRightCornerRadius == r && bottomLeftCornerRadius == r
 }
 
 /** navigation_dock.dart's dockShadows: a soft, wide drop in the manner of iOS. */

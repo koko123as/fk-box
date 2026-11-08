@@ -52,6 +52,12 @@ class SuperellipseShape(
         }
     }
 
+    /**
+     * A rounded rectangle with the same corner radii. Used only for MediaTek
+     * shadow outlines, where Skia's rrect blur avoids per-path mask textures.
+     */
+    fun toRoundedCornerShape(): RoundedCornerShape = RoundedCornerShape(topStart, topEnd, bottomEnd, bottomStart)
+
     override fun equals(other: Any?): Boolean = other is SuperellipseShape && other.topStart == topStart &&
         other.topEnd == topEnd && other.bottomEnd == bottomEnd && other.bottomStart == bottomStart
 
