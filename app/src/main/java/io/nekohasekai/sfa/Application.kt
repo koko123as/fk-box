@@ -86,6 +86,7 @@ class Application : Application() {
             IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
                 addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
                 addDataScheme("package")
             },
         )

@@ -20,6 +20,12 @@ class AppChangeReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent) {
         Log.d(TAG, "onReceive: ${intent.action}")
+        // Connection owners resolve uid → packages from a cache; any package
+        // change can change that mapping.
+        UidPackageCache.clear()
+        // Removal only invalidates the cache; the managed per-app list is
+        // rescanned on add/replace as before.
+        if (intent.action == Intent.ACTION_PACKAGE_REMOVED) return
         val pendingResult = goAsync()
         CoroutineScope(Dispatchers.IO).launch {
             try {
