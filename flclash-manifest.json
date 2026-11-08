@@ -17,12 +17,20 @@
     "assets/data/ASN.mmdb": "Not bundled: the Kotlin host answers extractAsset for assets/data/* from the APK's assets/geo (app/geo-assets.properties).",
     "assets/data/GEOIP.dat": "Not bundled; see assets/data/ASN.mmdb.",
     "assets/data/GEOIP.metadb": "Not bundled; see assets/data/ASN.mmdb.",
-    "assets/data/GEOSITE.dat": "Not bundled; see assets/data/ASN.mmdb."
+    "assets/data/GEOSITE.dat": "Not bundled; see assets/data/ASN.mmdb.",
+    "lib/bootstrap.dart": "FK-box: no first-launch disclaimer on Android (_isDisclaimerAcceptedByEnvironment is true there, so the consent page never shows and the accepted version is stored as FlClash does), and startFkBox (lib/fkbox/fkbox.dart) runs after init for the legacy profile move and split imports. Two additive lines and one import.",
+    "lib/common/constant.dart": "FK-box: repository points to koko123as/fk-box, so About's project link, the update check and the self-update download use FK-box's Releases.",
+    "lib/common/app_update.dart": "FK-box: release asset names are FK-box-<version>-arm64-v8a.apk (tools/publish_release.py also uploads the SHA256SUMS this flow verifies).",
+    "lib/views/tools.dart": "FK-box: the disclaimer entry is removed from Tools › Other (with its import and _DisclaimerItem).",
+    "lib/views/profiles/profiles.dart": "FK-box: the profile card shows the core that runs the profile (FkCoreBadge, a TonalChip like _GroupsCountChip) and its menu gains a Core entry (fkProfileCoreMenuItem) to pick automatic/sing-box/Xray for a JSON profile. Two additive lines and one import; nothing of FlClash's card changes."
   },
   "fkboxFiles": {
     "assets/data/README.md": "Keeps the assets/data/ directory the pubspec lists; explains where the geo files come from.",
     "core/Clash.Meta/component/ca/ca-certificates.crt": "FlClash lists this Clash.Meta submodule file as an asset; it is empty at the submodule commit 024245dc (only FlClash's release CI fills it), and FK-box keeps it empty, which lib/common/http.dart skips.",
-    "android/app/src/main/AndroidManifest.xml": "Marks flutter/ as an Android v2-embedding app for the Flutter tool, so pub get writes the plugin list and GeneratedPluginRegistrant that app/ builds; FlClash's own android/ host is ported to app/ instead."
+    "android/app/src/main/AndroidManifest.xml": "Marks flutter/ as an Android v2-embedding app for the Flutter tool, so pub get writes the plugin list and GeneratedPluginRegistrant that app/ builds; FlClash's own android/ host is ported to app/ instead.",
+    "lib/fkbox/fkbox.dart": "FK-box channel client (io.fkbox/bridge, io.fkbox/events → FkBoxPlugin.kt), startup hook: split JSON array imports into one profile per configuration named by remarks, first-launch move of FK-box's Room profiles into FlClash's list.",
+    "lib/fkbox/core.dart": "Per-profile core: badge on the profile card and the Core menu entry (sing-box/Xray/automatic), applied through FlClash's own setup action.",
+    "lib/fkbox/strings.dart": "English/Simplified Chinese strings of the FK-box additions, so FlClash's arb files and generated l10n stay unchanged."
   },
   "androidHost": {
     "ported": {

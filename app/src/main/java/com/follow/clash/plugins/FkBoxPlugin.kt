@@ -110,6 +110,8 @@ class FkBoxPlugin : FlutterPlugin, MethodChannel.MethodCallHandler, EventChannel
                 coreOverrides()
             }
 
+            "profileCore.overrides" -> coreOverrides()
+
             "links.expectCore" -> {
                 expectLinksCore(string("core"))
                 null

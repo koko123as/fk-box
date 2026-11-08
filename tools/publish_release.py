@@ -3,6 +3,7 @@
 Invoked only by the release workflow when publish_release is enabled.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -61,6 +62,10 @@ def main():
         'version_name': version,
         'application_id': 'io.fkbox.app',
     }, indent=2) + '\n')
+    # The FlClash UI's in-app update (flutter/lib/common/app_update.dart) only
+    # installs an APK whose SHA-256 is listed in the release's SHA256SUMS.
+    sums = apk.parent / 'SHA256SUMS'
+    sums.write_text(f'{hashlib.sha256(apk.read_bytes()).hexdigest()}  {apk.name}\n')
     prerelease = bool(re.search(r'(alpha|beta|rc)', version, re.IGNORECASE))
     release_options = [
         '--repo', repository,
@@ -74,7 +79,7 @@ def main():
     )
     if existing.returncode == 0:
         subprocess.run(
-            ['gh', 'release', 'upload', version, str(apk), str(metadata),
+            ['gh', 'release', 'upload', version, str(apk), str(metadata), str(sums),
              '--repo', repository, '--clobber'],
             check=True
         )
@@ -83,7 +88,7 @@ def main():
         )
     else:
         subprocess.run(
-            ['gh', 'release', 'create', version, str(apk), str(metadata),
+            ['gh', 'release', 'create', version, str(apk), str(metadata), str(sums),
              '--verify-tag', '--target', commit,
              '--notes', f'Signed ARM64 APK built from {commit}.', *release_options],
             check=True

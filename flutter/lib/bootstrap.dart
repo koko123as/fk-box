@@ -10,6 +10,7 @@ import 'package:fl_clash/common/tray.dart';
 import 'package:fl_clash/common/window.dart';
 import 'package:fl_clash/database/database.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/fkbox/fkbox.dart'; // FK-box
 import 'package:fl_clash/l10n/l10n.dart';
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
@@ -172,6 +173,7 @@ class Bootstrap {
       await _container.read(setupActionProvider.notifier).initStatus();
     }
     _container.read(initProvider.notifier).value = true;
+    unawaited(startFkBox(_container)); // FK-box
     unawaited(_container.read(resourcesActionProvider.notifier).autoUpdate());
     unawaited(_container.read(mitmModulesActionProvider.notifier).autoUpdate());
     await bootGuard.markRunning();
@@ -225,8 +227,10 @@ class Bootstrap {
   /// Unattended desktop installs, such as a container nobody watches, accept
   /// up front: the core only starts after the disclaimer is accepted.
   bool get _isDisclaimerAcceptedByEnvironment =>
+      // FK-box: no first-launch disclaimer on Android.
+      system.isAndroid ||
       system.isDesktop &&
-      Platform.environment['FLCLASH_ACCEPT_DISCLAIMER'] == '1';
+          Platform.environment['FLCLASH_ACCEPT_DISCLAIMER'] == '1';
 
   /// Android's exit only finishes the activity, so Dart keeps running after
   /// [SystemAction.handleExit] returns and must not go on to start the app.

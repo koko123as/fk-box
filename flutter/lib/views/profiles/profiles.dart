@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:fl_clash/common/common.dart';
 import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/fkbox/fkbox.dart'; // FK-box
 import 'package:fl_clash/models/models.dart';
 import 'package:fl_clash/providers/providers.dart';
 import 'package:fl_clash/state.dart';
@@ -435,6 +436,7 @@ class ProfileItem extends ConsumerWidget {
             _handlePushGenProfilePage(context, profile.id);
           },
         ),
+      ?fkProfileCoreMenuItem(context, ref, profile), // FK-box
       if (isUrl)
         PopupMenuItem(
           glyph: AppGlyphs.sync,
@@ -517,6 +519,8 @@ class ProfileItem extends ConsumerWidget {
             mainAxisSize: MainAxisSize.min,
             spacing: 8,
             children: [
+              if (profile.type != ProfileType.custom)
+                FkCoreBadge(profile: profile), // FK-box
               if (profile.type == ProfileType.custom)
                 _GroupsCountChip(profileId: profile.id)
               else

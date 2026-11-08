@@ -45,7 +45,7 @@ String? get selfUpdateSuffix => resolveSelfUpdateSuffix();
 // The names follow the release matrix in .github/workflows/build.yaml.
 String? selfUpdateAssetSuffix(Abi abi, {required bool windowsInstalled}) {
   return switch (abi) {
-    Abi.androidArm64 => 'android-arm64-v8a.apk',
+    Abi.androidArm64 => 'arm64-v8a.apk', // FK-box: FK-box-<version>-arm64-v8a.apk
     Abi.androidArm => 'android-armeabi-v7a.apk',
     Abi.androidX64 => 'android-x86_64.apk',
     Abi.windowsX64 when windowsInstalled => 'windows-amd64-setup.exe',
@@ -56,7 +56,7 @@ String? selfUpdateAssetSuffix(Abi abi, {required bool windowsInstalled}) {
 
 String releaseAssetName(String tag, String suffix) {
   final version = tag.startsWith('v') ? tag.substring(1) : tag;
-  return '$appName-$version-$suffix';
+  return 'FK-box-$version-$suffix'; // FK-box: its release asset names
 }
 
 Uri releaseAssetUri(String tag, String name) {

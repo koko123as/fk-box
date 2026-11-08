@@ -70,7 +70,7 @@ internal object FkShareLinks {
                 val plugin = proxy.str("plugin")?.let { plugin ->
                     val opts = proxy.optJSONObject("plugin-opts")
                     val parts = mutableListOf(if (plugin == "obfs") "obfs-local" else plugin)
-                    opts?.keys()?.forEach { key ->
+                    if (opts != null) for (key in opts.keys()) {
                         val option = when {
                             plugin != "obfs" -> key
                             key == "mode" -> "obfs"
