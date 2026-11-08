@@ -110,18 +110,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build debug APK
+      # debug: JIT Dart with asserts and the VM service (slow animations).
+      # profile: the Flutter Gradle plugin's AOT build type (initWith debug, so
+      # the same ciDebug/release signing), real-speed animations, profileable.
+      - name: Build debug and profile APKs
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           echo "flutter.sdk=$FLUTTER_ROOT" >> local.properties
-          ./gradlew :app:assembleOtherDebug -Parm64Only=true -Ptarget-platform=android-arm64 \
+          ./gradlew :app:assembleOtherDebug :app:assembleOtherProfile -Parm64Only=true -Ptarget-platform=android-arm64 \
             --no-daemon --console=plain --max-workers=2 --stacktrace \
             '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Report APK
         run: |
-          for apk in app/build/outputs/apk/other/debug/*.apk; do
+          for apk in app/build/outputs/apk/other/debug/*.apk app/build/outputs/apk/other/profile/*.apk; do
             echo "- $(basename "$apk"): $(stat -c %s "$apk") bytes" | tee -a "$GITHUB_STEP_SUMMARY"
             unzip -l "$apk" | awk '/lib\// {print $4}' | sort | tee -a "$GITHUB_STEP_SUMMARY"
           done
@@ -131,6 +134,15 @@ jobs:
         with:
           name: FK-box-flclash-ui-${{ github.sha }}-arm64-v8a-debug
           path: app/build/outputs/apk/other/debug/*.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload profile APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FK-box-flclash-ui-${{ github.sha }}-arm64-v8a-profile
+          path: app/build/outputs/apk/other/profile/*.apk
           if-no-files-found: error
           compression-level: 0
           retention-days: 30
