@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Resource shrinking (release): icons the launcher, the notification shade,
+  quick tiles and the documents provider show are kept even if a reference
+  is only visible to the system.
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@mipmap/ic_launcher*,@drawable/ic_launcher_*,@drawable/ic_menu,@drawable/box_icon" />

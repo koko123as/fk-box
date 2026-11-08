@@ -111,6 +111,10 @@ android {
         }
         release {
             isMinifyEnabled = true
+            // Drops resources R8 left unreferenced. Nothing looks resources up
+            // by name (no getIdentifier); res/raw/keep.xml keeps the few the
+            // shrinker cannot see referenced.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
             vcsInfo.include = false
