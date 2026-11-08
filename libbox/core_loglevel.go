@@ -67,6 +67,31 @@ func xrayLogConfigWithDefault(root map[string]any) map[string]any {
 	return logConfig
 }
 
+// xrayApplyAccessLog decides where Xray's access log goes. With a log
+// object present Xray builds an empty "access" as console output, which here
+// is the synchronous service log, so a line per connection and DNS query
+// would be written at every level. The access log is therefore turned off
+// ("none") unless the profile asks for it (any non-empty "access", including
+// its own "none", which is kept) or runs at loglevel info/debug. A file path
+// cannot be written here, so an explicit path still goes to the service log.
+func xrayApplyAccessLog(logConfig map[string]any) {
+	if access, ok := logConfig["access"].(string); ok && strings.TrimSpace(access) != "" {
+		if strings.EqualFold(strings.TrimSpace(access), "none") {
+			logConfig["access"] = "none"
+		} else {
+			delete(logConfig, "access")
+		}
+		return
+	}
+	level, _ := logConfig["loglevel"].(string)
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug", "info":
+		delete(logConfig, "access")
+	default:
+		logConfig["access"] = "none"
+	}
+}
+
 // xrayDaemonLogLevel maps Xray's loglevel to the level reported to the app.
 func xrayDaemonLogLevel(level string) daemon.LogLevel {
 	switch strings.ToLower(strings.TrimSpace(level)) {
@@ -84,9 +109,41 @@ func xrayDaemonLogLevel(level string) daemon.LogLevel {
 }
 
 // mihomoSetsLogLevel reports whether a Clash profile sets log-level itself.
+// Block-style YAML (every Clash profile in practice) is checked with a line
+// scan for a top-level key, so a large subscription is not parsed a second
+// time; flow-style or JSON content falls back to a full parse.
 func mihomoSetsLogLevel(content string) bool {
+	text := normalizeCoreContent(content)
+	if strings.HasPrefix(text, "{") {
+		return mihomoSetsLogLevelParsed(text)
+	}
+	for len(text) > 0 {
+		line := text
+		if i := strings.IndexByte(text, '\n'); i >= 0 {
+			line, text = text[:i], text[i+1:]
+		} else {
+			text = ""
+		}
+		if line == "" || line[0] == ' ' || line[0] == '\t' || line[0] == '#' {
+			continue
+		}
+		key := strings.TrimRight(line, " \t\r")
+		if colon := strings.IndexByte(key, ':'); colon >= 0 {
+			key = strings.TrimSpace(key[:colon])
+		} else {
+			continue
+		}
+		key = strings.Trim(key, `"'`)
+		if key == "log-level" {
+			return true
+		}
+	}
+	return false
+}
+
+func mihomoSetsLogLevelParsed(content string) bool {
 	var root map[string]any
-	if mihomoYAML.Unmarshal([]byte(normalizeCoreContent(content)), &root) != nil {
+	if mihomoYAML.Unmarshal([]byte(content), &root) != nil {
 		return false
 	}
 	_, ok := root["log-level"]

@@ -130,7 +130,7 @@ fun HomePage(box: BoxController) {
                         navigator?.push { SharePage(box, uri.removePrefix("bbox-share:")) }
                         continue
                     }
-                    val data = io.nekohasekai.sfa.compose.json(box.call("profiles.decodeIntent", mapOf("uri" to uri)))
+                    val data = io.nekohasekai.sfa.compose.json(box.call { decodeProfileIntent(uri) })
                     openImported(box, navigator, data, importedMessage)
                 } catch (error: kotlinx.coroutines.CancellationException) {
                     throw error

@@ -34,7 +34,7 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.flutter.MitmCertificate
+import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi

@@ -59,7 +59,7 @@ fun ResourcesPage(box: BoxController) {
 
     suspend fun reload() {
         try {
-            items = rows(box.call("geo.list"))
+            items = rows(box.call { geoList() })
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -73,7 +73,7 @@ fun ResourcesPage(box: BoxController) {
         if (name in updating) return true
         updating.add(name)
         return try {
-            val changed = box.call("geo.update", mapOf("name" to name)) == true
+            val changed = box.call { geoUpdate(name) }
             if (announce) box.message("$label: " + if (changed) updated else upToDate)
             true
         } catch (error: CancellationException) {
@@ -160,7 +160,7 @@ fun ResourcesPage(box: BoxController) {
                         validator = { text -> if (text.trim().matches(Regex("^https?://[^\\s/]+.*$"))) null else invalidUrl },
                     ) ?: return@launch
                     try {
-                        items = rows(box.call("geo.setUrl", mapOf("name" to name, "url" to value.trim())))
+                        items = rows(box.call { geoSetUrl(name, value.trim()) })
                     } catch (error: CancellationException) {
                         throw error
                     } catch (error: Exception) {

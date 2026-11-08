@@ -110,7 +110,7 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
         "Edit",
         actions = listOfNotNull(
             IconAction(AppGlyphs.edit, tr("Edit"), { navigator?.openForm { ProfileForm(box, p) } }),
-            if (p["remote"] == true) IconAction(AppGlyphs.sync, tr("Update"), { box.launchAct("profiles.update", mapOf("id" to p["id"])) }) else null,
+            if (p["remote"] == true) IconAction(AppGlyphs.sync, tr("Update"), { box.launchAct { updateProfile(p["id"].asLong()) } }) else null,
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp)) {
@@ -122,10 +122,10 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
         val subscription = p.subscriptionInfo()
         val webPage = p.subscriptionWebPage()
         if (subscription != null) {
-            SubscriptionInfoSection(subscription, webPage) { url -> box.launchAct("url.open", mapOf("url" to url)) }
+            SubscriptionInfoSection(subscription, webPage) { url -> box.launchAct { openUrl(url) } }
         } else if (webPage != null) {
             Section(title = tr("Subscription info"), count = 1) { _, position ->
-                ListItem(title = { Text(tr("Open website")) }, subtitle = { Text(webPage, maxLines = 1, overflow = TextOverflow.Ellipsis) }, position = position, onClick = { box.launchAct("url.open", mapOf("url" to webPage)) })
+                ListItem(title = { Text(tr("Open website")) }, subtitle = { Text(webPage, maxLines = 1, overflow = TextOverflow.Ellipsis) }, position = position, onClick = { box.launchAct { openUrl(webPage) } })
             }
         }
         val remote = p["remote"] == true
@@ -343,7 +343,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
             error = null
             loading = true
             try {
-                val data = json(box.call("profiles.config", mapOf("id" to profile["id"])))
+                val data = json(box.call { profileConfig(profile["id"].asLong()) })
                 val content = data["content"] as String
                 text = TextFieldValue(content)
                 history.reset()
@@ -366,7 +366,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
         error = null
         scope.launch {
             try {
-                val saved = json(box.call("profiles.write", mapOf("id" to profile["id"], "content" to text.text, "revision" to currentRevision)))
+                val saved = json(box.call { writeProfile(profile["id"].asLong(), text.text, currentRevision as? String) })
                 original = text.text
                 revision = saved["revision"] as String
                 box.message(done)
@@ -384,7 +384,7 @@ fun ProfileEditor(box: BoxController, profile: Json) {
         error = null
         scope.launch {
             try {
-                val result = box.call(if (format) "config.format" else "config.check", mapOf("content" to text.text, "core" to (profile["core"] ?: "auto")))
+                val result = box.call { val core = (profile["core"] ?: "auto") as? String; if (format) formatConfig(core, text.text) else checkConfig(core, text.text) }
                 if (format) setText(TextFieldValue(result as String)) else box.message(valid)
             } catch (failure: CancellationException) {
                 throw failure

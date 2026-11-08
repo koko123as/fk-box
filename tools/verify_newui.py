@@ -17,7 +17,7 @@ for name in ("MainActivity", "ShareActivity"):
     source = (compose / f"{name}.kt").read_text()
     if f"class {name} : BoxActivity()" not in source:
         errors.append(f"{name} must enter BoxActivity")
-if "setContent" not in (native / "flutter/BoxActivity.kt").read_text():
+if "setContent" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity must host the Compose UI")
 
 # Every AppGlyphs reference in the pages must name a defined glyph.

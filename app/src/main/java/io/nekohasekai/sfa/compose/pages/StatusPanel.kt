@@ -448,7 +448,7 @@ fun StatusPanel(box: BoxController) {
                                 return@StartToggle
                             }
                             model.busy = true
-                            box.launchAct(if (box.running) "service.stop" else "service.start") { model.busy = false }
+                            box.launchAct(then = { model.busy = false }) { if (box.running) stopService() else startService() }
                         }
                     }
                 }

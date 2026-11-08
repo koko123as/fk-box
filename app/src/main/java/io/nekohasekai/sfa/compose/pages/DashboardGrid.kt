@@ -224,7 +224,7 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${tr("Total")} ${box.dashboard[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = label,
@@ -273,7 +273,7 @@ private fun OutboundModeBar(box: BoxController) {
                             inner = 10f,
                             background = SurfaceLevel.Block.colorOf(scheme),
                             label = label,
-                            onTap = { if (key != selected) box.launchAct("mode.set", mapOf("mode" to mode)) },
+                            onTap = { if (key != selected) box.launchAct { setMode(mode) } },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         ) { foreground ->
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {

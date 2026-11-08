@@ -37,6 +37,7 @@ import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.BoxTheme
+import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxMenu
@@ -167,7 +168,7 @@ class ProfileConfigStore(private val box: BoxController, val profile: Json, priv
         error = null
         scope.launch {
             try {
-                val data = json(box.call("profiles.config", mapOf("id" to profile["id"])))
+                val data = json(box.call { profileConfig(profile["id"].asLong()) })
                 if (!disposed && current == generation) receive(data)
             } catch (failure: CancellationException) {
                 throw failure
@@ -214,7 +215,7 @@ class ProfileConfigStore(private val box: BoxController, val profile: Json, priv
         saving = true
         error = null
         return try {
-            val data = json(box.call("profiles.write", mapOf("id" to profile["id"], "revision" to revision, "content" to encodeJson(candidate))))
+            val data = json(box.call { writeProfile(profile["id"].asLong(), encodeJson(candidate), revision as? String) })
             if (!disposed) receive(data)
             true
         } catch (failure: CancellationException) {

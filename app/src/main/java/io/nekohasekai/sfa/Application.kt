@@ -38,8 +38,11 @@ import io.nekohasekai.sfa.Application as BoxApplication
 
 class Application : Application() {
     private val setupAccess = Mutex()
-    private var workingDir: File? = null
-    private var setupCompleted = false
+    private val workingDirAccess = Any()
+    @Volatile private var workingDir: File? = null
+    @Volatile private var setupCompleted = false
+    private val localeAccess = Any()
+    @Volatile private var localeApplied = false
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
@@ -49,20 +52,21 @@ class Application : Application() {
     override fun onCreate() {
         super.onCreate()
         AppLifecycleObserver.register(this)
+        // JVM crash capture is armed before anything else; its files are
+        // resolved off the main thread below.
+        CrashReportManager.installHandler()
 
 //        Seq.setContext(this)
-        runCatching {
-            Libbox.setLocale(Locale.getDefault().toLanguageTag())
-        }.onFailure {
-            Log.d("Application", "set locale: ${it.message}")
-        }
-
-        filesDir.mkdirs()
-        cacheDir.mkdirs()
-        installWorkingDir()
-
+        // Loading libbox (dlopen, relocations, Go runtime and package init)
+        // and the working directory setup (external storage, report archives)
+        // run on IO instead of the main thread. The locale is set first, so
+        // it is in place before setupLibbox() and every caller that waits on it.
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
+            applyLocale()
+            filesDir.mkdirs()
+            cacheDir.mkdirs()
+            installWorkingDir()
             Settings.dataStore.initialize()
             WorkManager.getInstance(this@Application).cancelUniqueWork("AutoUpdate")
             runCatching {
@@ -82,24 +86,64 @@ class Application : Application() {
             IntentFilter().apply {
                 addAction(Intent.ACTION_PACKAGE_ADDED)
                 addAction(Intent.ACTION_PACKAGE_REPLACED)
+                addAction(Intent.ACTION_PACKAGE_REMOVED)
                 addDataScheme("package")
             },
         )
     }
 
-    private fun installWorkingDir(): File? {
+    /**
+     * UI, VPN service and the Go cores share this process. When the UI goes
+     * to the background or the system runs low, hand Go's idle heap back to
+     * the kernel (what Dashboard → Memory → Release memory does). HWUI frees
+     * the window's render targets, including the Liquid Glass layers, itself
+     * when the UI is hidden.
+     */
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        if (!setupCompleted || level < TRIM_MEMORY_RUNNING_LOW) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastTrim < 10_000L) return
+        lastTrim = now
+        @Suppress("OPT_IN_USAGE")
+        GlobalScope.launch(Dispatchers.IO) { runCatching { Libbox.collectUIRuntimeMemory() } }
+    }
+
+    @Volatile private var lastTrim = 0L
+
+    /** Sets the libbox locale once; the first libbox call that loads the library. */
+    private fun applyLocale() {
+        if (localeApplied) return
+        synchronized(localeAccess) {
+            if (localeApplied) return
+            runCatching {
+                Libbox.setLocale(Locale.getDefault().toLanguageTag())
+            }.onFailure {
+                Log.d("Application", "set locale: ${it.message}")
+            }
+            localeApplied = true
+        }
+    }
+
+    /** Idempotent and thread-safe; callers that read reports call it first. */
+    fun installWorkingDir(): File? {
         workingDir?.let { return it }
-        val dir = getExternalFilesDir(null) ?: return null
-        dir.mkdirs()
-        CrashReportManager.install(dir, filesDir)
-        OOMReportManager.install(dir)
-        PowerReportManager.install(dir)
-        workingDir = dir
-        return dir
+        synchronized(workingDirAccess) {
+            workingDir?.let { return it }
+            val dir = getExternalFilesDir(null) ?: return null
+            dir.mkdirs()
+            CrashReportManager.install(dir, filesDir)
+            OOMReportManager.install(dir)
+            PowerReportManager.install(dir)
+            workingDir = dir
+            return dir
+        }
     }
 
     suspend fun setupLibbox() = setupAccess.withLock {
         if (setupCompleted) return@withLock
+        applyLocale()
         val dir = installWorkingDir() ?: error("android: external storage unavailable")
         Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))
         setupCompleted = true

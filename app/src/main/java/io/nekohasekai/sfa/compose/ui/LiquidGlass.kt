@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -220,6 +221,7 @@ private fun GlassLayer(
     modifier: Modifier,
 ) {
     val shader = remember { RuntimeShader(LIQUID_GLASS_AGSL) }
+    val effect = remember { GlassEffectCache() }
     val haze = rememberGraphicsLayer()
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
@@ -238,6 +240,25 @@ private fun GlassLayer(
                 val g = glow()
                 val style = styleOf()
                 val radius = cornerRadius ?: 1e4f
+                val hazeAmount = if (style.hazeBlur > 0f) style.haze else 0f
+                // Every value the uniforms below are derived from. While they
+                // are unchanged the effect built last time is reused: same
+                // shader, same uniforms, so the same pixels, without a new
+                // RenderEffect on every layer pass.
+                val inputs = floatArrayOf(
+                    d, w, h, radius, hazeAmount,
+                    style.bevel, style.blur, style.refraction, style.saturation, style.brightness,
+                    style.tint.red, style.tint.green, style.tint.blue, style.tint.alpha,
+                    style.rim, style.rimWidth, style.endShade,
+                    g.center.x, g.center.y, g.strength, style.contrast, g.reach, g.wash,
+                    style.hairline, style.dispersion, style.rimBlur,
+                    style.rimTail, style.rimFocus, style.rimAdded, style.hairlineSide ?: style.hairline,
+                )
+                val cached = effect.effect
+                if (cached != null && inputs.contentEquals(effect.inputs)) {
+                    renderEffect = cached
+                    return@graphicsLayer
+                }
                 shader.setFloatUniform("uSize", w, h * 2)
                 shader.setFloatUniform("uFrame", 0f, 0f, 1 / d, 1 / d)
                 shader.setFloatUniform("uSample", 0f, 0f, 1 / d, 1 / d)
@@ -245,7 +266,7 @@ private fun GlassLayer(
                 shader.setFloatUniform("uTexels", 1 / d, 0f)
                 shader.setFloatUniform("uHazeSample", 0f, -h / d, 1 / d, 1 / d)
                 shader.setFloatUniform("uHazeClamp", .5f, h + .5f, w - .5f, h * 2 - .5f)
-                shader.setFloatUniform("uHaze", if (style.hazeBlur > 0f) style.haze else 0f)
+                shader.setFloatUniform("uHaze", hazeAmount)
                 shader.setFloatUniform("uShape", w / d, h / d, style.bevel, style.blur)
                 shader.setFloatUniform("uCorners", radius, radius, radius, radius)
                 shader.setFloatUniform("uOptics", style.refraction, style.saturation, style.brightness)
@@ -255,7 +276,10 @@ private fun GlassLayer(
                 shader.setFloatUniform("uGlowSpread", g.reach, g.wash)
                 shader.setFloatUniform("uEdge", style.hairline, style.dispersion, style.rimBlur)
                 shader.setFloatUniform("uRim", style.rimTail, style.rimFocus, style.rimAdded, style.hairlineSide ?: style.hairline)
-                renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "uTexture").asComposeRenderEffect()
+                val created = RenderEffect.createRuntimeShaderEffect(shader, "uTexture").asComposeRenderEffect()
+                effect.inputs = inputs
+                effect.effect = created
+                renderEffect = created
             }
             .drawBehind {
                 if (!backdrop.recorded) return@drawBehind
@@ -265,7 +289,22 @@ private fun GlassLayer(
                 clipRect(0f, 0f, size.width, h) {
                     translate(-shift.x, -shift.y) { drawLayer(backdrop.layer) }
                 }
-                if (style.haze > 0f && style.hazeBlur > 0f) {
+                if (style.haze > 0f && style.hazeBlur > 0f && GlassGpu.reducedHaze) {
+                    // MediaTek (Mali/Immortalis/PowerVR): the heavily blurred
+                    // haze is rendered at half resolution and scaled back up,
+                    // a quarter of the offscreen target and blur work.
+                    val sigma = style.hazeBlur * density * HAZE_SCALE
+                    haze.renderEffect = BlurEffect(sigma, sigma, TileMode.Clamp)
+                    haze.clip = true
+                    val width = kotlin.math.ceil(size.width * HAZE_SCALE).toInt().coerceAtLeast(1)
+                    val height = kotlin.math.ceil(h * HAZE_SCALE).toInt().coerceAtLeast(1)
+                    haze.record(size = IntSize(width, height)) {
+                        scale(HAZE_SCALE, HAZE_SCALE, pivot = Offset.Zero) {
+                            translate(-shift.x, -shift.y) { drawLayer(backdrop.layer) }
+                        }
+                    }
+                    translate(0f, h) { scale(1 / HAZE_SCALE, 1 / HAZE_SCALE, pivot = Offset.Zero) { drawLayer(haze) } }
+                } else if (style.haze > 0f && style.hazeBlur > 0f) {
                     val sigma = style.hazeBlur * density
                     haze.renderEffect = BlurEffect(sigma, sigma, TileMode.Clamp)
                     haze.clip = true
@@ -276,4 +315,26 @@ private fun GlassLayer(
                 }
             },
     )
+}
+
+private const val HAZE_SCALE = .5f
+
+/** The last glass RenderEffect of one pane and the uniform inputs it was built from. */
+private class GlassEffectCache {
+    var inputs: FloatArray? = null
+    var effect: androidx.compose.ui.graphics.RenderEffect? = null
+}
+
+/**
+ * GPU-specific Liquid Glass tuning. Only MediaTek SoCs (Dimensity/Helio:
+ * Arm Mali/Immortalis or Imagination PowerVR GPUs, whose drivers allocate
+ * offscreen blur targets in full and report them as app graphics memory) take
+ * the cheaper paths; every other GPU renders exactly as before.
+ */
+internal object GlassGpu {
+    val reducedHaze: Boolean by lazy {
+        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MANUFACTURER else ""
+        soc.equals("Mediatek", ignoreCase = true) || soc.equals("MTK", ignoreCase = true) ||
+            Regex("^mt\\d", RegexOption.IGNORE_CASE).containsMatchIn(Build.HARDWARE.orEmpty())
+    }
 }

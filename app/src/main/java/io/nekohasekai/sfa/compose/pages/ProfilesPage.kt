@@ -153,7 +153,7 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
         if (id in updating) return
         updating.add(id)
         try {
-            box.act("profiles.update", mapOf("id" to id))
+            box.act { updateProfile(id.asLong()) }
         } finally {
             updating.remove(id)
         }
@@ -176,8 +176,8 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
     }
     fun export(profile: Json) = scope.launch {
         try {
-            val content = box.call("profiles.read", mapOf("id" to profile["id"]))
-            box.call("document.save", mapOf("name" to profile["name"].toString() + ".json", "content" to content))
+            val content = box.call { readProfile(profile["id"].asLong()) }
+            box.call { saveDocument(profile["name"].toString() + ".json", content) }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -186,8 +186,8 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
     }
     fun share(profile: Json) = scope.launch {
         try {
-            val content = if (profile["remote"] == true) remoteProfileLink(profile) else box.call("profiles.read", mapOf("id" to profile["id"]))
-            box.call("share.text", mapOf("content" to content))
+            val content = if (profile["remote"] == true) remoteProfileLink(profile) else box.call { readProfile(profile["id"].asLong()) }
+            box.call { shareText(content) }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -221,7 +221,7 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
             PopupMenuItem(t("Delete"), AppGlyphs.delete, danger = true, onPressed = {
                 scope.launch {
                     if (dialogs?.confirm("Delete this profile?", message = "This cannot be undone.") == true) {
-                        box.act("profiles.delete", mapOf("id" to profile["id"]))
+                        box.act { deleteProfile(profile["id"].asLong()) }
                     }
                 }
             }),
@@ -264,7 +264,7 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
                         onPressed = if (box.transitioning) null else ({
                             scope.launch {
                                 if (!box.transitioning && !box.remote) {
-                                    if (box.act("profiles.select", mapOf("id" to profile["id"])) && picker) navigator?.pop()
+                                    if (box.act { selectProfile(profile["id"].asLong()) } && picker) navigator?.pop()
                                 }
                             }
                         }),
@@ -397,10 +397,10 @@ private const val PROFILE_METER_HEIGHT = 4
 /** decodeImport: links become profiles natively; anything else must pass the config check. */
 suspend fun decodeImport(box: BoxController, text: String): Json {
     if (text.startsWith("https://") || text.startsWith("http://") || text.startsWith("sing-box://")) {
-        return json(box.call("profiles.decodeIntent", mapOf("uri" to text)))
+        return json(box.call { decodeProfileIntent(text) })
     }
     // A JSON array of configs comes back split as "entries" (see openImported).
-    val decoded = json(box.call("profiles.decodeText", mapOf("content" to text, "name" to "Imported profile")))
+    val decoded = json(box.call { decodeProfileText(text, "Imported profile") })
     return if (decoded["entries"] is List<*>) decoded else mapOf("name" to decoded["name"], "content" to decoded["content"], "core" to "auto")
 }
 
@@ -415,7 +415,7 @@ suspend fun openImported(box: BoxController, navigator: io.nekohasekai.sfa.compo
         navigator?.openForm { ProfileForm(box, data) }
         return
     }
-    val ids = box.call("profiles.saveAll", mapOf("entries" to entries, "core" to (data["core"] as? String ?: "auto"))) as? List<*>
+    val ids = box.call { saveProfiles(entries, data["core"] as? String ?: "auto") } as? List<*>
     box.message(importedMessage.replace("%d", (ids?.size ?: entries.size).toString()))
 }
 
@@ -432,7 +432,7 @@ private suspend fun importProfile(box: BoxController, context: Context, source: 
     try {
         when (source) {
             "File" -> {
-                val result = box.call("profiles.importFile")
+                val result = box.call { importProfileFile() }
                 if (result != null) openImported(box, navigator, json(result), importedMessage)
             }
             "Clipboard" -> {
@@ -571,9 +571,8 @@ fun ProfileForm(box: BoxController, initial: Json) {
             try {
                 val parsed = interval.toIntOrNull()
                 val previous = initial["interval"].asLong()?.toInt() ?: 60
-                box.call(
-                    "profiles.save",
-                    initial + mapOf(
+                box.call {
+                    saveProfile(initial + mapOf(
                         "name" to name.trim(),
                         "url" to if (remote) url.trim() else "",
                         "autoUpdate" to (remote && auto),
@@ -581,8 +580,8 @@ fun ProfileForm(box: BoxController, initial: Json) {
                         // A typed interval outranks the provider's profile-update-interval.
                         "intervalEdited" to (initial["intervalEdited"] == true || (remote && auto && interval != initialInterval)),
                         "core" to core,
-                    ),
-                )
+                    ))
+                }
                 navigator?.pop()
             } catch (error: CancellationException) {
                 throw error
@@ -664,7 +663,7 @@ fun ProfileOrderPage(box: BoxController) {
         confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
             saving = true
             scope.launch {
-                val saved = box.act("profiles.reorder", mapOf("ids" to profiles.map { it["id"] }))
+                val saved = box.act { reorderProfiles(profiles.map { (it["id"] as Number).toLong() }) }
                 if (saved) navigator?.pop() else saving = false
             }
         }), loading = saving),
@@ -709,14 +708,14 @@ fun ScanPage(box: BoxController) {
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     LaunchedEffect(Unit) { if (!granted) permission.launch(Manifest.permission.CAMERA) }
     DisposableEffect(Unit) {
-        onDispose { box.launchAct("profiles.scan.close", mapOf("session" to session)) }
+        onDispose { box.launchAct { closeProfileScan(session) } }
     }
     val scan: (String) -> Unit = scan@{ text ->
         if (state.busy || state.complete) return@scan
         state.busy = true
         scope.launch {
             try {
-                val result = json(box.call("profiles.scan", mapOf("session" to session, "text" to text)))
+                val result = json(box.call { scanProfile(session, text) })
                 val profile = when {
                     result["profile"] is Map<*, *> -> json(result["profile"])
                     result["text"] is String -> decodeImport(box, result["text"] as String)

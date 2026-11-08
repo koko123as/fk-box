@@ -164,6 +164,16 @@ fun ToolsPage(box: BoxController) {
 // pages/connections.dart
 // ---------------------------------------------------------------------------
 
+/**
+ * A remember key that matches only the same instance. The feeds publish a new
+ * list object on every update, so identity tells "same data" without the
+ * element-by-element equals a list key would run on every recomposition.
+ */
+private class IdentityKey(val value: Any) {
+    override fun equals(other: Any?) = other is IdentityKey && other.value === value
+    override fun hashCode() = System.identityHashCode(value)
+}
+
 private fun matchesWords(text: String, query: String): Boolean {
     val search = text.lowercase()
     return query.lowercase().split(' ').all { search.contains(it) }
@@ -226,14 +236,22 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
     }
     val key = mapOf("Created" to "createdAt", "Upload" to "uploadTotal", "Download" to "downloadTotal")[sort]
     fun rank(c: Json): Double = if (key == null) (c["upload"].asDouble() ?: 0.0) + (c["download"].asDouble() ?: 0.0) else c[key].asDouble() ?: 0.0
-    val searched = box.connections.filter { connection ->
-        val closed = (connection["closedAt"].asDouble() ?: 0.0) > 0
-        if (filter == "Active" && closed || filter == "Closed" && !closed) return@filter false
-        val search = listOf("destination", "domain", "outbound", "network", "rule", "source", "process").joinToString(" ") { connection[it]?.toString() ?: "null" }
-        matchesWords(search, query)
+    // Filtering and sorting are redone only when the feed, the query, the
+    // filters or the sort change, not on every recomposition.
+    val source = box.connections
+    val searched = remember(IdentityKey(source), filter, query) {
+        val blank = query.isBlank()
+        source.filter { connection ->
+            val closed = (connection["closedAt"].asDouble() ?: 0.0) > 0
+            if (filter == "Active" && closed || filter == "Closed" && !closed) return@filter false
+            // A blank query matches everything; skip building the search text.
+            if (blank) return@filter true
+            val search = listOf("destination", "domain", "outbound", "network", "rule", "source", "process").joinToString(" ") { connection[it]?.toString() ?: "null" }
+            matchesWords(search, query)
+        }
     }
     SideEffect { filters.offer(searched) }
-    val list = filters.apply(searched).sortedByDescending(::rank)
+    val list = remember(IdentityKey(searched), filters.filters, key) { filters.apply(searched).sortedByDescending(::rank) }
     val groups = filters.groupsOf(list)
     val folds = rememberRecordGroupFolds(filters.grouping)
     CommonScaffold(
@@ -244,7 +262,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
         iconActions = if (recent) emptyList() else listOf(
             IconAction(AppGlyphs.clearAll, tr("Close all connections"), if (box.running) ({
                 scope.launch {
-                    if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act("connections.closeAll")
+                    if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act { closeConnections() }
                 }
             }) else null),
         ),
@@ -292,7 +310,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
             RecordHeader(
                 trailing = if (!closed && box.running) {
                     {
-                        GlyphButton(AppGlyphs.block, tr("Close this connection"), { box.launchAct("connections.close", mapOf("id" to c["id"])) }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
+                        GlyphButton(AppGlyphs.block, tr("Close this connection"), { box.launchAct { closeConnection(c["id"] as? String) } }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
                     }
                 } else {
                     null
@@ -378,7 +396,7 @@ private fun ConnectionDetail(box: BoxController, initial: Json) {
                 setClipboard(context, values.joinToString("\n") { "${it.first}: ${it.second}" })
                 box.message(copied)
             }),
-            IconAction(AppGlyphs.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct("connections.close", mapOf("id" to c["id"])) }) else null),
+            IconAction(AppGlyphs.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct { closeConnection(c["id"] as? String) } }) else null),
         ),
     ) {
         Spacer(Modifier.height(0.dp))
@@ -393,6 +411,8 @@ private fun ConnectionDetail(box: BoxController, initial: Json) {
 // ---------------------------------------------------------------------------
 // pages/logs.dart
 // ---------------------------------------------------------------------------
+
+private val logQuerySeparator = Regex("\\s+")
 
 private val logPriorities = mapOf("panic" to 0, "fatal" to 1, "error" to 2, "warn" to 3, "warning" to 3, "info" to 4, "debug" to 5, "trace" to 6)
 
@@ -416,9 +436,16 @@ fun LogsPage(box: BoxController) {
         }
         return level == "All" || itemLevel == level.lowercase()
     }
-    val words = query.lowercase().trim().split(Regex("\\s+"))
-    val searched = (paused ?: box.logs).filter { item ->
-        matchesLevel(item, box.defaultLogLevel) && words.all { "${item["level"]} ${item["message"]}".lowercase().contains(it) }
+    val source = paused ?: box.logs
+    val defaultLevel = box.defaultLogLevel
+    // Redone only when the records, the query or the level change; a blank
+    // query skips building the lowercase search text for every record.
+    val searched = remember(IdentityKey(source), query, level, defaultLevel) {
+        val words = query.lowercase().trim().split(logQuerySeparator)
+        val blank = query.isBlank()
+        source.filter { item ->
+            matchesLevel(item, defaultLevel) && (blank || words.all { "${item["level"]} ${item["message"]}".lowercase().contains(it) })
+        }
     }
     SideEffect { filters.offer(searched) }
     val logs = filters.apply(searched)
@@ -440,10 +467,8 @@ fun LogsPage(box: BoxController) {
         keywords = filters.keywords(pinned),
         iconActions = listOf(
             IconAction(AppGlyphs.export, tr("Export"), {
-                box.launchAct(
-                    "document.save",
-                    mapOf("name" to "B-box.log", "content" to logs.joinToString("\n") { "${recordTime(it["receivedAt"])} [${it["level"]}] ${it["message"]}" }),
-                )
+                val content = logs.joinToString("\n") { "${recordTime(it["receivedAt"])} [${it["level"]}] ${it["message"]}" }
+                box.launchAct { saveDocument("B-box.log", content) }
             }),
         ),
         menuItems = buildList {
@@ -461,7 +486,7 @@ fun LogsPage(box: BoxController) {
                     },
                 ),
             )
-            add(PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = { box.launchAct("logs.clear") { if (it) paused = null } }))
+            add(PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = { box.launchAct(then = { if (it) paused = null }) { clearLogs() } }))
             for (item in listOf("Default", "All", "Trace", "Debug", "Info", "Warn", "Error", "Fatal", "Panic")) {
                 val label = if (item == "Default") {
                     tr("Follow configuration") + (box.defaultLogLevel?.let { " (${trLevel(it)})" } ?: "")

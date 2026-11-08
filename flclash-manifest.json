@@ -438,8 +438,8 @@
           "sourceSHA256": "3279a91d13be99ee0c76495384c626cad6cdd88d408eb38259555bf53fe4aeac",
           "usage": "design",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/flutter/MitmCertificate.kt",
-            "app/src/main/java/io/nekohasekai/sfa/flutter/MitmCertificateModule.kt"
+            "app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificate.kt",
+            "app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificateModule.kt"
           ],
           "changes": "Reference for Android CA identity, hash names, store/namespace limitations and public module export. B-box implements non-exportable Keystore signing, revision checks and AtomicFile persistence; no automatic root command or private-key export."
         },

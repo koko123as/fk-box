@@ -5,7 +5,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.nekohasekai.sfa.compose.common.IpQualityCache
-import io.nekohasekai.sfa.flutter.BoxBridge
+import io.nekohasekai.sfa.bridge.BoxBridge
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -28,7 +28,7 @@ fun Any?.asLong(): Long? = (this as? Number)?.toLong()
 
 fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
 
-enum class BoxData { Memory, Logs, Connections }
+enum class BoxData { Memory, Lan, Logs, Connections }
 
 /**
  * Compose port of flutter/lib/box.dart's BoxController: the same state fields,
@@ -85,8 +85,8 @@ class BoxController(private val bridge: BoxBridge) {
     private val profileStats = HashMap<Long, Deferred<Json>>()
 
     val ipQualities = IpQualityCache(
-        read = { ip -> call("dashboard.qualityCache.get", mapOf("ip" to ip)) },
-        write = { ip, record -> call("dashboard.qualityCache.put", mapOf("ip" to ip, "value" to record)) },
+        read = { ip -> call { readQualityCache(ip) } },
+        write = { ip, record -> call { writeQualityCache(ip, record) } },
         onCacheError = { Log.w("BoxController", "IP quality cache: ${describe(it)}") },
     )
 
@@ -99,18 +99,19 @@ class BoxController(private val bridge: BoxBridge) {
     }
 
     private fun syncData(data: BoxData) {
-        launchAct(
+        val visible = dataOwners[data]?.isNotEmpty() == true
+        launchAct {
             when (data) {
-                BoxData.Memory -> "dashboard.memory.visible"
-                BoxData.Logs -> "logs.visible"
-                BoxData.Connections -> "connections.visible"
-            },
-            mapOf("visible" to (dataOwners[data]?.isNotEmpty() == true)),
-        )
+                BoxData.Memory -> setMemoryVisible(visible)
+                BoxData.Lan -> setLanVisible(visible)
+                BoxData.Logs -> setLogsVisible(visible)
+                BoxData.Connections -> setConnectionsVisible(visible)
+            }
+        }
     }
 
     fun profileStats(id: Long): Deferred<Json> = profileStats.getOrPut(id) {
-        scope.async { json(call("profiles.stats", mapOf("id" to id))) }
+        scope.async { json(call { profileStats(id) }) }
     }
 
     val remote: Boolean get() = dashboard["remote"] != null
@@ -144,7 +145,7 @@ class BoxController(private val bridge: BoxBridge) {
     fun refreshLan() {
         scope.launch {
             try {
-                val value = call("dashboard.lan.refresh")
+                val value = call { refreshLan() }
                 if (!disposed && value is Map<*, *>) lan = json(value)
             } catch (error: Exception) {
                 report(error)
@@ -161,13 +162,7 @@ class BoxController(private val bridge: BoxBridge) {
         }
         lanChanging = true
         try {
-            val args = buildMap<String, Any?> {
-                put("profileId", target)
-                put("revision", revision ?: lan["revision"])
-                put("enabled", enabled)
-                if (port != null) put("port", port)
-            }
-            val value = json(call("dashboard.lan.set", args))
+            val value = json(call { setLanProxy(target, revision ?: lan["revision"] as? String, enabled, port) })
             if (!disposed && !remote && selectedProfileId == target) lan = value
             return true
         } catch (error: CancellationException) {
@@ -186,7 +181,7 @@ class BoxController(private val bridge: BoxBridge) {
         bridge.listen { event -> onEvent(event) }
         scope.launch {
             try {
-                val result = json(call("ready"))
+                val result = json(call { ready() })
                 version = result["version"] as? String ?: ""
                 coreVersion = result["coreVersion"] as? String ?: ""
                 xrayVersion = result["xrayVersion"] as? String ?: ""
@@ -215,21 +210,23 @@ class BoxController(private val bridge: BoxBridge) {
     fun retryInitialize() = initialize()
 
     /** The OpenConnect sign-in browser, formerly the io.koko123as.flbox/openconnect platform view. */
-    internal fun browserView(context: android.content.Context, args: Map<String, Any?>): io.nekohasekai.sfa.flutter.PlatformView =
-        io.nekohasekai.sfa.flutter.BoxBrowserFactory(bridge).create(context, 0, args)
+    internal fun browserView(context: android.content.Context, args: Map<String, Any?>): io.nekohasekai.sfa.bridge.PlatformView =
+        io.nekohasekai.sfa.bridge.BoxBrowserFactory(bridge).create(context, 0, args)
 
     /** The Ghostty surface, formerly the io.koko123as.flbox/ghostty platform view. */
-    internal fun terminalView(context: android.content.Context, args: Map<String, Any?>, channel: io.nekohasekai.sfa.flutter.TerminalChannel): io.nekohasekai.sfa.flutter.TerminalSurface =
-        io.nekohasekai.sfa.flutter.BoxTerminalFactory().create(context, 0, args, channel)
+    internal fun terminalView(context: android.content.Context, args: Map<String, Any?>, channel: io.nekohasekai.sfa.bridge.TerminalChannel): io.nekohasekai.sfa.bridge.TerminalSurface =
+        io.nekohasekai.sfa.bridge.BoxTerminalFactory().create(context, 0, args, channel)
 
-    suspend fun call(method: String, args: Map<String, Any?> = emptyMap()): Any? = bridge.call(method, args)
+    /** Runs one bridge command, e.g. `box.call { geoList() }`. */
+    suspend fun <R> call(command: suspend BoxBridge.() -> R): R = bridge.call(command)
 
     fun clearApplyRequired() {
         applyRequired = null
     }
 
-    suspend fun act(method: String, args: Map<String, Any?> = emptyMap()): Boolean = try {
-        call(method, args)
+    /** Runs a command and reports its failure; true when it succeeded. */
+    suspend fun act(command: suspend BoxBridge.() -> Any?): Boolean = try {
+        call(command)
         true
     } catch (error: CancellationException) {
         throw error
@@ -238,14 +235,15 @@ class BoxController(private val bridge: BoxBridge) {
         false
     }
 
-    fun launchAct(method: String, args: Map<String, Any?> = emptyMap(), then: (Boolean) -> Unit = {}) {
-        scope.launch { then(act(method, args)) }
+    /** [act] in the controller's scope; [then] gets whether it succeeded. */
+    fun launchAct(then: (Boolean) -> Unit = {}, command: suspend BoxBridge.() -> Any?) {
+        scope.launch { then(act(command)) }
     }
 
     fun launch(block: suspend CoroutineScope.() -> Unit) = scope.launch(block = block)
 
     suspend fun setPreferences(values: Map<String, Any?>): Boolean = try {
-        preferences = json(call("preferences.set", mapOf("value" to values)))
+        preferences = json(call { setPreferences(values) })
         true
     } catch (error: CancellationException) {
         throw error
@@ -262,7 +260,7 @@ class BoxController(private val bridge: BoxBridge) {
         val restartService = autoRestart && running && !remote
         if (autoRestart) serviceSettingsChanging = true
         try {
-            val saved = json(call("settings.set", buildMap { put("key", key); put("value", value); if (restartService) put("restart", true) }))
+            val saved = json(call { setSetting(key, value, restartService) })
             if (!disposed) {
                 settings = saved
                 if (restartService) {
@@ -281,7 +279,7 @@ class BoxController(private val bridge: BoxBridge) {
     }
 
     suspend fun setSettings(values: Map<String, Any?>, restart: Boolean = true): Boolean = try {
-        settings = json(call("settings.patch", mapOf("value" to values)))
+        settings = json(call { updateSettings(values) })
         if (restart && running && !remote) applyRequired = "Restart"
         true
     } catch (error: CancellationException) {
@@ -296,7 +294,7 @@ class BoxController(private val bridge: BoxBridge) {
     fun appIcon(packageName: String): Deferred<ByteArray?> = appIcons.getOrPut(packageName) {
         scope.async {
             try {
-                call("apps.icon", mapOf("package" to packageName)) as? ByteArray
+                call { appIcon(packageName) }
             } catch (error: CancellationException) {
                 throw error
             } catch (_: Exception) {
@@ -362,7 +360,7 @@ class BoxController(private val bridge: BoxBridge) {
             "error" -> _messages.tryEmit(BoxMessage(value.toString(), error = true))
             "intentAvailable" -> scope.launch {
                 try {
-                    val uri = call("intent.take")
+                    val uri = call { takeIntent() }
                     if (uri is String) {
                         pendingIntents.addLast(uri)
                         _intents.tryEmit(uri)

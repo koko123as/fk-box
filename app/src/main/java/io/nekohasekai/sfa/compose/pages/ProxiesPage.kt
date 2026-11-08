@@ -234,15 +234,15 @@ fun ProxiesPage(box: BoxController) {
     suspend fun test(tag: String) {
         if (testing[tag] == true || !box.running) return
         testing[tag] = true
-        box.act("groups.test", mapOf("tag" to tag))
+        box.act { urlTest(tag as? String) }
         testing.remove(tag)
     }
     val launchTest: (String) -> Unit = { tag -> scope.launch { test(tag) } }
     val select: (Json, Json) -> Unit = { group, node ->
         scope.launch {
             if (box.running && group["selectable"] == true && node["tag"] != group["selected"]) {
-                if (box.act("groups.select", mapOf("group" to group["tag"], "tag" to node["tag"]))) {
-                    if (box.preferences["closeConnectionsOnSelect"] == true) box.act("connections.closeAll")
+                if (box.act { selectOutbound(group["tag"] as? String, node["tag"] as? String) }) {
+                    if (box.preferences["closeConnectionsOnSelect"] == true) box.act { closeConnections() }
                 }
             }
         }

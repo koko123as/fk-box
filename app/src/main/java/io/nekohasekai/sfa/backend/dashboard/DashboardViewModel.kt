@@ -21,14 +21,12 @@ import kotlinx.coroutines.withContext
 
 data class DashboardUiState(
     val serviceStatus: Status = Status.Stopped,
-    val connectionsCount: Int = 0,
     val serviceStartTime: Long? = null,
     val deprecatedNotes: List<DeprecatedNote> = emptyList(),
-    val memory: String = "",
-    val goroutines: String = "",
+    // Per-second values (rates, traffic totals, memory) are not kept here:
+    // they travel in the bridge's "rates" event, so this state only changes
+    // on real status, profile or mode changes.
     val trafficVisible: Boolean = false,
-    val uplinkTotal: String = "0 B",
-    val downlinkTotal: String = "0 B",
     val clashModeVisible: Boolean = false,
     val clashModes: List<String> = emptyList(),
     val selectedClashMode: String = "",
@@ -150,15 +148,10 @@ class DashboardViewModel :
                 }
                 updateState {
                     copy(
-                        connectionsCount = 0,
                         serviceStartTime = null,
                         clashModeVisible = false,
                         systemProxyVisible = false,
                         trafficVisible = false,
-                        memory = "",
-                        goroutines = "",
-                        uplinkTotal = "0 B",
-                        downlinkTotal = "0 B",
                     )
                 }
             }
@@ -235,35 +228,11 @@ class DashboardViewModel :
         }
     }
 
-    override fun onDisconnected() {
-        viewModelScope.launch(Dispatchers.Main) {
-            updateState {
-                copy(
-                    memory = "",
-                    goroutines = "",
-                )
-            }
-        }
-    }
-
     override fun updateStatus(status: StatusMessage) {
+        // Only set trafficVisible to true, never back to false from status updates.
+        if (!status.trafficAvailable || currentState.trafficVisible) return
         viewModelScope.launch(Dispatchers.Main) {
-            updateState {
-                // Format the total values
-                val newUplinkTotal = Libbox.formatBytes(status.uplinkTotal)
-                val newDownlinkTotal = Libbox.formatBytes(status.downlinkTotal)
-
-                copy(
-                    memory = Libbox.formatBytes(status.memory),
-                    goroutines = status.goroutines.toString(),
-                    // Only set trafficVisible to true, never back to false from status updates
-                    trafficVisible = if (status.trafficAvailable) true else trafficVisible,
-                    connectionsCount = status.connectionsIn,
-                    // Only update total values if they've actually changed
-                    uplinkTotal = if (newUplinkTotal != uplinkTotal) newUplinkTotal else uplinkTotal,
-                    downlinkTotal = if (newDownlinkTotal != downlinkTotal) newDownlinkTotal else downlinkTotal,
-                )
-            }
+            updateState { copy(trafficVisible = true) }
         }
     }
 

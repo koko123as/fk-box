@@ -10,6 +10,7 @@ import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -22,6 +23,11 @@ class LogViewModel :
     private val buffer = LogBuffer()
     override fun createInitialState() = LogUiState()
 
+    // Buffer work (ANSI strip, ring append, snapshot) runs off the main
+    // thread. One lane keeps clear/append in arrival order.
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val bufferLane = Dispatchers.Default.limitedParallelism(1)
+
     private val commandClient =
         CommandClient(
             scope = viewModelScope,
@@ -29,6 +35,10 @@ class LogViewModel :
             handler = this,
         )
     private val serviceStatusFlow = MutableStateFlow(Status.Stopped)
+
+    // The log stream is only subscribed while the Logs page is shown; the
+    // service replays its saved lines (with a reset) on every subscribe.
+    private val visibleFlow = MutableStateFlow(false)
 
     init {
         viewModelScope.launch {
@@ -47,6 +57,8 @@ class LogViewModel :
                     // a local configuration must renew that subscription as well.
                     localConfig = if (remoteServer == null) config else null,
                 )
+            }.combine(visibleFlow) { target, visible ->
+                target.copy(connect = target.connect && visible)
             }.distinctUntilChanged().collect { target ->
                 if (target.connect) {
                     commandClient.connect()
@@ -65,12 +77,14 @@ class LogViewModel :
 
     fun updateServiceStatus(status: Status) { serviceStatusFlow.value = status }
 
+    fun setVisible(visible: Boolean) { visibleFlow.value = visible }
+
     override fun setDefaultLogLevel(level: Int) {
         updateState { copy(defaultLogLevel = LogLevel.from(level)) }
     }
 
     override fun clearLogs() {
-        viewModelScope.launch(Dispatchers.Main) {
+        viewModelScope.launch(bufferLane) {
             buffer.clear()
             updateState { copy(logs = emptyList()) }
         }
@@ -94,7 +108,7 @@ class LogViewModel :
 
     override fun appendLogs(message: List<LogEntry>) {
         val entries = message.map { LogEntryData(LogLevel.from(it.level), it.message) }
-        viewModelScope.launch(Dispatchers.Main) {
+        viewModelScope.launch(bufferLane) {
             buffer.append(entries)
             updateState { copy(logs = buffer.snapshot()) }
         }

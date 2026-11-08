@@ -204,12 +204,12 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
     var limit by remember { mutableIntStateOf(50) }
     var revision by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
-    val poll = rememberCapturePoll(box, "capture.snapshot", mapOf("query" to query, "limit" to limit), revision)
-    fun act(method: String, arguments: Map<String, Any?> = emptyMap()) {
+    val poll = rememberCapturePoll(box, listOf(query, limit), revision) { capture.snapshot(limit, query) }
+    fun act(command: suspend io.nekohasekai.sfa.bridge.BoxBridge.() -> Any?) {
         if (busy) return
         busy = true
         scope.launch {
-            box.act(method, arguments)
+            box.act(command)
             busy = false
             revision++
         }
@@ -247,7 +247,7 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
                 busy = true
                 scope.launch {
                     try {
-                        val source = json(box.call("capture.settings"))
+                        val source = json(box.call { capture.captureSettings() })
                         navigator?.pushPage({ RequestSettingsPage(box, json(source["config"]), source) }) {
                             busy = false
                             revision++
@@ -261,9 +261,9 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
             })),
             PopupMenuItem(tr("MITM certificate"), AppGlyphs.lock, onPressed = { navigator?.push { MitmCertificatePage(box) } }),
             PopupMenuItem(tr("Capture logs"), AppGlyphs.logs, onPressed = { navigator?.push { CaptureLogsPage(box) } }),
-            PopupMenuItem(tr("Export HAR"), AppGlyphs.arrowDown, onPressed = if (busy || entries.isEmpty()) null else ({ act("capture.export", mapOf("format" to "har", "query" to query)) })),
+            PopupMenuItem(tr("Export HAR"), AppGlyphs.arrowDown, onPressed = if (busy || entries.isEmpty()) null else ({ act { capture.export("har", query = query) } })),
             PopupMenuItem(tr("Clear requests"), AppGlyphs.delete, onPressed = if (busy) null else ({
-                scope.launch { if (dialogs?.confirm("Clear captured requests?") == true) act("capture.clear") }
+                scope.launch { if (dialogs?.confirm("Clear captured requests?") == true) act { capture.clear() } }
             })),
         ) + filters.menuItems(pinned),
     ) {
@@ -278,7 +278,7 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
                             active,
                             if (rewrite) ItemPosition.Start else ItemPosition.StartAndEnd,
                             subtitle = tr(if (active) "Capturing new connections" else "Capture stopped"),
-                            onChanged = if (busy || snapshot == null || !box.running || box.transitioning) null else ({ act(if (active) "capture.stop" else "capture.start") }),
+                            onChanged = if (busy || snapshot == null || !box.running || box.transitioning) null else ({ act { if (active) stopCapture() else startCapture() } }),
                         )
                         if (rewrite) {
                             ListItem(
@@ -378,7 +378,7 @@ fun RequestDetailPage(box: BoxController, id: String) {
         setClipboard(context, text)
         box.message(copiedText)
     }
-    val poll = rememberCapturePoll(box, "capture.detail", mapOf("id" to id))
+    val poll = rememberCapturePoll(box, id) { capture.detail(id) }
     val detail = poll.value
     val metadata = json(detail?.get("metadata"))
     val request = json(detail?.get("request"))
@@ -435,7 +435,7 @@ fun RequestDetailPage(box: BoxController, id: String) {
             IconAction(AppGlyphs.arrowDown, tr("Export cURL"), if (curlBlocked) null else ({
                 busy = true
                 scope.launch {
-                    box.act("capture.export", mapOf("format" to "curl", "id" to id))
+                    box.act { capture.export("curl", id = id) }
                     busy = false
                 }
             })),
@@ -576,16 +576,15 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
             try {
                 val parsed = lines(ports).map { it.toIntOrNull() ?: -1 }
                 if (parsed.isEmpty() || parsed.any { it < 1 || it > 65535 }) throw NumberFormatException()
-                box.call(
-                    "capture.configure",
-                    mapOf(
-                        "revision" to source["revision"],
-                        "config" to mapOf(
+                box.call {
+                    configureCapture(
+                        source["revision"] as? String,
+                        mapOf(
                             "version" to 2, "https" to https, "decryptHosts" to lines(decrypt), "packages" to packages, "ports" to parsed,
                             "bodyLimit" to bodyKiB * 1024, "decryptBypassHosts" to lines(decryptBypass), "extractHosts" to extract, "blockQUIC" to blockQUIC,
                         ),
-                    ),
-                )
+                    )
+                }
                 dirty = false
                 busy = false
                 navigator?.pop()
@@ -724,7 +723,7 @@ fun CaptureAppsPage(box: BoxController, initial: List<String>) {
     LaunchedEffect(attempt) {
         error = null
         try {
-            apps = rows(box.call("apps.list", mapOf("system" to true, "refresh" to true)))
+            apps = rows(box.call { listApps(refresh = true, system = true, nonInternet = false) })
         } catch (failure: Throwable) {
             error = failure
         }
@@ -794,7 +793,7 @@ fun CaptureDomainsPage(box: BoxController, query: String = "", select: Boolean =
         error = null
         domains = null
         try {
-            domains = (box.call("capture.domains", mapOf("query" to query)) as? List<*>)?.map { it.toString() } ?: emptyList()
+            domains = (box.call { capture.domains(query) } as? List<*>)?.map { it.toString() } ?: emptyList()
         } catch (failure: Throwable) {
             error = failure
         }
@@ -811,7 +810,7 @@ fun CaptureDomainsPage(box: BoxController, query: String = "", select: Boolean =
                     IconAction(AppGlyphs.arrowDown, tr("Export domains"), if (list.isEmpty() || busy) null else ({
                         busy = true
                         scope.launch {
-                            box.act("capture.export", mapOf("format" to "domains", "query" to query))
+                            box.act { capture.export("domains", query = query) }
                             busy = false
                         }
                     })),
@@ -864,7 +863,7 @@ fun CaptureLogsPage(box: BoxController) {
         setClipboard(context, text)
         box.message(copiedText)
     }
-    val poll = rememberCapturePoll(box, "capture.logs", emptyMap(), revision)
+    val poll = rememberCapturePoll(box, Unit, revision) { capture.logs() }
     val snapshot = poll.value
     val state = json(snapshot?.get("state"))
     val active = state["active"] == true
@@ -880,11 +879,11 @@ fun CaptureLogsPage(box: BoxController) {
         iconActions = listOf(IconAction(AppGlyphs.refresh, tr("Refresh"), poll.refresh)),
         menuItems = listOf(
             PopupMenuItem(tr("Copy logs"), AppGlyphs.copy, onPressed = if (logs.isEmpty()) null else ({ copy(text) })),
-            PopupMenuItem(tr("Export"), AppGlyphs.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct("document.save", mapOf("name" to "B-box-capture.log", "content" to text)) })),
+            PopupMenuItem(tr("Export"), AppGlyphs.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct { saveDocument("B-box-capture.log", text) } })),
             PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = if (busy) null else ({
                 busy = true
                 scope.launch {
-                    box.act("capture.logs.clear")
+                    box.act { capture.clearLogs() }
                     busy = false
                     revision++
                 }
@@ -970,9 +969,9 @@ fun MitmCertificatePage(box: BoxController) {
     var busy by remember { mutableStateOf(false) }
     val active = rememberPageActive()
     val messages = mapOf(
-        "capture.ca.install" to tr("Certificate settings opened. Refresh trust after installation."),
-        "capture.ca.module" to tr("CA module exported. Install it with your root manager, reboot, then refresh trust."),
-        "capture.ca.export" to tr("Public CA certificate exported"),
+        CertificateAction.Install to tr("Certificate settings opened. Refresh trust after installation."),
+        CertificateAction.Module to tr("CA module exported. Install it with your root manager, reboot, then refresh trust."),
+        CertificateAction.Export to tr("Public CA certificate exported"),
     )
     fun refresh() {
         if (busy || box.remote) return
@@ -980,7 +979,7 @@ fun MitmCertificatePage(box: BoxController) {
         error = null
         scope.launch {
             try {
-                val value = json(box.call("capture.ca.snapshot"))
+                val value = json(box.call { capture.caSnapshot() })
                 if (!box.remote) state = value
             } catch (failure: Throwable) {
                 error = failure
@@ -991,20 +990,28 @@ fun MitmCertificatePage(box: BoxController) {
     }
     // Refresh when the page opens and whenever the app returns to the foreground.
     LaunchedEffect(active) { if (active) refresh() }
-    fun run(method: String) {
+    fun run(method: CertificateAction) {
         val current = state ?: return
         if (busy || box.remote) return
         scope.launch {
-            if (method == "capture.ca.generate" && current["exists"] == true) {
+            if (method == CertificateAction.Generate && current["exists"] == true) {
                 if (dialogs?.confirm("Regenerate the MITM CA? Replace the old certificate in Android and target applications afterwards.") != true) return@launch
             }
             if (box.remote || busy) return@launch
             busy = true
             error = null
             try {
-                val result = box.call(method, mapOf("revision" to current["revision"]))
+                val revision = current["revision"] as? String
+                val result = box.call {
+                    when (method) {
+                        CertificateAction.Generate -> capture.caGenerate(revision)
+                        CertificateAction.Export -> capture.exportCertificate(revision, module = false)
+                        CertificateAction.Module -> capture.exportCertificate(revision, module = true)
+                        CertificateAction.Install -> capture.installCertificate(revision)
+                    }
+                }
                 if (box.remote) return@launch
-                if (method == "capture.ca.generate") {
+                if (method == CertificateAction.Generate) {
                     state = json(result)
                 } else if (result == true) {
                     box.message(messages[method] ?: "")
@@ -1048,7 +1055,7 @@ fun MitmCertificatePage(box: BoxController) {
                         title = { Text(tr(if (exists) "Regenerate CA" else "Generate CA")) },
                         subtitle = if (locked) ({ Text(tr("Stop capture and the local service before changing the MITM certificate")) }) else null,
                         position = p,
-                        onClick = if (busy || locked) null else ({ run("capture.ca.generate") }),
+                        onClick = if (busy || locked) null else ({ run(CertificateAction.Generate) }),
                     )
                 }
             }
@@ -1061,9 +1068,9 @@ fun MitmCertificatePage(box: BoxController) {
                 count = 3,
             ) { index, position ->
                 val (label, method) = listOf(
-                    "Export public CA certificate" to "capture.ca.export",
-                    "Open certificate settings" to "capture.ca.install",
-                    "Export system CA module" to "capture.ca.module",
+                    "Export public CA certificate" to CertificateAction.Export,
+                    "Open certificate settings" to CertificateAction.Install,
+                    "Export system CA module" to CertificateAction.Module,
                 )[index]
                 ListItem(title = { Text(tr(label)) }, position = position, onClick = if (busy || !usable) null else ({ run(method) }))
             }
@@ -1071,3 +1078,5 @@ fun MitmCertificatePage(box: BoxController) {
         ListFooter(tr("The private signing key stays on this device. Exports contain only the public CA. Regeneration requires replacing installed certificates; remove system modules in the root manager and reboot."))
     }
 }
+
+private enum class CertificateAction { Generate, Export, Install, Module }

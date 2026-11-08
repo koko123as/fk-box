@@ -59,10 +59,12 @@ object CrashReportManager {
     private val _unreadCount = MutableStateFlow(0)
     val unreadCount: StateFlow<Int> = _unreadCount
 
-    fun install(workingDir: File, baseDir: File) {
-        this.workingDir = workingDir
-        this.baseDir = baseDir
-        archivePendingJvmCrashReport()
+    @Volatile private var handlerInstalled = false
+
+    /** Cheap: only chains the uncaught exception handler (main thread, at start). */
+    fun installHandler() {
+        if (handlerInstalled) return
+        handlerInstalled = true
         val previous = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             writePendingJvmCrashReport(thread, throwable)
@@ -70,11 +72,21 @@ object CrashReportManager {
         }
     }
 
+    /** Disk work: sets the directories and archives a pending JVM crash (off the main thread). */
+    fun install(workingDir: File, baseDir: File) {
+        this.workingDir = workingDir
+        this.baseDir = baseDir
+        archivePendingJvmCrashReport()
+        installHandler()
+    }
+
     private fun writePendingJvmCrashReport(thread: Thread, throwable: Throwable) {
         try {
+            // A crash before the working directory was installed resolves it here.
+            val dir = if (::workingDir.isInitialized) workingDir else Application.application.getExternalFilesDir(null) ?: return
             val writer = StringWriter()
             throwable.printStackTrace(PrintWriter(writer))
-            File(workingDir, PENDING_JVM_CRASH_FILE_NAME).writeText(writer.toString())
+            File(dir, PENDING_JVM_CRASH_FILE_NAME).writeText(writer.toString())
             val metadata = JSONObject().apply {
                 put("source", "Application")
                 put("crashedAt", formatTimestampISO8601(Date()))
@@ -88,7 +100,7 @@ object CrashReportManager {
                     put("goVersion", Libbox.goVersion())
                 }
             }
-            File(workingDir, PENDING_JVM_METADATA_FILE_NAME).writeText(metadata.toString())
+            File(dir, PENDING_JVM_METADATA_FILE_NAME).writeText(metadata.toString())
         } catch (_: Throwable) {
         }
     }

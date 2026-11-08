@@ -230,6 +230,31 @@ func TestCoreDefaultLogLevel(t *testing.T) {
 	if mihomoSetsLogLevel("mode: rule\nproxies: []\n") || !mihomoSetsLogLevel("log-level: info\nproxies: []\n") {
 		t.Fatal("mihomo log-level presence")
 	}
+	if !mihomoSetsLogLevel("\ufeff# comment\r\nmode: rule\r\n\"log-level\" : debug\r\n") ||
+		mihomoSetsLogLevel("proxies:\n  - name: a\n    log-level: info\n") ||
+		!mihomoSetsLogLevel(`{"log-level":"info","proxies":[]}`) || mihomoSetsLogLevel(`{"mode":"rule"}`) {
+		t.Fatal("mihomo log-level scan")
+	}
+	for _, tc := range []struct {
+		log    map[string]any
+		access any
+		kept   bool
+	}{
+		{map[string]any{"loglevel": "warning"}, "none", true},
+		{map[string]any{"loglevel": "error"}, "none", true},
+		{map[string]any{"loglevel": "info"}, nil, false},
+		{map[string]any{"loglevel": "Debug"}, nil, false},
+		{map[string]any{"loglevel": "debug", "access": "none"}, "none", true},
+		{map[string]any{"loglevel": "warning", "access": " NONE "}, "none", true},
+		{map[string]any{"loglevel": "warning", "access": "/sdcard/access.log"}, nil, false},
+		{map[string]any{"loglevel": "warning", "access": ""}, "none", true},
+	} {
+		xrayApplyAccessLog(tc.log)
+		access, ok := tc.log["access"]
+		if ok != tc.kept || (ok && access != tc.access) {
+			t.Fatalf("xray access log: %v", tc.log)
+		}
+	}
 	if mihomoDaemonLogLevel(mihomoLog.WARNING) != daemon.LogLevel_WARN || mihomoDaemonLogLevel(mihomoLog.INFO) != daemon.LogLevel_INFO {
 		t.Fatal("mihomo level mapping")
 	}

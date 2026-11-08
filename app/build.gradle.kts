@@ -111,9 +111,27 @@ android {
         }
         release {
             isMinifyEnabled = true
+            // Drops resources R8 left unreferenced. Nothing looks resources up
+            // by name (no getIdentifier); res/raw/keep.xml keeps the few the
+            // shrinker cannot see referenced.
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.getByName("release")
             vcsInfo.include = false
+        }
+        // Release code, profileable and signed with the CI debug key, for the
+        // Baseline Profile generator (:baselineprofile). Only defined with
+        // -PbaselineProfile=true, so regular builds keep their variants.
+        if (providers.gradleProperty("baselineProfile").orNull.toBoolean()) {
+            create("benchmark") {
+                initWith(getByName("release"))
+                signingConfig = signingConfigs.getByName("ciDebug")
+                matchingFallbacks += listOf("release")
+                // Unobfuscated, so the collected rules carry source names
+                // that R8 maps when the release build merges the profile.
+                isMinifyEnabled = false
+                isShrinkResources = false
+            }
         }
     }
 
@@ -339,6 +357,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
     // M3 Expressive shapes and morphs (the Kotlin original of FlClash's material_new_shapes)
     implementation("androidx.graphics:graphics-shapes:1.1.0")
+    // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on
+    // sideloaded installs, which get no Play cloud profiles.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test:runner:1.7.0")

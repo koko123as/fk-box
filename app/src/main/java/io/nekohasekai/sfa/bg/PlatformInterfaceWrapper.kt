@@ -64,29 +64,25 @@ interface PlatformInterfaceWrapper : PlatformInterface {
         destinationAddress: String,
         destinationPort: Int,
     ): ConnectionOwner {
-        try {
-            val owner =
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    val uid =
-                        Application.connectivity.getConnectionOwnerUid(
-                            ipProtocol,
-                            InetSocketAddress(sourceAddress, sourcePort),
-                            InetSocketAddress(destinationAddress, destinationPort),
-                        )
-                    if (uid == Process.INVALID_UID) error("android: connection owner not found")
-                    ConnectionOwner().also { it.userId = uid }
-                } else {
-                    Libbox.findConnectionOwner(ipProtocol, sourceAddress, sourcePort, destinationAddress, destinationPort)
-                }
-            val packages = Application.packageManager.getPackagesForUid(owner.userId)
-            owner.userName = packages?.firstOrNull() ?: ""
-            owner.setAndroidPackageNames(StringArray(packages?.toList()?.iterator() ?: emptyList<String>().iterator()))
-            return owner
-        } catch (e: Exception) {
-            Log.e("PlatformInterface", "findConnectionOwner", e)
-            e.printStackTrace(System.err)
-            throw e
-        }
+        // Failures (common for some UDP flows) are returned to sing-box,
+        // which reports them; no stack trace is built here per connection.
+        val owner =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val uid =
+                    Application.connectivity.getConnectionOwnerUid(
+                        ipProtocol,
+                        InetSocketAddress(sourceAddress, sourcePort),
+                        InetSocketAddress(destinationAddress, destinationPort),
+                    )
+                if (uid == Process.INVALID_UID) error("android: connection owner not found")
+                ConnectionOwner().also { it.userId = uid }
+            } else {
+                Libbox.findConnectionOwner(ipProtocol, sourceAddress, sourcePort, destinationAddress, destinationPort)
+            }
+        val packages = UidPackageCache.get(owner.userId) { Application.packageManager.getPackagesForUid(it) }
+        owner.userName = packages.firstOrNull() ?: ""
+        owner.setAndroidPackageNames(StringArray(packages.toList().iterator()))
+        return owner
     }
 
     override fun startDefaultInterfaceMonitor(listener: InterfaceUpdateListener) {

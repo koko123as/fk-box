@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
 import android.graphics.BitmapFactory
-import io.nekohasekai.sfa.flutter.BoxSettings
+import io.nekohasekai.sfa.bridge.BoxSettings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -143,7 +143,7 @@ private fun ServiceSettingsPage(box: BoxController) {
                     title = { Text(tr("Battery optimization")) },
                     subtitle = { Text(tr(if (box.settings["batteryExempt"] == true) "Unrestricted" else "Allow background operation")) },
                     position = position,
-                    onClick = { box.launchAct("battery.open") },
+                    onClick = { box.launchAct { openBatterySettings() } },
                 )
             }
         }
@@ -214,7 +214,7 @@ fun AboutPage(box: BoxController) {
         checking = true
         scope.launch {
             try {
-                result = json(box.call("updates.check"))
+                result = json(box.call { checkUpdates() })
             } catch (error: Throwable) {
                 box.report(error)
             } finally {
@@ -267,7 +267,7 @@ fun AboutPage(box: BoxController) {
                             subtitle = { Text(info.third, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                             trailing = { GlyphIcon(AppGlyphs.openExternal) },
                             position = position,
-                            onClick = { box.launchAct("url.open", mapOf("url" to url)) },
+                            onClick = { box.launchAct { openUrl(url) } },
                         )
                     } else {
                         ListItem(
@@ -297,7 +297,7 @@ private fun UpdateDialog(box: BoxController, result: Json, dismiss: () -> Unit) 
                     add(
                         DialogAction(tr(if (result["downloadUrl"] == null) "Releases" else "Download"), {
                             dismiss()
-                            box.launchAct("url.open", mapOf("url" to (result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/fk-box/releases")))
+                            box.launchAct { openUrl((result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/fk-box/releases") as? String) }
                         }),
                     )
                 }
@@ -365,7 +365,7 @@ private fun LicensesPage(box: BoxController) {
                 subtitle = { Text(credit.license + " · " + tr(credit.taken)) },
                 trailing = { GlyphIcon(AppGlyphs.openExternal) },
                 position = position,
-                onClick = { box.launchAct("url.open", mapOf("url" to url)) },
+                onClick = { box.launchAct { openUrl(url) } },
             )
         }
     }
@@ -432,7 +432,7 @@ fun BackupPage(box: BoxController) {
         connectionError = null
         scope.launch {
             try {
-                val value = box.call("webdav.check") == true
+                val value = box.call { checkWebdav() } == true
                 if (current == generation[0]) connected = value
             } catch (error: Throwable) {
                 if (current == generation[0]) {
@@ -454,7 +454,7 @@ fun BackupPage(box: BoxController) {
     suspend fun loadAccount() {
         val revision = generation[1]
         try {
-            val value = box.call("webdav.get")
+            val value = box.call { webdavAccount() }
             if (revision == generation[1]) updateAccount(value?.let(::json))
         } catch (error: Throwable) {
             if (revision == generation[1]) accountError = error
@@ -477,10 +477,10 @@ fun BackupPage(box: BoxController) {
         scope.launch {
             try {
                 val saved = if (remote) {
-                    box.call("webdav.upload") == true
+                    box.call { uploadWebdavBackup() }
                 } else {
-                    val data = box.call("backup.create")
-                    box.call("document.save", mapOf("name" to DEFAULT_BACKUP_FILE_NAME, "content" to encodeBackupJson(data))) == true
+                    val data = box.call { createBackup() }
+                    box.call { saveDocument(DEFAULT_BACKUP_FILE_NAME, encodeBackupJson(data)) }
                 }
                 loading = false
                 if (saved) dialog = BackupDialog.Done("Backup", "Backup complete")
@@ -502,14 +502,14 @@ fun BackupPage(box: BoxController) {
                 dialog = BackupDialog.Scope(picked)
                 val restoreScope = picked.await() ?: return@launch
                 loading = true
-                val data = box.call(if (remote) "webdav.read" else "backup.read", mapOf("scope" to restoreScope))
+                val data = box.call { if (remote) readWebdavBackup(restoreScope) else readBackup(restoreScope) }
                 loading = false
                 if (data == null) return@launch
                 val approved = CompletableDeferred<Boolean>()
                 dialog = BackupDialog.Approve(rows(json(data)["profiles"]).size, restoreScope, strategy == "Override", approved)
                 if (!approved.await()) return@launch
                 loading = true
-                box.call("backup.restore", mapOf("backup" to data, "scope" to restoreScope, "strategy" to strategy))
+                box.call { @Suppress("UNCHECKED_CAST") restoreBackup(data as? Map<String, Any?>, restoreScope, strategy) }
                 loading = false
                 if (restoreScope == "all") loadAccount()
                 dialog = BackupDialog.Done("Restore", "Restore complete")
@@ -583,7 +583,7 @@ fun BackupPage(box: BoxController) {
                                                 if (value == null || account == null || locked) return@launch
                                                 locked = true
                                                 try {
-                                                    updateAccount(json(box.call("webdav.set", mapOf("value" to (account!! + ("fileName" to value))))))
+                                                    updateAccount(json(box.call { setWebdavAccount(account!! + ("fileName" to value)) }))
                                                 } catch (error: Throwable) {
                                                     box.report(error)
                                                 } finally {
@@ -712,10 +712,9 @@ private fun WebDAVForm(box: BoxController, initial: Json?) {
         error = null
         scope.launch {
             try {
-                val result = box.call(
-                    "webdav.set",
-                    mapOf("value" to mapOf("uri" to uri.trim(), "user" to user, "password" to password, "fileName" to (initial?.get("fileName") ?: DEFAULT_BACKUP_FILE_NAME))),
-                )
+                val result = box.call {
+                    setWebdavAccount(mapOf("uri" to uri.trim(), "user" to user, "password" to password, "fileName" to (initial?.get("fileName") ?: DEFAULT_BACKUP_FILE_NAME)))
+                }
                 saving = false
                 navigator?.pop(json(result))
             } catch (failure: Throwable) {
@@ -731,7 +730,7 @@ private fun WebDAVForm(box: BoxController, initial: Json?) {
             saving = true
             error = null
             try {
-                box.call("webdav.set", mapOf("value" to null))
+                box.call { setWebdavAccount(null) }
                 saving = false
                 navigator?.pop(mapOf("deleted" to true))
             } catch (failure: Throwable) {
@@ -809,7 +808,7 @@ fun AccessPage(box: BoxController) {
         appsError = null
         apps = null
         try {
-            apps = rows(box.call("apps.list", mapOf("refresh" to refresh, "system" to system, "nonInternet" to nonInternet)))
+            apps = rows(box.call { listApps(refresh, system, nonInternet) })
         } catch (error: Throwable) {
             appsError = error
         }
@@ -871,7 +870,7 @@ fun AccessPage(box: BoxController) {
                     } else {
                         ListItem(title = { Text(tr("Grant Shizuku permission")) }, position = position, onClick = {
                             permissionRequested = true
-                            box.launchAct("apps.permission")
+                            box.launchAct { requestAppsPermission() }
                         })
                     }
                 }
@@ -952,7 +951,7 @@ fun AccessPage(box: BoxController) {
                             scanning = true
                             scope.launch {
                                 try {
-                                    box.settings = json(box.call("apps.rescan"))
+                                    box.settings = json(box.call { rescanApps() })
                                 } catch (error: Throwable) {
                                     box.report(error)
                                 } finally {

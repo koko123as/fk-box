@@ -3,6 +3,7 @@ package io.nekohasekai.sfa.bg
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,8 @@ class BootReceiver : BroadcastReceiver() {
         GlobalScope.launch(Dispatchers.IO) {
             try {
                 if (Settings.startedByUser) {
+                    // Archives a pending JVM crash before it is counted.
+                    Application.application.installWorkingDir()
                     CrashReportManager.refresh()
                     if (CrashReportManager.unreadCount.value > 0) {
                         Settings.startedByUser = false

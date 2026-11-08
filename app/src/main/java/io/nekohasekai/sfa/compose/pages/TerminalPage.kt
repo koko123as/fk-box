@@ -79,7 +79,7 @@ import io.nekohasekai.sfa.compose.ui.bottomInset
 import io.nekohasekai.sfa.compose.ui.contentTopPadding
 import io.nekohasekai.sfa.compose.ui.rememberPageActive
 import io.nekohasekai.sfa.compose.ui.tr
-import io.nekohasekai.sfa.flutter.TerminalChannel
+import io.nekohasekai.sfa.bridge.TerminalChannel
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -107,10 +107,7 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
         busy = true
         try {
             val snapshot = json(
-                box.call(
-                    "ssh.start",
-                    mapOf("endpoint" to endpoint, "peer" to peer, "username" to username.trim(), "terminalType" to terminalType.trim(), "remember" to quickConnect),
-                ),
+                box.call { toolBridge.ssh.start(endpoint, peer, username.trim(), terminalType.trim(), quickConnect) },
             )
             box.terminal = snapshot
             prompt = false
@@ -122,9 +119,9 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
     }
     LaunchedEffect(Unit) {
         try {
-            box.terminal = json(box.call("ssh.snapshot"))
+            box.terminal = json(box.call { toolBridge.ssh.snapshot() })
             if (prompt) {
-                val options = json(box.call("ssh.options", mapOf("endpoint" to endpoint, "peer" to peer)))
+                val options = json(box.call { toolBridge.ssh.options(endpoint, peer) })
                 username = options["username"] as? String ?: "root"
                 terminalType = options["terminalType"] as? String ?: "xterm-256color"
                 quickConnect = options["remember"] == true
@@ -188,7 +185,7 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
                         if (active) GhosttySurface(box, activeSession["id"] as String, settingsRevision)
                     }
                     if (activeSession["phase"] == "FINISHED") {
-                        TextPillButton(tr("Close session"), { box.launchAct("ssh.close", mapOf("id" to activeSession["id"])) })
+                        TextPillButton(tr("Close session"), { box.launchAct { toolBridge.ssh.closeSession(activeSession["id"] as? String) } })
                     }
                 }
             }
@@ -274,7 +271,7 @@ private fun TerminalSessionsPage(box: BoxController) {
         } else {
             listOf(
                 IconAction(AppGlyphs.copy, tr("Duplicate session"), {
-                    scope.launch { if (box.act("ssh.duplicate")) navigator?.pop() }
+                    scope.launch { if (box.act { toolBridge.ssh.duplicate() }) navigator?.pop() }
                 }),
             )
         },
@@ -294,12 +291,12 @@ private fun TerminalSessionsPage(box: BoxController) {
                     trailing = {
                         TrailingGlyph(AppGlyphs.close, tr("Close session")) {
                             scope.launch {
-                                if (dialogs?.confirm("Close this SSH session?", action = "Close") == true) box.act("ssh.close", mapOf("id" to session["id"]))
+                                if (dialogs?.confirm("Close this SSH session?", action = "Close") == true) box.act { toolBridge.ssh.closeSession(session["id"] as? String) }
                             }
                         }
                     },
                     position = ItemPosition.of(index, sessions.size),
-                    onClick = { scope.launch { if (box.act("ssh.select", mapOf("id" to session["id"]))) navigator?.pop() } },
+                    onClick = { scope.launch { if (box.act { toolBridge.ssh.select(session["id"] as? String) }) navigator?.pop() } },
                 )
             }
         }
@@ -347,7 +344,7 @@ private fun TerminalSettingsPage(box: BoxController) {
     var revision by remember { mutableIntStateOf(0) }
     LaunchedEffect(revision) {
         try {
-            settings = json(box.call("terminal.settings"))
+            settings = json(box.call { terminalSettings() })
             error = null
         } catch (failure: Throwable) {
             error = describe(failure)
@@ -358,7 +355,7 @@ private fun TerminalSettingsPage(box: BoxController) {
         saving = true
         scope.launch {
             try {
-                settings = json(box.call("terminal.set", mapOf("key" to key, "value" to value)))
+                settings = json(box.call { setTerminalSetting(key, value) })
             } catch (failure: Throwable) {
                 box.report(failure)
             }
@@ -447,8 +444,8 @@ private fun TerminalThemePage(box: BoxController, dark: Boolean) {
     var attempt by remember { mutableIntStateOf(0) }
     LaunchedEffect(attempt) {
         try {
-            val settings = json(box.call("terminal.settings"))
-            themes = rows(box.call("terminal.themes", mapOf("dark" to dark)))
+            val settings = json(box.call { terminalSettings() })
+            themes = rows(box.call { terminalThemes(dark) })
             selected = settings[if (dark) "darkTheme" else "lightTheme"] as? String
             error = null
         } catch (failure: Throwable) {
@@ -489,7 +486,7 @@ private fun TerminalThemePage(box: BoxController, dark: Boolean) {
                             position = ItemPosition.StartAndEnd,
                             onClick = {
                                 scope.launch {
-                                    if (box.act("terminal.set", mapOf("key" to if (dark) "darkTheme" else "lightTheme", "value" to theme["name"]))) navigator?.pop()
+                                    if (box.act { setTerminalSetting(if (dark) "darkTheme" else "lightTheme", theme["name"]) }) navigator?.pop()
                                 }
                             },
                         )
@@ -510,15 +507,15 @@ private fun TerminalFontPage(box: BoxController) {
     var revision by remember { mutableIntStateOf(0) }
     LaunchedEffect(revision) {
         try {
-            fonts = json(box.call("terminal.fonts"))
-            settings = json(box.call("terminal.settings"))
+            fonts = json(box.call { terminalFonts() })
+            settings = json(box.call { terminalSettings() })
             error = null
         } catch (failure: Throwable) {
             error = describe(failure)
         }
     }
     fun select(key: String, value: String) {
-        scope.launch { if (box.act("terminal.set", mapOf("key" to key, "value" to value))) revision++ }
+        scope.launch { if (box.act { setTerminalSetting(key, value) }) revision++ }
     }
     val system = (fonts?.get("system") as? List<*>)?.map { it.toString() } ?: emptyList()
     val imported = rows(fonts?.get("imported"))
@@ -528,7 +525,7 @@ private fun TerminalFontPage(box: BoxController) {
         actions = listOf(
             IconAction(AppGlyphs.add, tr("Import font"), {
                 scope.launch {
-                    box.act("terminal.importFont")
+                    box.act { importTerminalFont() }
                     revision++
                 }
             }),
@@ -560,7 +557,7 @@ private fun TerminalFontPage(box: BoxController) {
                         TrailingGlyph(AppGlyphs.delete, tr("Delete")) {
                             scope.launch {
                                 if (dialogs?.confirm("Delete this font?") == true) {
-                                    box.act("terminal.deleteFont", mapOf("path" to path))
+                                    box.act { deleteTerminalFont(path as? String) }
                                     revision++
                                 }
                             }
@@ -588,7 +585,7 @@ private fun TerminalConfigEditor(box: BoxController, dark: Boolean, initial: Str
             confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
                 saving = true
                 scope.launch {
-                    if (box.act("terminal.set", mapOf("key" to if (dark) "darkConfig" else "lightConfig", "value" to text.text))) {
+                    if (box.act { setTerminalSetting(if (dark) "darkConfig" else "lightConfig", text.text) }) {
                         saved = text.text
                         box.message(done)
                     }

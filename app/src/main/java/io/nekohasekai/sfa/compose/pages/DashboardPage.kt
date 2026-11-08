@@ -225,7 +225,7 @@ private fun DashboardBanners(box: BoxController, remoteAndApply: Boolean = true,
             ListItem(
                 title = { Text(box.dashboard["remote"].toString()) },
                 subtitle = { Text(tr("Remote control")) },
-                trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
+                trailing = { TextPillButton(tr("Disconnect"), { box.launchAct { disconnectRemoteServer() } }) },
             )
         }
         if (box.applyRequired != null) {
@@ -233,7 +233,7 @@ private fun DashboardBanners(box: BoxController, remoteAndApply: Boolean = true,
                 title = { Text(tr("Restart required")) },
                 trailing = {
                     TextPillButton(tr("Apply"), {
-                        box.launchAct("service.reload", mapOf("restart" to true)) { if (it) box.clearApplyRequired() }
+                        box.launchAct(then = { if (it) box.clearApplyRequired() }) { reloadService(restart = true) }
                     })
                 },
             )
@@ -243,7 +243,7 @@ private fun DashboardBanners(box: BoxController, remoteAndApply: Boolean = true,
         for (note in rows(box.dashboard["deprecated"])) {
             ListItem(
                 title = { Text(note["message"].toString()) },
-                onClick = note["url"]?.let { url -> { box.launchAct("url.open", mapOf("url" to url)) } },
+                onClick = note["url"]?.let { url -> { box.launchAct { openUrl(url as? String) } } },
             )
         }
     }
@@ -299,7 +299,7 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
                     style = AppTextStyle.Title1.of(true),
                 )
                 Text(
-                    "${tr("Total")} ${box.dashboard[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = AppTextStyle.Caption1.of().tabular.copy(color = scheme.onSurfaceVariant),
@@ -333,7 +333,7 @@ private fun ModePanel(box: BoxController) {
                         inner = 12f,
                         background = SurfaceLevel.Block.colorOf(scheme),
                         label = label,
-                        onTap = { if (key != selected) box.launchAct("mode.set", mapOf("mode" to mode)) },
+                        onTap = { if (key != selected) box.launchAct { setMode(mode) } },
                         modifier = Modifier.weight(1f),
                     ) { foreground ->
                         Column(Modifier.fillMaxWidth().height(52.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)) {
@@ -374,7 +374,7 @@ internal fun ProfilePanel(box: BoxController) {
                             } else {
                                 GlyphButton(AppGlyphs.sync, tr("Update"), {
                                     updating = true
-                                    box.launchAct("profiles.update", mapOf("id" to profile?.get("id"))) { updating = false }
+                                    box.launchAct(then = { updating = false }) { updateProfile(profile?.get("id").asLong()) }
                                 }, size = 26.dp, iconSize = 18.dp)
                             }
                         }
@@ -642,10 +642,10 @@ private fun MemoryDetails(box: BoxController) {
     val actions = if (memory["remote"] != true && memory["running"] == true) {
         listOf(IconAction(AppGlyphs.broom, tr("Release memory"), if (releasing) null else ({
             releasing = true
-            box.launchAct("dashboard.releaseMemory") { ok ->
+            box.launchAct(then = { ok ->
                 if (ok) box.message("Memory released")
                 releasing = false
-            }
+            }) { releaseMemory() }
         })))
     } else {
         emptyList()
@@ -726,6 +726,7 @@ private fun changeLan(box: BoxController, navigator: io.nekohasekai.sfa.compose.
 
 @Composable
 internal fun IntranetPanel(box: BoxController) {
+    if (LocalPageActive.current) BoxDataSubscription(box, BoxData.Lan)
     val scheme = BoxTheme.scheme
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
@@ -821,6 +822,7 @@ private fun protocol(binding: Json, tr: (String) -> String): String = when (bind
 
 @Composable
 private fun IntranetDetails(box: BoxController) {
+    BoxDataSubscription(box, BoxData.Lan)
     val context = LocalContext.current
     val navigator = LocalBoxNavigator.current
     val active = !box.remote && box.running && box.lan["running"] == true
@@ -947,7 +949,7 @@ internal fun SystemProxyPanel(box: BoxController) {
     val scheme = BoxTheme.scheme
     val enabled = box.dashboard["systemProxy"] == true
     val title = tr("System HTTP proxy")
-    val change: (Boolean) -> Unit = { box.launchAct("systemProxy.set", mapOf("enabled" to it)) }
+    val change: (Boolean) -> Unit = { box.launchAct { setSystemProxy(it) } }
     // network_takeover.dart's _tileMetricsOf: the grid's control-row tile, the icon and switch inset as from the edges.
     val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     val tile = density.isDesktop

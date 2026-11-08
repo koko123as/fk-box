@@ -139,19 +139,6 @@ func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
 	server.StartedService.WriteMessage(level, "[xray] "+message.String())
 }
 
-// RunningCore reports which core is running: sing-box, xray, mihomo or "".
-func (s *CommandServer) RunningCore() string {
-	coreAccess.Lock()
-	defer coreAccess.Unlock()
-	if activeCore != nil {
-		return activeCore.core
-	}
-	if s.StartedService.Instance() != nil {
-		return CoreSingBox
-	}
-	return ""
-}
-
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
 // core ran before. sing-box goes through StartOrReloadService unchanged.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
@@ -162,7 +149,16 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	if core != CoreXray && core != CoreMihomo {
 		return fmt.Errorf("unknown core: %s", core)
 	}
-	if err := CheckCoreConfig(core, configContent); err != nil {
+	// mihomo: the YAML is parsed once here and the checked raw config is
+	// handed to the core, instead of parsing it again at start.
+	var mihomoRaw *mihomoConfig.RawConfig
+	if core == CoreMihomo {
+		raw, err := parseCheckedMihomoConfig(configContent)
+		if err != nil {
+			return err
+		}
+		mihomoRaw = raw
+	} else if err := CheckCoreConfig(core, configContent); err != nil {
 		return err
 	}
 	// Stop sing-box (if it was running) before its TUN is replaced.
@@ -183,7 +179,7 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	case CoreXray:
 		err = startXrayCore(running, configContent)
 	case CoreMihomo:
-		err = startMihomoCore(s, running, configContent)
+		err = startMihomoCore(s, running, configContent, mihomoRaw)
 	}
 	if err != nil {
 		_ = syscall.Close(fd)
@@ -193,21 +189,27 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	activeCore = running
 	s.StartedService.WriteMessage(log.LevelInfo, core+" started")
 	go notifyCoreChange()
+	// Config parsing (rule sets, geo matchers) leaves garbage behind; give
+	// it back now, as sing-box does after starting its instance.
+	go releaseCoreMemory()
 	return nil
 }
 
 // CloseCoreService stops whichever core is running.
 func (s *CommandServer) CloseCoreService() error {
-	s.stopOtherCore()
+	if s.stopOtherCore() {
+		releaseCoreMemory()
+	}
 	return s.CloseService()
 }
 
-func (s *CommandServer) stopOtherCore() {
+// stopOtherCore stops Xray or mihomo and reports whether one was running.
+func (s *CommandServer) stopOtherCore() bool {
 	coreAccess.Lock()
 	defer coreAccess.Unlock()
 	running := activeCore
 	if running == nil {
-		return
+		return false
 	}
 	activeCore = nil
 	switch running.core {
@@ -218,6 +220,7 @@ func (s *CommandServer) stopOtherCore() {
 	case CoreMihomo:
 		mihomoExecutor.Shutdown()
 		mihomoCloseListeners()
+		mihomoReleaseState()
 		if running.mihomoLog != nil {
 			close(running.mihomoLog)
 		}
@@ -229,6 +232,7 @@ func (s *CommandServer) stopOtherCore() {
 	_ = syscall.Close(running.tunFd)
 	s.StartedService.WriteMessage(log.LevelInfo, running.core+" stopped")
 	go notifyCoreChange()
+	return true
 }
 
 func (s *CommandServer) openCoreTun(options *OverrideOptions) (int, error) {
@@ -291,7 +295,7 @@ func startXrayCore(running *runningCore, content string) error {
 	root["routing"] = routing
 	logConfig := xrayLogConfigWithDefault(root)
 	// Console output goes to the service log; files are not writable here.
-	delete(logConfig, "access")
+	xrayApplyAccessLog(logConfig)
 	delete(logConfig, "error")
 	root["log"] = logConfig
 	encoded, err := json.Marshal(root)
@@ -375,11 +379,14 @@ func readXrayLayout(running *runningCore, root map[string]any) {
 // auto-route or interface detection (the VpnService owns routing, and netlink
 // is not available to apps on recent Android). External controllers are
 // turned off; the app reads mihomo in process.
-func startMihomoCore(s *CommandServer, running *runningCore, content string) error {
+func startMihomoCore(s *CommandServer, running *runningCore, content string, raw *mihomoConfig.RawConfig) error {
 	mihomoConstant.SetHomeDir(coreAssetDir(sWorkingPath, CoreMihomo))
-	raw, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
-	if err != nil {
-		return err
+	if raw == nil {
+		parsed, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
+		if err != nil {
+			return err
+		}
+		raw = parsed
 	}
 	if !mihomoSetsLogLevel(content) {
 		raw.LogLevel = mihomoLog.WARNING
@@ -428,6 +435,13 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string) err
 			case event, ok := <-subscription:
 				if !ok {
 					return
+				}
+				// mihomo publishes every event whatever its level and only
+				// filters its own stdout print; apply the same rule here so
+				// debug/info lines below the configured level are not
+				// formatted into the service log.
+				if event.LogLevel < mihomoLog.Level() {
+					continue
 				}
 				level := log.LevelInfo
 				switch event.LogLevel {

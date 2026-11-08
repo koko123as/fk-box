@@ -63,12 +63,16 @@ func (t *xrayTracker) snapshot() []*xrayConn {
 }
 
 func (t *xrayTracker) totals() (up, down int64, count int) {
+	// Summed under the lock instead of copying the map into a slice first;
+	// each entry is two atomic loads.
 	up, down = t.closedUp.Load(), t.closedDown.Load()
-	for _, conn := range t.snapshot() {
+	t.access.Lock()
+	for _, conn := range t.conns {
 		up += conn.up.Load()
 		down += conn.down.Load()
-		count++
 	}
+	count = len(t.conns)
+	t.access.Unlock()
 	return
 }
 
