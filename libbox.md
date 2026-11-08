@@ -57,7 +57,7 @@ Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/ma
 | `ResolveProfileCore` | 配置文件的 `core`（`auto` 或指定内核）解析为实际运行的内核 |
 | `CheckCoreConfig` | sing-box 走 `CheckConfig`；Xray 用 Xray 自带 JSON 解析并逐个构建 outbound/inbound，路由与 DNS 仅在 geo 文件存在时构建；mihomo 用 mihomo 的原始配置解析、逐个 `adapter.ParseProxy` 并检查策略组成员。mihomo 规则与 provider 要到启动时完整解析（会读取/下载 geo 数据库），导入时不做 |
 | `FormatCoreConfig` | sing-box 走 `FormatConfig`；Xray 只做 JSON 缩进；mihomo 只规范换行，保留注释与键顺序 |
-| `ConvertCoreShareLinks(For)` | 链接经 mihomo `common/convert` 解析；默认生成 sing-box 配置（字段映射参照 SagerNet/serenity 的 clash 解析器）；含 xhttp 时改用 libXray `share` 生成 Xray 配置；用户指定 mihomo 时生成 Clash YAML。生成结果都会再经对应内核校验 |
+| `ConvertCoreShareLinksFor` / `ConvertCoreShareLinksEnabled` | 链接经 mihomo `common/convert` 解析；默认生成 sing-box 配置（字段映射参照 SagerNet/serenity 的 clash 解析器）；含 xhttp 时改用 libXray `share` 生成 Xray 配置；用户指定 mihomo 时生成 Clash YAML。生成结果都会再经对应内核校验 |
 | `CoreSubscriptionUserAgent` | 按内核发送订阅 UA：mihomo 为 `clash.meta`，Xray 为 `v2rayN/<Xray 版本>`，sing-box 沿用原 UA |
 
 应用侧拆分与命名见 [app.md](app.md#配置服务应用与备份)。
@@ -89,9 +89,9 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 | `asn` | `ASN.mmdb` | 同上 `GeoLite2-ASN.mmdb` | MaxMind DB 可打开 |
 
 - 目录：`GeoDataDir()` = `<工作目录>/cores/mihomo`，即 mihomo 的 home（mihomo 按不区分大小写的名字找 `GeoIP.dat`/`GeoSite.dat`/`geoip.metadb`/`ASN.mmdb`）；Xray 启动和 `CheckCoreConfig` 时把 `xray.location.asset` 设为同一目录，读小写的 `geoip.dat`/`geosite.dat`。因此两个内核共用一份文件，mihomo 配置自己的 `geo-auto-update`/`geox-url` 也写入这里。Android 的应用外部目录不支持符号链接，所以不用链接。
-- `UpdateGeoResource(dir, name, url)`：经 libbox HTTP 客户端（与订阅相同，上限 96 MiB，5 分钟超时）下载，按上表校验后写临时文件并 rename 覆盖；下载失败、HTTP 非 200、校验失败都不动原文件。内容与现有文件 SHA-256 相同时返回 `Skipped`。写入后删除大小写不同的旧变体（如 mihomo 下载的 `GeoSite.dat`，大小写不敏感的文件系统上同一文件不删），并清除 mihomo 的 GeoIP/GeoSite 缓存；MMDB/ASN 和 Xray 在内核下次启动时读到新文件。
-- `VerifyGeoResource`、`GeoResourceFileName`、`GeoResourceDefaultURL` 供应用使用。APK 内置副本、解压和自动更新见 [app.md](app.md#地理数据资源)。
-- 测试 [core_geo_test.go](libbox/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML 等错误数据被拒、下载失败/错误内容/非 HTTP 地址保留旧文件且不留临时文件、成功替换与相同内容跳过、旧大小写变体清理。
+- `NewGeoUpdate()` 返回一次可取消的更新，`Fetch(dir, name, url, installedSha256, etag, lastModified)`：经 libbox HTTP 客户端（与订阅相同，上限 96 MiB，5 分钟超时）流式下载到同目录临时文件并边写边算 SHA-256，整个文件不进 Go 堆；`Cancel()` 随时中止。`installedSha256` 与磁盘文件一致且给了 `etag`/`lastModified` 时发 `If-None-Match`/`If-Modified-Since`，304 返回 `Skipped`。校验：`.dat` 用 protowire 逐字段检查整体分帧（截断即失败），只解码到第一条可用条目；MMDB/ASN 用 `maxminddb.Open`（mmap）打开再关闭。与现有文件大小相同才流式比对哈希，相同返回 `Skipped`，否则 rename 覆盖；下载失败、HTTP 非 200/304、长度不符、校验失败都不动原文件。结果带服务器的 `Etag`、`LastModified` 供下次条件请求。写入后删除大小写不同的旧变体（如 mihomo 下载的 `GeoSite.dat`，大小写不敏感的文件系统上同一文件不删），并让 mihomo 重新读取：清除 GeoIP/GeoSite 匹配缓存，MMDB/ASN 调 `mmdb.ReloadIP/ReloadASN`（下次查询打开新文件，旧映射随之释放）；已建好的规则和 Xray 在内核下次启动时读到新文件。结束时 `debug.FreeOSMemory()`。并发由应用侧 `GeoResources` 的互斥锁串行化，Go 侧不再另加锁。
+- `GeoResourceFileName`、`GeoResourceDefaultURL`、`GeoDataDir` 供应用使用。APK 内置副本、解压和自动更新见 [app.md](app.md#地理数据资源)。
+- 测试 [core_geo_test.go](libbox/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理；[core_memory_test.go](libbox/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
 
 ### 升级内核
 
@@ -110,6 +110,14 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 ### 运行时内存
 
 `ReadUIRuntimeMemory` 返回 `UIRuntimeMemory`，包含总量、在用/空闲堆、栈、其他运行时内存及 goroutine 数；总量为 `Sys - HeapReleased`。`CollectUIRuntimeMemory` 调用 `debug.FreeOSMemory`。Android 的 `BoxDashboard` 将这些值与同进程 RSS 结合显示；它们不是独立核心进程的系统内存统计。
+
+`Resident`/`HugePages` 是 `/proc/self/smaps` 中 Go 运行时自己命名的映射（`[anon: Go: …]`，Go 1.25+）的 Rss 与 AnonHugePages；内核不支持映射命名时为 0。内核用透明大页把 Go 已释放的内存重新填满时，`Resident` 会大于总量，Android 端把多出的部分计入核心（“其他运行时内存”），不再算进“应用”。
+
+### 进程内存（[core_memory.go](libbox/core_memory.go)）
+
+- 透明大页：libbox 加载时若 `/sys/kernel/mm/transparent_hugepage/enabled` 为 `[always]`，或某个 mTHP 档位（`hugepages-*kB/enabled`）为 `always`（或 `inherit` 且上级为 `always`），调用 `prctl(PR_SET_THP_DISABLE)`；`madvise`/`never` 时不调用。原因：Go 以 MADV_DONTNEED 小块归还内存，THP `always` 时 khugepaged/大页缺页会把这些区域重新填满，RSS 远高于 Go 实际持有量，FreeOSMemory 也被抵消（golang/go#64332）。`GODEBUG=disablethp` 对 gomobile 库无法设置（`//go:debug` 只接受登记过的设置，库加载时运行时已读过 GODEBUG）。该标志作用于整个进程（含 ART/HWUI），代价只是少了大页的 TLB 收益。
+- 内核启停：Xray/mihomo 启动后、`CloseCoreService` 停止它们后调用 `debug.FreeOSMemory()`（sing-box 的 daemon 自己在启停时这样做）。mihomo 停止时除关闭监听外还关闭已跟踪连接和代理/规则 provider（停止其更新与健康检查），清空 tunnel 中的规则与代理、GeoIP/GeoSite 匹配缓存并重置 MMDB/ASN 读取器；DNS 解析器与 fake-IP 映射保留，以便下次启动沿用。
+- 内存上限：`oomKillerEnabled` 且设置了上限时，上游 `ReloadSetupOptions` 已对整个进程调用 `debug.SetMemoryLimit`，因此对 Xray/mihomo 同样生效；只有按内存压力断开连接的 OOM killer 服务是 sing-box 实例内的。
 
 ### HTTP 与 WebDAV
 

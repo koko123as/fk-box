@@ -122,7 +122,7 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 - **Xposed/LSPosed：** 删除模块 API、Hook、Provider/AIDL、模块注册、vendored `libxposed-api`、Gradle 子项目/依赖及特权增强页面/设置。普通 VPN、Root/Shizuku 查询、桥接/自动重定向、Shell 和报告继续保留。
 - **Android 5/6：** 删除 `otherLegacy`、`src/minApi21`、`src/otherLegacy`、legacy 核心依赖及 API 21 专用依赖版本。`play` 和 `other` 均使用 API 24+ 实现。Gradle 的 `useLegacyPackaging` 是原生库压缩方式，不代表仍支持旧 Android 分支。
 - **旧更新下载/静默安装：** 删除 GitHub/F-Droid/Play 旧更新器、APK 下载和安装工具、对应 Root/Shizuku Binder 方法、Manifest 权限、设置及资源。设置/启动器不再显示旧自动更新询问、弹窗和徽标。
-- **旧任务兼容：** 启动取消 WorkManager 的 `AutoUpdate`；[UpdateWorker.kt](app/src/main/java/io/nekohasekai/sfa/vendor/UpdateWorker.kt) 保留类名并直接成功返回，不下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
+- **旧任务兼容：** 启动时取消 WorkManager 的 `AutoUpdate`。原 `UpdateWorker` 占位类已删除：残留任务若在取消前被调度，WorkManager 找不到该类，只会把它记为失败，不会崩溃，也不会下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
 - **Binder/设置兼容：** Root/Shizuku 已退役的安装事务编号 2 不复用；Root 的模块专用编号 3 与采集器编号 10 也保持空缺，其余编号不重排。删除功能的历史设置不再读取，不清空无关设置和数据库。
 
 关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `FK-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `FK-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
@@ -133,7 +133,7 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 
 - 内置：构建时 [app/build.gradle.kts](app/build.gradle.kts) 的 `prepare<变体>GeoAssets` 任务按 [geo-assets.properties](app/geo-assets.properties) 从 `MetaCubeX/meta-rules-dat` release 分支的固定提交下载四个文件，逐个核对 SHA-256，连同 `manifest.json`（提交、提交时间、各文件哈希/大小）放入 APK 的 `assets/geo/`。文件不入库，缓存在 `.gradle/geo-assets/<提交>`。更新固定版本用 `python3 tools/bump_geo_assets.py [提交]`（`--dry-run` 只打印）。
 - 解压：[GeoResources.kt](app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt) 在应用启动（后台）、打开资源页以及 Xray/mihomo 启动前把内置文件解压到 `Libbox.geoDataDir()`，边解压边算 SHA-256，与清单一致才 rename 覆盖。状态记在同目录的 `geo-resources.json`（来源 builtin/download、哈希、数据时间、上次成功检查时间）。规则（`GeoPolicy.shouldExtract`）：文件缺失一定解压；已记录的文件只在其数据时间早于内置提交时间且哈希不同才被替换，所以较新的下载版不会被内置文件覆盖，而应用升级带来的更新内置数据会替换更旧的文件；没有记录的文件（mihomo 自己下载的）按修改时间同样判断。
-- 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.updateGeoResource`，失败保留原文件并显示错误；成功后记为“已下载”。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。
+- 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.newGeoUpdate().fetch(...)`，传入上次记录的 SHA-256、`ETag`、`Last-Modified`（`geo-resources.json` 的 `etag`/`lastModified`），文件仍与记录一致时发条件请求，304 视为“已是最新”且不下载。失败保留原文件并显示错误；成功后记为“已下载”。协程取消（离开资源页、WorkManager 停止任务）会调用 `cancel()` 中止 Go 侧下载。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。内置文件检查每个进程只完整做一次，之后 `geo.list` 只在有文件缺失时重新检查。
 - 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/flutter/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
 - 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
 - 界面：工具页顶部分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
