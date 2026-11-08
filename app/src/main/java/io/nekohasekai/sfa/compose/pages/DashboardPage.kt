@@ -299,7 +299,7 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
                     style = AppTextStyle.Title1.of(true),
                 )
                 Text(
-                    "${tr("Total")} ${box.dashboard[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = AppTextStyle.Caption1.of().tabular.copy(color = scheme.onSurfaceVariant),

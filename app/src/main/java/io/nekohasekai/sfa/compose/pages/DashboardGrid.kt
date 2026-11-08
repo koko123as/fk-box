@@ -224,7 +224,7 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${tr("Total")} ${box.dashboard[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = label,

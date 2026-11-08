@@ -93,7 +93,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private val rates = object : CommandClient.Handler {
         override fun updateStatus(status: StatusMessage) {
             if (::dashboardDetails.isInitialized) dashboardDetails.remoteMemory = status.memory
-            emit("rates", mapOf("upload" to status.uplink, "download" to status.downlink, "memoryBytes" to status.memory))
+            // Traffic totals change every second, so they ride with the rates
+            // instead of the dashboard state that most pages read.
+            emit("rates", mapOf("upload" to status.uplink, "download" to status.downlink, "memoryBytes" to status.memory,
+                "uploadTotal" to Libbox.formatBytes(status.uplinkTotal), "downloadTotal" to Libbox.formatBytes(status.downlinkTotal)))
         }
     }
     private val profileCallback: () -> Unit = { scope.launch { operations.withLock { publishProfiles() } } }
