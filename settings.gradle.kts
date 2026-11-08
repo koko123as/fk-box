@@ -20,3 +20,7 @@ dependencyResolutionManagement {
 }
 rootProject.name = "FK-box"
 include(":app")
+// Baseline Profile generator, only with -PbaselineProfile=true (see app.md).
+if (providers.gradleProperty("baselineProfile").orNull.toBoolean()) {
+    include(":baselineprofile")
+}
