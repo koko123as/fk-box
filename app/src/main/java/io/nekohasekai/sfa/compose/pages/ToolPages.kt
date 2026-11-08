@@ -37,6 +37,7 @@ import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.JetBrainsMono
+import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.BoxMenu
 import io.nekohasekai.sfa.compose.ui.BoxPage
@@ -182,7 +183,7 @@ fun ReportsPage(box: BoxController, kind: String) {
         error = null
         reports = null
         try {
-            reports = rows(box.call { reports.list(kind) })
+            reports = rows(box.call { this.reports.list(kind) })
         } catch (failure: Throwable) {
             error = failure
         }
@@ -194,7 +195,7 @@ fun ReportsPage(box: BoxController, kind: String) {
             IconAction(AppGlyphs.delete, tr("Clear"), {
                 scope.launch {
                     if (dialogs?.confirm("Delete all reports?") == true) {
-                        box.act { reports.clear(kind) }
+                        box.act { this.reports.clear(kind) }
                         attempt++
                     }
                 }

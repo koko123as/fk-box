@@ -37,6 +37,7 @@ import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.BoxTheme
+import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.ui.AppGlyphs
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxMenu
