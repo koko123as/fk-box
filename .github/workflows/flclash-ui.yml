@@ -57,7 +57,7 @@ jobs:
 
       - name: Restore libbox
         id: libbox
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: app/libs/libbox.aar
           key: libbox-arm64-${{ hashFiles('version.properties', 'libbox/**', '.github/actions/**', 'tools/patch_*.py') }}
@@ -67,6 +67,15 @@ jobs:
         uses: ./.github/actions/build-libbox
         with:
           platform: android/arm64
+
+      # Saved right away, not at the end of a green job, so a later step's
+      # failure does not cost the next run another core build.
+      - name: Save libbox
+        if: steps.libbox.outputs.cache-hit != 'true' && hashFiles('app/libs/libbox.aar') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: app/libs/libbox.aar
+          key: ${{ steps.libbox.outputs.cache-primary-key }}
 
       - name: Set up Android SDK
         if: steps.libbox.outputs.cache-hit == 'true'
