@@ -233,6 +233,23 @@ object FkCore {
                 routeChanged()
                 null
             }
+            "provider.sideLoad" -> {
+                val name = args.getString("name")
+                withContext(Dispatchers.IO) {
+                    try {
+                        Libbox.sideLoadMihomoProvider(name, args.optString("data"))
+                    } catch (error: Exception) {
+                        throw CoreMethodError("provider_update_error", error.message ?: error.toString())
+                    }
+                }
+                routeChanged()
+                null
+            }
+            "ruleSet.dump" -> withContext(Dispatchers.IO) { Libbox.dumpMihomoRuleSet(args.getString("path")) }
+            "ruleSet.compile" -> withContext(Dispatchers.IO) {
+                val home = homeDir ?: throw CoreMethodError("not_initialized", "The Core is not initialized")
+                JSONObject(Libbox.compileMihomoRuleSet(home, args.optString("name"), args.optString("url")))
+            }
             "geo.update" -> FkGeo.update(args.getString("type"), currentConfig?.optJSONObject("geox-url"), homeDir, ::sendEvents)
             "traffic.reset" -> {
                 resetTraffic()
@@ -252,7 +269,12 @@ object FkCore {
                 routeChanged()
                 null
             }
-            "dns.clearCache" -> null
+            "dns.clearCache" -> withContext(Dispatchers.IO) {
+                // mihomo's resolver caches, and the running sing-box instance's DNS cache.
+                Libbox.clearMihomoDNSCache()
+                if (running) io.nekohasekai.sfa.bg.BoxService.dashboardServer?.clearDNSCache()
+                null
+            }
             else -> throw CoreMethodError("unsupported", "FK-box does not provide $method yet")
         }
     }

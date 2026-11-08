@@ -110,7 +110,9 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 ### FlClash 界面的 mihomo 提供者
 
-[core_mihomo_provider.go](libbox/core_mihomo_provider.go) 移植 FlClash v0.9.3 `core/provider.go`（`be84736`，GPL-3.0）的外部提供者查询，供 `flclash-ui` 分支的 `FkCore` 回答 `provider.list`/`provider.get`/`provider.update`：`MihomoExternalProviders()` 返回进程内 mihomo 的所有非内联（`Compatible` 以外）代理/规则提供者，按名称排序，字段为 FlClash `ExternalProvider` 的 JSON（`name`、`type`、`count`、`vehicle-type`、`update-at`、代理提供者的 `subscription-info`）；`MihomoExternalProvider(name)` 返回单个（不存在时为空串）；`UpdateMihomoProvider(name)` 调用提供者的 `Update()`。mihomo 未运行时列表为空。FlClash 的 `provider.sideLoad` 未移植。地理数据更新沿用上文 `GeoUpdate`，不使用 mihomo 自带的 `updater`。
+[core_mihomo_provider.go](libbox/core_mihomo_provider.go) 移植 FlClash v0.9.3 `core/provider.go`（`be84736`，GPL-3.0）的外部提供者查询，供 `flclash-ui` 分支的 `FkCore` 回答 `provider.list`/`provider.get`/`provider.update`：`MihomoExternalProviders()` 返回进程内 mihomo 的所有非内联（`Compatible` 以外）代理/规则提供者，按名称排序，字段为 FlClash `ExternalProvider` 的 JSON（`name`、`type`、`count`、`vehicle-type`、`update-at`、代理提供者的 `subscription-info`）；`MihomoExternalProvider(name)` 返回单个（不存在时为空串）；`UpdateMihomoProvider(name)` 调用提供者的 `Update()`。mihomo 未运行时列表为空。
+
+[core_mihomo_ruleset.go](libbox/core_mihomo_ruleset.go) 移植 FlClash v0.9.3 `core/provider.go` 的 `provider.sideLoad`、`core/rule_set.go` 的 `ruleSet.dump`/`ruleSet.compile` 及 `core/connection.go` 的 `dns.clearCache`：`SideLoadMihomoProvider(name, data)` 调用代理/规则提供者 Fetcher 的 `SideUpdate`；`DumpMihomoRuleSet(path)` 把 mrs 规则集转为文本；`CompileMihomoRuleSet(homeDir, name, url)` 下载或读取 `<homeDir>/providers/rules/<name>`，判定 domain/ipcidr/classical 并在旁边原子写入 `.mrs`，返回 `{behavior, format}`（FlClash 的 home 不是 mihomo 的 home，因此由 `FkCore` 传入）；`ClearMihomoDNSCache()` 调用 mihomo `resolver.ClearCache()`；`CommandServer.ClearDNSCache()` 对运行中的 sing-box 实例执行路由 `ResetNetwork()`（含 DNS 缓存）。地理数据更新沿用上文 `GeoUpdate`，不使用 mihomo 自带的 `updater`。
 
 ### 运行时内存
 
