@@ -17,32 +17,12 @@ object ShizukuPackageManager {
     private val _shizukuInstalled = MutableStateFlow(false)
     val shizukuInstalled: StateFlow<Boolean> = _shizukuInstalled
 
-    private val _binderReady = MutableStateFlow(false)
-    val binderReady: StateFlow<Boolean> = _binderReady
-
-    private val _permissionGranted = MutableStateFlow(false)
-    val permissionGranted: StateFlow<Boolean> = _permissionGranted
-
-    private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        _binderReady.value = true
-        _permissionGranted.value = checkPermission()
-    }
-
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        _binderReady.value = false
-        _permissionGranted.value = false
         ShizukuPrivilegedServiceClient.reset()
     }
 
-    private val permissionResultListener = Shizuku.OnRequestPermissionResultListener { _, grantResult ->
-        _permissionGranted.value = grantResult == PackageManager.PERMISSION_GRANTED
-        _binderReady.value = isAvailable()
-    }
-
     fun registerListeners() {
-        Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
-        Shizuku.addRequestPermissionResultListener(permissionResultListener)
         refresh()
     }
 
@@ -54,9 +34,7 @@ object ShizukuPackageManager {
     }
 
     fun unregisterListeners() {
-        Shizuku.removeBinderReceivedListener(binderReceivedListener)
         Shizuku.removeBinderDeadListener(binderDeadListener)
-        Shizuku.removeRequestPermissionResultListener(permissionResultListener)
     }
 
     fun isAvailable(): Boolean = ShizukuAccess.isAvailable()
@@ -67,8 +45,6 @@ object ShizukuPackageManager {
 
     fun refresh() {
         _shizukuInstalled.value = isShizukuInstalled()
-        _binderReady.value = isAvailable()
-        _permissionGranted.value = checkPermission()
     }
 
     suspend fun getInstalledPackages(flags: Int): List<PackageInfo> = withContext(Dispatchers.IO) {

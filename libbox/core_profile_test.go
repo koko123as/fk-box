@@ -32,7 +32,7 @@ func TestDetectCoreConfig(t *testing.T) {
 
 func TestConvertLinksDefaultsToSingBox(t *testing.T) {
 	links := strings.Join([]string{testVlessReality, testShadowsocks, testTrojanWS, testHysteria2}, "\n")
-	profile, err := ConvertCoreShareLinks(base64.StdEncoding.EncodeToString([]byte(links)))
+	profile, err := ConvertCoreShareLinksFor(CoreAuto, base64.StdEncoding.EncodeToString([]byte(links)))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestConvertLinksDefaultsToSingBox(t *testing.T) {
 }
 
 func TestConvertLinksWithXHTTPUsesXray(t *testing.T) {
-	profile, err := ConvertCoreShareLinks(testVlessReality + "\n" + testVlessXHTTP)
+	profile, err := ConvertCoreShareLinksFor(CoreAuto, testVlessReality + "\n" + testVlessXHTTP)
 	if err != nil {
 		t.Fatal(err)
 	}

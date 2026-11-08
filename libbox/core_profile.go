@@ -33,7 +33,7 @@ const (
 	CoreXray    = "xray"
 	CoreMihomo  = "mihomo"
 	// CoreLinks is only a detection result: the content is a Base64 node list
-	// or share links and must go through ConvertCoreShareLinks first.
+	// or share links and must go through ConvertCoreShareLinksFor first.
 	CoreLinks = "links"
 )
 
@@ -308,13 +308,6 @@ type UICoreProfile struct {
 	Content string
 }
 
-// ConvertCoreShareLinks turns a Base64 node list or share links into a full
-// profile. sing-box is the default; links using a transport only Xray has
-// (xhttp) go to Xray.
-func ConvertCoreShareLinks(content string) (*UICoreProfile, error) {
-	return ConvertCoreShareLinksFor(CoreAuto, content)
-}
-
 // ConvertCoreShareLinksEnabled converts share links like ConvertCoreShareLinksFor,
 // but for auto it only picks from enabled (comma-separated cores the user left
 // on): xhttp links need Xray; others prefer sing-box, then mihomo, then Xray.
@@ -353,7 +346,9 @@ func ConvertCoreShareLinksEnabled(core string, enabled string, content string) (
 }
 
 // ConvertCoreShareLinksFor converts share links for a profile whose core the
-// user chose; auto picks as ConvertCoreShareLinks does.
+// user chose. Auto turns a Base64 node list or share links into a full
+// profile for sing-box by default; links using a transport only Xray has
+// (xhttp) go to Xray.
 func ConvertCoreShareLinksFor(core string, content string) (*UICoreProfile, error) {
 	text := normalizeCoreContent(content)
 	if !isShareLinks(text) {
