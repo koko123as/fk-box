@@ -235,10 +235,25 @@ func isMissingGeoFile(err error) bool {
 // by the full parse at start, which needs the geo databases (phase 2/4) and
 // may download them, so it is not done while importing.
 func checkMihomoConfig(content string) error {
+	_, err := parseCheckedMihomoConfig(content)
+	return err
+}
+
+// parseCheckedMihomoConfig unmarshals the profile once and runs the import
+// checks on it, so start/reload can reuse the raw config instead of parsing
+// the YAML again.
+func parseCheckedMihomoConfig(content string) (*mihomoConfig.RawConfig, error) {
 	raw, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
 	if err != nil {
-		return fmt.Errorf("mihomo: %w", err)
+		return nil, fmt.Errorf("mihomo: %w", err)
 	}
+	if err := checkMihomoRaw(raw); err != nil {
+		return nil, err
+	}
+	return raw, nil
+}
+
+func checkMihomoRaw(raw *mihomoConfig.RawConfig) error {
 	names := map[string]bool{"DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true, "GLOBAL": true}
 	for i, mapping := range raw.Proxy {
 		proxy, err := mihomoAdapter.ParseProxy(mapping)

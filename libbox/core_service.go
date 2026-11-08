@@ -149,7 +149,16 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	if core != CoreXray && core != CoreMihomo {
 		return fmt.Errorf("unknown core: %s", core)
 	}
-	if err := CheckCoreConfig(core, configContent); err != nil {
+	// mihomo: the YAML is parsed once here and the checked raw config is
+	// handed to the core, instead of parsing it again at start.
+	var mihomoRaw *mihomoConfig.RawConfig
+	if core == CoreMihomo {
+		raw, err := parseCheckedMihomoConfig(configContent)
+		if err != nil {
+			return err
+		}
+		mihomoRaw = raw
+	} else if err := CheckCoreConfig(core, configContent); err != nil {
 		return err
 	}
 	// Stop sing-box (if it was running) before its TUN is replaced.
@@ -170,7 +179,7 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	case CoreXray:
 		err = startXrayCore(running, configContent)
 	case CoreMihomo:
-		err = startMihomoCore(s, running, configContent)
+		err = startMihomoCore(s, running, configContent, mihomoRaw)
 	}
 	if err != nil {
 		_ = syscall.Close(fd)
@@ -370,11 +379,14 @@ func readXrayLayout(running *runningCore, root map[string]any) {
 // auto-route or interface detection (the VpnService owns routing, and netlink
 // is not available to apps on recent Android). External controllers are
 // turned off; the app reads mihomo in process.
-func startMihomoCore(s *CommandServer, running *runningCore, content string) error {
+func startMihomoCore(s *CommandServer, running *runningCore, content string, raw *mihomoConfig.RawConfig) error {
 	mihomoConstant.SetHomeDir(coreAssetDir(sWorkingPath, CoreMihomo))
-	raw, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
-	if err != nil {
-		return err
+	if raw == nil {
+		parsed, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
+		if err != nil {
+			return err
+		}
+		raw = parsed
 	}
 	if !mihomoSetsLogLevel(content) {
 		raw.LogLevel = mihomoLog.WARNING
