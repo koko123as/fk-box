@@ -221,6 +221,7 @@ private fun GlassLayer(
     modifier: Modifier,
 ) {
     val shader = remember { RuntimeShader(LIQUID_GLASS_AGSL) }
+    val effect = remember { GlassEffectCache() }
     val haze = rememberGraphicsLayer()
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
@@ -239,6 +240,25 @@ private fun GlassLayer(
                 val g = glow()
                 val style = styleOf()
                 val radius = cornerRadius ?: 1e4f
+                val hazeAmount = if (style.hazeBlur > 0f) style.haze else 0f
+                // Every value the uniforms below are derived from. While they
+                // are unchanged the effect built last time is reused: same
+                // shader, same uniforms, so the same pixels, without a new
+                // RenderEffect on every layer pass.
+                val inputs = floatArrayOf(
+                    d, w, h, radius, hazeAmount,
+                    style.bevel, style.blur, style.refraction, style.saturation, style.brightness,
+                    style.tint.red, style.tint.green, style.tint.blue, style.tint.alpha,
+                    style.rim, style.rimWidth, style.endShade,
+                    g.center.x, g.center.y, g.strength, style.contrast, g.reach, g.wash,
+                    style.hairline, style.dispersion, style.rimBlur,
+                    style.rimTail, style.rimFocus, style.rimAdded, style.hairlineSide ?: style.hairline,
+                )
+                val cached = effect.effect
+                if (cached != null && inputs.contentEquals(effect.inputs)) {
+                    renderEffect = cached
+                    return@graphicsLayer
+                }
                 shader.setFloatUniform("uSize", w, h * 2)
                 shader.setFloatUniform("uFrame", 0f, 0f, 1 / d, 1 / d)
                 shader.setFloatUniform("uSample", 0f, 0f, 1 / d, 1 / d)
@@ -246,7 +266,7 @@ private fun GlassLayer(
                 shader.setFloatUniform("uTexels", 1 / d, 0f)
                 shader.setFloatUniform("uHazeSample", 0f, -h / d, 1 / d, 1 / d)
                 shader.setFloatUniform("uHazeClamp", .5f, h + .5f, w - .5f, h * 2 - .5f)
-                shader.setFloatUniform("uHaze", if (style.hazeBlur > 0f) style.haze else 0f)
+                shader.setFloatUniform("uHaze", hazeAmount)
                 shader.setFloatUniform("uShape", w / d, h / d, style.bevel, style.blur)
                 shader.setFloatUniform("uCorners", radius, radius, radius, radius)
                 shader.setFloatUniform("uOptics", style.refraction, style.saturation, style.brightness)
@@ -256,7 +276,10 @@ private fun GlassLayer(
                 shader.setFloatUniform("uGlowSpread", g.reach, g.wash)
                 shader.setFloatUniform("uEdge", style.hairline, style.dispersion, style.rimBlur)
                 shader.setFloatUniform("uRim", style.rimTail, style.rimFocus, style.rimAdded, style.hairlineSide ?: style.hairline)
-                renderEffect = RenderEffect.createRuntimeShaderEffect(shader, "uTexture").asComposeRenderEffect()
+                val created = RenderEffect.createRuntimeShaderEffect(shader, "uTexture").asComposeRenderEffect()
+                effect.inputs = inputs
+                effect.effect = created
+                renderEffect = created
             }
             .drawBehind {
                 if (!backdrop.recorded) return@drawBehind
@@ -295,6 +318,12 @@ private fun GlassLayer(
 }
 
 private const val HAZE_SCALE = .5f
+
+/** The last glass RenderEffect of one pane and the uniform inputs it was built from. */
+private class GlassEffectCache {
+    var inputs: FloatArray? = null
+    var effect: androidx.compose.ui.graphics.RenderEffect? = null
+}
 
 /**
  * GPU-specific Liquid Glass tuning. Only MediaTek SoCs (Dimensity/Helio:
