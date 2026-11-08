@@ -79,7 +79,7 @@ import io.nekohasekai.sfa.compose.ui.bottomInset
 import io.nekohasekai.sfa.compose.ui.contentTopPadding
 import io.nekohasekai.sfa.compose.ui.rememberPageActive
 import io.nekohasekai.sfa.compose.ui.tr
-import io.nekohasekai.sfa.flutter.TerminalChannel
+import io.nekohasekai.sfa.bridge.TerminalChannel
 import kotlinx.coroutines.launch
 import java.io.File
 

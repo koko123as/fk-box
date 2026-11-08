@@ -6,7 +6,7 @@ import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.json
-import io.nekohasekai.sfa.flutter.jsonObject
+import io.nekohasekai.sfa.bridge.jsonObject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Deferred

@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
 import android.graphics.BitmapFactory
-import io.nekohasekai.sfa.flutter.BoxSettings
+import io.nekohasekai.sfa.bridge.BoxSettings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement

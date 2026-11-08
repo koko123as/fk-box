@@ -1,5 +1,5 @@
 package io.nekohasekai.sfa.compose
 
-import io.nekohasekai.sfa.flutter.BoxActivity
+import io.nekohasekai.sfa.bridge.BoxActivity
 
 class MainActivity : BoxActivity()

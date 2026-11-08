@@ -1,6 +1,6 @@
 package io.nekohasekai.sfa.database
 
-import io.nekohasekai.sfa.flutter.ServiceStartResult
+import io.nekohasekai.sfa.bridge.ServiceStartResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
