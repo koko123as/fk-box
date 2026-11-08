@@ -1,0 +1,145 @@
+name: FlClash UI APK (arm64-v8a)
+
+# Builds FK-box with FlClash's Flutter UI (flutter/, see flclash.md): the
+# pinned Flutter SDK, flutter analyze, the source diff against FlClash v0.9.3
+# and an arm64-v8a APK.
+on:
+  push:
+    branches: [flclash-ui]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: flclash-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # FlClash v0.9.3 .github/workflows/build.yaml env.FLUTTER_VERSION
+  FLUTTER_VERSION: '3.47.6'
+  FLCLASH_COMMIT: be84736605527034689c95bf27828ff27d912c5e
+  PRISM_UI_COMMIT: 63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Checkout FlClash reference
+        uses: actions/checkout@v5
+        with:
+          repository: chen08209/FlClash
+          ref: ${{ env.FLCLASH_COMMIT }}
+          path: .ref/FlClash
+          persist-credentials: false
+
+      - name: Checkout prism_ui reference
+        uses: actions/checkout@v5
+        with:
+          repository: chen08209/prism_ui
+          ref: ${{ env.PRISM_UI_COMMIT }}
+          path: .ref/prism_ui
+          persist-credentials: false
+
+      - name: FlClash source diff
+        run: |
+          python3 tools/verify_flclash_ui.py .ref/FlClash .ref/prism_ui --report flclash-ui-diff.md
+          cat flclash-ui-diff.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Restore libbox
+        id: libbox
+        uses: actions/cache@v4
+        with:
+          path: app/libs/libbox.aar
+          key: libbox-arm64-${{ hashFiles('version.properties', 'libbox/**', '.github/actions/**', 'tools/patch_*.py') }}
+
+      - name: Build libbox
+        if: steps.libbox.outputs.cache-hit != 'true'
+        uses: ./.github/actions/build-libbox
+        with:
+          platform: android/arm64
+
+      - name: Set up Android SDK
+        if: steps.libbox.outputs.cache-hit == 'true'
+        uses: android-actions/setup-android@v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools
+            platforms;android-37.1
+            build-tools;37.0.0
+            ndk;28.0.13004108
+
+      - name: Set up Java for Gradle
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Set up Rust for rust_api
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add aarch64-linux-android
+
+      - name: Flutter packages
+        working-directory: flutter
+        run: |
+          flutter --version
+          flutter pub get
+
+      - name: Flutter analyze
+        working-directory: flutter
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build debug APK
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          echo "flutter.sdk=$FLUTTER_ROOT" >> local.properties
+          ./gradlew :app:assembleOtherDebug -Parm64Only=true -Ptarget-platform=android-arm64 \
+            --no-daemon --console=plain --max-workers=2 --stacktrace \
+            '-Dorg.gradle.jvmargs=-Xmx5g -Dfile.encoding=UTF-8' \
+            -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Report APK
+        run: |
+          for apk in app/build/outputs/apk/other/debug/*.apk; do
+            echo "- $(basename "$apk"): $(stat -c %s "$apk") bytes" | tee -a "$GITHUB_STEP_SUMMARY"
+            unzip -l "$apk" | awk '/lib\// {print $4}' | sort | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FK-box-flclash-ui-${{ github.sha }}-arm64-v8a-debug
+          path: app/build/outputs/apk/other/debug/*.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Upload diff report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: flclash-ui-diff
+          path: flclash-ui-diff.md
+          if-no-files-found: ignore
+          retention-days: 30
