@@ -319,21 +319,26 @@ class PollState(val value: Json?, val error: Throwable?, val refresh: () -> Unit
 
 /**
  * Capture lists, details and logs poll every two seconds only while their page
- * is visible in the foreground; a change of [method], [arguments] or
+ * is visible in the foreground; a change of [key] (the request's arguments) or
  * [revision] restarts the cycle, so a slow reply never replaces a newer filter.
  */
 @Composable
-fun rememberCapturePoll(box: BoxController, method: String, arguments: Map<String, Any?>, revision: Int = 0): PollState {
+fun rememberCapturePoll(
+    box: BoxController,
+    key: Any?,
+    revision: Int = 0,
+    fetch: suspend io.nekohasekai.sfa.bridge.BoxBridge.() -> Any?,
+): PollState {
     val active = rememberPageActive() && !box.remote
     var value by remember { mutableStateOf<Json?>(null) }
     var error by remember { mutableStateOf<Throwable?>(null) }
     var manual by remember { mutableIntStateOf(0) }
-    val currentArguments by rememberUpdatedState(arguments)
-    LaunchedEffect(active, method, arguments, revision, manual) {
+    val currentFetch by rememberUpdatedState(fetch)
+    LaunchedEffect(active, key, revision, manual) {
         if (!active) return@LaunchedEffect
         while (true) {
             try {
-                value = json(box.call(method, HashMap(currentArguments)))
+                value = json(box.call(currentFetch))
                 error = null
             } catch (cancel: kotlinx.coroutines.CancellationException) {
                 throw cancel

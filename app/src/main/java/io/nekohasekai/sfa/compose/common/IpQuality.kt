@@ -51,13 +51,13 @@ class RoutedIpProbe(private val box: BoxController) : IpProbeTransport {
 
     suspend fun open() {
         if (cancelled) throw IpProbeCancelled()
-        box.call("dashboard.probe.open", mapOf("id" to id))
+        box.call { openProbe(id) }
         if (cancelled) throw IpProbeCancelled()
     }
 
     suspend fun egress(): Json {
         if (cancelled) throw IpProbeCancelled()
-        val result = json(box.call("dashboard.egress", mapOf("id" to id)))
+        val result = json(box.call { egress(id) })
         if (cancelled) throw IpProbeCancelled()
         return result
     }
@@ -65,7 +65,7 @@ class RoutedIpProbe(private val box: BoxController) : IpProbeTransport {
     override suspend fun get(url: String, timeoutMillis: Long): IpProbeResponse {
         if (cancelled) throw IpProbeCancelled()
         try {
-            val result = json(box.call("dashboard.probe.get", mapOf("id" to id, "url" to url, "timeoutMillis" to timeoutMillis)))
+            val result = json(box.call { probeGet(id, url, timeoutMillis) })
             if (cancelled) throw IpProbeCancelled()
             return IpProbeResponse(result["status"].asLong()?.toInt() ?: 503, result["body"] as? String ?: "")
         } catch (error: CancellationException) {
@@ -86,7 +86,7 @@ class RoutedIpProbe(private val box: BoxController) : IpProbeTransport {
         if (closed) return
         closed = true
         try {
-            withContext(NonCancellable) { box.call("dashboard.probe.close", mapOf("id" to id)) }
+            withContext(NonCancellable) { box.call { closeProbe(id) } }
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {

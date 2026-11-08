@@ -41,8 +41,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
     private val usbController = BoxUsb(activity)
-    private val ssh = BoxSSH(scope, tailscale, emit)
-    private val terminalSettings = BoxTerminalSettings(activity)
+    val ssh = BoxSSH(scope, tailscale, emit)
+    val terminalSettings = BoxTerminalSettings(activity)
     private var inboxTag: String? = null
     private var sessionKey: Long? = null
     private val outbounds = CommandClient(scope, CommandClient.ConnectionType.Outbounds, object : CommandClient.Handler {
@@ -119,109 +119,136 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     fun diagnostics(): Map<String, Any?> = mapOf("quality" to quality.uiState.value.toWire(), "stun" to stun.uiState.value.toWire())
 
-    suspend fun invoke(method: String, args: Map<String, Any?>): Any? {
-        if (method.startsWith("terminal.")) return terminalSettings.invoke(method, args)
-        if (method.startsWith("ssh.")) return ssh.invoke(method, args)
-        fun string(key: String): String = args[key] as? String ?: error("Missing argument: " + key)
-        when (method) {
-            "stun.start" -> {
-                require(!stun.uiState.value.isRunning) { "A STUN test is already running" }
-                stun.updateServer(string("server"))
-                stun.selectOutbound(args["outbound"] as? String ?: "")
-                stun.startTest(running)
-            }
-            "stun.stop" -> stun.cancelTest()
-            "quality.start" -> {
-                require(!quality.uiState.value.isRunning) { "A network quality test is already running" }
-                quality.updateConfigURL(BoxProfiles.validateUrl(string("url")))
-                quality.selectOutbound(args["outbound"] as? String ?: "")
-                quality.setSerial(args["serial"] == true)
-                quality.setHttp3(args["http3"] == true)
-                quality.setMaxRuntime(if ((args["seconds"] as? Number)?.toInt() == 60) MaxRuntimeOption.SIXTY else MaxRuntimeOption.THIRTY)
-                quality.requestStartTest(activity, running)
-            }
-            "quality.confirm" -> quality.confirmMeteredStart(running)
-            "quality.dismiss" -> quality.dismissMeteredWarning()
-            "quality.stop" -> quality.cancelTest()
-            "tailscale.exit" -> {
-                val endpoint = tailscale.endpoint(string("endpoint")) ?: error("Endpoint no longer exists")
-                val stableID = string("peer")
-                require(stableID.isEmpty() || endpoint.userGroups.any { group -> group.peers.any { it.stableID == stableID && it.exitNodeOption } }) { "Not an available exit node" }
-                withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setTailscaleExitNode(endpoint.endpointTag, stableID) }
-            }
-            "tailscale.logout" -> withContext(Dispatchers.IO) { CommandTarget.standaloneClient().tailscaleLogout(string("endpoint")) }
-            "tailscale.ping" -> {
-                val peer = tailscale.peer(string("endpoint"), string("peer")) ?: error("Peer no longer exists")
-                ping.stopPing()
-                ping.startPing(string("endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"))
-            }
-            "tailscale.stopPing" -> ping.stopPing()
-            "taildrop.subscribe" -> {
-                inboxTag = string("endpoint")
-                inbox.subscribe(inboxTag!!)
-                inbox.markInboxRead(inboxTag!!)
-            }
-            "taildrop.unsubscribe" -> { inboxTag = null; inbox.cancel() }
-            "taildrop.delete" -> {
-                val name = string("name")
-                require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
-                inbox.delete(string("endpoint"), name)
-            }
-            "taildrop.cancelReceive" -> inbox.cancelReceiving(string("endpoint"), string("sender"), string("name"))
-            "taildrop.save" -> {
-                val name = string("name")
-                require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
-                val uri = activity.pickDocument(name) ?: return false
-                val file = TaildropFiles.materialize(string("endpoint"), name)
-                withContext(Dispatchers.IO) {
-                    activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> file.inputStream().use { it.copyTo(output) } }
-                        ?: error("Unable to save received file")
-                }
-                return true
-            }
-            "share.discard" -> activity.discardShare(string("token"))
-            "share.send" -> {
-                val endpoint = string("endpoint")
-                val peer = tailscale.peer(endpoint, string("peer")) ?: error("Peer no longer exists")
-                require(peer.canReceiveFiles && peer.online) { "Peer is not available for file transfer" }
-                val files = withContext(Dispatchers.IO) { activity.openShare(string("token")) }
-                return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
-            }
-            "taildrop.send" -> {
-                val endpoint = string("endpoint")
-                val peer = tailscale.peer(endpoint, string("peer")) ?: error("Peer no longer exists")
-                require(peer.canReceiveFiles) { "This peer cannot receive files" }
-                val uri = activity.pickDocument() ?: return null
-                val files = withContext(Dispatchers.IO) { TaildropSendManager.openURIs(listOf(uri)) }
-                return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
-            }
-            "taildrop.cancelSend" -> TaildropSendManager.cancel((args["id"] as Number).toLong())
-            "taildrop.dismissSend" -> TaildropSendManager.dismiss((args["id"] as Number).toLong())
-            "openconnect.submit" -> {
-                @Suppress("UNCHECKED_CAST")
-                val values = args["values"] as Map<String, String>
-                val error = openConnect.submitAuthFormResponse(string("endpoint"), string("challenge"), values)
-                if (error != null) kotlin.error(error)
-            }
-            "openconnect.cancel" -> openConnect.cancelAuthChallenge(string("endpoint"), string("challenge"))
-            "openvpn.submit" -> {
-                val error = openVPN.submitChallengeResponse(string("endpoint"), string("challenge"),
-                    args["username"] as? String ?: "", args["password"] as? String ?: "", args["secret"] as? String ?: "")
-                if (error != null) kotlin.error(error)
-            }
-            "openvpn.cancel" -> withContext(Dispatchers.IO) {
-                CommandTarget.standaloneClient().cancelOpenVPNChallenge(string("endpoint"), string("challenge"))
-            }
-            "usb.list" -> return usbController.devices()
-            "usb.attach" -> {
-                require(usb.uiState.value.servers.any { it.serverTag == string("server") }) { "USBIP server no longer exists" }
-                usbController.attach(string("server"), string("device"))
-            }
-            "usb.detach" -> USBIPManager.detach(string("id"))
-            else -> throw UnsupportedOperationException("Unknown B-box tool: " + method)
-        }
-        return null
+    private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
+
+    suspend fun startStun(server: String?, outbound: String?) {
+        require(!stun.uiState.value.isRunning) { "A STUN test is already running" }
+        stun.updateServer(required(server, "server"))
+        stun.selectOutbound(outbound ?: "")
+        stun.startTest(running)
     }
+
+    suspend fun stopStun() { stun.cancelTest() }
+
+    suspend fun startQuality(url: String?, outbound: String?, serial: Boolean, http3: Boolean, seconds: Int?) {
+        require(!quality.uiState.value.isRunning) { "A network quality test is already running" }
+        quality.updateConfigURL(BoxProfiles.validateUrl(required(url, "url")))
+        quality.selectOutbound(outbound ?: "")
+        quality.setSerial(serial)
+        quality.setHttp3(http3)
+        quality.setMaxRuntime(if (seconds == 60) MaxRuntimeOption.SIXTY else MaxRuntimeOption.THIRTY)
+        quality.requestStartTest(activity, running)
+    }
+
+    suspend fun confirmQuality() { quality.confirmMeteredStart(running) }
+
+    suspend fun dismissQuality() { quality.dismissMeteredWarning() }
+
+    suspend fun stopQuality() { quality.cancelTest() }
+
+    suspend fun setTailscaleExitNode(endpointTag: String?, peer: String?) {
+        val endpoint = tailscale.endpoint(required(endpointTag, "endpoint")) ?: error("Endpoint no longer exists")
+        val stableID = required(peer, "peer")
+        require(stableID.isEmpty() || endpoint.userGroups.any { group -> group.peers.any { it.stableID == stableID && it.exitNodeOption } }) { "Not an available exit node" }
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setTailscaleExitNode(endpoint.endpointTag, stableID) }
+    }
+
+    suspend fun tailscaleLogout(endpoint: String?) {
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().tailscaleLogout(required(endpoint, "endpoint")) }
+    }
+
+    suspend fun tailscalePing(endpoint: String?, peerID: String?) {
+        val peer = tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
+        ping.stopPing()
+        ping.startPing(required(endpoint, "endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"))
+    }
+
+    suspend fun stopTailscalePing() { ping.stopPing() }
+
+    suspend fun subscribeTaildrop(endpoint: String?) {
+        inboxTag = required(endpoint, "endpoint")
+        inbox.subscribe(inboxTag!!)
+        inbox.markInboxRead(inboxTag!!)
+    }
+
+    suspend fun unsubscribeTaildrop() { inboxTag = null; inbox.cancel() }
+
+    suspend fun deleteTaildropFile(endpoint: String?, nameArgument: String?) {
+        val name = required(nameArgument, "name")
+        require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
+        inbox.delete(required(endpoint, "endpoint"), name)
+    }
+
+    suspend fun cancelTaildropReceive(endpoint: String?, sender: String?, name: String?) {
+        inbox.cancelReceiving(required(endpoint, "endpoint"), required(sender, "sender"), required(name, "name"))
+    }
+
+    /** False when the user dismissed the file picker. */
+    suspend fun saveTaildropFile(endpoint: String?, nameArgument: String?): Boolean {
+        val name = required(nameArgument, "name")
+        require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
+        val uri = activity.pickDocument(name) ?: return false
+        val file = TaildropFiles.materialize(required(endpoint, "endpoint"), name)
+        withContext(Dispatchers.IO) {
+            activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> file.inputStream().use { it.copyTo(output) } }
+                ?: error("Unable to save received file")
+        }
+        return true
+    }
+
+    suspend fun discardShare(token: String?) { activity.discardShare(required(token, "token")) }
+
+    suspend fun sendShare(token: String?, endpointTag: String?, peerID: String?): Any? {
+        val endpoint = required(endpointTag, "endpoint")
+        val peer = tailscale.peer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        require(peer.canReceiveFiles && peer.online) { "Peer is not available for file transfer" }
+        val files = withContext(Dispatchers.IO) { activity.openShare(required(token, "token")) }
+        return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
+    }
+
+    /** Null when the user dismissed the file picker. */
+    suspend fun sendTaildropFile(endpointTag: String?, peerID: String?): Any? {
+        val endpoint = required(endpointTag, "endpoint")
+        val peer = tailscale.peer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        require(peer.canReceiveFiles) { "This peer cannot receive files" }
+        val uri = activity.pickDocument() ?: return null
+        val files = withContext(Dispatchers.IO) { TaildropSendManager.openURIs(listOf(uri)) }
+        return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
+    }
+
+    suspend fun cancelTaildropSend(id: Long) { TaildropSendManager.cancel(id) }
+
+    suspend fun dismissTaildropSend(id: Long) { TaildropSendManager.dismiss(id) }
+
+    suspend fun submitOpenConnect(endpoint: String?, challenge: String?, values: Map<String, String>) {
+        val error = openConnect.submitAuthFormResponse(required(endpoint, "endpoint"), required(challenge, "challenge"), values)
+        if (error != null) kotlin.error(error)
+    }
+
+    suspend fun cancelOpenConnect(endpoint: String?, challenge: String?) {
+        openConnect.cancelAuthChallenge(required(endpoint, "endpoint"), required(challenge, "challenge"))
+    }
+
+    suspend fun submitOpenVPN(endpoint: String?, challenge: String?, username: String?, password: String?, secret: String?) {
+        val error = openVPN.submitChallengeResponse(required(endpoint, "endpoint"), required(challenge, "challenge"),
+            username ?: "", password ?: "", secret ?: "")
+        if (error != null) kotlin.error(error)
+    }
+
+    suspend fun cancelOpenVPN(endpoint: String?, challenge: String?) {
+        withContext(Dispatchers.IO) {
+            CommandTarget.standaloneClient().cancelOpenVPNChallenge(required(endpoint, "endpoint"), required(challenge, "challenge"))
+        }
+    }
+
+    suspend fun usbDevices() = usbController.devices()
+
+    suspend fun attachUsb(server: String?, device: String?) {
+        require(usb.uiState.value.servers.any { it.serverTag == required(server, "server") }) { "USBIP server no longer exists" }
+        usbController.attach(required(server, "server"), required(device, "device"))
+    }
+
+    suspend fun detachUsb(id: String?) { USBIPManager.detach(required(id, "id")) }
 
     override fun close() {
         jobs.forEach { it.cancel() }

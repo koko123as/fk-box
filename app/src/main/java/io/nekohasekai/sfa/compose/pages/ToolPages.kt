@@ -83,14 +83,14 @@ fun DiagnosticsPage(box: BoxController, quality: Boolean) {
     var http3 by remember { mutableStateOf(false) }
     var seconds by remember { mutableIntStateOf(30) }
     var asking by remember { mutableStateOf(false) }
-    DisposableEffect(Unit) { onDispose { box.launchAct(if (quality) "quality.stop" else "stun.stop") } }
+    DisposableEffect(Unit) { onDispose { box.launchAct { if (quality) toolBridge.stopQuality() else toolBridge.stopStun() } } }
     val state = if (quality) box.quality else box.stun
     val running = state["isRunning"] == true
     LaunchedEffect(state["showMeteredWarning"]) {
         if (quality && state["showMeteredWarning"] == true && !asking) {
             asking = true
             val result = dialogs?.confirm("Network quality", message = "This test transfers data on a metered network. Continue?", action = "Start") == true
-            box.act(if (result) "quality.confirm" else "quality.dismiss")
+            box.act { if (result) toolBridge.confirmQuality() else toolBridge.dismissQuality() }
             asking = false
         }
     }
@@ -124,16 +124,13 @@ fun DiagnosticsPage(box: BoxController, quality: Boolean) {
                 tr(if (running) "Stop" else "Start"),
                 {
                     if (running) {
-                        box.launchAct(if (quality) "quality.stop" else "stun.stop")
+                        box.launchAct { if (quality) toolBridge.stopQuality() else toolBridge.stopStun() }
                     } else {
                         scope.launch {
-                            box.act(
-                                if (quality) "quality.start" else "stun.start",
-                                mapOf(
-                                    (if (quality) "url" else "server") to address.trim(),
-                                    "outbound" to outbound, "serial" to serial, "http3" to http3, "seconds" to seconds,
-                                ),
-                            )
+                            box.act {
+                                if (quality) toolBridge.startQuality(address.trim(), outbound, serial, http3, seconds)
+                                else toolBridge.startStun(address.trim(), outbound)
+                            }
                         }
                     }
                 },
@@ -185,7 +182,7 @@ fun ReportsPage(box: BoxController, kind: String) {
         error = null
         reports = null
         try {
-            reports = rows(box.call("reports.list", mapOf("kind" to kind)))
+            reports = rows(box.call { reports.list(kind) })
         } catch (failure: Throwable) {
             error = failure
         }
@@ -197,7 +194,7 @@ fun ReportsPage(box: BoxController, kind: String) {
             IconAction(AppGlyphs.delete, tr("Clear"), {
                 scope.launch {
                     if (dialogs?.confirm("Delete all reports?") == true) {
-                        box.act("reports.clear", mapOf("kind" to kind))
+                        box.act { reports.clear(kind) }
                         attempt++
                     }
                 }
@@ -233,10 +230,9 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
     var logs by remember { mutableStateOf(true) }
     var encrypt by remember { mutableStateOf(true) }
     var busy by remember { mutableStateOf(false) }
-    val args = mapOf("kind" to kind, "id" to id)
     LaunchedEffect(Unit) {
         try {
-            files = rows(box.call("reports.files", args))
+            files = rows(box.call { reports.files(kind, id) })
         } catch (failure: Throwable) {
             error = failure
         }
@@ -247,7 +243,7 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
         actions = listOf(
             IconAction(AppGlyphs.delete, tr("Delete"), {
                 scope.launch {
-                    if (dialogs?.confirm("Delete", message = id) == true && box.act("reports.delete", args)) navigator?.pop()
+                    if (dialogs?.confirm("Delete", message = id) == true && box.act { reports.delete(kind, id) }) navigator?.pop()
                 }
             }),
         ),
@@ -259,19 +255,19 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
             Spacer(Modifier.height(24.dp))
             Column {
                 loaded.forEachIndexed { index, file ->
-                    val fileArgs = args + ("name" to file["name"])
+                    val fileName = file["name"] as? String
                     ListItem(
                         title = { Text(file["label"].toString()) },
                         subtitle = { Text(bytes(file["size"] as? Number ?: 0)) },
                         position = ItemPosition.of(index, loaded.size),
                         onClick = {
                             if (file["kind"] == "PROFILE") {
-                                box.launchAct("reports.save", fileArgs)
+                                box.launchAct { reports.save(kind, id, fileName) }
                             } else {
-                                navigator?.push { ReportText(box, fileArgs, file["label"].toString()) }
+                                navigator?.push { ReportText(box, kind, id, fileName, file["label"].toString()) }
                             }
                         },
-                        trailing = { TrailingGlyph(AppGlyphs.arrowDown, tr("Export")) { box.launchAct("reports.save", fileArgs) } },
+                        trailing = { TrailingGlyph(AppGlyphs.arrowDown, tr("Export")) { box.launchAct { reports.save(kind, id, fileName) } } },
                     )
                 }
             }
@@ -287,7 +283,7 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
                     onClick = if (busy) null else ({
                         busy = true
                         scope.launch {
-                            box.act("reports.export", args + mapOf("config" to config, "logs" to logs, "encrypt" to encrypt))
+                            box.act { reports.export(kind, id, config, logs, encrypt) }
                             busy = false
                         }
                     }),
@@ -298,12 +294,12 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
 }
 
 @Composable
-private fun ReportText(box: BoxController, args: Map<String, Any?>, title: String) {
+private fun ReportText(box: BoxController, kind: String, id: String, name: String?, title: String) {
     var content by remember { mutableStateOf<String?>(null) }
     var error by remember { mutableStateOf<Throwable?>(null) }
     LaunchedEffect(Unit) {
         try {
-            content = box.call("reports.read", args).toString()
+            content = box.call { reports.read(kind, id, name) }.toString()
         } catch (failure: Throwable) {
             error = failure
         }
@@ -332,7 +328,7 @@ fun RemotePage(box: BoxController) {
     LaunchedEffect(attempt) {
         error = null
         try {
-            servers = rows(box.call("remote.list"))
+            servers = rows(box.call { remoteServers() })
         } catch (failure: Throwable) {
             error = failure
         }
@@ -349,7 +345,7 @@ fun RemotePage(box: BoxController) {
                 if (box.remote) {
                     ListItem(
                         title = { Text(box.dashboard["remote"].toString()) },
-                        trailing = { TextPillButton(tr("Disconnect"), { box.launchAct("remote.disconnect") }) },
+                        trailing = { TextPillButton(tr("Disconnect"), { box.launchAct { disconnectRemoteServer() } }) },
                     )
                 }
                 error?.let { ErrorState(describe(it)) }
@@ -357,7 +353,7 @@ fun RemotePage(box: BoxController) {
             }
             items(servers ?: emptyList(), key = { it["id"].toString() }) { server ->
                 Box(Modifier.padding(bottom = 12.dp)) {
-                    CommonCard(onPressed = { box.launchAct("remote.connect", mapOf("id" to server["id"])) }) {
+                    CommonCard(onPressed = { box.launchAct { connectRemoteServer(server["id"].asLong()) } }) {
                         ListItem(
                             title = { Text(server["name"].toString()) },
                             subtitle = { Text(server["url"].toString()) },
@@ -368,7 +364,7 @@ fun RemotePage(box: BoxController) {
                                         PopupMenuItem(tr("Delete"), AppGlyphs.delete, danger = true, onPressed = {
                                             scope.launch {
                                                 if (dialogs?.confirm("Delete", message = server["name"].toString()) == true) {
-                                                    box.act("remote.delete", mapOf("id" to server["id"]))
+                                                    box.act { deleteRemoteServer(server["id"].asLong()) }
                                                     attempt++
                                                 }
                                             }
@@ -398,7 +394,7 @@ private fun RemoteForm(box: BoxController, initial: Json) {
         confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
             saving = true
             scope.launch {
-                val saved = box.act("remote.save", initial + mapOf("name" to name, "url" to url, "secret" to secret))
+                val saved = box.act { saveRemoteServer(initial["id"].asLong(), name, url, secret) }
                 saving = false
                 if (saved) navigator?.pop()
             }
@@ -471,7 +467,7 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                     ListItem(
                         title = { Text(tr("Sign in")) },
                         trailing = { GlyphIcon(AppGlyphs.openExternal) },
-                        onClick = { box.launchAct("url.open", mapOf("url" to endpoint["authURL"])) },
+                        onClick = { box.launchAct { openUrl(endpoint["authURL"] as? String) } },
                     )
                 }
                 if (endpoint["canShareFiles"] == true) {
@@ -492,7 +488,7 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                         json(endpoint["exitNode"])["stableID"] as? String ?: "",
                         position,
                         { id -> if (id.isEmpty()) none else peerName(peers.firstOrNull { it["stableID"] == id } ?: mapOf("id" to id)) },
-                    ) { id -> box.launchAct("tailscale.exit", mapOf("endpoint" to tag, "peer" to id)) }
+                    ) { id -> box.launchAct { toolBridge.setTailscaleExitNode(tag, id) } }
                 }
                 for (group in rows(endpoint["userGroups"])) {
                     val groupPeers = rows(group["peers"])
@@ -514,7 +510,7 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                     position = ItemPosition.StartAndEnd,
                     onClick = {
                         scope.launch {
-                            if (dialogs?.confirm("Sign out", action = "Sign out") == true) box.act("tailscale.logout", mapOf("endpoint" to tag))
+                            if (dialogs?.confirm("Sign out", action = "Sign out") == true) box.act { toolBridge.tailscaleLogout(tag) }
                         }
                     },
                 )
@@ -538,7 +534,7 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                         ListItem(
                             title = { Text(device["label"].toString()) },
                             subtitle = { Text("${device["state"]}\n${device["error"] ?: ""}") },
-                            trailing = { TrailingGlyph(AppGlyphs.close, tr("Detach")) { box.launchAct("usb.detach", mapOf("id" to device["id"])) } },
+                            trailing = { TrailingGlyph(AppGlyphs.close, tr("Detach")) { box.launchAct { toolBridge.detachUsb(device["id"] as? String) } } },
                         )
                     }
                 }
@@ -572,14 +568,13 @@ private fun PeerPage(box: BoxController, endpointTag: String, id: String) {
     val scope = rememberCoroutineScope()
     var ping by remember { mutableStateOf(false) }
     val pinging by androidx.compose.runtime.rememberUpdatedState(ping)
-    DisposableEffect(Unit) { onDispose { if (pinging) box.launchAct("tailscale.stopPing") } }
+    DisposableEffect(Unit) { onDispose { if (pinging) box.launchAct { toolBridge.stopTailscalePing() } } }
     val endpoint = rows(box.toolState["tailscale"]).firstOrNull { it["endpointTag"] == endpointTag }
     val peer = endpoint?.let { e -> endpointPeers(e).firstOrNull { it["id"] == id } }
     if (peer == null) {
         BoxPage("Tailscale") { EmptyState("Peer disconnected") }
         return
     }
-    val args = mapOf("endpoint" to endpointTag, "peer" to id)
     BoxPage(peerName(peer)) {
         DetailRows(
             listOf(
@@ -594,7 +589,7 @@ private fun PeerPage(box: BoxController, endpointTag: String, id: String) {
             add { p ->
                 ListItem(title = { Text("Ping") }, position = p, onClick = {
                     ping = true
-                    box.launchAct("tailscale.ping", args)
+                    box.launchAct { toolBridge.tailscalePing(endpointTag, id) }
                 })
             }
             if (stringsOf(peer["sshHostKeys"]).isNotEmpty()) {
@@ -605,7 +600,7 @@ private fun PeerPage(box: BoxController, endpointTag: String, id: String) {
                     ListItem(title = { Text(tr("Send file")) }, position = p, onClick = {
                         scope.launch {
                             try {
-                                val transfer = box.call("taildrop.send", args)
+                                val transfer = box.call { toolBridge.sendTaildropFile(endpointTag, id) }
                                 if (transfer != null) navigator?.push { TransfersPage(box) }
                             } catch (error: Throwable) {
                                 box.report(error)
@@ -641,7 +636,7 @@ private fun UsbPicker(box: BoxController, server: String) {
     LaunchedEffect(attempt) {
         loading = true
         try {
-            devices = rows(box.call("usb.list"))
+            devices = rows(box.call { toolBridge.usbDevices() })
             error = null
         } catch (failure: Throwable) {
             error = failure
@@ -655,7 +650,7 @@ private fun UsbPicker(box: BoxController, server: String) {
         for (device in devices ?: emptyList()) {
             ListItem(title = { Text(device["name"].toString()) }, onClick = {
                 scope.launch {
-                    if (box.act("usb.attach", mapOf("server" to server, "device" to device["id"]))) navigator?.pop()
+                    if (box.act { toolBridge.attachUsb(server, device["id"] as? String) }) navigator?.pop()
                 }
             })
         }
@@ -671,8 +666,8 @@ fun InboxPage(box: BoxController, endpoint: String) {
     val dialogs = LocalDialogs.current
     val scope = rememberCoroutineScope()
     DisposableEffect(Unit) {
-        box.launchAct("taildrop.subscribe", mapOf("endpoint" to endpoint))
-        onDispose { box.launchAct("taildrop.unsubscribe") }
+        box.launchAct { toolBridge.subscribeTaildrop(endpoint) }
+        onDispose { box.launchAct { toolBridge.unsubscribeTaildrop() } }
     }
     val state = box.inbox
     BoxPage("Received files") {
@@ -683,7 +678,7 @@ fun InboxPage(box: BoxController, endpoint: String) {
                 subtitle = { Text("${bytes(file["receivedBytes"] as? Number ?: 0)} / ${bytes(file["size"] as? Number ?: 0)}") },
                 trailing = {
                     TrailingGlyph(AppGlyphs.close, tr("Cancel")) {
-                        box.launchAct("taildrop.cancelReceive", mapOf("endpoint" to endpoint, "name" to file["name"], "sender" to file["senderID"]))
+                        box.launchAct { toolBridge.cancelTaildropReceive(endpoint, file["senderID"] as? String, file["name"] as? String) }
                     }
                 },
             )
@@ -692,12 +687,12 @@ fun InboxPage(box: BoxController, endpoint: String) {
             ListItem(
                 title = { Text(file["name"].toString()) },
                 subtitle = { Text("${bytes(file["size"] as? Number ?: 0)} · ${file["senderName"]}") },
-                onClick = { box.launchAct("taildrop.save", mapOf("endpoint" to endpoint, "name" to file["name"])) },
+                onClick = { box.launchAct { toolBridge.saveTaildropFile(endpoint, file["name"] as? String) } },
                 trailing = {
                     TrailingGlyph(AppGlyphs.delete, tr("Delete")) {
                         scope.launch {
                             if (dialogs?.confirm("Delete", message = file["name"].toString()) == true) {
-                                box.act("taildrop.delete", mapOf("endpoint" to endpoint, "name" to file["name"]))
+                                box.act { toolBridge.deleteTaildropFile(endpoint, file["name"] as? String) }
                             }
                         }
                     }
@@ -738,7 +733,7 @@ fun TransfersPage(box: BoxController) {
                     ListItem(
                         title = { Text(tr(if (finished) "Done" else "Cancel")) },
                         position = p,
-                        onClick = { box.launchAct(if (finished) "taildrop.dismissSend" else "taildrop.cancelSend", mapOf("id" to transfer["id"])) },
+                        onClick = { box.launchAct { val transferId = (transfer["id"] as Number).toLong(); if (finished) toolBridge.dismissTaildropSend(transferId) else toolBridge.cancelTaildropSend(transferId) } },
                     )
                 }
             }
@@ -754,11 +749,11 @@ fun SharePage(box: BoxController, token: String) {
     val scope = rememberCoroutineScope()
     var sending by remember { mutableStateOf(false) }
     val sent = remember { booleanArrayOf(false) }
-    DisposableEffect(Unit) { onDispose { if (!sent[0]) box.launchAct("share.discard", mapOf("token" to token)) } }
+    DisposableEffect(Unit) { onDispose { if (!sent[0]) box.launchAct { toolBridge.discardShare(token) } } }
     val endpoints = rows(box.toolState["tailscale"]).filter { it["canShareFiles"] == true }
     BoxPage("Send with Taildrop", loading = sending) {
         if (!box.running) {
-            EmptyState("Service not started", action = { FilledPillButton(tr("Start"), { box.launchAct("service.start") }) })
+            EmptyState("Service not started", action = { FilledPillButton(tr("Start"), { box.launchAct { startService() } }) })
         }
         if (box.running && endpoints.isEmpty()) EmptyState("No recipients")
         for (endpoint in endpoints) {
@@ -773,7 +768,7 @@ fun SharePage(box: BoxController, token: String) {
                     onClick = if (sending || peer["online"] != true) null else ({
                         sending = true
                         scope.launch {
-                            val ok = box.act("share.send", mapOf("token" to token, "endpoint" to endpoint["endpointTag"], "peer" to peer["id"]))
+                            val ok = box.act { toolBridge.sendShare(token, endpoint["endpointTag"] as? String, peer["id"] as? String) }
                             sending = false
                             sent[0] = ok
                             if (ok) {
@@ -797,7 +792,6 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
     val navigator = LocalBoxNavigator.current
     val scope = rememberCoroutineScope()
     val id = challenge["id"].toString()
-    val args = mapOf("endpoint" to endpoint, "challenge" to id)
     val fields = rows(json(challenge["form"])["fields"])
     val texts = remember {
         mutableStateMapOf<String, String>().apply {
@@ -810,12 +804,12 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
     }
     var busy by remember { mutableStateOf(false) }
     val complete = remember { booleanArrayOf(false) }
-    DisposableEffect(Unit) { onDispose { if (!complete[0]) box.launchAct("$kind.cancel", args) } }
+    DisposableEffect(Unit) { onDispose { if (!complete[0]) box.launchAct { if (kind == "openconnect") toolBridge.cancelOpenConnect(endpoint, id) else toolBridge.cancelOpenVPN(endpoint, id) } } }
     fun submit() {
         busy = true
         scope.launch {
             val values = texts.toMap()
-            val ok = box.act("$kind.submit", if (kind == "openconnect") args + ("values" to values) else args + values)
+            val ok = box.act { if (kind == "openconnect") toolBridge.submitOpenConnect(endpoint, id, values) else toolBridge.submitOpenVPN(endpoint, id, values["username"], values["password"], values["secret"]) }
             busy = false
             if (ok) {
                 complete[0] = true
@@ -859,7 +853,7 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
             ListItem(
                 title = { Text(tr("Open sign-in page")) },
                 subtitle = { SelectionArea { Text((challenge["url"] ?: "").toString()) } },
-                onClick = { box.launchAct("url.open", mapOf("url" to challenge["url"])) },
+                onClick = { box.launchAct { openUrl(challenge["url"] as? String) } },
             )
         } else {
             if (challenge["kind"] == "credentials") {

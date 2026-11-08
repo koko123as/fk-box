@@ -38,51 +38,96 @@ internal class BoxCapture(private val activity: BoxActivity) {
     }
     private fun status() = JSONObject(Libbox.readUICaptureStatus())
 
-    suspend fun invoke(method: String, args: Map<String, Any?>): Any? {
+    private enum class Operation { CaSnapshot, CaGenerate, Snapshot, Settings, Logs, ClearLogs, Configure, Start, Stop, Clear, Domains, Detail }
+
+    suspend fun caSnapshot(): Any? = session(Operation.CaSnapshot)
+
+    suspend fun caGenerate(revision: String?): Any? = session(Operation.CaGenerate, revision = revision)
+
+    suspend fun snapshot(limit: Int?, query: String?): Any? = session(Operation.Snapshot, limit = limit, query = query)
+
+    suspend fun captureSettings(): Any? = session(Operation.Settings)
+
+    suspend fun logs(): Any? = session(Operation.Logs)
+
+    suspend fun clearLogs() { session(Operation.ClearLogs) }
+
+    suspend fun configure(revision: String?, config: Map<String, Any?>?): Any? = session(Operation.Configure, revision = revision, config = config)
+
+    suspend fun start(): Any? = session(Operation.Start)
+
+    suspend fun stop(): Any? = session(Operation.Stop)
+
+    suspend fun clear() { session(Operation.Clear) }
+
+    suspend fun domains(query: String?): Any? = session(Operation.Domains, query = query)
+
+    suspend fun detail(id: String?): Any? = session(Operation.Detail, id = id)
+
+    /** Saves a capture export; false when the user dismissed the file picker. */
+    suspend fun export(format: String?, id: String? = null, query: String? = null): Boolean {
         requireLocal()
-        if (method == "capture.export") return export(args)
-        if (method == "capture.ca.export" || method == "capture.ca.module") return exportCertificate(method, args)
-        if (method == "capture.ca.install") return installCertificate(args)
+        return exportFile(format, id, query)
+    }
+
+    suspend fun exportCertificate(revision: String?, module: Boolean): Boolean {
+        requireLocal()
+        return exportCertificateFile(revision, module)
+    }
+
+    suspend fun installCertificate(revision: String?): Boolean {
+        requireLocal()
+        return openCertificateInstall(revision)
+    }
+
+    private suspend fun session(
+        method: Operation,
+        revision: String? = null,
+        limit: Int? = null,
+        query: String? = null,
+        config: Map<String, Any?>? = null,
+        id: String? = null,
+    ): Any? {
+        requireLocal()
+        val certificateOperation = method == Operation.CaSnapshot || method == Operation.CaGenerate
         return mutex.withLock {
             var started = false
             try {
                 withContext(Dispatchers.IO) {
                     requireLocal()
-                    if (method != "capture.logs" && method != "capture.logs.clear" && !method.startsWith("capture.ca.")) Libbox.openUICapture(captures.absolutePath)
+                    if (method != Operation.Logs && method != Operation.ClearLogs && !certificateOperation) Libbox.openUICapture(captures.absolutePath)
                     when (method) {
-                        "capture.ca.snapshot" -> certificate.snapshot() + mapOf(
+                        Operation.CaSnapshot -> certificate.snapshot() + mapOf(
                             "captureActive" to status().optBoolean("active"),
                             "rewriteActive" to status().optBoolean("rewriteActive"),
                         )
-                        "capture.ca.generate" -> {
+                        Operation.CaGenerate -> {
                             require(!status().optBoolean("active")) { "Stop capture before changing the MITM certificate" }
-                            certificate.generate(args["revision"] as? String ?: error("Missing certificate revision"))
+                            certificate.generate(revision ?: error("Missing certificate revision"))
                         }
-                        "capture.snapshot" -> mapOf(
+                        Operation.Snapshot -> mapOf(
                             "state" to jsonObject(status()),
                             "page" to jsonObject(JSONObject(Libbox.listUICapture(
-                                (args["limit"] as? Number)?.toInt()?.coerceIn(1, 300) ?: 50,
-                                (args["query"] as? String).orEmpty().take(1024),
+                                limit?.coerceIn(1, 300) ?: 50,
+                                query.orEmpty().take(1024),
                             ))),
                         )
-                        "capture.settings" -> settings.snapshot()
-                        "capture.logs" -> jsonObject(JSONObject(Libbox.readUICaptureLogs()))
-                        "capture.logs.clear" -> { Libbox.clearUICaptureLogs(); null }
-                        "capture.configure" -> {
+                        Operation.Settings -> settings.snapshot()
+                        Operation.Logs -> jsonObject(JSONObject(Libbox.readUICaptureLogs()))
+                        Operation.ClearLogs -> { Libbox.clearUICaptureLogs(); null }
+                        Operation.Configure -> {
                             require(!status().optBoolean("active")) { "Stop capture before changing its settings" }
-                            @Suppress("UNCHECKED_CAST")
-                            val value = args["config"] as? Map<String, Any?> ?: error("Missing capture settings")
-                            settings.save(args["revision"] as? String ?: error("Missing capture settings revision"), JSONObject(value).toString())
+                            val value = config ?: error("Missing capture settings")
+                            settings.save(revision ?: error("Missing capture settings revision"), JSONObject(value).toString())
                         }
-                        "capture.start" -> start { started = true }
-                        "capture.stop" -> { Libbox.stopUICapture(); jsonObject(status()) }
-                        "capture.clear" -> { Libbox.clearUICapture(); null }
-                        "capture.domains" -> {
-                            val domains = JSONArray(Libbox.extractUICaptureHosts((args["query"] as? String).orEmpty().take(1024)))
+                        Operation.Start -> start { started = true }
+                        Operation.Stop -> { Libbox.stopUICapture(); jsonObject(status()) }
+                        Operation.Clear -> { Libbox.clearUICapture(); null }
+                        Operation.Domains -> {
+                            val domains = JSONArray(Libbox.extractUICaptureHosts(query.orEmpty().take(1024)))
                             List(domains.length()) { domains.getString(it) }
                         }
-                        "capture.detail" -> jsonObject(JSONObject(Libbox.readUICapture(args["id"] as? String ?: error("Missing request ID"))))
-                        else -> error("Unknown capture operation")
+                        Operation.Detail -> jsonObject(JSONObject(Libbox.readUICapture(id ?: error("Missing request ID"))))
                     }
                 }
             } catch (error: Exception) {
@@ -91,7 +136,7 @@ internal class BoxCapture(private val activity: BoxActivity) {
                 if (started) withContext(NonCancellable + Dispatchers.IO) {
                     runCatching { Libbox.stopUICapture() }.onFailure(error::addSuppressed)
                 }
-                if (method == "capture.start" && error !is CancellationException) {
+                if (method == Operation.Start && error !is CancellationException) {
                     Libbox.appendUICaptureLog("error", "Capture startup failed: ${error.message}")
                 }
                 throw error
@@ -124,10 +169,10 @@ internal class BoxCapture(private val activity: BoxActivity) {
         }
     }
 
-    private suspend fun installCertificate(args: Map<String, Any?>): Boolean = mutex.withLock {
+    private suspend fun openCertificateInstall(revision: String?): Boolean = mutex.withLock {
         val ca = withContext(Dispatchers.IO) {
             requireLocal()
-            certificate.publicCertificate(args["revision"] as? String ?: error("Missing certificate revision"))
+            certificate.publicCertificate(revision ?: error("Missing certificate revision"))
         }
         withContext(Dispatchers.Main) {
             requireLocal()
@@ -140,10 +185,9 @@ internal class BoxCapture(private val activity: BoxActivity) {
         true // Only confirms that settings opened, never that trust was granted.
     }
 
-    private suspend fun exportCertificate(method: String, args: Map<String, Any?>): Boolean {
-        val revision = args["revision"] as? String ?: error("Missing certificate revision")
+    private suspend fun exportCertificateFile(revisionArgument: String?, module: Boolean): Boolean {
+        val revision = revisionArgument ?: error("Missing certificate revision")
         val ca = mutex.withLock { withContext(Dispatchers.IO) { requireLocal(); certificate.publicCertificate(revision) } }
-        val module = method == "capture.ca.module"
         val name = "B-box-MITM-${MitmCertificate.fingerprint(ca).take(12)}" + if (module) ".zip" else ".crt"
         val destination = activity.pickDocument(name) ?: return false
         return mutex.withLock { withContext(Dispatchers.IO) {
@@ -157,8 +201,8 @@ internal class BoxCapture(private val activity: BoxActivity) {
         } }
     }
 
-    private suspend fun export(args: Map<String, Any?>): Boolean {
-        val name = when (args["format"]) {
+    private suspend fun exportFile(format: String?, id: String?, query: String?): Boolean {
+        val name = when (format) {
             "curl" -> "B-box-request.sh"
             "har" -> "B-box-requests.har"
             "domains" -> "B-box-domains.txt"
@@ -173,12 +217,12 @@ internal class BoxCapture(private val activity: BoxActivity) {
             val file = File.createTempFile("export-", ".tmp", directory)
             try {
                 when {
-                    args["format"] == "curl" -> file.writeText(Libbox.exportUICaptureCurl(args["id"] as? String ?: error("Missing request ID")))
-                    args["format"] == "domains" -> {
-                        val domains = JSONArray(Libbox.extractUICaptureHosts((args["query"] as? String).orEmpty().take(1024)))
+                    format == "curl" -> file.writeText(Libbox.exportUICaptureCurl(id ?: error("Missing request ID")))
+                    format == "domains" -> {
+                        val domains = JSONArray(Libbox.extractUICaptureHosts(query.orEmpty().take(1024)))
                         file.writeText(List(domains.length()) { domains.getString(it) }.joinToString("\n", postfix = "\n"))
                     }
-                    else -> Libbox.exportUICaptureHAR(file.absolutePath, (args["query"] as? String).orEmpty().take(1024))
+                    else -> Libbox.exportUICaptureHAR(file.absolutePath, query.orEmpty().take(1024))
                 }
                 activity.contentResolver.openOutputStream(destination, "wt")?.use { output ->
                     file.inputStream().use { it.copyTo(output) }

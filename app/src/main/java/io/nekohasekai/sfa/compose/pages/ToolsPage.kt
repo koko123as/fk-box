@@ -244,7 +244,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
         iconActions = if (recent) emptyList() else listOf(
             IconAction(AppGlyphs.clearAll, tr("Close all connections"), if (box.running) ({
                 scope.launch {
-                    if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act("connections.closeAll")
+                    if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act { closeConnections() }
                 }
             }) else null),
         ),
@@ -292,7 +292,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
             RecordHeader(
                 trailing = if (!closed && box.running) {
                     {
-                        GlyphButton(AppGlyphs.block, tr("Close this connection"), { box.launchAct("connections.close", mapOf("id" to c["id"])) }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
+                        GlyphButton(AppGlyphs.block, tr("Close this connection"), { box.launchAct { closeConnection(c["id"] as? String) } }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
                     }
                 } else {
                     null
@@ -378,7 +378,7 @@ private fun ConnectionDetail(box: BoxController, initial: Json) {
                 setClipboard(context, values.joinToString("\n") { "${it.first}: ${it.second}" })
                 box.message(copied)
             }),
-            IconAction(AppGlyphs.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct("connections.close", mapOf("id" to c["id"])) }) else null),
+            IconAction(AppGlyphs.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct { closeConnection(c["id"] as? String) } }) else null),
         ),
     ) {
         Spacer(Modifier.height(0.dp))
@@ -440,10 +440,8 @@ fun LogsPage(box: BoxController) {
         keywords = filters.keywords(pinned),
         iconActions = listOf(
             IconAction(AppGlyphs.export, tr("Export"), {
-                box.launchAct(
-                    "document.save",
-                    mapOf("name" to "B-box.log", "content" to logs.joinToString("\n") { "${recordTime(it["receivedAt"])} [${it["level"]}] ${it["message"]}" }),
-                )
+                val content = logs.joinToString("\n") { "${recordTime(it["receivedAt"])} [${it["level"]}] ${it["message"]}" }
+                box.launchAct { saveDocument("B-box.log", content) }
             }),
         ),
         menuItems = buildList {
@@ -461,7 +459,7 @@ fun LogsPage(box: BoxController) {
                     },
                 ),
             )
-            add(PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = { box.launchAct("logs.clear") { if (it) paused = null } }))
+            add(PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = { box.launchAct(then = { if (it) paused = null }) { clearLogs() } }))
             for (item in listOf("Default", "All", "Trace", "Debug", "Info", "Warn", "Error", "Fatal", "Panic")) {
                 val label = if (item == "Default") {
                     tr("Follow configuration") + (box.defaultLogLevel?.let { " (${trLevel(it)})" } ?: "")

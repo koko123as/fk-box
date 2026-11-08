@@ -167,7 +167,7 @@ class ProfileConfigStore(private val box: BoxController, val profile: Json, priv
         error = null
         scope.launch {
             try {
-                val data = json(box.call("profiles.config", mapOf("id" to profile["id"])))
+                val data = json(box.call { profileConfig(profile["id"].asLong()) })
                 if (!disposed && current == generation) receive(data)
             } catch (failure: CancellationException) {
                 throw failure
@@ -214,7 +214,7 @@ class ProfileConfigStore(private val box: BoxController, val profile: Json, priv
         saving = true
         error = null
         return try {
-            val data = json(box.call("profiles.write", mapOf("id" to profile["id"], "revision" to revision, "content" to encodeJson(candidate))))
+            val data = json(box.call { writeProfile(profile["id"].asLong(), encodeJson(candidate), revision as? String) })
             if (!disposed) receive(data)
             true
         } catch (failure: CancellationException) {

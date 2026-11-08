@@ -41,40 +41,53 @@ internal class BoxSSH(scope: CoroutineScope, private val tailscale: TailscaleSta
         },
     )
 
-    fun invoke(method: String, args: Map<String, Any?>): Any? {
-        fun string(key: String) = args[key] as? String ?: error("Missing terminal argument: $key")
-        when (method) {
-            "ssh.snapshot" -> return snapshot()
-            "ssh.options", "ssh.start" -> {
-                val endpoint = string("endpoint")
-                val peer = tailscale.peer(endpoint, string("peer")) ?: error("Peer no longer exists")
-                require(peer.sshHostKeys.isNotEmpty()) { "Peer has no authenticated SSH host keys" }
-                if (method == "ssh.options") return mapOf(
-                    "username" to (Settings.tailscaleSSHRememberedUsernames[peer.stableID] ?: "root"),
-                    "terminalType" to (Settings.tailscaleSSHRememberedTerminalTypes[peer.stableID] ?: DEFAULT_SSH_TERMINAL_TYPE),
-                    "remember" to Settings.tailscaleSSHQuickConnectPeers.contains(peer.stableID),
-                )
-                val username = string("username").trim()
-                val terminalType = (args["terminalType"] as? String).orEmpty().trim().ifEmpty { DEFAULT_SSH_TERMINAL_TYPE }
-                require(username.isNotEmpty() && username.length <= 256 && username.none { it.isISOControl() }) { "Invalid SSH username" }
-                require(terminalType.length <= 128 && terminalType.matches(Regex("[A-Za-z0-9._+-]+"))) { "Invalid terminal type" }
-                val address = peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address")
-                Settings.tailscaleSSHRememberedUsernames = Settings.tailscaleSSHRememberedUsernames.toMutableMap().apply { put(peer.stableID, username) }
-                Settings.tailscaleSSHRememberedTerminalTypes = Settings.tailscaleSSHRememberedTerminalTypes.toMutableMap().apply { put(peer.stableID, terminalType) }
-                Settings.tailscaleSSHQuickConnectPeers = Settings.tailscaleSSHQuickConnectPeers.toMutableSet().apply {
-                    if (args["remember"] == true) add(peer.stableID) else remove(peer.stableID)
-                }
-                store.addSession(TailscaleSSHPresentedSession(endpoint, peer.hostName, address, username, terminalType, peer.sshHostKeys))
-            }
-            "ssh.select" -> {
-                val id = string("id")
-                require(store.state.value.sessions.any { it.id == id }) { "Session no longer exists" }
-                store.switchSession(id)
-            }
-            "ssh.duplicate" -> store.duplicateCurrentSession()
-            "ssh.close" -> store.removeSession(string("id"))
-            else -> error("Unknown terminal operation")
+    private fun required(value: String?, key: String) = value ?: error("Missing terminal argument: $key")
+
+    private fun sshPeer(endpoint: String?, peerID: String?) =
+        (tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")).also { peer ->
+            require(peer.sshHostKeys.isNotEmpty()) { "Peer has no authenticated SSH host keys" }
         }
+
+    fun options(endpoint: String?, peerID: String?): Map<String, Any?> {
+        val peer = sshPeer(endpoint, peerID)
+        return mapOf(
+            "username" to (Settings.tailscaleSSHRememberedUsernames[peer.stableID] ?: "root"),
+            "terminalType" to (Settings.tailscaleSSHRememberedTerminalTypes[peer.stableID] ?: DEFAULT_SSH_TERMINAL_TYPE),
+            "remember" to Settings.tailscaleSSHQuickConnectPeers.contains(peer.stableID),
+        )
+    }
+
+    fun start(endpoint: String?, peerID: String?, usernameArgument: String?, terminalTypeArgument: String?, remember: Boolean): Map<String, Any?> {
+        val endpointTag = required(endpoint, "endpoint")
+        val peer = sshPeer(endpoint, peerID)
+        val username = required(usernameArgument, "username").trim()
+        val terminalType = terminalTypeArgument.orEmpty().trim().ifEmpty { DEFAULT_SSH_TERMINAL_TYPE }
+        require(username.isNotEmpty() && username.length <= 256 && username.none { it.isISOControl() }) { "Invalid SSH username" }
+        require(terminalType.length <= 128 && terminalType.matches(Regex("[A-Za-z0-9._+-]+"))) { "Invalid terminal type" }
+        val address = peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address")
+        Settings.tailscaleSSHRememberedUsernames = Settings.tailscaleSSHRememberedUsernames.toMutableMap().apply { put(peer.stableID, username) }
+        Settings.tailscaleSSHRememberedTerminalTypes = Settings.tailscaleSSHRememberedTerminalTypes.toMutableMap().apply { put(peer.stableID, terminalType) }
+        Settings.tailscaleSSHQuickConnectPeers = Settings.tailscaleSSHQuickConnectPeers.toMutableSet().apply {
+            if (remember) add(peer.stableID) else remove(peer.stableID)
+        }
+        store.addSession(TailscaleSSHPresentedSession(endpointTag, peer.hostName, address, username, terminalType, peer.sshHostKeys))
+        return snapshot()
+    }
+
+    fun select(idArgument: String?): Map<String, Any?> {
+        val id = required(idArgument, "id")
+        require(store.state.value.sessions.any { it.id == id }) { "Session no longer exists" }
+        store.switchSession(id)
+        return snapshot()
+    }
+
+    fun duplicate(): Map<String, Any?> {
+        store.duplicateCurrentSession()
+        return snapshot()
+    }
+
+    fun closeSession(id: String?): Map<String, Any?> {
+        store.removeSession(required(id, "id"))
         return snapshot()
     }
 
