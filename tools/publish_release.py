@@ -66,7 +66,10 @@ def main():
     # installs an APK whose SHA-256 is listed in the release's SHA256SUMS.
     sums = apk.parent / 'SHA256SUMS'
     sums.write_text(f'{hashlib.sha256(apk.read_bytes()).hexdigest()}  {apk.name}\n')
-    prerelease = bool(re.search(r'(alpha|beta|rc)', version, re.IGNORECASE))
+    # PRERELEASE=true (workflow input) publishes a non-Latest pre-release, for
+    # builds from a branch other than main.
+    prerelease = bool(re.search(r'(alpha|beta|rc)', version, re.IGNORECASE)) or \
+        os.environ.get('PRERELEASE', '').lower() == 'true'
     release_options = [
         '--repo', repository,
         '--title', f'FK-box {version}',

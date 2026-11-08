@@ -7,6 +7,10 @@ on:
         description: Publish a GitHub Release (version tag must match this commit)
         type: boolean
         default: true
+      prerelease:
+        description: Publish as a pre-release that is not marked Latest
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -114,6 +118,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ steps.core.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
         run: python3 tools/publish_release.py
 
       - name: Remove signing key
