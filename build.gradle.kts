@@ -7,6 +7,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization") version "2.4.10" apply false
     alias(libs.plugins.spotless) apply false
     id("io.gitlab.arturbosch.detekt") version "1.23.8"
+    // On the root classpath, as the Flutter app template's settings plugins
+    // block has it: the Flutter plugin projects' build scripts then see the
+    // FlutterExtension type their `flutter.compileSdkVersion` accessor needs,
+    // and its kotlin-gradle-plugin 2.0.0 dependency resolves to the 2.4.10
+    // above instead of loading a second compiler on :app's classpath.
+    id("dev.flutter.flutter-gradle-plugin") apply false
 }
 
 detekt {
