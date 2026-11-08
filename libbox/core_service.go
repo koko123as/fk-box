@@ -139,19 +139,6 @@ func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
 	server.StartedService.WriteMessage(level, "[xray] "+message.String())
 }
 
-// RunningCore reports which core is running: sing-box, xray, mihomo or "".
-func (s *CommandServer) RunningCore() string {
-	coreAccess.Lock()
-	defer coreAccess.Unlock()
-	if activeCore != nil {
-		return activeCore.core
-	}
-	if s.StartedService.Instance() != nil {
-		return CoreSingBox
-	}
-	return ""
-}
-
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
 // core ran before. sing-box goes through StartOrReloadService unchanged.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
@@ -193,21 +180,27 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	activeCore = running
 	s.StartedService.WriteMessage(log.LevelInfo, core+" started")
 	go notifyCoreChange()
+	// Config parsing (rule sets, geo matchers) leaves garbage behind; give
+	// it back now, as sing-box does after starting its instance.
+	go releaseCoreMemory()
 	return nil
 }
 
 // CloseCoreService stops whichever core is running.
 func (s *CommandServer) CloseCoreService() error {
-	s.stopOtherCore()
+	if s.stopOtherCore() {
+		releaseCoreMemory()
+	}
 	return s.CloseService()
 }
 
-func (s *CommandServer) stopOtherCore() {
+// stopOtherCore stops Xray or mihomo and reports whether one was running.
+func (s *CommandServer) stopOtherCore() bool {
 	coreAccess.Lock()
 	defer coreAccess.Unlock()
 	running := activeCore
 	if running == nil {
-		return
+		return false
 	}
 	activeCore = nil
 	switch running.core {
@@ -218,6 +211,7 @@ func (s *CommandServer) stopOtherCore() {
 	case CoreMihomo:
 		mihomoExecutor.Shutdown()
 		mihomoCloseListeners()
+		mihomoReleaseState()
 		if running.mihomoLog != nil {
 			close(running.mihomoLog)
 		}
@@ -229,6 +223,7 @@ func (s *CommandServer) stopOtherCore() {
 	_ = syscall.Close(running.tunFd)
 	s.StartedService.WriteMessage(log.LevelInfo, running.core+" stopped")
 	go notifyCoreChange()
+	return true
 }
 
 func (s *CommandServer) openCoreTun(options *OverrideOptions) (int, error) {
