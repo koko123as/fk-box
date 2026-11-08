@@ -295,7 +295,7 @@ object FkCore {
             }
             Libbox.CoreArray -> {
                 val split = Libbox.splitCoreConfigArray(content)
-                if (split.len() != 1L) {
+                if (split.len() != 1) {
                     throw IllegalArgumentException(
                         "This file holds ${split.len()} separate configurations; import each one as its own profile",
                     )
