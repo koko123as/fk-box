@@ -81,7 +81,12 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
             }
     }
 
+    // The last traffic text posted; notify() is skipped while it repeats
+    // (an idle "0 B/s" line would otherwise be re-posted every second).
+    @Volatile private var lastContent: String? = null
+
     fun show(lastProfileName: String, @StringRes contentTextId: Int) {
+        lastContent = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(
                 NotificationChannel(
@@ -122,6 +127,8 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     override fun updateStatus(status: StatusMessage) {
         val content =
             Libbox.formatBytes(status.uplink) + "/s ↑\t" + Libbox.formatBytes(status.downlink) + "/s ↓"
+        if (content == lastContent) return
+        lastContent = content
         Application.notificationManager.notify(
             notificationId,
             notificationBuilder.setContentText(content).build(),
@@ -141,6 +148,7 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     }
 
     fun close() {
+        lastContent = null
         commandClient.disconnect()
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
         if (receiverRegistered) {
