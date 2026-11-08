@@ -6,6 +6,9 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -36,6 +39,9 @@ object GeoResources {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
+    /** Set once the bundle was checked in this process; the APK cannot change while it runs. */
+    @Volatile private var bundleChecked = false
+
     fun label(name: String): String = when (name) {
         GeoPolicy.GEOIP -> "GeoIP"
         GeoPolicy.GEOSITE -> "GeoSite"
@@ -59,7 +65,10 @@ object GeoResources {
         runCatching { runBlocking { ensureBundled(context) } }.onFailure { Log.e(TAG, "extract bundled geo data", it) }
     }
 
-    private fun ensureBundledLocked(context: Context) {
+    private fun ensureBundledLocked(context: Context, force: Boolean = false) {
+        // Only a missing file needs another look after the first check
+        // (mihomo or the user may have removed one).
+        if (bundleChecked && !force && names.all { File(dir(), Libbox.geoResourceFileName(it)).isFile }) return
         val bundle = readBundle(context) ?: return
         val dir = dir().apply { mkdirs() }
         val state = readState(dir).toMutableMap()
@@ -80,6 +89,7 @@ object GeoResources {
             }
         }
         if (changed) writeState(dir, state)
+        bundleChecked = true
     }
 
     private fun extract(context: Context, bundled: GeoPolicy.BundledFile, target: File) {
@@ -162,14 +172,33 @@ object GeoResources {
         val link = url(name)
         mutex.withLock {
             val dir = dir()
-            val result = Libbox.updateGeoResource(dir.path, name, link)
+            val previous = readState(dir)[name]
+            // A download in Go cannot see coroutine cancellation (leaving the
+            // page, WorkManager stopping the worker); cancel it explicitly.
+            val task = Libbox.newGeoUpdate()
+            val result = coroutineScope {
+                val watcher = launch {
+                    try {
+                        awaitCancellation()
+                    } finally {
+                        task.cancel()
+                    }
+                }
+                try {
+                    task.fetch(dir.path, name, link, previous?.sha256.orEmpty(), previous?.etag.orEmpty(), previous?.lastModified.orEmpty())
+                } finally {
+                    watcher.cancel()
+                }
+            }
             val now = System.currentTimeMillis()
             val state = readState(dir).toMutableMap()
-            val previous = state[name]
             state[name] = if (result.skipped && previous != null) {
-                previous.copy(checked = now)
+                previous.copy(checked = now, etag = result.etag, lastModified = result.lastModified)
             } else {
-                GeoPolicy.Installed(GeoPolicy.SOURCE_DOWNLOAD, result.sha256, if (result.skipped) previous?.time ?: now else now, now)
+                GeoPolicy.Installed(
+                    GeoPolicy.SOURCE_DOWNLOAD, result.sha256, if (result.skipped) previous?.time ?: now else now, now,
+                    etag = result.etag, lastModified = result.lastModified,
+                )
             }
             writeState(dir, state)
             !result.skipped
@@ -223,8 +252,16 @@ object GeoPolicy {
     data class Bundle(val source: String = "", val commit: String = "", val time: Long, val files: Map<String, BundledFile>)
 
     /** What the app last put in place: [time] is the age of the data, [checked] the last download attempt that succeeded. */
+    /** [etag] and [lastModified] are the server's validators for the downloaded file, for a conditional re-check. */
     @Serializable
-    data class Installed(val source: String, val sha256: String, val time: Long, val checked: Long = 0L)
+    data class Installed(
+        val source: String,
+        val sha256: String,
+        val time: Long,
+        val checked: Long = 0L,
+        val etag: String = "",
+        val lastModified: String = "",
+    )
 
     /**
      * Whether the bundled copy should replace what is installed. A missing file
