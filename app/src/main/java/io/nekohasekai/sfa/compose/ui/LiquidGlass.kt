@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.TileMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.GraphicsLayer
@@ -265,7 +266,22 @@ private fun GlassLayer(
                 clipRect(0f, 0f, size.width, h) {
                     translate(-shift.x, -shift.y) { drawLayer(backdrop.layer) }
                 }
-                if (style.haze > 0f && style.hazeBlur > 0f) {
+                if (style.haze > 0f && style.hazeBlur > 0f && GlassGpu.reducedHaze) {
+                    // MediaTek (Mali/Immortalis/PowerVR): the heavily blurred
+                    // haze is rendered at half resolution and scaled back up,
+                    // a quarter of the offscreen target and blur work.
+                    val sigma = style.hazeBlur * density * HAZE_SCALE
+                    haze.renderEffect = BlurEffect(sigma, sigma, TileMode.Clamp)
+                    haze.clip = true
+                    val width = kotlin.math.ceil(size.width * HAZE_SCALE).toInt().coerceAtLeast(1)
+                    val height = kotlin.math.ceil(h * HAZE_SCALE).toInt().coerceAtLeast(1)
+                    haze.record(size = IntSize(width, height)) {
+                        scale(HAZE_SCALE, HAZE_SCALE, pivot = Offset.Zero) {
+                            translate(-shift.x, -shift.y) { drawLayer(backdrop.layer) }
+                        }
+                    }
+                    translate(0f, h) { scale(1 / HAZE_SCALE, 1 / HAZE_SCALE, pivot = Offset.Zero) { drawLayer(haze) } }
+                } else if (style.haze > 0f && style.hazeBlur > 0f) {
                     val sigma = style.hazeBlur * density
                     haze.renderEffect = BlurEffect(sigma, sigma, TileMode.Clamp)
                     haze.clip = true
@@ -276,4 +292,20 @@ private fun GlassLayer(
                 }
             },
     )
+}
+
+private const val HAZE_SCALE = .5f
+
+/**
+ * GPU-specific Liquid Glass tuning. Only MediaTek SoCs (Dimensity/Helio:
+ * Arm Mali/Immortalis or Imagination PowerVR GPUs, whose drivers allocate
+ * offscreen blur targets in full and report them as app graphics memory) take
+ * the cheaper paths; every other GPU renders exactly as before.
+ */
+internal object GlassGpu {
+    val reducedHaze: Boolean by lazy {
+        val soc = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Build.SOC_MANUFACTURER else ""
+        soc.equals("Mediatek", ignoreCase = true) || soc.equals("MTK", ignoreCase = true) ||
+            Regex("^mt\\d", RegexOption.IGNORE_CASE).containsMatchIn(Build.HARDWARE.orEmpty())
+    }
 }
