@@ -15,10 +15,11 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
+    // FlClash's Flutter UI (flutter/, see flclash.md); plugins are included by settings.gradle.kts.
+    id("dev.flutter.flutter-gradle-plugin")
 }
 
 configurations.configureEach {
@@ -175,7 +176,6 @@ android {
 
     buildFeatures {
         aidl = true
-        compose = true
         buildConfig = true
     }
 
@@ -339,24 +339,8 @@ dependencies {
 
     implementation("androidx.activity:activity-ktx:1.13.0")
 
-    // QR scan and QR code (CameraX + ZXing, as at 84e71e4^; shared by both flavors)
-    val cameraVersion = "1.6.1"
-    implementation("androidx.camera:camera-camera2:$cameraVersion")
-    implementation("androidx.camera:camera-lifecycle:$cameraVersion")
-    implementation("androidx.camera:camera-view:$cameraVersion")
-    implementation("com.google.zxing:core:3.5.4")
-
-    // Compose UI (dependencies as at 84e71e4^, before the Flutter switch)
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
-    implementation(composeBom)
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.animation:animation")
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
-    // M3 Expressive shapes and morphs (the Kotlin original of FlClash's material_new_shapes)
-    implementation("androidx.graphics:graphics-shapes:1.1.0")
+    // FlClash host plugins (com.follow.clash.*), ported with FlClash's Gson models.
+    implementation("com.google.code.gson:gson:2.13.2")
     // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on
     // sideloaded installs, which get no Play cloud profiles.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
@@ -369,6 +353,10 @@ dependencies {
     val libghosttyVersion = "0.1.0-SNAPSHOT"
     implementation("io.github.sagernet:libghostty-android:$libghosttyVersion")
     implementation("io.github.sagernet:libghostty-android-extras:$libghosttyVersion")
+}
+
+flutter {
+    source = "../flutter"
 }
 
 val playCredentialsJSON = rootProject.file("service-account-credentials.json")

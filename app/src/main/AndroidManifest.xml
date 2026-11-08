@@ -51,6 +51,10 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/AppTheme">
+            <!-- install-config links go through app_links; Flutter would also push them as routes (FlClash). -->
+            <meta-data
+                android:name="flutter_deeplinking_enabled"
+                android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -124,6 +128,28 @@
                 <category android:name="android.intent.category.DEFAULT" />
 
                 <data android:mimeType="*/*" />
+            </intent-filter>
+        </activity>
+
+        <!-- FlClash's quick actions (app shortcuts: start, stop, toggle). -->
+        <activity
+            android:name="com.follow.clash.QuickActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+                <action android:name="${applicationId}.action.START" />
+            </intent-filter>
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+                <action android:name="${applicationId}.action.STOP" />
+            </intent-filter>
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+                <action android:name="${applicationId}.action.TOGGLE" />
             </intent-filter>
         </activity>
 
@@ -207,6 +233,9 @@
             </intent-filter>
         </provider>
 
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
     </application>
 
 </manifest>

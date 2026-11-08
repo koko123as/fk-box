@@ -12,17 +12,19 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
+import com.follow.clash.FkHost
+import com.follow.clash.plugins.AppPlugin
+import com.follow.clash.plugins.BatteryPlugin
+import com.follow.clash.plugins.ServicePlugin
+import com.follow.clash.plugins.TilePlugin
+import io.flutter.embedding.android.FlutterFragmentActivity
+import io.flutter.embedding.engine.FlutterEngine
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
-import io.nekohasekai.sfa.compose.BoxApp
-import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -39,11 +41,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 
-open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
+open class BoxActivity : FlutterFragmentActivity(), ServiceConnection.Callback {
     val serviceStatus = MutableStateFlow(Status.Stopped)
     private val connection = ServiceConnection(this, this)
     private var bridge: BoxBridge? = null
-    private var controller: BoxController? = null
     private var notificationPermissionRequested = false
     private var localNetworkPermissionRequested = false
     private var startPending = false
@@ -98,21 +99,28 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
         documentRequest = null
     }
 
-    /** Hosts the Compose UI over the same native facade the Flutter engine used. */
+    /** The native facade (profiles, groups, connections, tools) the FlClash host channels use. */
+    val boxBridge: BoxBridge?
+        get() = bridge
+
     private fun attachUi() {
-        val facade = BoxBridge(this)
-        bridge = facade
-        val box = BoxController(facade)
-        controller = box
-        box.initialize()
-        setContent { BoxApp(box) }
+        bridge = BoxBridge(this)
+        FkHost.attachActivity(this)
     }
 
     private fun detachUi() {
-        controller?.dispose()
-        controller = null
+        FkHost.detachActivity(this)
         bridge?.close()
         bridge = null
+    }
+
+    /** FlClash's lib/ runs as the UI; its Android channels are answered by the ported host plugins. */
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+        super.configureFlutterEngine(flutterEngine)
+        flutterEngine.plugins.add(AppPlugin())
+        flutterEngine.plugins.add(BatteryPlugin())
+        flutterEngine.plugins.add(ServicePlugin())
+        flutterEngine.plugins.add(TilePlugin())
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -128,7 +136,6 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
             }
         }
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
         attachUi()
         lifecycleScope.launch {
             Settings.dataStore.initialize()
@@ -337,6 +344,7 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
 
     override fun onServiceStatusChanged(status: Status) {
         serviceStatus.value = status
+        FkHost.onServiceStatusChanged(status)
         if (status == Status.Started) startResult.started()
     }
 

@@ -47,6 +47,8 @@ class Application : Application() {
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
         application = this
+        // The ported FlClash host plugins (com.follow.clash) read the application here.
+        com.follow.clash.common.GlobalState.init(this)
     }
 
     override fun onCreate() {
