@@ -53,21 +53,49 @@ func TestCoreGeoResourceSpecs(t *testing.T) {
 	}
 }
 
+func writeGeoTestFile(t *testing.T, data []byte) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "data")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func updateGeoForTest(dir string, name string, link string) (*GeoUpdateResult, error) {
+	return NewGeoUpdate().Fetch(dir, name, link, "", "", "")
+}
+
 func TestCoreGeoVerifyRejectsWrongData(t *testing.T) {
-	html := []byte("<!DOCTYPE html><html><body>rate limited</body></html>")
+	html := writeGeoTestFile(t, []byte("<!DOCTYPE html><html><body>rate limited</body></html>"))
 	for _, name := range []string{GeoResourceGeoIP, GeoResourceGeoSite, GeoResourceMMDB, GeoResourceASN} {
 		if err := geoResourceSpecs[name].verify(html); err == nil {
 			t.Errorf("%s accepted an HTML page", name)
 		}
 	}
-	if err := verifyGeoIPData(testGeoIPData(t, 24)); err != nil {
+	if err := verifyGeoIPFile(writeGeoTestFile(t, testGeoIPData(t, 24))); err != nil {
 		t.Errorf("valid GeoIP rejected: %v", err)
 	}
-	if err := verifyGeoSiteData(testGeoSiteData(t)); err != nil {
+	if err := verifyGeoSiteFile(writeGeoTestFile(t, testGeoSiteData(t))); err != nil {
 		t.Errorf("valid GeoSite rejected: %v", err)
 	}
-	if err := verifyGeoIPData(nil); err == nil {
+	if err := verifyGeoIPFile(writeGeoTestFile(t, nil)); err == nil {
 		t.Error("empty GeoIP accepted")
+	}
+	// A cut-off download frames as a truncated field and is refused, even
+	// though the first entry is intact.
+	full := append(testGeoIPData(t, 24), testGeoIPData(t, 16)...)
+	if err := verifyGeoIPFile(writeGeoTestFile(t, full[:len(full)-3])); err == nil {
+		t.Error("truncated GeoIP accepted")
+	}
+	// Entries without a country code or address are skipped, a later valid
+	// one is found.
+	empty, _ := proto.Marshal(&mihomoRouter.GeoIPList{Entry: []*mihomoRouter.GeoIP{{CountryCode: "XX"}, {Cidr: []*mihomoRouter.CIDR{{Ip: []byte{1, 2, 3, 4}}}}}})
+	if err := verifyGeoIPFile(writeGeoTestFile(t, empty)); err == nil {
+		t.Error("GeoIP without usable entries accepted")
+	}
+	if err := verifyGeoIPFile(writeGeoTestFile(t, append(empty, testGeoIPData(t, 8)...))); err != nil {
+		t.Errorf("GeoIP with a later usable entry rejected: %v", err)
 	}
 }
 
@@ -90,7 +118,7 @@ func TestCoreGeoUpdateKeepsOldFileOnFailure(t *testing.T) {
 	}))
 	defer server.Close()
 	for _, path := range []string{"/error", "/html"} {
-		if _, err := UpdateGeoResource(dir, GeoResourceGeoIP, server.URL+path); err == nil {
+		if _, err := updateGeoForTest(dir, GeoResourceGeoIP, server.URL+path); err == nil {
 			t.Fatalf("%s: update succeeded", path)
 		}
 		current, err := os.ReadFile(target)
@@ -98,10 +126,10 @@ func TestCoreGeoUpdateKeepsOldFileOnFailure(t *testing.T) {
 			t.Fatalf("%s: old file changed (err %v)", path, err)
 		}
 	}
-	if _, err := UpdateGeoResource(dir, "nope", server.URL); err == nil {
+	if _, err := updateGeoForTest(dir, "nope", server.URL); err == nil {
 		t.Fatal("unknown resource updated")
 	}
-	if _, err := UpdateGeoResource(dir, GeoResourceGeoIP, "ftp://example.com/geoip.dat"); err == nil {
+	if _, err := updateGeoForTest(dir, GeoResourceGeoIP, "ftp://example.com/geoip.dat"); err == nil {
 		t.Fatal("non-HTTP address accepted")
 	}
 	entries, _ := os.ReadDir(dir)
@@ -122,7 +150,7 @@ func TestCoreGeoUpdateReplacesAndSkips(t *testing.T) {
 	if err := os.WriteFile(variant, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	result, err := UpdateGeoResource(dir, GeoResourceGeoSite, server.URL+"/geosite.dat")
+	result, err := updateGeoForTest(dir, GeoResourceGeoSite, server.URL+"/geosite.dat")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -133,7 +161,7 @@ func TestCoreGeoUpdateReplacesAndSkips(t *testing.T) {
 	if err != nil || !bytes.Equal(current, fresh) {
 		t.Fatalf("file not replaced (err %v)", err)
 	}
-	if err := VerifyGeoResource(dir, GeoResourceGeoSite); err != nil {
+	if err := verifyGeoSiteFile(filepath.Join(dir, "geosite.dat")); err != nil {
 		t.Fatal(err)
 	}
 	// On a case-insensitive file system the variant is the same file.
@@ -143,8 +171,93 @@ func TestCoreGeoUpdateReplacesAndSkips(t *testing.T) {
 			t.Fatal("stale GeoSite.dat left beside geosite.dat")
 		}
 	}
-	again, err := UpdateGeoResource(dir, GeoResourceGeoSite, server.URL+"/geosite.dat")
+	again, err := updateGeoForTest(dir, GeoResourceGeoSite, server.URL+"/geosite.dat")
 	if err != nil || !again.Skipped || again.Sha256 != result.Sha256 {
 		t.Fatalf("unchanged download not skipped: %+v, %v", again, err)
+	}
+}
+
+func TestCoreGeoConditionalUpdate(t *testing.T) {
+	dir := t.TempDir()
+	fresh := testGeoIPData(t, 24)
+	var requests, conditional int
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.Header.Get("If-None-Match") == `"v1"` {
+			conditional++
+			w.WriteHeader(http.StatusNotModified)
+			return
+		}
+		w.Header().Set("ETag", `"v1"`)
+		w.Header().Set("Last-Modified", "Sun, 08 Nov 2026 00:00:00 GMT")
+		_, _ = w.Write(fresh)
+	}))
+	defer server.Close()
+	first, err := updateGeoForTest(dir, GeoResourceGeoIP, server.URL)
+	if err != nil || first.Skipped || first.Etag != `"v1"` || first.LastModified == "" {
+		t.Fatalf("first update: %+v, %v", first, err)
+	}
+	second, err := NewGeoUpdate().Fetch(dir, GeoResourceGeoIP, server.URL, first.Sha256, first.Etag, first.LastModified)
+	if err != nil || !second.Skipped || second.Sha256 != first.Sha256 || second.Size != int64(len(fresh)) || conditional != 1 {
+		t.Fatalf("conditional update: %+v, %v (conditional requests %d)", second, err, conditional)
+	}
+	// The recorded hash no longer matches the file (someone else replaced
+	// it): no conditional request, the file is downloaded and restored.
+	if err := os.WriteFile(filepath.Join(dir, "geoip.dat"), testGeoIPData(t, 8), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	third, err := NewGeoUpdate().Fetch(dir, GeoResourceGeoIP, server.URL, first.Sha256, first.Etag, first.LastModified)
+	if err != nil || third.Skipped || conditional != 1 {
+		t.Fatalf("stale state update: %+v, %v", third, err)
+	}
+	if current, _ := os.ReadFile(filepath.Join(dir, "geoip.dat")); !bytes.Equal(current, fresh) {
+		t.Fatal("file not restored")
+	}
+	if requests != 3 {
+		t.Fatalf("requests = %d", requests)
+	}
+}
+
+func TestCoreGeoUpdateCancel(t *testing.T) {
+	dir := t.TempDir()
+	started := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", "1000000")
+		_, _ = w.Write(make([]byte, 1000))
+		w.(http.Flusher).Flush()
+		close(started)
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+	update := NewGeoUpdate()
+	go func() {
+		<-started
+		update.Cancel()
+	}()
+	if _, err := update.Fetch(dir, GeoResourceGeoIP, server.URL, "", "", ""); err == nil {
+		t.Fatal("cancelled update succeeded")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("files left behind: %v", entries)
+	}
+}
+
+func TestCoreGeoUpdateRejectsShortBody(t *testing.T) {
+	dir := t.TempDir()
+	data := testGeoSiteData(t)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Hijack to send fewer bytes than announced.
+		conn, buffer, _ := w.(http.Hijacker).Hijack()
+		_, _ = buffer.WriteString("HTTP/1.1 200 OK\r\nContent-Length: 999\r\n\r\n")
+		_, _ = buffer.Write(data)
+		_ = buffer.Flush()
+		_ = conn.Close()
+	}))
+	defer server.Close()
+	if _, err := updateGeoForTest(dir, GeoResourceGeoSite, server.URL); err == nil {
+		t.Fatal("short body accepted")
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("files left behind: %v", entries)
 	}
 }
