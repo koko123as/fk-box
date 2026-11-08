@@ -366,6 +366,32 @@ flutter {
     source = "../flutter"
 }
 
+// The Flutter Gradle plugin configures the Flutter plugin projects (their
+// `flutter` extension, the app's dependency on each, their embedding
+// dependency) while it is applied, from the plugin list under flutter.source.
+// At that moment flutter.source still has its default "../..", which is right
+// for FlClash's android/app but not for app/ here, so the list came out empty.
+// Now that source points at ../flutter, the same handler runs again with the
+// real list. Plugin projects are evaluated after :app (root build.gradle.kts).
+run {
+    val flutterPlugin = plugins.first { it.javaClass.name == "com.flutter.gradle.FlutterPlugin" }
+    fun field(owner: Any, name: String) = owner.javaClass.getDeclaredField(name).apply { isAccessible = true }
+    val handler = flutterPlugin.javaClass.declaredMethods
+        .first { it.name.startsWith("getPluginHandler") && it.parameterCount == 1 }
+        .apply { isAccessible = true }
+        .invoke(flutterPlugin, project)!!
+    field(handler, "pluginList").set(handler, null)
+    val engineVersion = field(flutterPlugin, "engineVersion").get(flutterPlugin) as String
+    handler.javaClass.declaredMethods
+        .first { it.name.startsWith("configurePlugins") && it.parameterCount == 1 }
+        .apply { isAccessible = true }
+        .invoke(handler, engineVersion)
+    @Suppress("UNCHECKED_CAST")
+    val configured = (field(handler, "pluginList").get(handler) as List<Map<String?, Any?>>).map { it["name"] }
+    check(configured.isNotEmpty()) { "No Flutter plugins found under ${file("../flutter")}" }
+    logger.lifecycle("Flutter plugins configured for :app: ${configured.joinToString()}")
+}
+
 val playCredentialsJSON = rootProject.file("service-account-credentials.json")
 if (playCredentialsJSON.exists()) {
     play {
