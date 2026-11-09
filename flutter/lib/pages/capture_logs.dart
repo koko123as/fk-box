@@ -41,7 +41,6 @@ class _CaptureLogsPageState extends State<CaptureLogsPage> {
         return Scaffold(
           title: context.tr('Capture logs'), isLoading: _busy,
           searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
-          onKeywordsUpdate: (words) => setState(() => _query = words.join(' ')),
           iconActions: [IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Refresh'), onPressed: refresh)],
           menuItems: [
             PopupMenuItem(glyph: AppGlyphs.copy, label: context.tr('Copy logs'), onPressed: logs.isEmpty ? null : () => _copy(text)),

@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/services.dart';
-import 'package:material_new_shapes/material_new_shapes.dart';
+import 'package:prism_ui/shapes/shapes.dart';
 import '../widgets.dart';
 import '../pages/profiles.dart';
 import 'start_toggle.dart';

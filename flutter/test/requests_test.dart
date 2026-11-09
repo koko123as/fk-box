@@ -141,7 +141,7 @@ void main() {
   testWidgets('profile rewrite status stays visible with request recording stopped', (tester) async {
     await mount(tester);
     snapshot['state'] = {'active': false, 'rewriteActive': true, 'rewriteRules': 3};
-    await open(tester, const RequestsPage());
+    await open(tester, const RequestsPage(initialFeed: 'captured'));
     expect(find.text('Profile HTTP rewriting is active'), findsOneWidget);
     expect(find.textContaining('Rules remain active when request recording is stopped.'), findsOneWidget);
     expect(calls.where((call) => call.method == 'capture.start'), isEmpty);
@@ -226,9 +226,9 @@ void main() {
     await mount(tester);
     snapshot['page'] = {'items': [{'id': 'saved', 'url': 'https://api.test/request',
       'method': 'GET', 'protocol': 'HTTP/1.1', 'status': 200, 'complete': true}], 'total': 1, 'storedBytes': 0};
-    await open(tester, const RequestsPage());
+    await open(tester, const RequestsPage(initialFeed: 'captured'));
     final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(Scaffold)).first);
-    scaffold.onKeywordsUpdate!(['api.test']); await tester.pumpAndSettle();
+    scaffold.searchState!.onSearch('api.test'); await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('More').last); await tester.pumpAndSettle();
     await tester.tap(find.text('Export HAR').last); await tester.pumpAndSettle();
     final exports = calls.where((call) => call.method == 'capture.export').map((call) => json(call.arguments)).toList();
@@ -300,7 +300,7 @@ void main() {
       if (call.method == 'capture.start') return started.future;
       return null;
     };
-    await open(tester, const RequestsPage());
+    await open(tester, const RequestsPage(initialFeed: 'captured'));
     await tester.tap(find.text('Capture requests'));
     await tester.pump();
     expect(calls.where((call) => call.method == 'capture.start'), hasLength(1));
@@ -324,7 +324,7 @@ void main() {
     await mount(tester, size: const Size(320, 900), scale: 1.3);
     const warning = 'Upstream TLS for origin.test: certificate has expired';
     snapshot['state'] = {'active': true, 'backend': 'MITM', 'tlsFailed': 2, 'error': warning, 'skipped': 4};
-    await open(tester, const RequestsPage());
+    await open(tester, const RequestsPage(initialFeed: 'captured'));
     expect(find.text(warning), findsNothing);
     expect(calls.where((call) => call.method == 'capture.logs'), isEmpty);
     await tester.tap(find.byTooltip('More').last); await tester.pumpAndSettle();
@@ -359,7 +359,7 @@ void main() {
     expect(copied.last.indexOf('upstream certificate'), lessThan(copied.last.indexOf('MITM capture started')));
     expect(copied.last, contains('[error] Client TLS for origin.test: certificate rejected'));
     final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(CaptureLogsPage), matching: find.byType(Scaffold)).first);
-    scaffold.onKeywordsUpdate!(['origin.test']);
+    scaffold.searchState!.onSearch('origin.test');
     await tester.pumpAndSettle();
     expect(find.text('Client TLS for origin.test: certificate rejected'), findsOneWidget);
     expect(find.text('upstream certificate verified'), findsNothing);
@@ -506,7 +506,7 @@ void main() {
 
   testWidgets('polling stops in the background and late replies do not replace filters', (tester) async {
     await mount(tester);
-    await open(tester, const RequestsPage());
+    await open(tester, const RequestsPage(initialFeed: 'captured'));
     final firstCount = calls.where((call) => call.method == 'capture.snapshot').length;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -526,9 +526,9 @@ void main() {
       return {...snapshot, 'page': {'items': [{'id': 'new', 'url': 'https://new.example/', 'method': 'GET', 'status': 200}], 'total': 1}};
     };
     Scaffold scaffold() => tester.widget<Scaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(Scaffold)).first);
-    scaffold().onKeywordsUpdate!(['old']);
+    scaffold().searchState!.onSearch('old');
     await tester.pump();
-    scaffold().onKeywordsUpdate!(['new']);
+    scaffold().searchState!.onSearch('new');
     await tester.pump();
     slow.complete({...snapshot, 'page': {'items': [{'id': 'old', 'url': 'https://old.example/', 'method': 'GET'}], 'total': 1}});
     await tester.pumpAndSettle();
@@ -563,7 +563,7 @@ void main() {
       expect(tester.takeException(), isNull);
       snapshot['page'] = {'items': [{'id': 'long', 'url': 'https://example.test/${'long-path/' * 30}',
         'method': 'POST', 'status': 200, 'protocol': 'HTTP/2.0', 'packages': ['com.example.long.app.name'], 'bytes': 65536, 'durationMs': 120}], 'total': 1};
-      await open(tester, const RequestsPage());
+      await open(tester, const RequestsPage(initialFeed: 'captured'));
       expect(tester.takeException(), isNull);
       expect(find.textContaining('https://example.test/'), findsOneWidget);
       await capture(tester, '$label-list');

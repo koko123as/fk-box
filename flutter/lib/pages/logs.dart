@@ -1,6 +1,7 @@
 import 'package:super_sliver_list/super_sliver_list.dart';
 import '../widgets.dart';
 import '../components/record.dart';
+import '../components/record_filter.dart';
 import '../components/data_subscription.dart';
 
 class LogsPage extends StatefulWidget {
@@ -17,7 +18,8 @@ class _LogsPageState extends State<LogsPage> {
   List<Json>? _paused;
   late final _scroll = ScrollController(initialScrollOffset: double.maxFinite);
   late final _physics = FollowEndScrollPhysics(isFollowing: () => _paused == null);
-  @override void dispose() { _scroll.dispose(); super.dispose(); }
+  final _filters = RecordFilterController<Json>(facets: logFacets);
+  @override void dispose() { _scroll.dispose(); _filters.dispose(); super.dispose(); }
 
   void _pause() {
     if (_paused == null) setState(() => _paused = List.of(context.box.logs));
@@ -42,13 +44,23 @@ class _LogsPageState extends State<LogsPage> {
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.logs);
     final words = _query.toLowerCase().trim().split(RegExp(r'\s+'));
-    final logs = (_paused ?? box.logs).where((item) =>
+    final blank = _query.trim().isEmpty;
+    final searched = (_paused ?? box.logs).where((item) =>
       _matchesLevel(item, box.defaultLogLevel) &&
-      words.every(([item['level'], item['message']].join(' ').toLowerCase()).contains),
+      (blank || words.every(([item['level'], item['message']].join(' ').toLowerCase()).contains)),
     ).toList();
-    return BoxDataSubscription(data: BoxData.logs, child: Scaffold(
+    WidgetsBinding.instance.addPostFrameCallback((_) { if (mounted) _filters.offer(searched); });
+    return BoxDataSubscription(data: BoxData.logs, child: ListenableBuilder(
+      listenable: Listenable.merge([_filters, _filters.options]),
+      builder: (context, _) => _build(context, box, _filters.apply(searched)),
+    ));
+  }
+
+  Widget _build(BuildContext context, BoxController box, List<Json> logs) {
+    final pinned = !ViewScope.isMobileOf(context);
+    return Scaffold(
       title: context.tr('Logs'),
-      onKeywordsUpdate: (words) => setState(() => _query = words.join(' ')),
+      keywords: _filters.keywordsOf(pinned: pinned),
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       iconActions: [IconButtonData(glyph: AppGlyphs.export, tooltip: context.tr('Export'), onPressed: () => box.act('document.save', {
         'name': 'B-box.log', 'content': logs.map((line) => '${recordTime(line['receivedAt'])} [${line['level']}] ${line['message']}').join('\n'),
@@ -65,9 +77,10 @@ class _LogsPageState extends State<LogsPage> {
               : context.tr(level), checked: _level == level,
             section: level == 'Default' ? PopupMenuSection(title: context.tr('Log level')) : null,
             onPressed: () => setState(() => _level = level)),
+        ..._filters.menuItems(context, pinned: pinned),
       ],
-      body: NullStatusSwitcher(
-        isEmpty: logs.isEmpty, isSearching: _query.trim().isNotEmpty || !['Default', 'All'].contains(_level),
+      body: RecordFilterScope(onFilter: _filters.add, child: NullStatusSwitcher(
+        isEmpty: logs.isEmpty, isSearching: _query.trim().isNotEmpty || !['Default', 'All'].contains(_level) || _filters.isFiltering,
         nullStatus: NullStatus(label: context.tr('No logs'), illustration: NullStatusIllustration.logs),
         child: logs.isEmpty ? const SizedBox.shrink() : Align(
           alignment: Alignment.topCenter,
@@ -92,7 +105,7 @@ class _LogsPageState extends State<LogsPage> {
                     key: ValueKey(log['id']), onTap: () {},
                     header: RecordHeader(children: [
                       if ((log['receivedAt'] as num? ?? 0) > 0) RecordTimestamp(recordTime(log['receivedAt'])),
-                      RecordLabel(label: level, tone: tone, onPressed: () => context.commonScaffoldState?.addKeyword(level)),
+                      RecordLabel(label: level, tone: tone, onPressed: () => RecordFilterScope.add(context, RecordFilter(RecordFacetKind.level, level))),
                     ]),
                     body: SelectableText(log['message'].toString(), style: RecordTextStyles.of(context).primary),
                   );
@@ -101,7 +114,17 @@ class _LogsPageState extends State<LogsPage> {
             ),
           ),
         ),
-      ),
-    ));
+      )),
+    );
   }
 }
+
+/// common.dart's logFacets: the level, in the core's order.
+final logFacets = <RecordFacet<Json>>[
+  RecordFacet<Json>(
+    RecordFacetKind.level,
+    (item) => [item['level'].toString().toLowerCase()],
+    offered: true,
+    order: const ['trace', 'debug', 'info', 'warn', 'warning', 'error', 'fatal', 'panic'],
+  ),
+];

@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'package:material_new_shapes/material_new_shapes.dart';
+import 'package:prism_ui/shapes/shapes.dart';
 import '../widgets.dart';
 import 'shape_badge.dart';
 
@@ -8,11 +8,7 @@ const _stateDuration = Duration(milliseconds: 150);
 
 final _startMorph = Morph(MaterialShapes.circle, MaterialShapes.cookie9Sided);
 
-Path _morphPath(double progress) => _startMorph.toPath(
-  progress: progress,
-  rotationPivotX: 0.5,
-  rotationPivotY: 0.5,
-);
+Path _morphPath(double progress) => _startMorph.toPath(progress: progress);
 
 double _morphTurn(double progress) => progress * 2 * math.pi / 9;
 

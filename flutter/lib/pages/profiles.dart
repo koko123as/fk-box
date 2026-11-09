@@ -178,7 +178,7 @@ Future<void> _importProfile(BuildContext context, String source) async {
       case 'Scan QR code':
         data = await openPage<Json>(context, const ScanPage());
     }
-    if (data != null && context.mounted) await openForm(context, ProfileForm(initial: data));
+    if (data != null && context.mounted) await openImported(context, data);
   } catch (error) { box.report(error); }
 }
 
@@ -241,8 +241,25 @@ Future<Json> decodeImport(BoxController box, String text) async {
   if (text.startsWith('https://') || text.startsWith('http://') || text.startsWith('sing-box://')) {
     return json(await box.call('profiles.decodeIntent', {'uri': text}));
   }
-  await box.call('config.check', {'content': text});
-  return {'name': 'Imported profile', 'content': text};
+  // A JSON array of configs comes back split as "entries" (see openImported).
+  final decoded = json(await box.call('profiles.decodeText', {'content': text, 'name': 'Imported profile'}));
+  return decoded['entries'] is List ? decoded : {'name': decoded['name'], 'content': decoded['content'], 'core': 'auto'};
+}
+
+/// Opens the profile form for one decoded profile. A JSON array of configs
+/// (v2rayNG's multi custom-config list) arrives split as "entries" and is saved
+/// as one profile per config.
+Future<void> openImported(BuildContext context, Object? result) async {
+  final data = json(result);
+  final entries = data['entries'];
+  final box = context.box;
+  final message = context.tr('Imported %d profiles');
+  if (entries is! List) {
+    await openForm(context, ProfileForm(initial: data));
+    return;
+  }
+  final ids = await box.call('profiles.saveAll', {'entries': entries, 'core': data['core'] ?? 'auto'});
+  box.message(message.replaceAll('%d', '${ids is List ? ids.length : entries.length}'));
 }
 
 class ProfileForm extends StatefulWidget {
@@ -352,8 +369,7 @@ class _ProfileOrderPageState extends State<ProfileOrderPage> {
         if (saved) context.safeNestedPop();
         else setState(() => _saving = false);
       }),
-      body: AbsorbPointer(absorbing: _saving, child: ReorderableListView.builder(
-        buildDefaultDragHandles: false,
+      body: AbsorbPointer(absorbing: _saving, child: PrismReorderableListView(
         padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 32 + context.bottomInset),
         itemCount: _profiles!.length,
         proxyDecorator: (child, index, animation) => commonProxyDecorator(_item(index), index, animation),

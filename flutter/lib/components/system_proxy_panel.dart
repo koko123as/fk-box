@@ -1,5 +1,5 @@
 // Adapted from FlClash v0.9.2 network_takeover.dart (VpnCard) and card.dart (GPL-3.0).
-import 'package:material_new_shapes/material_new_shapes.dart';
+import 'package:prism_ui/shapes/shapes.dart';
 import '../widgets.dart';
 import 'shape_badge.dart';
 import 'system_proxy_glyph.dart';

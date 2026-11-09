@@ -350,6 +350,12 @@ class _ConfigOrderPageState extends State<ConfigOrderPage> {
     _original = jsonEncode(_entries);
     _revision = widget.store.revision;
   }
+  Widget _item(int index) => ReorderableDelayedDragStartListener(
+    key: ObjectKey(_entries[index]), index: index,
+    child: ItemPositionProvider(position: ItemPosition.get(index, _entries.length),
+      child: DecorationListItem(contentPadding: const EdgeInsets.only(left: 16),
+        title: Text((_entries[index]['tag'] ?? _entries[index]['action'] ?? '${index + 1}').toString()), trailing: SortHandle(index: index))),
+  );
   @override Widget build(BuildContext context) => BoxEditGuard(dirty: jsonEncode(_entries) != _original, busy: _saving,
     child: Scaffold(title: context.tr('Reorder'), isLoading: _saving,
     confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), onPressed: _saving ? null : () async {
@@ -362,10 +368,10 @@ class _ConfigOrderPageState extends State<ConfigOrderPage> {
     }),
     body: Column(children: [
       if (_error != null) Padding(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 8), child: SelectableText(_error!, style: TextStyle(color: context.colorScheme.error))),
-      Expanded(child: ReorderableListView.builder(padding: EdgeInsets.fromLTRB(16, _error == null ? context.contentTopPadding : 0, 16, 16 + context.bottomInset), itemCount: _entries.length,
-      onReorder: (old, next) { if (!_saving) setState(() { if (old < next) next--; _entries.insert(next, _entries.removeAt(old)); }); },
-      itemBuilder: (context, index) => ListItem(key: ObjectKey(_entries[index]), trailing: const GlyphIcon(AppGlyphs.sort),
-        title: Text((_entries[index]['tag'] ?? _entries[index]['action'] ?? '${index + 1}').toString())),
+      Expanded(child: PrismReorderableListView(padding: EdgeInsets.fromLTRB(16, _error == null ? context.contentTopPadding : 0, 16, 16 + context.bottomInset), itemCount: _entries.length,
+        onReorderItem: (old, next) { if (!_saving) setState(() => _entries.insert(next, _entries.removeAt(old))); },
+        proxyDecorator: (child, index, animation) => commonProxyDecorator(_item(index), index, animation),
+        itemBuilder: (context, index) => _item(index),
       )),
     ]),
   ));
@@ -403,7 +409,7 @@ class _ConfigValueEditorState extends State<ConfigValueEditor> {
       TextField(controller: _text, readOnly: _saving, maxLines: 16, minLines: 8, autocorrect: false, enableSuggestions: false,
         smartDashesType: SmartDashesType.disabled, smartQuotesType: SmartQuotesType.disabled,
         style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, height: 1.6),
-        decoration: InputDecoration(border: const OutlineInputBorder(), labelText: context.tr('Configuration'))),
+        decoration: InputDecoration(hintText: context.tr('Configuration'), filled: true)),
     ],
   ));
 }

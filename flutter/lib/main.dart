@@ -1,11 +1,14 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show LicenseRegistry, LicenseEntryWithLineBreaks, defaultTargetPlatform;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'widgets.dart';
 import 'pages/dashboard.dart';
 import 'pages/proxies.dart';
 import 'pages/profiles.dart';
 import 'pages/tools.dart';
+import 'pages/logs.dart';
+import 'pages/requests.dart';
 import 'pages/taildrop.dart';
 import 'theme_settings.dart';
 import 'components/page_switcher.dart';
@@ -13,11 +16,6 @@ import 'components/page_switcher.dart';
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  LicenseRegistry.addLicense(() async* {
-    for (final entry in const {'FlClash': 'LICENSE', 'Goja': 'goja-LICENSE', 'regexp2': 'regexp2-LICENSE', 'go-sourcemap': 'sourcemap-LICENSE', 'Google pprof': 'pprof-LICENSE', 'cilium/ebpf': 'cilium-ebpf-LICENSE', 'golang.org/x/arch': 'golang-x-arch-LICENSE', 'ulikunitz/xz': 'xz-LICENSE', 'JetBrains Mono': 'JetBrainsMono-OFL.txt', 'Twemoji / Mozilla': 'Twemoji-LICENSE.md'}.entries) {
-      yield LicenseEntryWithLineBreaks([entry.key], await rootBundle.loadString('assets/licenses/${entry.value}'));
-    }
-  });
   runApp(BoxApp(controller: BoxController()));
 }
 
@@ -28,46 +26,37 @@ class BoxApp extends StatefulWidget {
 }
 
 class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
-  final _messenger = GlobalKey<ScaffoldMessengerState>();
-  StreamSubscription<String>? _messages;
   @override void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _messages = widget.controller.messages.stream.listen((message) {
-      _messenger.currentState?.showSnackBar(SnackBar(content: Text(message)));
-    });
     widget.controller.initialize();
   }
   @override void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _messages?.cancel();
     widget.controller.dispose();
     super.dispose();
   }
 
-  final _themes = <String, ThemeData>{};
+  final _themes = <Brightness, ({Object inputs, ThemeData theme})>{};
 
   @override void didChangeLocales(List<Locale>? locales) => setState(_themes.clear);
 
+  // FlClash theme_manager.dart watchAppTheme: a rebuilt ThemeData never equals the last, and ThemeCrossFade fades on that.
   ThemeData _theme(Brightness brightness) {
     final prefs = widget.controller.preferences;
     final scheme = appColorScheme(widget.controller, brightness);
     final family = prefs['fontFamily'] as String?;
-    final key = "$brightness:${scheme.hashCode}:$family";
-    return _themes.putIfAbsent(key, () => ThemeData(
-      useMaterial3: true,
+    final locales = WidgetsBinding.instance.platformDispatcher.locales;
+    final inputs = (platform: defaultTargetPlatform, fontFamily: family, colorScheme: scheme, locales: locales.join(','));
+    if (_themes[brightness] case (inputs: final cached, :final theme) when cached == inputs) return theme;
+    final theme = ThemeData(
       colorScheme: scheme,
       fontFamily: family,
-      fontFamilyFallback: appFontFamilyFallback(platform: defaultTargetPlatform, locales: WidgetsBinding.instance.platformDispatcher.locales, fontFamily: family),
-      actionIconTheme: ActionIconThemeData(
-        backButtonIconBuilder: (context) => GlyphIcon(AppGlyphs.backFor(Theme.of(context).platform)),
-        closeButtonIconBuilder: (_) => const GlyphIcon(AppGlyphs.close),
-      ),
-      pageTransitionsTheme: const PageTransitionsTheme(builders: {
-        TargetPlatform.android: commonSharedXPageTransitions,
-      }),
-      extensions: [if (brightness == Brightness.dark) ElevatedColorScheme(scheme.elevated)],
-    ).withAppShapes.withAppSurfaces.withAppTypography);
+      fontFamilyFallback: appFontFamilyFallback(platform: defaultTargetPlatform, locales: locales, fontFamily: family),
+      elevatedColorScheme: brightness == Brightness.dark ? scheme.elevated : null,
+    );
+    _themes[brightness] = (inputs: inputs, theme: theme);
+    return theme;
   }
 
   @override
@@ -76,53 +65,85 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
     child: Builder(
       builder: (context) {
         final prefs = BoxScope.of(context, aspect: BoxAspect.appearance).preferences;
-        return MaterialApp(
-          title: 'Flbox',
-          debugShowCheckedModeBanner: false,
-          scaffoldMessengerKey: _messenger,
-          theme: _theme(Brightness.light),
-          darkTheme: _theme(Brightness.dark),
-          themeMode: ThemeMode.values.firstWhere((mode) => mode.name == prefs['theme'], orElse: () => ThemeMode.system),
-          supportedLocales: const [Locale('en'), Locale('zh')],
-          localizationsDelegates: const [
-            BoxUiDelegate(), ...GlobalMaterialLocalizations.delegates,
-          ],
-          builder: (context, child) {
-            final media = MediaQuery.of(context);
-            final scale = appTextScale(prefs, media.textScaler.scale(1));
-            final glass = (prefs['liquidGlass'] ?? 'none') != 'none';
-            return MeasureScope(
-              measure: Measure.of(context, scale.clamp(.8, 1.4)),
-              child: ViewScope(
-              size: media.size,
-              isMobile: media.size.width < 600,
-              child: MediaQuery(
-                data: media.copyWith(textScaler: TextScaler.linear(scale.clamp(.8, 1.4))),
-                child: AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: SystemUiOverlayStyle(
-                    statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent,
-                    statusBarIconBrightness: Theme.of(context).brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                    systemNavigationBarIconBrightness: Theme.of(context).brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                  ),
-                  child: LiquidGlassScope(enabled: glass,
-                    quality: prefs['liquidGlass'] == 'ultra' ? LiquidGlassQuality.ultra : LiquidGlassQuality.standard,
-                    child: LiquidGlassHost(enabled: glass, child: child!)),
-                ),
-              ),
+        final glass = prefs['liquidGlass'] as String? ?? 'none';
+        return LayoutBuilder(builder: (context, constraints) {
+          final mobile = constraints.maxWidth <= maxMobileWidth;
+          return PrismApp(
+            title: 'FK-box',
+            debugShowCheckedModeBanner: false,
+            onNavigationNotification: (_) => true,
+            theme: _theme(Brightness.light),
+            darkTheme: _theme(Brightness.dark),
+            themeMode: ThemeMode.values.firstWhere((mode) => mode.name == prefs['theme'], orElse: () => ThemeMode.system),
+            supportedLocales: const [Locale('en'), Locale('zh')],
+            localizationsDelegates: const [BoxUiDelegate(), GlobalWidgetsLocalizations.delegate],
+            textScale: customFontScale(prefs) ? appTextScale(prefs, 1) : null,
+            minTextScale: .8,
+            maxTextScale: 1.4,
+            // The minimal style draws flat surfaces and never runs the glass shaders.
+            liquidGlass: !appearanceTokensOf(prefs).glass ? null : switch (glass) {
+              'ultra' => LiquidGlassQuality.ultra,
+              'standard' => LiquidGlassQuality.standard,
+              _ => null,
+            },
+            emojiFont: (family: 'Twemoji', pattern: emojiPattern),
+            stackedBanners: !mobile,
+            builder: (context, child) => ViewScope(
+              size: Size(constraints.maxWidth, constraints.maxHeight),
+              isMobile: mobile,
+              child: _SystemUi(child: _MessageRelay(controller: widget.controller, child: child!)),
             ),
-            );
-          },
-          home: widget.controller.ready ? const HomePage() : Scaffold(
-            body: SafeArea(child: Center(child: widget.controller.startupError == null
-                ? const SplashScreen()
-                : ErrorState(widget.controller.startupError!, retry: widget.controller.initialize))),
-          ),
-        );
+            home: widget.controller.ready ? const HomePage() : Surface(
+              color: SurfaceLevel.page.colorOf(context.colorScheme),
+              child: SafeArea(child: Center(child: widget.controller.startupError == null
+                  ? const SplashScreen()
+                  : ErrorState(widget.controller.startupError!, retry: widget.controller.initialize))),
+            ),
+          );
+        });
       },
     ),
   );
 }
 
+/// FlClash theme_manager.dart _buildSystemUi: transparent bars drawn over by the pages.
+class _SystemUi extends StatelessWidget {
+  const _SystemUi({required this.child});
+  final Widget child;
+  @override Widget build(BuildContext context) {
+    final icons = Theme.of(context).brightness == Brightness.dark ? Brightness.light : Brightness.dark;
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle(
+        statusBarColor: const Color(0x00000000), statusBarIconBrightness: icons,
+        systemNavigationBarColor: const Color(0x00000000), systemNavigationBarDividerColor: const Color(0x00000000),
+        systemNavigationBarIconBrightness: icons, systemNavigationBarContrastEnforced: true,
+      ),
+      sized: false,
+      child: child,
+    );
+  }
+}
+
+/// Shows the controller's messages in the prism BannerHost (errors in the error style).
+class _MessageRelay extends StatefulWidget {
+  const _MessageRelay({required this.controller, required this.child});
+  final BoxController controller;
+  final Widget child;
+  @override State<_MessageRelay> createState() => _MessageRelayState();
+}
+
+class _MessageRelayState extends State<_MessageRelay> {
+  StreamSubscription<BoxMessage>? _messages;
+  @override void initState() {
+    super.initState();
+    _messages = widget.controller.messages.stream.listen((message) {
+      if (!mounted || message.text.isEmpty) return;
+      BannerHost.maybeOf(context)?.show(context.tr(message.text), level: message.error ? BannerLevel.error : BannerLevel.info);
+    });
+  }
+  @override void dispose() { _messages?.cancel(); super.dispose(); }
+  @override Widget build(BuildContext context) => widget.child;
+}
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -153,7 +174,7 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
         children: [
           Image.asset('assets/images/icon.png', width: 96, height: 96),
           const SizedBox(height: 16),
-          const Text('Flbox', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
+          const Text('FK-box', style: TextStyle(fontSize: 24, fontWeight: FontWeight.w600)),
           const SizedBox(height: 32),
           const SizedBox(width: 120, child: LinearProgressIndicator()),
         ],
@@ -162,21 +183,46 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 }
 
+/// navigation.dart's NavigationItem: a destination; core pages stay built behind the dock.
+typedef _Destination = ({String label, Glyph glyph, bool core});
+
+const _mobileDestinations = <_Destination>[
+  (label: 'Dashboard', glyph: AppGlyphs.dashboard, core: true),
+  (label: 'Proxies', glyph: AppGlyphs.proxies, core: true),
+  (label: 'Profiles', glyph: AppGlyphs.profiles, core: true),
+  (label: 'Tools', glyph: AppGlyphs.tools, core: true),
+];
+
+/// FlClash v0.9.3 lib/views/navigation.dart: the sidebar adds Requests and Logs.
+List<_Destination> _destinationsOf(ViewMode mode) => mode == ViewMode.mobile ? _mobileDestinations : [
+  ..._mobileDestinations.take(3),
+  (label: 'Requests', glyph: AppGlyphs.requests, core: false),
+  (label: 'Logs', glyph: AppGlyphs.logs, core: false),
+  _mobileDestinations.last,
+];
+
+Widget _destinationPage(String label) => switch (label) {
+  'Dashboard' => const DashboardPage(),
+  'Proxies' => const ProxiesPage(),
+  'Profiles' => const ProfilesPage(),
+  'Requests' => const RequestsPage(),
+  'Logs' => const LogsPage(),
+  _ => const ToolsPage(),
+};
+
+/// Dashboard, Proxies, Profiles and Tools, switched by the floating dock or a
+/// bar on phones, and by the FlClash sidebar (with Requests and Logs) at laptop
+/// and desktop widths, where each destination keeps its own navigator.
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
   @override State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  int _index = 0;
+  String _current = 'Dashboard';
   StreamSubscription<String>? _intents;
   BoxController? _box;
   bool _handlingIntent = false;
-  static const _items = <(String, Glyph)>[
-    ('Dashboard', AppGlyphs.dashboard), ('Proxies', AppGlyphs.proxies),
-    ('Profiles', AppGlyphs.profiles), ('Tools', AppGlyphs.tools),
-  ];
-  static const _pages = [DashboardPage(), ProxiesPage(), ProfilesPage(), ToolsPage()];
 
   @override void didChangeDependencies() {
     super.didChangeDependencies();
@@ -202,58 +248,106 @@ class _HomePageState extends State<HomePage> {
         if (mounted) await openPage(context, SharePage(token: uri.substring('bbox-share:'.length)));
         return;
       }
-      final data = json(await _box!.call('profiles.decodeIntent', {'uri': uri}));
-      if (mounted) await openForm(context, ProfileForm(initial: data));
+      final data = await _box!.call('profiles.decodeIntent', {'uri': uri});
+      if (mounted) await openImported(context, data);
     } catch (error) { _box!.report(error); }
   }
 
   @override void dispose() { _intents?.cancel(); super.dispose(); }
 
   @override Widget build(BuildContext context) {
-    final mobile = context.isMobileView;
-    final floating = context.box.preferences['floatingNavigation'] != false;
+    final width = ViewScope.sizeOf(context).width;
+    final mode = viewModeOf(width);
+    final mobile = mode == ViewMode.mobile;
+    final items = _destinationsOf(mode);
+    final found = items.indexWhere((item) => item.label == _current);
+    // A destination the layout no longer shows (Requests, Logs on a phone) falls back to Tools.
+    final index = found < 0 ? items.length - 1 : found;
+    final prefs = context.box.preferences;
+    final tokens = appearanceTokensOf(prefs);
+    final floating = prefs['floatingNavigation'] != false;
+    void select(int next) => setState(() => _current = items[next].label);
     final content = PageSwitcher(
-      index: _index,
-      animation: tabAnimationOf(context.box.preferences),
-      onSelected: (index) => setState(() => _index = index),
-      children: [for (var i = 0; i < _pages.length; i++)
-        TickerMode(enabled: i == _index, child: PageActivityScope(isActive: i == _index, child: _pages[i])),
+      index: index,
+      // The minimal style always cross-fades destinations, briefly.
+      animation: tokens.expressiveMotion ? tabAnimationOf(prefs) : TabAnimation.fade,
+      onSelected: select,
+      children: [for (final (i, item) in items.indexed)
+        TickerMode(
+          key: ValueKey(item.label),
+          enabled: i == index,
+          child: PageActivityScope(
+            isActive: i == index,
+            child: item.core || i == index ? KeepScope(
+              child: mobile ? _destinationPage(item.label) : Navigator(
+                key: ValueKey('${item.label}_navigator'),
+                pages: [RootPage(child: _destinationPage(item.label))],
+                onDidRemovePage: (_) {},
+              ),
+            ) : const SizedBox.shrink(),
+          ),
+        ),
       ],
     );
-    return Scaffold(
-        body: Row(children: [
-          if (!mobile) NavigationRail(
-            selectedIndex: _index,
-            onDestinationSelected: (index) => setState(() => _index = index),
-            labelType: NavigationRailLabelType.all,
-            destinations: [for (final item in _items) NavigationRailDestination(
-              icon: GlyphIcon(item.$2), label: Text(context.tr(item.$1)),
-            )],
-          ),
-          Expanded(child: Column(children: [
-            Expanded(child: Stack(children: [
-              Positioned.fill(child: BottomInsetScope(
-                inset: mobile && floating ? NavigationDock.insetOf(context) : 0,
-                child: MediaQuery.removePadding(context: context, removeBottom: mobile, removeLeft: mobile, removeRight: mobile, child: content),
-              )),
-              if (mobile && floating) PositionedDirectional(
-                start: 0, end: 0, bottom: 0,
-                child: NavigationDock(
-                  selectedIndex: _index,
-                  onSelected: (index) => setState(() => _index = index),
-                  destinations: [for (final item in _items) NavigationDockDestination(glyph: item.$2, label: context.tr(item.$1))],
-                ),
-              ),
-            ])),
-            if (mobile && !floating) NavigationBar(
-              selectedIndex: _index,
-              onDestinationSelected: (index) => setState(() => _index = index),
-              destinations: [for (final (i, item) in _items.indexed)
-                NavigationDestination(icon: AnimatedGlyph(glyph: item.$2, filled: i == _index), label: context.tr(item.$1)),
-              ],
+    final page = SurfaceLevel.page.colorOf(context.colorScheme);
+    if (!mobile) {
+      final canExpand = canExpandSidebar(mode);
+      final expanded = canExpand && prefs['sidebarExpanded'] != false;
+      final ltr = Directionality.of(context) == TextDirection.ltr;
+      return Surface(color: page, child: Row(children: [
+        Surface(
+          color: context.colorScheme.chromeSurface,
+          shape: BorderDirectional(end: Divider.createBorderSide(context)),
+          child: MediaQuery.removePadding(
+            context: context, removeLeft: !ltr, removeRight: ltr,
+            child: NavigationSidebar(
+              destinations: [for (final item in items) SidebarDestination(glyph: item.glyph, label: context.tr(item.label))],
+              selectedIndex: index,
+              expanded: expanded,
+              onSelected: select,
+              onToggle: canExpand ? () => context.box.setPreference('sidebarExpanded', !expanded) : null,
             ),
-          ])),
-        ]),
-    );
+          ),
+        ),
+        Expanded(child: ClipRect(child: MediaQuery.removePadding(
+          context: context, removeLeft: ltr, removeRight: !ltr, child: content,
+        ))),
+      ]));
+    }
+    return Surface(color: page, child: Column(children: [
+      Expanded(child: Stack(children: [
+        Positioned.fill(child: BottomInsetScope(
+          inset: floating ? NavigationDock.insetOf(context) : 0,
+          child: MediaQuery.removePadding(context: context, removeBottom: true, removeLeft: true, removeRight: true, child: content),
+        )),
+        PositionedDirectional(
+          start: 0, end: 0, bottom: 0,
+          child: AnimatedVisibility.bottomNavigation(
+            visible: floating,
+            child: BarItemPresence.held(child: MediaQuery.removePadding(
+              context: context, removeTop: true, removeLeft: true, removeRight: true,
+              child: NavigationDock(
+                selectedIndex: index,
+                onSelected: select,
+                destinations: [for (final item in items) NavigationDockDestination(glyph: item.glyph, label: context.tr(item.label))],
+              ),
+            )),
+          ),
+        ),
+      ])),
+      AnimatedVisibility.bottomNavigation(
+        visible: !floating,
+        child: MediaQuery.removePadding(
+          context: context, removeTop: true, removeLeft: true, removeRight: true,
+          child: NavigationBar(
+            selectedIndex: index,
+            onDestinationSelected: select,
+            destinations: [for (final (i, item) in items.indexed)
+              NavigationDestination(icon: AnimatedGlyph(glyph: item.glyph, filled: i == index), label: context.tr(item.label)),
+            ],
+          ),
+        ),
+      ),
+    ]));
   }
 }

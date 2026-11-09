@@ -6,6 +6,8 @@ import 'ui/icons/icons.dart';
 
 export 'package:flutter/widgets.dart';
 export 'box.dart';
+export 'common/appearance.dart';
+export 'common/layout.dart';
 export 'l10n.dart';
 export 'ui/ui.dart';
 export 'ui/icons/icons.dart';

@@ -155,14 +155,9 @@ class FormRowTextField extends StatelessWidget {
       TextDirection.ltr => 1.0,
       TextDirection.rtl => -1.0,
     };
-    return InputDecorationTheme(
-      data: InputDecorationTheme.of(
-        context,
-      ).copyWith(floatingLabelBehavior: FloatingLabelBehavior.never),
-      child: Transform.translate(
-        offset: Offset(_caretMargin * towardEnd, 0),
-        child: _buildField(context),
-      ),
+    return Transform.translate(
+      offset: Offset(_caretMargin * towardEnd, 0),
+      child: _buildField(context),
     );
   }
 

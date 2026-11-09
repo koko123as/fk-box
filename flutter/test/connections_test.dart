@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:b_box_ui/main.dart';
 import 'package:b_box_ui/widgets.dart';
 import 'package:b_box_ui/pages/connections.dart';
+import 'package:b_box_ui/pages/requests.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -18,14 +19,14 @@ void main() {
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
     final context = tester.element(find.byType(HomePage));
-    openPage(context, const ConnectionsPage());
+    openPage(context, const RequestsPage(initialFeed: 'live'));
     await tester.pumpAndSettle();
     expect(visibility, [true]);
-    final pageContext = tester.element(find.byType(ConnectionsPage));
+    final pageContext = tester.element(find.byType(ConnectionsFeed));
     pageContext.safeNestedPop();
     await tester.pumpAndSettle();
     await tester.pump();
-    expect(find.byType(ConnectionsPage), findsNothing);
+    expect(find.byType(ConnectionsFeed), findsNothing);
     expect(visibility, [true, false]);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());

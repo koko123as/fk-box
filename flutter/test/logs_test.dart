@@ -117,10 +117,10 @@ void main() {
     await emit(tester, 'Warn');
     await choose(tester, 'Pause');
     await emit(tester, 'Warn', [..._records, {'id': 8, 'level': 'Error', 'message': 'later record'}]);
-    scaffold(tester).onKeywordsUpdate!(['core']);
+    scaffold(tester).searchState!.onSearch('core');
     await tester.pumpAndSettle();
     await expectExport(tester, ['Warn', 'Error', 'Fatal', 'Panic']);
-    scaffold(tester).onKeywordsUpdate!([]);
+    scaffold(tester).searchState!.onSearch('');
     await tester.pumpAndSettle();
     expect(find.text('later record'), findsNothing);
     await choose(tester, 'Resume');

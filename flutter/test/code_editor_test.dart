@@ -1,17 +1,17 @@
 import 'dart:ui' show BoxHeightStyle;
 import 'package:b_box_ui/components/code_editor.dart';
 import 'package:b_box_ui/pages/profile_editor.dart';
-import 'package:material_ui/material_ui.dart';
+import 'package:b_box_ui/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 Finder _line(int number) => find.byKey(ValueKey('code-line-$number'));
 
 Future<void> _mount(WidgetTester tester, JsonEditorController text, UndoHistoryController undo,
     {double width = 320, double scale = 1, double height = 260}) async {
-  await tester.pumpWidget(MaterialApp(home: Scaffold(body: Center(child: SizedBox(width: width, height: height,
+  await tester.pumpWidget(PrismApp(home: Center(child: SizedBox(width: width, height: height,
     child: MediaQuery(data: MediaQueryData(textScaler: TextScaler.linear(scale)),
       child: CodeEditor(controller: text, undoController: undo)),
-  )))));
+  ))));
   await tester.pump();
 }
 

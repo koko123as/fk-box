@@ -38,6 +38,8 @@ class RecordTextStyles {
 
 const recordListGap = 8.0;
 
+const recordListEstimatedExtent = 100.0;
+
 double recordListExtentEstimation(int? index, double crossAxisExtent) {
   return switch (index) {
     // SuperSliverList gives every child the null estimate unless it is 0.

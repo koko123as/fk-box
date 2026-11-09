@@ -261,17 +261,11 @@ class _TabExtents {
     _TabExtents? previous,
   ) {
     final style = AppTextStyle.subheadline.of(context, emphasized: true);
-    final buttonStyle = FilledButtonTheme.of(context).style;
-    final defaults = const FilledButton(
-      onPressed: null,
-      child: null,
-    ).defaultStyleOf(context);
-    final minimumSize = (buttonStyle?.minimumSize ?? defaults.minimumSize)!
-        .resolve(const {})!;
-    final density = (buttonStyle?.visualDensity ?? defaults.visualDensity)!;
-    final adjustment = density.baseSizeAdjustment.dx;
-    final minWidth = max(0.0, minimumSize.width + adjustment);
-    final padding = 2 * (_tabPadding + max(0.0, adjustment));
+    final minWidth = Card.minimumOf(context).minWidth;
+    final padding = Card.paddingOf(
+      context,
+      const EdgeInsets.symmetric(horizontal: _tabPadding),
+    ).horizontal;
     final names = [for (final group in groups) group['tag'].toString()];
     final key = (
       _NamesKey(names),

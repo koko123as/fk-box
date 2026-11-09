@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 import '../components/form.dart';
+import '../components/quick_edit.dart';
 import 'capture_domains.dart';
 import 'mitm_certificate.dart';
 
@@ -53,17 +54,24 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
     });
   }
 
-  Widget _field(TextEditingController controller, String label, {String? footer, String? hint, bool multiline = true}) => generateSection(
+  Widget _field(TextEditingController controller, String label, {String? footer, String? hint, bool multiline = true,
+      String? Function(String item)? validator, String joiner = '\n'}) => generateSection(
     title: context.tr(label), footer: footer == null ? null : context.tr(footer),
-    items: [DecorationListItem(title: TextField(
-      key: ValueKey(label), controller: controller, minLines: multiline ? 2 : 1, maxLines: multiline ? 4 : 2,
-      keyboardType: multiline ? TextInputType.multiline : TextInputType.text,
-      textInputAction: multiline ? TextInputAction.newline : TextInputAction.done,
-      inputFormatters: [LengthLimitingTextInputFormatter(65536)], autocorrect: false, enableSuggestions: false,
-      style: AppTextStyle.body.of(context),
-      decoration: InputDecoration.collapsed(border: const NoInputBorder(), hintText: hint),
-      onChanged: (_) => setState(() => _dirty = true),
-    ))],
+    items: [
+      DecorationListItem(title: TextField(
+        key: ValueKey(label), controller: controller, minLines: multiline ? 2 : 1, maxLines: multiline ? 4 : 2,
+        keyboardType: multiline ? TextInputType.multiline : TextInputType.text,
+        textInputAction: multiline ? TextInputAction.newline : TextInputAction.done,
+        inputFormatters: [LengthLimitingTextInputFormatter(65536)], autocorrect: false, enableSuggestions: false,
+        style: AppTextStyle.body.of(context),
+        decoration: InputDecoration.collapsed(border: const NoInputBorder(), hintText: hint),
+        onChanged: (_) => setState(() => _dirty = true),
+      )),
+      // quick_edit.dart: the list opens as text, one item a line; the result lands in this draft.
+      ListItem(leading: const GlyphIcon(AppGlyphs.compose), title: Text(context.tr('Quick edit')), onTap: () => openListQuickEdit(context,
+        title: context.tr(label), items: _lines(controller.text), hint: hint, validator: validator,
+        onChanged: (items) { if (mounted) setState(() { controller.text = items.join(joiner); _dirty = true; }); })),
+    ],
   );
 
   @override Widget build(BuildContext context) {
@@ -98,7 +106,8 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
         ListItem.options(title: Text(context.tr('Body limit per message')), options: const [64, 128, 256, 1024], value: _bodyKiB,
           textBuilder: (value) => '$value KiB', onChanged: (value) => setState(() { _bodyKiB = value; _dirty = true; })),
       ]),
-      _field(_ports, 'Capture ports', hint: '80, 443, 8080, 8443', multiline: false,
+      _field(_ports, 'Capture ports', hint: '80, 443, 8080, 8443', multiline: false, joiner: ', ',
+        validator: (item) { final port = int.tryParse(item) ?? -1; return port >= 1 && port <= 65535 ? null : context.tr('Ports must be between 1 and 65535'); },
         footer: 'Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. Port filters use the connection destination.'),
     ]));
   }
@@ -121,7 +130,12 @@ class _CaptureAppsPageState extends State<CaptureAppsPage> {
   @override Widget build(BuildContext context) => Scaffold(title: context.tr('Capture applications'),
     searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query.toLowerCase())),
     confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Done'), onPressed: () => Navigator.pop(context, _selected.toList()..sort())),
-    iconActions: [IconButtonData(glyph: AppGlyphs.clearAll, tooltip: context.tr('All applications'), onPressed: () => setState(_selected.clear))],
+    iconActions: [
+      IconButtonData(glyph: AppGlyphs.compose, tooltip: context.tr('Quick edit'), onPressed: () => openListQuickEdit(context,
+        title: context.tr('Capture applications'), items: _selected.toList(), hint: 'com.example.app',
+        onChanged: (items) { if (mounted) setState(() => _selected..clear()..addAll(items)); })),
+      IconButtonData(glyph: AppGlyphs.clearAll, tooltip: context.tr('All applications'), onPressed: () => setState(_selected.clear)),
+    ],
     body: FutureBuilder<List<Json>>(future: _apps, builder: (context, snapshot) {
       final apps = [...?snapshot.data];
       final installed = apps.map((app) => app['package']).toSet();

@@ -1,5 +1,5 @@
 import '../widgets.dart';
-import 'connections.dart';
+import 'resources.dart';
 import 'requests.dart';
 import 'logs.dart';
 import 'settings.dart';
@@ -12,34 +12,31 @@ class ToolsPage extends StatelessWidget {
   const ToolsPage({super.key});
   @override Widget build(BuildContext context) {
     final box = context.box;
+    // Requests and Logs sit in the sidebar at laptop and desktop widths (tools.dart's "more" items).
+    final sidebar = !ViewScope.isMobileOf(context);
     return BoxPage(title: 'Tools', children: [
       generateSection(items: [
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.filter), title: Text(context.tr('Requests')), widget: const RequestsPage()),
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.connections), title: Text(context.tr('Connections')), widget: const ConnectionsPage()),
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.logs), title: Text(context.tr('Logs')), widget: const LogsPage()),
+        if (!sidebar) ListItem.open(leading: const GlyphIcon(AppGlyphs.requests), title: Text(context.tr('Requests')), widget: const RequestsPage()),
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.resources), title: Text(context.tr('Resources')), widget: const ResourcesPage()),
+        if (!sidebar) ListItem.open(leading: const GlyphIcon(AppGlyphs.logs), title: Text(context.tr('Logs')), widget: const LogsPage()),
+        if (box.running) for (final kind in ['tailscale', 'openvpn', 'openconnect', 'usbip'])
+          if (rows(box.toolState[kind]).isNotEmpty)
+            ListItem.open(leading: const GlyphIcon(AppGlyphs.devices), title: Text(endpointName(kind)), widget: EndpointsPage(kind: kind)),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.code), title: Text(context.tr('Terminal')), widget: const TerminalPage()),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.proxies), title: Text(context.tr('Remote control')), widget: const RemotePage()),
       ]),
+      // tools.dart _getSettingList: theme, access, backup, general (fk-box follows the system language).
       generateSection(title: context.tr('Settings'), items: [
         ListItem.open(leading: const GlyphIcon(AppGlyphs.paintbrush), title: Text(context.tr('Appearance')), widget: const AppearancePage()),
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.settings), title: Text(context.tr('General')), widget: const GeneralSettingsPage()),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.appsList), title: Text(context.tr('Access control')), widget: const AccessPage()),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.cloudSync), title: Text(context.tr('Backup and restore')), widget: const BackupPage()),
-      ]),
-      generateSection(title: context.tr('Network diagnostics'), items: [
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.speed), title: Text(context.tr('Network quality')), widget: const DiagnosticsPage(quality: true)),
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.proxies), title: Text(context.tr('STUN test')), widget: const DiagnosticsPage(quality: false)),
-      ]),
-      generateSection(title: context.tr('Reports'), items: [
-        for (final kind in ['crash', 'oom', 'power'])
-          ListItem.open(leading: const GlyphIcon(AppGlyphs.profiles), title: Text(context.tr(reportTitle(kind))), widget: ReportsPage(kind: kind)),
-      ]),
-      if (box.running) generateSection(title: context.tr('Endpoints'), items: [
-        for (final kind in ['tailscale', 'openvpn', 'openconnect', 'usbip'])
-          if (rows(box.toolState[kind]).isNotEmpty)
-            ListItem.open(leading: const GlyphIcon(AppGlyphs.devices), title: Text(endpointName(kind)), widget: EndpointsPage(kind: kind)),
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.settings), title: Text(context.tr('General')), widget: const GeneralSettingsPage()),
       ]),
       generateSection(title: context.tr('Other'), items: [
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.speed), title: Text(context.tr('Network quality')), widget: const DiagnosticsPage(quality: true)),
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.proxies), title: Text(context.tr('STUN test')), widget: const DiagnosticsPage(quality: false)),
+        for (final kind in ['crash', 'oom', 'power'])
+          ListItem.open(leading: const GlyphIcon(AppGlyphs.profiles), title: Text(context.tr(reportTitle(kind))), widget: ReportsPage(kind: kind)),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.info), title: Text(context.tr('About')), widget: const AboutPage()),
       ]),
     ]);

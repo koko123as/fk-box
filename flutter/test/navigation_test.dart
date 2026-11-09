@@ -6,7 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:b_box_ui/box.dart';
 import 'package:b_box_ui/main.dart';
 import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/pages/connections.dart';
+import 'package:b_box_ui/pages/requests.dart';
 import 'package:b_box_ui/pages/logs.dart';
 import 'package:b_box_ui/pages/settings.dart';
 import 'package:b_box_ui/pages/diagnostics.dart';
@@ -99,7 +99,7 @@ void main() {
       ]}});
       await tester.pumpAndSettle();
       for (final (label, page) in <(String, Widget)>[
-        ('Connections', const ConnectionsPage()), ('Logs', const LogsPage()),
+        ('Connections', const RequestsPage(initialFeed: 'live')), ('Logs', const LogsPage()),
         ('Appearance', const AppearancePage()), ('Access', const AccessPage()),
         ('Service', const ServiceSettingsPage()), ('Core', const CoreSettingsPage()),
         ('Remote', const RemotePage()), ('Backup', const BackupPage()),
