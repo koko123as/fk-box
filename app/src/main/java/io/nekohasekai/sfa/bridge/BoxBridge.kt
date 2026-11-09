@@ -243,17 +243,26 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         dashboardDetails.refreshNetwork()
     }
 
-    suspend fun ready(): Map<String, Any?> = mapOf(
-        "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
-        "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
-        "systemAccentColor" to systemAccentColor(),
-        "dashboard" to dashboard.uiState.value.toWire(),
-        "profiles" to withContext(Dispatchers.IO) { profiles.list() },
-        "settings" to settings(), "preferences" to readPreferences(),
-        "lan" to dashboardDetails.refreshNetwork(),
-        "tools" to toolBridge.snapshot(), "diagnostics" to toolBridge.diagnostics(),
-        "intent" to activity.takeIntent(),
-    )
+    /**
+     * The first snapshot behind the splash. Profiles (Room) and the settings and
+     * preferences reads are independent, so they run concurrently; the LAN scan
+     * is left to the intranet card's own visibility polling.
+     */
+    suspend fun ready(): Map<String, Any?> = coroutineScope {
+        val profileList = async(Dispatchers.IO) { profiles.list() }
+        val stored = async(Dispatchers.IO) { settings() to readPreferences() }
+        val (settingsValue, preferencesValue) = stored.await()
+        mapOf(
+            "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
+            "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
+            "systemAccentColor" to systemAccentColor(),
+            "dashboard" to dashboard.uiState.value.toWire(),
+            "profiles" to profileList.await(),
+            "settings" to settingsValue, "preferences" to preferencesValue,
+            "tools" to toolBridge.snapshot(), "diagnostics" to toolBridge.diagnostics(),
+            "intent" to activity.takeIntent(),
+        )
+    }
 
     fun startService() {
         require(!CommandTarget.isRemote) { "Exit remote control before starting the local service" }

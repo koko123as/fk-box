@@ -111,6 +111,7 @@ private class StatusModel(private val box: BoxController, private val scope: Cor
     var ipDue by mutableStateOf(true)
     var detailsRevision by mutableIntStateOf(0)
     private var stamp: String? = null
+    private var lanStamp: Any? = null
     private var probe: RoutedIpProbe? = null
     private var qualityExpiry: Job? = null
     private var cooldown: Job? = null
@@ -130,8 +131,12 @@ private class StatusModel(private val box: BoxController, private val scope: Cor
         foreground = false
     }
 
-    fun syncRoute(next: String) {
-        if (stamp == next) return
+    fun syncRoute(next: String, lan: Any?) {
+        // The LAN snapshot is loaded by its own polling after startup; its first
+        // arrival is not a network change, so it doesn't restart the IP check.
+        val previousLan = lanStamp
+        lanStamp = lan
+        if (stamp == next && (previousLan == lan || previousLan == null)) return
         val changed = stamp != null
         stamp = next
         generation++
@@ -297,8 +302,9 @@ fun StatusPanel(box: BoxController) {
     } else {
         ""
     }
-    val stamp = "${box.dashboard["status"]}:${box.running}:${box.remote}:${box.dashboard["remote"]}:$route:${box.lan["stamp"]}:$addresses"
-    LaunchedEffect(stamp) { model.syncRoute(stamp) }
+    val stamp = "${box.dashboard["status"]}:${box.running}:${box.remote}:${box.dashboard["remote"]}:$route:$addresses"
+    val lanStamp = box.lan["stamp"]
+    LaunchedEffect(stamp, lanStamp) { model.syncRoute(stamp, lanStamp) }
     LaunchedEffect(box.transitioning, box.remote) { model.scheduleRefresh() }
 
     val status = if (box.transitioning) box.dashboard["status"].toString() else if (box.running) "Running" else "Not running"
