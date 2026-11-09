@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.ui
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.aspectRatio
@@ -42,7 +44,7 @@ private fun encode(data: String): ByteMatrix? = try {
 fun QrCodeView(data: String, size: Dp = 240.dp) {
     val matrix = remember(data) { encode(data) }
     if (matrix == null) {
-        SelectionArea { Text(data, textAlign = TextAlign.Center) }
+        SelectionContainer { Text(data, textAlign = TextAlign.Center) }
         return
     }
     Canvas(
@@ -50,7 +52,7 @@ fun QrCodeView(data: String, size: Dp = 240.dp) {
             .widthIn(max = size)
             .fillMaxWidth()
             .aspectRatio(1f)
-            .background(Color.White, AppShape.md)
+            .background(Color.White, AppShape.card)
             .semantics { contentDescription = data },
     ) {
         val count = matrix.width

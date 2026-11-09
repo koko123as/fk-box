@@ -1,9 +1,7 @@
 package io.nekohasekai.sfa.compose.theme
 
 import android.app.Activity
-import androidx.compose.foundation.LocalIndication
 import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
@@ -20,9 +18,8 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.Density
 import androidx.core.view.WindowCompat
-import io.nekohasekai.sfa.compose.ui.DefaultPressIndication
 
-/** flutter/lib/ui/surface.dart: the page, card, block and inset levels. */
+/** The page, card, block and inset surface levels, on Material 3 surface containers. */
 enum class SurfaceLevel {
     Page,
     Card,
@@ -37,14 +34,14 @@ enum class SurfaceLevel {
     }
 
     fun colorOf(scheme: BoxScheme): Color = when (this) {
-        Page -> if (scheme.dark) scheme.surface else scheme.surfaceContainer
-        Card -> if (scheme.dark) scheme.surfaceContainer else scheme.surfaceBright
-        Block -> if (scheme.dark) scheme.surfaceContainerHigh else scheme.surfaceContainer
+        Page -> scheme.surface
+        Card -> scheme.surfaceContainer
+        Block -> scheme.surfaceContainerHigh
         Inset -> scheme.surfaceContainerHighest
     }
 
     companion object {
-        fun floatingOf(scheme: BoxScheme): SurfaceLevel = if (scheme.dark) Block else Card
+        fun floatingOf(@Suppress("UNUSED_PARAMETER") scheme: BoxScheme): SurfaceLevel = Block
     }
 }
 
@@ -59,9 +56,9 @@ object BoxTheme {
 }
 
 /**
- * The app theme from main.dart: seeded scheme, superellipse shapes, the
- * Dynamic Type scale and the clamped text scale; also Material 3's own scheme
- * for the stock components (snackbar, navigation rail and bar).
+ * The app theme: the seeded scheme as Material 3's colour scheme, the stock
+ * Material 3 type scale in the chosen font, the clamped text scale and the
+ * system ripple.
  */
 @Composable
 fun Theme(
@@ -80,7 +77,7 @@ fun Theme(
                 secondaryContainer = scheme.secondaryContainer, onSecondaryContainer = scheme.onSecondaryContainer,
                 tertiary = scheme.tertiary, onTertiary = scheme.onTertiary,
                 tertiaryContainer = scheme.tertiaryContainer, onTertiaryContainer = scheme.onTertiaryContainer,
-                background = SurfaceLevel.Page.colorOf(scheme), onBackground = scheme.onSurface,
+                background = scheme.surface, onBackground = scheme.onSurface,
                 surface = scheme.surface, onSurface = scheme.onSurface,
                 surfaceVariant = scheme.surfaceContainerHighest, onSurfaceVariant = scheme.onSurfaceVariant,
                 surfaceTint = scheme.primary,
@@ -102,7 +99,7 @@ fun Theme(
                 secondaryContainer = scheme.secondaryContainer, onSecondaryContainer = scheme.onSecondaryContainer,
                 tertiary = scheme.tertiary, onTertiary = scheme.onTertiary,
                 tertiaryContainer = scheme.tertiaryContainer, onTertiaryContainer = scheme.onTertiaryContainer,
-                background = SurfaceLevel.Page.colorOf(scheme), onBackground = scheme.onSurface,
+                background = scheme.surface, onBackground = scheme.onSurface,
                 surface = scheme.surface, onSurface = scheme.onSurface,
                 surfaceVariant = scheme.surfaceContainerHighest, onSurfaceVariant = scheme.onSurfaceVariant,
                 surfaceTint = scheme.primary,
@@ -117,25 +114,7 @@ fun Theme(
             )
         }
     }
-    val typography = remember(fontFamily) {
-        Typography(
-            displayLarge = AppTextStyle.LargeTitle.style(fontFamily),
-            displayMedium = AppTextStyle.LargeTitle.style(fontFamily),
-            displaySmall = AppTextStyle.LargeTitle.style(fontFamily),
-            headlineLarge = AppTextStyle.LargeTitle.style(fontFamily),
-            headlineMedium = AppTextStyle.Title1.style(fontFamily),
-            headlineSmall = AppTextStyle.Title2.style(fontFamily),
-            titleLarge = AppTextStyle.Title3.style(fontFamily),
-            titleMedium = AppTextStyle.Headline.style(fontFamily),
-            titleSmall = AppTextStyle.Subheadline.style(fontFamily, emphasized = true),
-            bodyLarge = AppTextStyle.Body.style(fontFamily),
-            bodyMedium = AppTextStyle.Subheadline.style(fontFamily),
-            bodySmall = AppTextStyle.Footnote.style(fontFamily),
-            labelLarge = AppTextStyle.Subheadline.style(fontFamily, emphasized = true),
-            labelMedium = AppTextStyle.Caption1.style(fontFamily, emphasized = true),
-            labelSmall = AppTextStyle.Caption2.style(fontFamily, emphasized = true),
-        )
-    }
+    val typography = remember(fontFamily) { Typography().withFontFamily(fontFamily) }
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -153,14 +132,28 @@ fun Theme(
         LocalDensity provides Density(density.density, textScale),
     ) {
         MaterialTheme(colorScheme = materialScheme, typography = typography) {
-            // prism_ui press_surface.dart replaces the Material ripple: PressSurface ink for
-            // anything clickable that names no indication; Material components draw none.
-            CompositionLocalProvider(
-                LocalContentColor provides scheme.onSurface,
-                LocalIndication provides DefaultPressIndication,
-                LocalRippleConfiguration provides null,
-                content = content,
-            )
+            CompositionLocalProvider(LocalContentColor provides scheme.onSurface, content = content)
         }
     }
+}
+
+private fun Typography.withFontFamily(family: FontFamily?): Typography {
+    if (family == null) return this
+    return Typography(
+        displayLarge = displayLarge.copy(fontFamily = family),
+        displayMedium = displayMedium.copy(fontFamily = family),
+        displaySmall = displaySmall.copy(fontFamily = family),
+        headlineLarge = headlineLarge.copy(fontFamily = family),
+        headlineMedium = headlineMedium.copy(fontFamily = family),
+        headlineSmall = headlineSmall.copy(fontFamily = family),
+        titleLarge = titleLarge.copy(fontFamily = family),
+        titleMedium = titleMedium.copy(fontFamily = family),
+        titleSmall = titleSmall.copy(fontFamily = family),
+        bodyLarge = bodyLarge.copy(fontFamily = family),
+        bodyMedium = bodyMedium.copy(fontFamily = family),
+        bodySmall = bodySmall.copy(fontFamily = family),
+        labelLarge = labelLarge.copy(fontFamily = family),
+        labelMedium = labelMedium.copy(fontFamily = family),
+        labelSmall = labelSmall.copy(fontFamily = family),
+    )
 }

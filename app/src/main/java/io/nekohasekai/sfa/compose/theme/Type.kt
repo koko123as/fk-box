@@ -3,38 +3,49 @@ package io.nekohasekai.sfa.compose.theme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.sp
 import io.nekohasekai.sfa.R
 
 /**
- * flutter/lib/ui/typography.dart: Apple's Dynamic Type scale at its default
- * size, a dp per point, plus display and pageTitle.
+ * The text styles the pages name, mapped onto the stock Material 3 type scale
+ * (size, line height and weight of the M3 role each one stands for).
  */
 enum class AppTextStyle(
     val size: Float,
     val leading: Float,
     val weight: FontWeight = FontWeight.W400,
-    val emphasizedWeight: FontWeight = FontWeight.W600,
+    val emphasizedWeight: FontWeight = FontWeight.W500,
 ) {
-    Display(40f, 44f, emphasizedWeight = FontWeight.W700),
-    LargeTitle(34f, 41f, emphasizedWeight = FontWeight.W700),
-    Title1(28f, 34f, emphasizedWeight = FontWeight.W700),
-    PageTitle(24f, 30f, weight = FontWeight.W600, emphasizedWeight = FontWeight.W700),
-    Title2(22f, 28f, emphasizedWeight = FontWeight.W700),
-    Title3(20f, 25f),
-    Headline(17f, 22f, weight = FontWeight.W600),
-    Body(17f, 22f),
-    Callout(16f, 21f),
-    Subheadline(15f, 20f),
-    Footnote(13f, 18f),
+    /** displaySmall */
+    Display(36f, 44f),
+    /** headlineLarge */
+    LargeTitle(32f, 40f),
+    /** headlineMedium */
+    Title1(28f, 36f),
+    /** titleLarge */
+    PageTitle(22f, 28f),
+    /** headlineSmall */
+    Title2(24f, 32f),
+    /** titleLarge */
+    Title3(22f, 28f),
+    /** titleMedium */
+    Headline(16f, 24f, weight = FontWeight.W500, emphasizedWeight = FontWeight.W600),
+    /** bodyLarge */
+    Body(16f, 24f),
+    /** bodyLarge */
+    Callout(16f, 24f),
+    /** bodyMedium */
+    Subheadline(14f, 20f),
+    /** bodySmall */
+    Footnote(12f, 16f),
+    /** labelMedium */
     Caption1(12f, 16f),
-    Caption2(11f, 13f),
+    /** labelSmall */
+    Caption2(11f, 16f),
     ;
 
     @Composable
@@ -46,36 +57,16 @@ enum class AppTextStyle(
         fontSize = size.sp,
         lineHeight = leading.sp,
         fontWeight = if (emphasized) emphasizedWeight else weight,
-        letterSpacing = 0.sp,
-        // Flutter's TextStyle.height spreads the leading evenly and keeps no font padding.
-        lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-        platformStyle = PlatformTextStyle(includeFontPadding = false),
     )
-
-    companion object {
-        /** For text sized to the shape it marks, such as a letter in an icon. */
-        @Composable
-        @ReadOnlyComposable
-        fun custom(size: Float, leading: Float, weight: FontWeight = FontWeight.W400): TextStyle =
-            TextStyle(
-                fontFamily = LocalAppFontFamily.current,
-                fontSize = size.sp,
-                lineHeight = leading.sp,
-                fontWeight = weight,
-                letterSpacing = 0.sp,
-                lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
-                platformStyle = PlatformTextStyle(includeFontPadding = false),
-            )
-    }
 }
 
-/** text_style.dart's toTabular. */
+/** Tabular figures, for numbers that update in place. */
 val TextStyle.tabular: TextStyle get() = copy(fontFeatureSettings = "tnum")
 
-/** text_style.dart's toJetBrainsMono. */
+/** The monospaced variant of a style. */
 val TextStyle.jetBrainsMono: TextStyle get() = copy(fontFamily = JetBrainsMono)
 
-/** The bundled flutter/assets/fonts/JetBrainsMono-Regular.ttf. */
+/** The bundled JetBrains Mono, for code and terminal text. */
 val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono_regular))
 
 /** The appearance preference's font family, or the platform default. */

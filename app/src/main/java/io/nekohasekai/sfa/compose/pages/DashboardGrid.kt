@@ -49,13 +49,13 @@ import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.alphaBlend
 import io.nekohasekai.sfa.compose.theme.tabular
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPanel
 import io.nekohasekai.sfa.compose.ui.ChipTone
 import io.nekohasekai.sfa.compose.ui.DashboardChip
 import io.nekohasekai.sfa.compose.ui.DashboardDensity
-import io.nekohasekai.sfa.compose.ui.GlyphButton
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIconButton
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.LineChart
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
 import io.nekohasekai.sfa.compose.ui.LocalDashboardDensity
@@ -201,7 +201,7 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
             )
             Column(Modifier.padding(horizontal = padX, vertical = padY)) {
                 Row(Modifier.height((24 * scale).dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    GlyphIcon(if (upload) AppGlyphs.arrowUp else AppGlyphs.arrowDown, size = 18.dp, color = if (upload) scheme.onSurfaceVariant else scheme.primary)
+                    AppIcon(if (upload) AppIcons.arrowUp else AppIcons.arrowDown, size = 18.dp, color = if (upload) scheme.onSurfaceVariant else scheme.primary)
                     Text(tr(if (upload) "Upload" else "Download"), maxLines = 1, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
                     Text(
                         "${tr("Peak")} ${bytes(peak)}/s",
@@ -248,12 +248,12 @@ private fun OutboundModeBar(box: BoxController) {
     val modes = (box.dashboard["modes"] as? List<*>).orEmpty().filterIsInstance<String>()
     val selected = (box.dashboard["mode"] as? String ?: "").lowercase()
     val labels = mapOf("rule" to "Rule", "global" to "Global", "direct" to "Direct")
-    val glyphs = mapOf("rule" to AppGlyphs.rules, "global" to AppGlyphs.proxies, "direct" to AppGlyphs.target)
+    val icons = mapOf("rule" to AppIcons.rules, "global" to AppIcons.proxies, "direct" to AppIcons.target)
     BoxPanel(padding = PaddingValues(start = dashboardCardPadding(density).first, top = inset, end = inset, bottom = inset)) {
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val titleMax = maxWidth / 4
             Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                GlyphIcon(AppGlyphs.split, size = 18.dp, color = scheme.onSurfaceVariant)
+                AppIcon(AppIcons.split, size = 18.dp, color = scheme.onSurfaceVariant)
                 Text(
                     tr("Outbound mode"),
                     Modifier.widthIn(max = titleMax),
@@ -267,17 +267,13 @@ private fun OutboundModeBar(box: BoxController) {
                         val label = tr(labels[key] ?: mode)
                         ConnectedButton(
                             selected = key == selected,
-                            first = index == 0,
-                            last = index == modes.lastIndex,
-                            outer = outer,
-                            inner = 10f,
                             background = SurfaceLevel.Block.colorOf(scheme),
                             label = label,
                             onTap = { if (key != selected) box.launchAct { setMode(mode) } },
                             modifier = Modifier.weight(1f).fillMaxHeight(),
                         ) { foreground ->
                             Row(horizontalArrangement = Arrangement.spacedBy(6.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
-                                GlyphIcon(glyphs[key] ?: AppGlyphs.split, size = 18.dp, color = foreground)
+                                AppIcon(icons[key] ?: AppIcons.split, size = 18.dp, color = foreground)
                                 Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = foreground))
                             }
                         }
@@ -311,7 +307,7 @@ internal fun ConnectionStatsCard(box: BoxController) {
     val closed = box.connections.count { (it["closedAt"].asDouble() ?: 0.0) > 0 }
     val live = box.connections.size - closed
     val inset = 8.dp
-    val shape = AppShape.all(dashboardCardRadius(density) - inset.value)
+    val shape = AppShape.card
     BoxPanel(padding = PaddingValues(inset)) {
         Row(Modifier.fillMaxWidth().then(if (density.isDesktop) Modifier.fillMaxHeight() else Modifier)) {
             StatCell(live, "Live connections", shape) { navigator?.openForm { RequestsPage(box, initialFeed = "live") } }
@@ -351,12 +347,12 @@ private fun GroupsHeader(box: BoxController, count: Boolean) {
     val timeout = groups.flatMap { rows(it["items"]) }
         .filter { (it["testedAt"].asDouble() ?: 0.0) > 0 && (it["delay"].asDouble() ?: 0.0) <= 0 }
         .map { it["tag"].toString() }.toSet()
-    PanelTitle("Proxy groups", AppGlyphs.layers, trailing = {
+    PanelTitle("Proxy groups", AppIcons.layers, trailing = {
         Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
             if (count && groups.isNotEmpty()) DashboardChip("${groups.size}")
             if (timeout.isNotEmpty()) DashboardChip("${tr("Timeout")} ${timeout.size}", tone = ChipTone.Warn)
             Box(Modifier.padding(start = 2.dp)) {
-                GlyphButton(AppGlyphs.chevronForward, tr("Proxy groups"), if (groups.isEmpty()) null else ({ navigator?.openForm { ProxiesPage(box) } }), size = 32.dp, iconSize = 18.dp)
+                AppIconButton(AppIcons.chevronForward, tr("Proxy groups"), if (groups.isEmpty()) null else ({ navigator?.openForm { ProxiesPage(box) } }), size = 32.dp, iconSize = 18.dp)
             }
         }
     })
@@ -438,7 +434,7 @@ private fun ProxyGroupsCard(box: BoxController) {
                     ) {
                         items(groups, key = { it["tag"].toString() }) { group ->
                             val tag = group["tag"].toString()
-                            val shape = AppShape.all(20f)
+                            val shape = AppShape.card
                             Row(
                                 Modifier.fillMaxWidth().height(tileHeight).clip(shape).background(SurfaceLevel.Block.colorOf(scheme))
                                     .clickable { navigator?.openForm { ProxiesPage(box) } }.padding(blockInset),
@@ -446,7 +442,7 @@ private fun ProxyGroupsCard(box: BoxController) {
                                 verticalAlignment = Alignment.CenterVertically,
                             ) {
                                 val icon = tileHeight - blockInset * 2
-                                Box(Modifier.size(icon).background(SurfaceLevel.Inset.colorOf(scheme), AppShape.all(14f)), contentAlignment = Alignment.Center) {
+                                Box(Modifier.size(icon).background(SurfaceLevel.Inset.colorOf(scheme), AppShape.card), contentAlignment = Alignment.Center) {
                                     val letters = tag.codePoints().limit(2).toArray().let { String(it, 0, it.size) }.uppercase()
                                     Text(letters, maxLines = 1, style = AppTextStyle.Caption1.of(true).copy(color = scheme.onSurfaceVariant))
                                 }

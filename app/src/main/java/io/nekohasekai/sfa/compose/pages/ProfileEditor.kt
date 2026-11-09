@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -63,7 +64,7 @@ import io.nekohasekai.sfa.compose.theme.BoxScheme
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.JetBrainsMono
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
@@ -71,7 +72,7 @@ import io.nekohasekai.sfa.compose.ui.DetailRows
 import io.nekohasekai.sfa.compose.ui.EmojiText
 import io.nekohasekai.sfa.compose.ui.EmptyState
 import io.nekohasekai.sfa.compose.ui.ErrorState
-import io.nekohasekai.sfa.compose.ui.GlyphButton
+import io.nekohasekai.sfa.compose.ui.AppIconButton
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ListItem
 import androidx.compose.ui.text.style.TextOverflow
@@ -109,8 +110,8 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
     BoxPage(
         "Edit",
         actions = listOfNotNull(
-            IconAction(AppGlyphs.edit, tr("Edit"), { navigator?.openForm { ProfileForm(box, p) } }),
-            if (p["remote"] == true) IconAction(AppGlyphs.sync, tr("Update"), { box.launchAct { updateProfile(p["id"].asLong()) } }) else null,
+            IconAction(AppIcons.edit, tr("Edit"), { navigator?.openForm { ProfileForm(box, p) } }),
+            if (p["remote"] == true) IconAction(AppIcons.sync, tr("Update"), { box.launchAct { updateProfile(p["id"].asLong()) } }) else null,
         ),
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 12.dp)) {
@@ -134,9 +135,9 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
                 add { position ->
                     ListItem(
                         title = { Text(tr("URL")) },
-                        subtitle = { SelectionArea { Text(p["url"].toString()) } },
+                        subtitle = { SelectionContainer { Text(p["url"].toString()) } },
                         trailing = {
-                            GlyphButton(AppGlyphs.copy, tr("Copy"), {
+                            AppIconButton(AppIcons.copy, tr("Copy"), {
                                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                                 clipboard.setPrimaryClip(ClipData.newPlainText(null, p["url"].toString()))
                             })
@@ -166,9 +167,9 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
         val structured = p.runsSingBox()
         Section(count = if (structured) 2 else 1) { index, position ->
             if (structured && index == 0) {
-                ListItemOpen(tr("Advanced configuration"), position, leading = AppGlyphs.customize) { ProfileConfigurationPage(box, p) }
+                ListItemOpen(tr("Advanced configuration"), position, leading = AppIcons.customize) { ProfileConfigurationPage(box, p) }
             } else {
-                ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) { ProfileEditor(box, p) }
+                ListItemOpen(tr("Open configuration"), position, leading = AppIcons.code) { ProfileEditor(box, p) }
             }
         }
     }
@@ -407,14 +408,14 @@ fun ProfileEditor(box: BoxController, profile: Json) {
         CommonScaffold(
             title = profile["name"].toString() + if (dirty) " •" else "",
             loading = busy || (original == null && error == null),
-            confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (busy || original == null) null else ({ save() })),
+            confirmationAction = IconAction(AppIcons.check, tr("Save"), if (busy || original == null) null else ({ save() })),
             iconActions = listOf(
-                IconAction(AppGlyphs.refresh, tr("Reload"), if (busy) null else ({ load(confirmDiscard = true) })),
-                IconAction(AppGlyphs.code, tr("Format"), if (busy || original == null) null else ({ check(format = true) })),
-                IconAction(AppGlyphs.verified, tr("Validate"), if (busy || original == null) null else ({ check() })),
-                IconAction(AppGlyphs.search, tr("Search"), { search = !search }),
-                IconAction(AppGlyphs.undo, tr("Undo"), if (busy) null else ({ history.undo(text)?.let { text = it } })),
-                IconAction(AppGlyphs.redo, tr("Redo"), if (busy) null else ({ history.redo(text)?.let { text = it } })),
+                IconAction(AppIcons.refresh, tr("Reload"), if (busy) null else ({ load(confirmDiscard = true) })),
+                IconAction(AppIcons.code, tr("Format"), if (busy || original == null) null else ({ check(format = true) })),
+                IconAction(AppIcons.verified, tr("Validate"), if (busy || original == null) null else ({ check() })),
+                IconAction(AppIcons.search, tr("Search"), { search = !search }),
+                IconAction(AppIcons.undo, tr("Undo"), if (busy) null else ({ history.undo(text)?.let { text = it } })),
+                IconAction(AppIcons.redo, tr("Redo"), if (busy) null else ({ history.redo(text)?.let { text = it } })),
             ),
         ) {
             Column(Modifier.fillMaxSize().padding(top = appBarInset()).navigationBarsPadding()) {
@@ -424,13 +425,13 @@ fun ProfileEditor(box: BoxController, profile: Json) {
                             Box(Modifier.weight(1f)) {
                                 SearchField(find, { find = it }, fill = SurfaceLevel.Card.colorOf(scheme), onSubmitted = { nextMatch() })
                             }
-                            GlyphButton(AppGlyphs.arrowDown, tr("Search"), { nextMatch() })
+                            AppIconButton(AppIcons.arrowDown, tr("Search"), { nextMatch() })
                         }
                     }
                 }
                 if (error != null) {
                     Box(Modifier.fillMaxWidth().background(scheme.errorContainer).padding(12.dp)) {
-                        SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.onErrorContainer)) }
+                        SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.onErrorContainer)) }
                     }
                 }
                 if (profile["remote"] == true) {

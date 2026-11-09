@@ -1,5 +1,9 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.foundation.background
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -11,6 +15,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -62,21 +69,18 @@ import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.alphaBlend
 import io.nekohasekai.sfa.compose.theme.tabular
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.BoxPanel
 import io.nekohasekai.sfa.compose.ui.ChipTone
 import io.nekohasekai.sfa.compose.ui.DashboardChip
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ListItem
 import io.nekohasekai.sfa.compose.ui.LocalBoxNavigator
-import io.nekohasekai.sfa.compose.ui.MaterialShapes
 import io.nekohasekai.sfa.compose.ui.Section
-import io.nekohasekai.sfa.compose.ui.ShapeBadge
 import io.nekohasekai.sfa.compose.ui.SkeletonPill
 import io.nekohasekai.sfa.compose.ui.SkeletonText
-import io.nekohasekai.sfa.compose.ui.elasticPress
 import io.nekohasekai.sfa.compose.ui.semanticsLabel
 import io.nekohasekai.sfa.compose.ui.tr
 import kotlinx.coroutines.CancellationException
@@ -332,25 +336,8 @@ fun StatusPanel(box: BoxController) {
         io.nekohasekai.sfa.compose.ui.DashboardDensity.Compact -> 100.dp
         io.nekohasekai.sfa.compose.ui.DashboardDensity.Mobile -> 88.dp
     }
-    val badgeProgress by animateFloatAsState(if (box.running) 1f else 0f, tween(450, easing = EaseOutBack), label = "badge")
-
-    BoxPanel(padding = PaddingValues(0.dp), clip = false, modifier = Modifier.semanticsLabel(tr("Status"))) {
+    BoxPanel(padding = PaddingValues(0.dp), modifier = Modifier.semanticsLabel(tr("Status"))) {
         Box(Modifier.fillMaxWidth().then(if (desktop) Modifier.fillMaxHeight() else Modifier)) {
-            // The background cookie is decoration; the minimal style leaves it out.
-            if (io.nekohasekai.sfa.compose.theme.LocalAppearance.current.decorations) Box(Modifier.matchParentSize().clip(io.nekohasekai.sfa.compose.ui.panelShape())) {
-                Box(Modifier.align(Alignment.TopEnd).wrapContentSize(Alignment.TopEnd, unbounded = true).offset(x = if (desktop) 64.dp else 60.dp, y = if (density == io.nekohasekai.sfa.compose.ui.DashboardDensity.Standard) (-87).dp else if (compact) (-75).dp else (-66).dp)) {
-                    ShapeBadge(
-                        MaterialShapes.Cookie12Sided,
-                        lerp(SurfaceLevel.Block.colorOf(scheme), alphaBlend(scheme.primary.copy(alpha = .1f), SurfaceLevel.Card.colorOf(scheme)), badgeProgress.coerceIn(0f, 1f)),
-                        if (density == io.nekohasekai.sfa.compose.ui.DashboardDensity.Standard) 290.dp else if (compact) 250.dp else 240.dp,
-                        Modifier.graphicsLayer {
-                            rotationZ = (180f / 6f) * badgeProgress
-                            scaleX = 1 + .12f * badgeProgress
-                            scaleY = 1 + .12f * badgeProgress
-                        },
-                    )
-                }
-            }
             Row(
                 Modifier.fillMaxWidth().then(if (desktop) Modifier.fillMaxHeight() else Modifier)
                     .padding(start = padX, top = padY, end = if (desktop) padX else 16.dp, bottom = padY),
@@ -359,7 +346,7 @@ fun StatusPanel(box: BoxController) {
             ) {
                 Column(Modifier.weight(1f).then(if (desktop) Modifier.fillMaxHeight() else Modifier)) {
                     Row(Modifier.height((26 * scale).dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GlyphIcon(AppGlyphs.status, size = 18.dp, color = scheme.onSurfaceVariant)
+                        AppIcon(AppIcons.status, size = 18.dp, color = scheme.onSurfaceVariant)
                         Text(tr("Status"), Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
                         DashboardChip(tr(status), tone = if (box.running) ChipTone.Ok else ChipTone.Idle, dot = box.running)
                     }
@@ -377,9 +364,7 @@ fun StatusPanel(box: BoxController) {
                                 when {
                                     ip != null -> BasicText(
                                         ip,
-                                        Modifier.clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {
-                                            navigator?.openForm { EgressDetails(model) }
-                                        },
+                                        Modifier.clickable { navigator?.openForm { EgressDetails(model) } },
                                         style = ipStyle,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
@@ -440,7 +425,7 @@ fun StatusPanel(box: BoxController) {
                 }
                 Box(Modifier.width(buttonSlot), contentAlignment = Alignment.Center) {
                     if (box.remote) {
-                        GlyphIcon(AppGlyphs.proxies, size = 60.dp)
+                        AppIcon(AppIcons.proxies, size = 60.dp)
                     } else {
                         StartToggle(
                             size = buttonSize,
@@ -502,29 +487,19 @@ private fun RuntimeValue(startedAt: Long?) {
 private fun CountryBadge(country: String?, active: Boolean, checking: Boolean, onRefresh: (() -> Unit)?, size: androidx.compose.ui.unit.Dp = 48.dp) {
     val scheme = BoxTheme.scheme
     val color = if (active) scheme.onSurface else scheme.onSurfaceVariant
-    val turn = remember { Animatable(0f) }
-    LaunchedEffect(checking) {
-        if (checking) {
-            while (true) {
-                turn.animateTo(turn.value + 1f, tween(1500, easing = LinearEasing))
-            }
-        } else {
-            val rest = ceil(turn.value * 4) / 4
-            turn.animateTo(rest, tween(max(0, (1500 * (rest - turn.value)).toInt()), easing = LinearEasing))
-        }
-    }
     Box(
         Modifier
-            .elasticPress(onRefresh != null)
-            .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null, enabled = onRefresh != null) { onRefresh?.invoke() }
+            .size(size)
+            .clip(CircleShape)
+            .background(SurfaceLevel.Inset.colorOf(scheme))
+            .clickable(enabled = onRefresh != null) { onRefresh?.invoke() }
             .semanticsLabel(tr("Retry")),
+        contentAlignment = Alignment.Center,
     ) {
-        ShapeBadge(MaterialShapes.Clover4Leaf, SurfaceLevel.Inset.colorOf(scheme), size, rotation = (turn.value * 2 * PI).toFloat()) {
-            if (!country.isNullOrEmpty()) {
-                Text(country.uppercase(), maxLines = 1, style = AppTextStyle.Footnote.of(true).copy(color = color, letterSpacing = (.04f * AppTextStyle.Footnote.size).sp))
-            } else {
-                GlyphIcon(AppGlyphs.proxies, size = (size.value * .42f).dp, color = color)
-            }
+        when {
+            checking -> CommonCircleLoading(size = size * 0.5f, color = color)
+            !country.isNullOrEmpty() -> Text(country.uppercase(), maxLines = 1, style = AppTextStyle.Footnote.of(true).copy(color = color))
+            else -> AppIcon(AppIcons.proxies, size = (size.value * .42f).dp, color = color)
         }
     }
 }
@@ -541,7 +516,7 @@ private fun EgressDetails(model: StatusModel) {
     val revision = model.detailsRevision
     BoxPage(
         "Outbound IP",
-        actions = listOf(IconAction(AppGlyphs.copy, tr("Copy"), { (info["ip"] as? String)?.let { copyText(context, it) } })),
+        actions = listOf(IconAction(AppIcons.copy, tr("Copy"), { (info["ip"] as? String)?.let { copyText(context, it) } })),
     ) {
         val rowsMap = linkedMapOf<String, Any?>(
             "IP" to info["ip"], "Country" to info["country"], "Organization" to info["organization"],

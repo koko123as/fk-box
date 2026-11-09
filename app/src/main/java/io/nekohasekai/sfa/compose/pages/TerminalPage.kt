@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -18,7 +20,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -52,14 +53,14 @@ import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.JetBrainsMono
 import io.nekohasekai.sfa.compose.theme.tabular
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.BoxProgress
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
 import io.nekohasekai.sfa.compose.ui.EmptyState
 import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.FilledPillButton
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.LabeledField
@@ -73,7 +74,7 @@ import io.nekohasekai.sfa.compose.ui.SearchState
 import io.nekohasekai.sfa.compose.ui.Section
 import io.nekohasekai.sfa.compose.ui.SelectionCheck
 import io.nekohasekai.sfa.compose.ui.TextPillButton
-import io.nekohasekai.sfa.compose.ui.TrailingGlyph
+import io.nekohasekai.sfa.compose.ui.TrailingIcon
 import io.nekohasekai.sfa.compose.ui.appBarInset
 import io.nekohasekai.sfa.compose.ui.bottomInset
 import io.nekohasekai.sfa.compose.ui.contentTopPadding
@@ -149,9 +150,9 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
         title = if (prompt) "SSH · ${name ?: ""}" else activeSession?.get("name") as? String ?: tr("Terminal"),
         loading = loading || busy,
         iconActions = listOf(
-            IconAction(AppGlyphs.add, tr("New session"), { newSession() }),
-            IconAction(AppGlyphs.layers, tr("Sessions"), { navigator?.openForm { TerminalSessionsPage(box) } }),
-            IconAction(AppGlyphs.settings, tr("Ghostty settings"), { navigator?.pushPage({ TerminalSettingsPage(box) }) { settingsRevision++ } }),
+            IconAction(AppIcons.add, tr("New session"), { newSession() }),
+            IconAction(AppIcons.layers, tr("Sessions"), { navigator?.openForm { TerminalSessionsPage(box) } }),
+            IconAction(AppIcons.settings, tr("Ghostty settings"), { navigator?.pushPage({ TerminalSettingsPage(box) }) { settingsRevision++ } }),
         ),
     ) {
         Box(Modifier.fillMaxSize().padding(top = appBarInset()).navigationBarsPadding()) {
@@ -180,7 +181,7 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
                             color = if (progress["state"] == "ERROR") scheme.error else scheme.primary,
                         )
                     }
-                    activeSession["banner"]?.let { banner -> SelectionArea { Text(banner.toString(), Modifier.padding(12.dp)) } }
+                    activeSession["banner"]?.let { banner -> SelectionContainer { Text(banner.toString(), Modifier.padding(12.dp)) } }
                     Box(Modifier.weight(1f)) {
                         if (active) GhosttySurface(box, activeSession["id"] as String, settingsRevision)
                     }
@@ -270,7 +271,7 @@ private fun TerminalSessionsPage(box: BoxController) {
             emptyList()
         } else {
             listOf(
-                IconAction(AppGlyphs.copy, tr("Duplicate session"), {
+                IconAction(AppIcons.copy, tr("Duplicate session"), {
                     scope.launch { if (box.act { toolBridge.ssh.duplicate() }) navigator?.pop() }
                 }),
             )
@@ -285,11 +286,11 @@ private fun TerminalSessionsPage(box: BoxController) {
                     else -> "Disconnected"
                 }
                 ListItem(
-                    leading = { if (session["id"] == box.terminal["activeId"]) SelectionCheck() else GlyphIcon(AppGlyphs.code) },
+                    leading = { if (session["id"] == box.terminal["activeId"]) SelectionCheck() else AppIcon(AppIcons.code) },
                     title = { Text(session["name"].toString()) },
                     subtitle = { Text("${session["username"]}@${session["host"]} · ${tr(phase)}") },
                     trailing = {
-                        TrailingGlyph(AppGlyphs.close, tr("Close session")) {
+                        TrailingIcon(AppIcons.close, tr("Close session")) {
                             scope.launch {
                                 if (dialogs?.confirm("Close this SSH session?", action = "Close") == true) box.act { toolBridge.ssh.closeSession(session["id"] as? String) }
                             }
@@ -370,7 +371,7 @@ private fun TerminalSettingsPage(box: BoxController) {
         error?.let { ErrorState(it) { revision++ } }
         if (current != null) {
             Section(count = 1) { _, position ->
-                ListItemOpen(tr("Terminal preview"), position, leading = AppGlyphs.code) { TerminalPreviewPage(box) }
+                ListItemOpen(tr("Terminal preview"), position, leading = AppIcons.code) { TerminalPreviewPage(box) }
             }
             val customLabel = tr("Custom configuration")
             for (dark in listOf(false, true)) {
@@ -381,7 +382,7 @@ private fun TerminalSettingsPage(box: BoxController) {
                         0 -> ListItem(
                             title = { Text(tr("Theme")) },
                             subtitle = { Text(if (custom) customLabel else current[themeKey] as? String ?: "") },
-                            trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+                            trailing = { AppIcon(AppIcons.chevronForward) },
                             position = position,
                             onClick = { open { TerminalThemePage(box, dark) } },
                         )
@@ -390,7 +391,7 @@ private fun TerminalSettingsPage(box: BoxController) {
                         }))
                         else -> ListItem(
                             title = { Text(tr("Edit Ghostty configuration")) },
-                            trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+                            trailing = { AppIcon(AppIcons.chevronForward) },
                             position = position,
                             onClick = { open { TerminalConfigEditor(box, dark, current[if (dark) "darkConfig" else "lightConfig"] as? String ?: "") } },
                         )
@@ -409,7 +410,7 @@ private fun TerminalSettingsPage(box: BoxController) {
                         ListItem(
                             title = { Text(tr("Font family")) },
                             subtitle = { Text(if (path.isNotEmpty()) File(path).name else family.ifEmpty { "monospace" }) },
-                            trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+                            trailing = { AppIcon(AppIcons.chevronForward) },
                             position = position,
                             onClick = { open { TerminalFontPage(box) } },
                         )
@@ -418,9 +419,9 @@ private fun TerminalSettingsPage(box: BoxController) {
                         title = { Text(tr("Font size")) },
                         trailing = {
                             Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
-                                TrailingGlyph(AppGlyphs.remove, tr("Decrease"), if (saving || fontSize <= 8) null else ({ set("fontSize", fontSize - 1) }))
+                                TrailingIcon(AppIcons.remove, tr("Decrease"), if (saving || fontSize <= 8) null else ({ set("fontSize", fontSize - 1) }))
                                 Text("$fontSize", style = AppTextStyle.Body.of().tabular)
-                                TrailingGlyph(AppGlyphs.add, tr("Increase"), if (saving || fontSize >= 48) null else ({ set("fontSize", fontSize + 1) }))
+                                TrailingIcon(AppIcons.add, tr("Increase"), if (saving || fontSize >= 48) null else ({ set("fontSize", fontSize + 1) }))
                             }
                         },
                         position = position,
@@ -471,7 +472,7 @@ private fun TerminalThemePage(box: BoxController, dark: Boolean) {
                             title = { Text(theme["name"].toString()) },
                             subtitle = {
                                 Column(
-                                    Modifier.padding(top = 8.dp).fillMaxWidth().background(background, AppShape.md).padding(12.dp),
+                                    Modifier.padding(top = 8.dp).fillMaxWidth().background(background, AppShape.card).padding(12.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     Text("user@b-box ~\n❯ echo Ghostty", style = TextStyle(fontFamily = JetBrainsMono, color = foreground, fontSize = 12.sp))
@@ -523,7 +524,7 @@ private fun TerminalFontPage(box: BoxController) {
         "Font",
         loading = fonts == null && error == null,
         actions = listOf(
-            IconAction(AppGlyphs.add, tr("Import font"), {
+            IconAction(AppIcons.add, tr("Import font"), {
                 scope.launch {
                     box.act { importTerminalFont() }
                     revision++
@@ -554,7 +555,7 @@ private fun TerminalFontPage(box: BoxController) {
                 trailing = {
                     Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
                         if (settings?.get("fontPath") == path) SelectionCheck()
-                        TrailingGlyph(AppGlyphs.delete, tr("Delete")) {
+                        TrailingIcon(AppIcons.delete, tr("Delete")) {
                             scope.launch {
                                 if (dialogs?.confirm("Delete this font?") == true) {
                                     box.act { deleteTerminalFont(path as? String) }
@@ -582,7 +583,7 @@ private fun TerminalConfigEditor(box: BoxController, dark: Boolean, initial: Str
         CommonScaffold(
             title = tr(if (dark) "Dark configuration" else "Light configuration"),
             loading = saving,
-            confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+            confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
                 saving = true
                 scope.launch {
                     if (box.act { setTerminalSetting(if (dark) "darkConfig" else "lightConfig", text.text) }) {
@@ -593,8 +594,8 @@ private fun TerminalConfigEditor(box: BoxController, dark: Boolean, initial: Str
                 }
             })),
             iconActions = listOf(
-                IconAction(AppGlyphs.undo, tr("Undo"), { history.undo(text)?.let { text = it } }),
-                IconAction(AppGlyphs.redo, tr("Redo"), { history.redo(text)?.let { text = it } }),
+                IconAction(AppIcons.undo, tr("Undo"), { history.undo(text)?.let { text = it } }),
+                IconAction(AppIcons.redo, tr("Redo"), { history.redo(text)?.let { text = it } }),
             ),
         ) {
             val scheme = BoxTheme.scheme

@@ -1,8 +1,9 @@
 package io.nekohasekai.sfa.compose.ui
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.CubicBezierEasing
-import androidx.compose.animation.core.tween
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
+
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
@@ -28,29 +29,24 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
-import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import kotlinx.coroutines.launch
 
 /*
- * ReorderableListView with ReorderableDelayedDragStartListener (a long press
- * lifts the row) and a SortHandle (a drag on the handle lifts it at once),
- * decorated as effect.dart's commonProxyDecorator: the lifted row scales to
- * 1.02 on easeInOut and its own corners round to the full card radius.
+ * A reorderable column: a long press on a row, or a drag on its SortHandle,
+ * picks the row up; it follows the finger and swaps places with a neighbour
+ * once it passes half of it.
  */
 
-private val EaseInOut = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
-
-/** ProxyDecoratorProvider: how far the dragged row has lifted, 0–1. */
-val LocalSortLift = staticCompositionLocalOf { 0f }
+/** True for the row being dragged. */
+val LocalSortLift = staticCompositionLocalOf { false }
 
 /** The row's own drag start, for the SortHandle inside it. */
 private val LocalSortDrag = staticCompositionLocalOf<Modifier> { Modifier }
@@ -67,7 +63,6 @@ fun <T> ReorderableColumn(
     val heights = remember { mutableStateMapOf<Any, Int>() }
     var dragging by remember { mutableIntStateOf(-1) }
     var offset by remember { mutableFloatStateOf(0f) }
-    val lift = remember { Animatable(0f) }
     val scope = rememberCoroutineScope()
     val haptics = LocalHapticFeedback.current
     val currentItems = rememberUpdated(items)
@@ -78,7 +73,6 @@ fun <T> ReorderableColumn(
         dragging = index
         offset = 0f
         haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-        scope.launch { lift.animateTo(1f, tween(200, easing = EaseInOut)) }
     }
     fun drag(delta: Float) {
         val items = currentItems.value
@@ -103,14 +97,8 @@ fun <T> ReorderableColumn(
         }
     }
     fun end() {
-        scope.launch {
-            lift.animateTo(0f, tween(200, easing = EaseInOut))
-        }
-        val settle = Animatable(offset)
-        scope.launch {
-            settle.animateTo(0f, tween(200)) { offset = value }
-            dragging = -1
-        }
+        offset = 0f
+        dragging = -1
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(contentPadding)) {
         items.forEachIndexed { index, item ->
@@ -134,15 +122,7 @@ fun <T> ReorderableColumn(
                         .fillMaxWidth()
                         .onSizeChanged { heights[key(item)] = it.height }
                         .zIndex(if (lifted) 1f else 0f)
-                        .graphicsLayer {
-                            if (lifted) {
-                                translationY = offset
-                                val scale = 1f + 0.02f * lift.value
-                                scaleX = scale
-                                scaleY = scale
-                            }
-                        }
-                        .then(if (lifted) Modifier.clip(AppShape.all(AppCorner.XL * lift.value)) else Modifier)
+                        .offset { IntOffset(0, if (lifted) offset.roundToInt() else 0) }
                         .pointerInput(itemKey, enabled) {
                             if (!enabled) return@pointerInput
                             detectDragGesturesAfterLongPress(
@@ -156,7 +136,7 @@ fun <T> ReorderableColumn(
                             )
                         },
                 ) {
-                    CompositionLocalProvider(LocalSortLift provides if (lifted) lift.value else 0f, LocalSortDrag provides rowDrag) {
+                    CompositionLocalProvider(LocalSortLift provides lifted, LocalSortDrag provides rowDrag) {
                         itemContent(index, item)
                     }
                 }
@@ -165,19 +145,12 @@ fun <T> ReorderableColumn(
     }
 }
 
-/** sortable.dart's SortHandle: a 48 dp target whose circle tints while the row is lifted. */
+/** A 48 dp drag target; its icon takes the primary colour while the row is dragged. */
 @Composable
 fun SortHandle() {
     val scheme = BoxTheme.scheme
-    val lifted = LocalSortLift.current > 0f
+    val lifted = LocalSortLift.current
     Box(Modifier.size(48.dp).then(LocalSortDrag.current), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(40.dp)
-                .background(scheme.onSurface.copy(alpha = if (lifted) 0.16f else 0f), androidx.compose.foundation.shape.CircleShape),
-            contentAlignment = Alignment.Center,
-        ) {
-            GlyphIcon(AppGlyphs.dragHandle, color = if (lifted) scheme.primary else scheme.onSurfaceVariant)
-        }
+        AppIcon(AppIcons.dragHandle, color = if (lifted) scheme.primary else scheme.onSurfaceVariant)
     }
 }

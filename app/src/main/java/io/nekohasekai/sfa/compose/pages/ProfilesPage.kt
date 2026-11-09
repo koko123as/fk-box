@@ -61,11 +61,10 @@ import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.asLong
 import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.qr.ZxingQRCodeAnalyzer
-import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonCard
 import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
@@ -77,7 +76,7 @@ import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.FormPage
 import io.nekohasekai.sfa.compose.ui.FormRow
 import io.nekohasekai.sfa.compose.ui.FormRowTextField
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItem
@@ -196,17 +195,17 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
     }
     val t = trFor()
     fun menu(profile: Json): List<PopupMenuItem> = buildList {
-        add(PopupMenuItem(t("Edit"), AppGlyphs.edit, onPressed = { navigator?.openForm { ProfileDetailsPage(box, profile) } }))
+        add(PopupMenuItem(t("Edit"), AppIcons.edit, onPressed = { navigator?.openForm { ProfileDetailsPage(box, profile) } }))
         if (profile["remote"] == true) {
-            add(PopupMenuItem(t("Update"), AppGlyphs.sync, onPressed = { scope.launch { update(profile) } }))
+            add(PopupMenuItem(t("Update"), AppIcons.sync, onPressed = { scope.launch { update(profile) } }))
             add(
-                PopupMenuItem(t("Copy link"), AppGlyphs.copy, onPressed = {
+                PopupMenuItem(t("Copy link"), AppIcons.copy, onPressed = {
                     copyToClipboard(context, profile["url"].toString())
                     box.message(copied)
                 }),
             )
             add(
-                PopupMenuItem(t("QR code"), AppGlyphs.qrCode, onPressed = {
+                PopupMenuItem(t("QR code"), AppIcons.qrCode, onPressed = {
                     navigator?.openForm {
                         BoxPage("QR code") {
                             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { QrCodeView(remoteProfileLink(profile)) }
@@ -215,10 +214,10 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
                 }),
             )
         }
-        add(PopupMenuItem(t("Share"), AppGlyphs.upload, onPressed = { share(profile) }))
-        add(PopupMenuItem(t("Export"), AppGlyphs.export, onPressed = { export(profile) }))
+        add(PopupMenuItem(t("Share"), AppIcons.upload, onPressed = { share(profile) }))
+        add(PopupMenuItem(t("Export"), AppIcons.export, onPressed = { export(profile) }))
         add(
-            PopupMenuItem(t("Delete"), AppGlyphs.delete, danger = true, onPressed = {
+            PopupMenuItem(t("Delete"), AppIcons.delete, danger = true, onPressed = {
                 scope.launch {
                     if (dialogs?.confirm("Delete this profile?", message = "This cannot be undone.") == true) {
                         box.act { deleteProfile(profile["id"].asLong()) }
@@ -231,11 +230,11 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
     CommonScaffold(
         title = tr("Profiles"),
         actions = if (box.remote || profiles.isEmpty() || picker) emptyList() else listOf({
-            AddProfileMenu(box) { open -> TonalIconButton(IconAction(AppGlyphs.addCircle, tr("Add profile"), open)) }
+            AddProfileMenu(box) { open -> TonalIconButton(IconAction(AppIcons.addCircle, tr("Add profile"), open)) }
         }),
         iconActions = if (box.remote || picker || profiles.isEmpty()) emptyList() else listOf(
-            IconAction(AppGlyphs.sync, tr("Update all"), if (busy || profiles.none { it["remote"] == true }) null else ({ updateAll() }), loading = busy),
-            IconAction(AppGlyphs.sort, tr("Reorder"), if (profiles.size < 2) null else ({ navigator?.openForm { ProfileOrderPage(box) } })),
+            IconAction(AppIcons.sync, tr("Update all"), if (busy || profiles.none { it["remote"] == true }) null else ({ updateAll() }), loading = busy),
+            IconAction(AppIcons.sort, tr("Reorder"), if (profiles.size < 2) null else ({ navigator?.openForm { ProfileOrderPage(box) } })),
         ),
     ) {
         if (box.remote) {
@@ -249,7 +248,7 @@ fun ProfilesPage(box: BoxController, picker: Boolean = false) {
                         illustration = NullStatusIllustration.Profile,
                         description = tr("Import a sing-box JSON configuration to get started."),
                         action = {
-                            AddProfileMenu(box) { open -> TonalButton(tr("Add profile"), open, glyph = AppGlyphs.addCircle, size = TonalButtonSize.Bar) }
+                            AddProfileMenu(box) { open -> TonalButton(tr("Add profile"), open, icon = AppIcons.addCircle, size = TonalButtonSize.Bar) }
                         },
                     )
                 },
@@ -330,7 +329,7 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
     val info = profile.subscriptionInfo()
     val usage = info?.usage
     ContextMenuRegion(if (updating) null else menuItems) {
-        CommonCard(Modifier.fillMaxSize(), radius = AppCorner.XL, isSelected = selected, onPressed = onPressed) {
+        CommonCard(Modifier.fillMaxSize(), isSelected = selected, onPressed = onPressed) {
             Row(
                 Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -484,11 +483,11 @@ fun AddProfileMenu(box: BoxController, target: @Composable (open: () -> Unit) ->
     }
     CommonPopupBox(
         listOf(
-            PopupMenuItem(t("Scan QR code"), AppGlyphs.qrCode, onPressed = { import("Scan QR code") }),
-            PopupMenuItem(t("File"), AppGlyphs.importFile, onPressed = { import("File") }),
-            PopupMenuItem(t("Import from URL"), AppGlyphs.cloudDownload, onPressed = { navigator?.openForm { ProfileForm(box, mapOf("url" to "", "remote" to true)) } }),
-            PopupMenuItem(t("Clipboard"), AppGlyphs.copy, onPressed = { import("Clipboard") }),
-            PopupMenuItem(t("New profile"), AppGlyphs.customize, section = PopupMenuSection(), onPressed = { navigator?.openForm { ProfileForm(box, mapOf("content" to "{}")) } }),
+            PopupMenuItem(t("Scan QR code"), AppIcons.qrCode, onPressed = { import("Scan QR code") }),
+            PopupMenuItem(t("File"), AppIcons.importFile, onPressed = { import("File") }),
+            PopupMenuItem(t("Import from URL"), AppIcons.cloudDownload, onPressed = { navigator?.openForm { ProfileForm(box, mapOf("url" to "", "remote" to true)) } }),
+            PopupMenuItem(t("Clipboard"), AppIcons.copy, onPressed = { import("Clipboard") }),
+            PopupMenuItem(t("New profile"), AppIcons.customize, section = PopupMenuSection(), onPressed = { navigator?.openForm { ProfileForm(box, mapOf("content" to "{}")) } }),
         ),
     ) { open -> target(if (busy) ({}) else open) }
 }
@@ -515,16 +514,16 @@ fun AddProfilePage(box: BoxController) {
         }
     }
     BoxPage("Add profile", loading = loading) {
-        val sources = listOf("File" to AppGlyphs.profiles, "Clipboard" to AppGlyphs.copy, "Scan QR code" to AppGlyphs.qrCode)
+        val sources = listOf("File" to AppIcons.profiles, "Clipboard" to AppIcons.copy, "Scan QR code" to AppIcons.qrCode)
         Section(count = 5, footer = tr("Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content.")) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Import from URL"), position, leading = AppGlyphs.link) { ProfileForm(box, mapOf("url" to "", "remote" to true)) }
-                4 -> ListItemOpen(tr("New profile"), position, leading = AppGlyphs.add) { ProfileForm(box, mapOf("content" to "{}")) }
+                0 -> ListItemOpen(tr("Import from URL"), position, leading = AppIcons.link) { ProfileForm(box, mapOf("url" to "", "remote" to true)) }
+                4 -> ListItemOpen(tr("New profile"), position, leading = AppIcons.add) { ProfileForm(box, mapOf("content" to "{}")) }
                 else -> {
-                    val (label, glyph) = sources[index - 1]
+                    val (label, icon) = sources[index - 1]
                     ListItem(
                         title = { Text(tr(label)) },
-                        leading = { GlyphIcon(glyph) },
+                        leading = { AppIcon(icon) },
                         position = position,
                         onClick = if (loading) null else ({ import(label) }),
                     )
@@ -638,7 +637,7 @@ fun ProfileForm(box: BoxController, initial: Json) {
         if (initial["id"] != null) {
             Section(count = 2) { index, position ->
                 if (index == 0) {
-                    ListItemOpen(tr("Open configuration"), position, leading = AppGlyphs.code) { ProfileEditor(box, initial) }
+                    ListItemOpen(tr("Open configuration"), position, leading = AppIcons.code) { ProfileEditor(box, initial) }
                 } else {
                     ListItem(
                         title = { Text(tr("Last updated")) },
@@ -660,7 +659,7 @@ fun ProfileOrderPage(box: BoxController) {
     var saving by remember { mutableStateOf(false) }
     CommonScaffold(
         title = tr("Reorder"),
-        confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+        confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
             saving = true
             scope.launch {
                 val saved = box.act { reorderProfiles(profiles.map { (it["id"] as Number).toLong() }) }
@@ -741,7 +740,7 @@ fun ScanPage(box: BoxController) {
     CommonScaffold(
         title = tr("Scan QR code"),
         iconActions = listOf(
-            IconAction(if (torch) AppGlyphs.torchOff else AppGlyphs.torch, "Flash", {
+            IconAction(if (torch) AppIcons.torchOff else AppIcons.torch, "Flash", {
                 camera?.let {
                     torch = !torch
                     it.cameraControl.enableTorch(torch)

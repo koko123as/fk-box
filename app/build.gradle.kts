@@ -350,13 +350,12 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
-    // M3 Expressive shapes and morphs (the Kotlin original of FlClash's material_new_shapes)
-    implementation("androidx.graphics:graphics-shapes:1.1.0")
     // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on
     // sideloaded installs, which get no Play cloud profiles.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

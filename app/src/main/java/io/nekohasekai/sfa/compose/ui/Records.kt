@@ -1,5 +1,9 @@
 package io.nekohasekai.sfa.compose.ui
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
+import androidx.compose.ui.graphics.vector.ImageVector
+
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -124,7 +128,7 @@ fun RecordListItem(
 ) {
     val scheme = BoxTheme.scheme
     val level = raisedSurfaceLevel
-    val shape = AppShape.xl
+    val shape = AppShape.card
     val interaction = remember { MutableInteractionSource() }
     Box(modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(
@@ -132,7 +136,7 @@ fun RecordListItem(
                 .fillMaxWidth()
                 .background(level.colorOf(scheme), shape)
                 // record.dart: a PressSurface ink on the raised row.
-                .then(if (onTap != null) Modifier.clip(shape).clickable(interactionSource = interaction, indication = PressIndication(PressLook.Ink, shape), onClick = onTap) else Modifier)
+                .then(if (onTap != null) Modifier.clip(shape).clickable(onClick = onTap) else Modifier)
                 .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
         ) {
             CompositionLocalProvider(LocalSurfaceLevel provides level) {
@@ -169,8 +173,8 @@ fun RecordHeader(trailing: (@Composable () -> Unit)? = null, children: @Composab
 fun TonalChip(label: String, color: Color, foregroundColor: Color, onPressed: (() -> Unit)? = null) {
     Box(
         Modifier
-            .background(color, AppShape.sm)
-            .then(if (onPressed != null) Modifier.clip(AppShape.sm).clickable(interactionSource = null, indication = PressIndication(PressLook.Ink, AppShape.sm, foregroundColor), onClick = onPressed) else Modifier)
+            .background(color, AppShape.card)
+            .then(if (onPressed != null) Modifier.clip(AppShape.card).clickable(onClick = onPressed) else Modifier)
             .padding(horizontal = 6.dp, vertical = 1.dp),
     ) {
         Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Caption1.of(emphasized = true).copy(color = foregroundColor))
@@ -205,7 +209,7 @@ fun RecordDetailRow(
     val context = LocalContext.current
     val box = LocalBoxController.current
     val copied = tr("Copied")
-    val shown: @Composable () -> Unit = content ?: { SelectionArea { Text(value) } }
+    val shown: @Composable () -> Unit = content ?: { SelectionContainer { Text(value) } }
     ListItem(
         title = {
             if (stacked) {
@@ -266,7 +270,7 @@ fun ListHeader(title: String, actions: List<IconAction> = emptyList()) {
     ) {
         Text(title, Modifier.weight(1f), style = AppTextStyle.Headline.of().copy(color = BoxTheme.scheme.onSurfaceVariant))
         for (action in actions) {
-            GlyphButton(action.glyph, action.tooltip, action.onClick, color = if (action.selected) BoxTheme.scheme.primary else BoxTheme.scheme.onSurfaceVariant)
+            AppIconButton(action.icon, action.tooltip, action.onClick, color = if (action.selected) BoxTheme.scheme.primary else BoxTheme.scheme.onSurfaceVariant)
         }
     }
 }
@@ -497,21 +501,21 @@ fun CapturedBody(message: Json, preview: Json) {
             buildList {
                 if (pretty != null) {
                     add(
-                        IconAction(AppGlyphs.code, tr(if (formatted) "Show original" else "Format JSON"), {
+                        IconAction(AppIcons.code, tr(if (formatted) "Show original" else "Format JSON"), {
                             formatted = !formatted
                             limit = BODY_PAGE_SIZE
                         }, selected = formatted),
                     )
                 }
                 add(
-                    IconAction(AppGlyphs.copy, tr("Copy body preview"), if (text0.isEmpty()) null else ({
+                    IconAction(AppIcons.copy, tr("Copy body preview"), if (text0.isEmpty()) null else ({
                         setClipboard(context, text0)
                         box?.message(copied)
                     })),
                 )
             },
         )
-        CommonCard(shape = AppShape.xl, padding = PaddingValues(16.dp)) {
+        CommonCard(shape = AppShape.card, padding = PaddingValues(16.dp)) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
                     listOfNotNull(
@@ -531,7 +535,7 @@ fun CapturedBody(message: Json, preview: Json) {
                 } else {
                     val maxHeight = (LocalConfiguration.current.screenHeightDp * 0.5f).dp
                     Box(Modifier.fillMaxWidth().heightIn(max = maxHeight).verticalScroll(scroll)) {
-                        SelectionArea {
+                        SelectionContainer {
                             Text(
                                 visible,
                                 Modifier.fillMaxWidth(),
@@ -586,15 +590,15 @@ fun LabeledField(
         modifier = modifier.fillMaxWidth(),
         singleLine = true,
         readOnly = readOnly,
-        shape = AppShape.lg,
+        shape = AppShape.card,
         visualTransformation = if (secret) androidx.compose.ui.text.input.PasswordVisualTransformation() else androidx.compose.ui.text.input.VisualTransformation.None,
         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType, autoCorrectEnabled = false),
         keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { onSubmitted?.invoke() }),
     )
 }
 
-/** A trailing round icon button, as IconButton(icon: GlyphIcon) in a row's trailing slot. */
+/** A trailing round icon button, in a row's trailing slot. */
 @Composable
-fun TrailingGlyph(glyph: Glyph, tooltip: String, onClick: (() -> Unit)?) {
-    GlyphButton(glyph, tooltip, onClick)
+fun TrailingIcon(icon: ImageVector, tooltip: String, onClick: (() -> Unit)?) {
+    AppIconButton(icon, tooltip, onClick)
 }

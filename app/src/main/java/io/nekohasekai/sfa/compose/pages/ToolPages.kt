@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,7 +13,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -38,7 +39,7 @@ import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.JetBrainsMono
 import io.nekohasekai.sfa.compose.asLong
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxMenu
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.BoxProgress
@@ -49,7 +50,7 @@ import io.nekohasekai.sfa.compose.ui.DetailRows
 import io.nekohasekai.sfa.compose.ui.EmptyState
 import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.FilledPillButton
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.LabeledField
@@ -62,7 +63,7 @@ import io.nekohasekai.sfa.compose.ui.LocalDialogs
 import io.nekohasekai.sfa.compose.ui.PopupMenuItem
 import io.nekohasekai.sfa.compose.ui.Section
 import io.nekohasekai.sfa.compose.ui.TextPillButton
-import io.nekohasekai.sfa.compose.ui.TrailingGlyph
+import io.nekohasekai.sfa.compose.ui.TrailingIcon
 import io.nekohasekai.sfa.compose.ui.bottomInset
 import io.nekohasekai.sfa.compose.ui.contentTopPadding
 import io.nekohasekai.sfa.compose.ui.tr
@@ -191,8 +192,8 @@ fun ReportsPage(box: BoxController, kind: String) {
     CommonScaffold(
         title = tr(reportTitle(kind)),
         iconActions = listOf(
-            IconAction(AppGlyphs.refresh, tr("Refresh"), { attempt++ }),
-            IconAction(AppGlyphs.delete, tr("Clear"), {
+            IconAction(AppIcons.refresh, tr("Refresh"), { attempt++ }),
+            IconAction(AppIcons.delete, tr("Clear"), {
                 scope.launch {
                     if (dialogs?.confirm("Delete all reports?") == true) {
                         box.act { this.reports.clear(kind) }
@@ -212,7 +213,7 @@ fun ReportsPage(box: BoxController, kind: String) {
                 ListItem(
                     title = { Text(localDate(report["date"])) },
                     subtitle = { Text(report["id"].toString()) },
-                    leading = { GlyphIcon(if (report["read"] == true) AppGlyphs.profiles else AppGlyphs.info) },
+                    leading = { AppIcon(if (report["read"] == true) AppIcons.profiles else AppIcons.info) },
                     onClick = { navigator?.pushPage({ ReportDetail(box, kind, report["id"].toString()) }) { attempt++ } },
                 )
             }
@@ -242,7 +243,7 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
         reportTitle(kind),
         loading = busy,
         actions = listOf(
-            IconAction(AppGlyphs.delete, tr("Delete"), {
+            IconAction(AppIcons.delete, tr("Delete"), {
                 scope.launch {
                     if (dialogs?.confirm("Delete", message = id) == true && box.act { reports.delete(kind, id) }) navigator?.pop()
                 }
@@ -268,7 +269,7 @@ private fun ReportDetail(box: BoxController, kind: String, id: String) {
                                 navigator?.push { ReportText(box, kind, id, fileName, file["label"].toString()) }
                             }
                         },
-                        trailing = { TrailingGlyph(AppGlyphs.arrowDown, tr("Export")) { box.launchAct { reports.save(kind, id, fileName) } } },
+                        trailing = { TrailingIcon(AppIcons.arrowDown, tr("Export")) { box.launchAct { reports.save(kind, id, fileName) } } },
                     )
                 }
             }
@@ -308,7 +309,7 @@ private fun ReportText(box: BoxController, kind: String, id: String, name: Strin
     BoxPage(title) {
         when {
             error != null -> ErrorState(describe(error!!))
-            content != null -> SelectionArea { Text(content!!, style = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = BoxTheme.scheme.onSurface)) }
+            content != null -> SelectionContainer { Text(content!!, style = TextStyle(fontFamily = JetBrainsMono, fontSize = 12.sp, color = BoxTheme.scheme.onSurface)) }
             else -> CenteredLoading()
         }
     }
@@ -339,7 +340,7 @@ fun RemotePage(box: BoxController) {
     }
     CommonScaffold(
         title = tr("Remote control"),
-        primaryAction = IconAction(AppGlyphs.add, tr("Add server"), { edit() }),
+        primaryAction = IconAction(AppIcons.add, tr("Add server"), { edit() }),
     ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = contentTopPadding(), bottom = 24.dp + bottomInset())) {
             item(key = "state") {
@@ -361,8 +362,8 @@ fun RemotePage(box: BoxController) {
                             trailing = {
                                 BoxMenu(
                                     listOf(
-                                        PopupMenuItem(tr("Edit"), AppGlyphs.edit, onPressed = { edit(server) }),
-                                        PopupMenuItem(tr("Delete"), AppGlyphs.delete, danger = true, onPressed = {
+                                        PopupMenuItem(tr("Edit"), AppIcons.edit, onPressed = { edit(server) }),
+                                        PopupMenuItem(tr("Delete"), AppIcons.delete, danger = true, onPressed = {
                                             scope.launch {
                                                 if (dialogs?.confirm("Delete", message = server["name"].toString()) == true) {
                                                     box.act { deleteRemoteServer(server["id"].asLong()) }
@@ -392,7 +393,7 @@ private fun RemoteForm(box: BoxController, initial: Json) {
     BoxPage(
         "Remote control",
         loading = saving,
-        confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+        confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
             saving = true
             scope.launch {
                 val saved = box.act { saveRemoteServer(initial["id"].asLong(), name, url, secret) }
@@ -434,7 +435,7 @@ fun EndpointsPage(box: BoxController, kind: String) {
         Column {
             endpoints.forEachIndexed { index, endpoint ->
                 val tag = endpointTag(endpoint)
-                ListItemOpen(tag, ItemPosition.of(index, endpoints.size), leading = AppGlyphs.devices, subtitle = (endpoint["stateText"] ?: "").toString()) {
+                ListItemOpen(tag, ItemPosition.of(index, endpoints.size), leading = AppIcons.devices, subtitle = (endpoint["stateText"] ?: "").toString()) {
                     EndpointPage(box, kind, tag)
                 }
             }
@@ -467,7 +468,7 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                 if ((endpoint["authURL"] as? String ?: "").isNotEmpty()) {
                     ListItem(
                         title = { Text(tr("Sign in")) },
-                        trailing = { GlyphIcon(AppGlyphs.openExternal) },
+                        trailing = { AppIcon(AppIcons.openExternal) },
                         onClick = { box.launchAct { openUrl(endpoint["authURL"] as? String) } },
                     )
                 }
@@ -498,8 +499,8 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                         ListItem(
                             title = { Text(peerName(peer)) },
                             subtitle = { Text(stringsOf(peer["tailscaleIPs"]).joinToString(" · ")) },
-                            leading = { GlyphIcon(AppGlyphs.devices, color = if (peer["online"] == true) scheme.primary else scheme.outline) },
-                            trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+                            leading = { AppIcon(AppIcons.devices, color = if (peer["online"] == true) scheme.primary else scheme.outline) },
+                            trailing = { AppIcon(AppIcons.chevronForward) },
                             position = position,
                             onClick = { navigator?.push { PeerPage(box, tag, peer["id"].toString()) } },
                         )
@@ -528,14 +529,14 @@ private fun EndpointPage(box: BoxController, kind: String, tag: String) {
                     Spacer(Modifier.height(24.dp))
                     ListItem(
                         title = { Text(tr("Attach USB device")) },
-                        trailing = { GlyphIcon(AppGlyphs.add) },
+                        trailing = { AppIcon(AppIcons.add) },
                         onClick = { navigator?.openForm { UsbPicker(box, tag) } },
                     )
                     for (device in box.usbDevices.filter { it["server"] == tag }) {
                         ListItem(
                             title = { Text(device["label"].toString()) },
                             subtitle = { Text("${device["state"]}\n${device["error"] ?: ""}") },
-                            trailing = { TrailingGlyph(AppGlyphs.close, tr("Detach")) { box.launchAct { toolBridge.detachUsb(device["id"] as? String) } } },
+                            trailing = { TrailingIcon(AppIcons.close, tr("Detach")) { box.launchAct { toolBridge.detachUsb(device["id"] as? String) } } },
                         )
                     }
                 }
@@ -678,7 +679,7 @@ fun InboxPage(box: BoxController, endpoint: String) {
                 title = { Text(file["name"].toString()) },
                 subtitle = { Text("${bytes(file["receivedBytes"] as? Number ?: 0)} / ${bytes(file["size"] as? Number ?: 0)}") },
                 trailing = {
-                    TrailingGlyph(AppGlyphs.close, tr("Cancel")) {
+                    TrailingIcon(AppIcons.close, tr("Cancel")) {
                         box.launchAct { toolBridge.cancelTaildropReceive(endpoint, file["senderID"] as? String, file["name"] as? String) }
                     }
                 },
@@ -690,7 +691,7 @@ fun InboxPage(box: BoxController, endpoint: String) {
                 subtitle = { Text("${bytes(file["size"] as? Number ?: 0)} · ${file["senderName"]}") },
                 onClick = { box.launchAct { toolBridge.saveTaildropFile(endpoint, file["name"] as? String) } },
                 trailing = {
-                    TrailingGlyph(AppGlyphs.delete, tr("Delete")) {
+                    TrailingIcon(AppIcons.delete, tr("Delete")) {
                         scope.launch {
                             if (dialogs?.confirm("Delete", message = file["name"].toString()) == true) {
                                 box.act { toolBridge.deleteTaildropFile(endpoint, file["name"] as? String) }
@@ -727,7 +728,7 @@ fun TransfersPage(box: BoxController) {
                     }
                 }
                 if (transfer["error"] != null) {
-                    add { p -> ListItem(title = { Text(tr("Error")) }, subtitle = { SelectionArea { Text(transfer["error"].toString()) } }, position = p) }
+                    add { p -> ListItem(title = { Text(tr("Error")) }, subtitle = { SelectionContainer { Text(transfer["error"].toString()) } }, position = p) }
                 }
                 add { p ->
                     val finished = transfer["finished"] == true
@@ -825,7 +826,7 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
     val browser = json(challenge["browser"])
     BoxPage("Authentication", loading = busy) {
         for (key in listOf("banner", "message", "error", "previousError")) {
-            if ((challenge[key] ?: "") != "") SelectionArea { Text(challenge[key].toString(), Modifier.padding(16.dp)) }
+            if ((challenge[key] ?: "") != "") SelectionContainer { Text(challenge[key].toString(), Modifier.padding(16.dp)) }
         }
         if (kind == "openconnect") {
             if (browser.isNotEmpty()) {
@@ -853,7 +854,7 @@ private fun AuthenticationPage(box: BoxController, kind: String, endpoint: Strin
         } else if (challenge["kind"] == "open-url") {
             ListItem(
                 title = { Text(tr("Open sign-in page")) },
-                subtitle = { SelectionArea { Text((challenge["url"] ?: "").toString()) } },
+                subtitle = { SelectionContainer { Text((challenge["url"] ?: "").toString()) } },
                 onClick = { box.launchAct { openUrl(challenge["url"] as? String) } },
             )
         } else {

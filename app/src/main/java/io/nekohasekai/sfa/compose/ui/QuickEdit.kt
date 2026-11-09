@@ -115,7 +115,7 @@ fun QuickEditPage(title: String, content: String, invalidMessage: String? = null
         BoxPage(
             title,
             loading = saving,
-            confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+            confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
                 if (text.text == content) {
                     navigator?.pop()
                 } else {

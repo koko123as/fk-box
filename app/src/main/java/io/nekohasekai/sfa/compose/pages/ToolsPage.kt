@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
-import io.nekohasekai.sfa.compose.theme.itemMotion
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,7 +17,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -42,11 +42,11 @@ import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.tabular
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
-import io.nekohasekai.sfa.compose.ui.GlyphButton
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIconButton
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItemOpen
@@ -126,35 +126,35 @@ fun ToolsPage(box: BoxController) {
         Section(count = entries.size) { index, position ->
             val entry = entries[index]
             when {
-                entry == "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppGlyphs.requests) { RequestsPage(box) }
-                entry == "Resources" -> ListItemOpen(tr("Resources"), position, leading = AppGlyphs.resources) { ResourcesPage(box) }
-                entry == "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppGlyphs.logs) { LogsPage(box) }
+                entry == "Requests" -> ListItemOpen(tr("Requests"), position, leading = AppIcons.requests) { RequestsPage(box) }
+                entry == "Resources" -> ListItemOpen(tr("Resources"), position, leading = AppIcons.resources) { ResourcesPage(box) }
+                entry == "Logs" -> ListItemOpen(tr("Logs"), position, leading = AppIcons.logs) { LogsPage(box) }
                 entry.startsWith("endpoint:") -> {
                     val kind = entry.removePrefix("endpoint:")
-                    ListItemOpen(endpointName(kind), position, leading = AppGlyphs.devices) { EndpointsPage(box, kind) }
+                    ListItemOpen(endpointName(kind), position, leading = AppIcons.devices) { EndpointsPage(box, kind) }
                 }
-                entry == "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppGlyphs.code) { TerminalPage(box) }
-                else -> ListItemOpen(tr("Remote control"), position, leading = AppGlyphs.proxies) { RemotePage(box) }
+                entry == "Terminal" -> ListItemOpen(tr("Terminal"), position, leading = AppIcons.code) { TerminalPage(box) }
+                else -> ListItemOpen(tr("Remote control"), position, leading = AppIcons.proxies) { RemotePage(box) }
             }
         }
         // tools.dart _getSettingList: theme, access, backup, general (fk-box follows the system language).
         Section(title = tr("Settings"), count = 4) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Appearance"), position, leading = AppGlyphs.paintbrush) { AppearancePage(box) }
-                1 -> ListItemOpen(tr("Access control"), position, leading = AppGlyphs.appsList) { AccessPage(box) }
-                2 -> ListItemOpen(tr("Backup and restore"), position, leading = AppGlyphs.cloudSync) { BackupPage(box) }
-                else -> ListItemOpen(tr("General"), position, leading = AppGlyphs.settings) { GeneralSettingsPage(box) }
+                0 -> ListItemOpen(tr("Appearance"), position, leading = AppIcons.paintbrush) { AppearancePage(box) }
+                1 -> ListItemOpen(tr("Access control"), position, leading = AppIcons.appsList) { AccessPage(box) }
+                2 -> ListItemOpen(tr("Backup and restore"), position, leading = AppIcons.cloudSync) { BackupPage(box) }
+                else -> ListItemOpen(tr("General"), position, leading = AppIcons.settings) { GeneralSettingsPage(box) }
             }
         }
         Section(title = tr("Other"), count = 3 + reportKinds.size) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Network quality"), position, leading = AppGlyphs.speed) { DiagnosticsPage(box, quality = true) }
-                1 -> ListItemOpen(tr("STUN test"), position, leading = AppGlyphs.proxies) { DiagnosticsPage(box, quality = false) }
+                0 -> ListItemOpen(tr("Network quality"), position, leading = AppIcons.speed) { DiagnosticsPage(box, quality = true) }
+                1 -> ListItemOpen(tr("STUN test"), position, leading = AppIcons.proxies) { DiagnosticsPage(box, quality = false) }
                 in 2 until 2 + reportKinds.size -> {
                     val kind = reportKinds[index - 2]
-                    ListItemOpen(tr(reportTitle(kind)), position, leading = AppGlyphs.profiles) { ReportsPage(box, kind) }
+                    ListItemOpen(tr(reportTitle(kind)), position, leading = AppIcons.profiles) { ReportsPage(box, kind) }
                 }
-                else -> ListItemOpen(tr("About"), position, leading = AppGlyphs.info) { AboutPage(box) }
+                else -> ListItemOpen(tr("About"), position, leading = AppIcons.info) { AboutPage(box) }
             }
         }
     }
@@ -260,7 +260,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
         searchState = SearchState { query = it },
         keywords = filters.keywords(pinned),
         iconActions = if (recent) emptyList() else listOf(
-            IconAction(AppGlyphs.clearAll, tr("Close all connections"), if (box.running) ({
+            IconAction(AppIcons.clearAll, tr("Close all connections"), if (box.running) ({
                 scope.launch {
                     if (dialogs?.confirm("Close all active connections?", action = "Close") == true) box.act { closeConnections() }
                 }
@@ -270,7 +270,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
         menuItems = (if (recent) listOf("Closed", "All") else emptyList<String>()).map { item ->
             PopupMenuItem(tr(item), checked = item == filter, section = if (item == "Closed") PopupMenuSection(tr("Connections")) else null, onPressed = { filter = item })
         } + listOf("Speed", "Created", "Upload", "Download").map { item ->
-            PopupMenuItem(tr(item), AppGlyphs.sort, checked = item == sort, onPressed = { sort = item })
+            PopupMenuItem(tr(item), AppIcons.sort, checked = item == sort, onPressed = { sort = item })
         } + filters.menuItems(pinned),
     ) {
         RecordFilterScope(filters::add) {
@@ -288,7 +288,7 @@ internal fun ConnectionsFeed(box: BoxController, recent: Boolean, title: String,
                         recordGroups(groups, folds, keyOf = { it["id"].toString() }) { connection -> ConnectionRecord(box, connection) }
                     } else {
                         items(list, key = { it["id"].toString() }) { connection ->
-                            Box(itemMotion()) { ConnectionRecord(box, connection) }
+                            ConnectionRecord(box, connection)
                         }
                     }
                 }
@@ -310,7 +310,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
             RecordHeader(
                 trailing = if (!closed && box.running) {
                     {
-                        GlyphButton(AppGlyphs.block, tr("Close this connection"), { box.launchAct { closeConnection(c["id"] as? String) } }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
+                        AppIconButton(AppIcons.block, tr("Close this connection"), { box.launchAct { closeConnection(c["id"] as? String) } }, size = 28.dp, iconSize = 16.dp, color = scheme.onSurfaceVariant)
                     }
                 } else {
                     null
@@ -333,7 +333,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
                     val chain = connectionChain(c)
                     if (rule.isNotEmpty()) {
                         val onRule = recordFilterAction(RecordFilter(RecordFacetKind.Rule, rule))
-                        Text(rule, Modifier.then(if (onRule != null) Modifier.clip(AppShape.sm).clickable(onClick = onRule) else Modifier), style = styles.secondary)
+                        Text(rule, Modifier.then(if (onRule != null) Modifier.clip(AppShape.card).clickable(onClick = onRule) else Modifier), style = styles.secondary)
                         RecordArrow()
                     }
                     if (chain.isEmpty()) Text("—", style = AppTextStyle.Footnote.of(emphasized = true).copy(color = scheme.primary))
@@ -352,7 +352,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     for (upload in listOf(true, false)) {
                         Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                            GlyphIcon(if (upload) AppGlyphs.arrowUp else AppGlyphs.arrowDown, size = 12.dp, color = scheme.onSurfaceVariant)
+                            AppIcon(if (upload) AppIcons.arrowUp else AppIcons.arrowDown, size = 12.dp, color = scheme.onSurfaceVariant)
                             val total = c[if (upload) "uploadTotal" else "downloadTotal"] as? Number ?: 0
                             val rate = c[if (upload) "upload" else "download"] as? Number ?: 0
                             Text("${bytes(total)} · ${bytes(rate)}/s", style = styles.secondary.tabular)
@@ -392,11 +392,11 @@ private fun ConnectionDetail(box: BoxController, initial: Json) {
     BoxPage(
         "Details",
         actions = listOf(
-            IconAction(AppGlyphs.copy, tr("Copy"), {
+            IconAction(AppIcons.copy, tr("Copy"), {
                 setClipboard(context, values.joinToString("\n") { "${it.first}: ${it.second}" })
                 box.message(copied)
             }),
-            IconAction(AppGlyphs.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct { closeConnection(c["id"] as? String) } }) else null),
+            IconAction(AppIcons.close, tr("Close this connection"), if (box.running && present && closedAt == 0.0) ({ box.launchAct { closeConnection(c["id"] as? String) } }) else null),
         ),
     ) {
         Spacer(Modifier.height(0.dp))
@@ -466,7 +466,7 @@ fun LogsPage(box: BoxController) {
         searchState = SearchState { query = it },
         keywords = filters.keywords(pinned),
         iconActions = listOf(
-            IconAction(AppGlyphs.export, tr("Export"), {
+            IconAction(AppIcons.export, tr("Export"), {
                 val content = logs.joinToString("\n") { "${recordTime(it["receivedAt"])} [${it["level"]}] ${it["message"]}" }
                 box.launchAct { saveDocument("B-box.log", content) }
             }),
@@ -475,7 +475,7 @@ fun LogsPage(box: BoxController) {
             add(
                 PopupMenuItem(
                     tr(if (paused == null) "Pause" else "Resume"),
-                    if (paused == null) AppGlyphs.playPause(1.0) else AppGlyphs.playPause(0.0),
+                    if (paused == null) AppIcons.pause else AppIcons.start,
                     onPressed = {
                         if (paused == null) {
                             paused = box.logs.toList()
@@ -486,7 +486,7 @@ fun LogsPage(box: BoxController) {
                     },
                 ),
             )
-            add(PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = { box.launchAct(then = { if (it) paused = null }) { clearLogs() } }))
+            add(PopupMenuItem(tr("Clear"), AppIcons.delete, onPressed = { box.launchAct(then = { if (it) paused = null }) { clearLogs() } }))
             for (item in listOf("Default", "All", "Trace", "Debug", "Info", "Warn", "Error", "Fatal", "Panic")) {
                 val label = if (item == "Default") {
                     tr("Follow configuration") + (box.defaultLogLevel?.let { " (${trLevel(it)})" } ?: "")
@@ -521,14 +521,13 @@ fun LogsPage(box: BoxController) {
                         }
                         RecordListItem(
                             onTap = {},
-                            modifier = itemMotion(),
                             header = {
                                 RecordHeader {
                                     if ((log["receivedAt"].asDouble() ?: 0.0) > 0) RecordTimestamp(recordTime(log["receivedAt"]))
                                     RecordLabel(itemLevel, tone, onPressed = recordFilterAction(RecordFilter(RecordFacetKind.Level, itemLevel)))
                                 }
                             },
-                            body = { SelectionArea { Text(log["message"].toString(), style = styles.primary) } },
+                            body = { SelectionContainer { Text(log["message"].toString(), style = styles.primary) } },
                         )
                     }
                 }

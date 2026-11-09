@@ -20,15 +20,30 @@ for name in ("MainActivity", "ShareActivity"):
 if "setContent" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity must host the Compose UI")
 
-# Every AppGlyphs reference in the pages must name a defined glyph.
-glyph_source = (compose / "ui/AppGlyphs.kt").read_text()
-defined = set(re.findall(r"\b(?:val|fun)\s+(\w+)", glyph_source))
+# The plain UI: stock Material 3 components and Material icons, with no
+# custom-drawn icon set, glass, shaders, blur, shadows or expressive motion.
+icon_source = (compose / "ui/AppIcons.kt").read_text()
+defined = set(re.findall(r"\bval\s+(\w+)\s*:", icon_source))
+plain_rules = {
+    r"\bAppGlyphs\b|\bGlyph(?:Icon|Shape|Role|Path)?\b|drawGlyph": "custom glyph icons (use AppIcons / Material icons)",
+    r"LiquidGlass|RuntimeShader|AGSL|BlurMaskFilter|RenderEffect|\.blur\(": "glass, shader or blur effect",
+    r"\bspring\(|\bspringStepAt\b|InkSparkle|elasticPress|barItemPresence": "expressive motion or press effect",
+    r"\bMaterialShapes\b|\bM3Shapes\b|RoundedPolygon|\bMorph\b|SuperellipseShape": "decorative shape",
+    r"\bboxShadows\b|(?:Modifier|\n\s*)\.shadow\(|LocalRippleConfiguration\s+provides\s+null": "shadow or replaced ripple",
+    r"\bAppearanceStyle\b|\bAppearanceTokens\b|\bLocalAppearance\b": "retired appearance style switch",
+}
 for path in compose.rglob("*.kt"):
-    if path.name == "AppGlyphs.kt":
+    source = path.read_text()
+    for pattern, what in plain_rules.items():
+        if re.search(pattern, source):
+            errors.append(f"{path.relative_to(ROOT)}: {what}")
+    if path.name == "AppIcons.kt":
         continue
-    for name in set(re.findall(r"AppGlyphs\.(\w+)", path.read_text())):
+    for name in set(re.findall(r"AppIcons\.(\w+)", source)):
         if name not in defined:
-            errors.append(f"{path.relative_to(ROOT)}: unknown glyph {name}")
+            errors.append(f"{path.relative_to(ROOT)}: unknown icon {name}")
+if re.search(r"graphics-shapes", (ROOT / "app/build.gradle.kts").read_text()):
+    errors.append("app/build.gradle.kts: graphics-shapes is only for the retired decorative shapes")
 
 # No page may be left as a phase placeholder.
 for path in (compose / "pages").rglob("*.kt"):
@@ -76,4 +91,4 @@ for license_file in ("LICENSE", "JetBrainsMono-OFL.txt"):
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Compose entry points, glyphs, placeholders, Flutter removal and capture removal guards passed")
+print("Compose entry points, plain Material UI, icons, placeholders, Flutter removal and capture removal guards passed")

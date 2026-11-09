@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.compose.ui
 
-import io.nekohasekai.sfa.compose.theme.itemMotion
-import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.clip
+
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -222,7 +222,7 @@ class RecordFilterController<T>(
                     }
                 }
             }
-            add(PopupMenuItem(tr("Filter"), AppGlyphs.filter, subItems = subItems))
+            add(PopupMenuItem(tr("Filter"), AppIcons.filter, subItems = subItems))
         }
         if (groupers.isNotEmpty()) {
             val subItems = buildList {
@@ -231,7 +231,7 @@ class RecordFilterController<T>(
                     add(PopupMenuItem(tr(grouper.grouping.label), checked = grouping == grouper.grouping, onPressed = { changeGrouping(grouper.grouping) }))
                 }
             }
-            add(PopupMenuItem(tr("Group by"), AppGlyphs.layers, subItems = subItems))
+            add(PopupMenuItem(tr("Group by"), AppIcons.layers, subItems = subItems))
         }
     }
 }
@@ -285,11 +285,7 @@ class RecordGroupFolds {
 @Composable
 fun rememberRecordGroupFolds(grouping: RecordGrouping?): RecordGroupFolds = remember(grouping) { RecordGroupFolds() }
 
-/**
- * RecordGroupedList: [groups] folded under their headers, newest first
- * whatever way the list reads ungrouped. Each row animates in and out
- * (keyed, survivors slide) through animateItem.
- */
+/** [groups] folded under their headers, newest first whatever way the list reads ungrouped. */
 fun <T> LazyListScope.recordGroups(
     groups: List<RecordGroup<T>>,
     folds: RecordGroupFolds,
@@ -305,35 +301,28 @@ fun <T> LazyListScope.recordGroups(
                 open = folds.isOpen(group.key),
                 trailing = trailingOf?.invoke(group),
                 onToggle = { folds.toggle(group.key) },
-                modifier = itemMotion(),
             )
         }
         if (folds.isOpen(group.key)) {
             for (item in group.items) {
                 item(key = "group:" + group.key + ":" + keyOf(item), contentType = "record") {
-                    androidx.compose.foundation.layout.Box(itemMotion()) { itemContent(item) }
+                    itemContent(item)
                 }
             }
         }
     }
 }
 
-/** collapsible_section.dart's CollapsibleHeader: label (count), a trailing note and a chevron turning a quarter when folded. */
+/** A group header: label (count), a trailing note and an expand icon. */
 @Composable
 fun CollapsibleHeader(label: String, count: Int, open: Boolean, onToggle: (() -> Unit)?, modifier: Modifier = Modifier, trailing: String? = null) {
     val scheme = BoxTheme.scheme
-    val appearance = io.nekohasekai.sfa.compose.theme.LocalAppearance.current
-    val turn by animateFloatAsState(
-        if (open) 0f else -90f,
-        if (appearance.expressiveMotion) spring(dampingRatio = 1f, stiffness = 600f) else appearance.fade<Float>(),
-        label = "fold",
-    )
-    val interaction = remember { MutableInteractionSource() }
     Row(
         modifier
             .fillMaxWidth()
             .padding(start = 16.dp, end = 16.dp, top = 12.dp)
-            .then(if (onToggle != null) Modifier.clickable(interactionSource = interaction, indication = focusPressIndication(AppShape.md), onClick = onToggle) else Modifier)
+            .clip(AppShape.card)
+            .then(if (onToggle != null) Modifier.clickable(onClick = onToggle) else Modifier)
             .padding(8.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -349,6 +338,6 @@ fun CollapsibleHeader(label: String, count: Int, open: Boolean, onToggle: (() ->
             style = AppTextStyle.Headline.of().copy(color = scheme.onSurface),
         )
         if (trailing != null) Text(trailing, style = AppTextStyle.Caption1.of().tabular.copy(color = scheme.onSurfaceVariant))
-        GlyphIcon(AppGlyphs.chevronDown, Modifier.rotate(turn), size = 20.dp, color = scheme.onSurfaceVariant)
+        CommonExpandIcon(open, size = 20.dp, color = scheme.onSurfaceVariant)
     }
 }

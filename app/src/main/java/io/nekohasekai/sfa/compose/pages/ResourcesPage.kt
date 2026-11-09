@@ -16,7 +16,7 @@ import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.bytes
 import io.nekohasekai.sfa.compose.rows
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
 import io.nekohasekai.sfa.compose.ui.ContextMenuRegion
@@ -104,7 +104,7 @@ fun ResourcesPage(box: BoxController) {
     BoxPage(
         "Resources",
         loading = items == null,
-        actions = listOf(IconAction(AppGlyphs.sync, tr("Update all"), if (items.isNullOrEmpty() || updating.isNotEmpty()) null else ({ updateAll() }), loading = updating.isNotEmpty())),
+        actions = listOf(IconAction(AppIcons.sync, tr("Update all"), if (items.isNullOrEmpty() || updating.isNotEmpty()) null else ({ updateAll() }), loading = updating.isNotEmpty())),
     ) {
         Section(count = if (autoUpdate) 2 else 1) { index, position ->
             if (index == 0) {
@@ -170,9 +170,9 @@ fun ResourcesPage(box: BoxController) {
             }
             val busy = name in updating
             val menu = buildList {
-                if (!busy) add(PopupMenuItem(tr("Update"), AppGlyphs.sync, onPressed = { scope.launch { updateOne(name, label, announce = true); reload() } }))
-                add(PopupMenuItem(tr("Edit"), AppGlyphs.edit, onPressed = { editUrl() }))
-                add(PopupMenuItem(tr("Copy link"), AppGlyphs.copy, onPressed = { setClipboard(context, url); box.message(copied) }))
+                if (!busy) add(PopupMenuItem(tr("Update"), AppIcons.sync, onPressed = { scope.launch { updateOne(name, label, announce = true); reload() } }))
+                add(PopupMenuItem(tr("Edit"), AppIcons.edit, onPressed = { editUrl() }))
+                add(PopupMenuItem(tr("Copy link"), AppIcons.copy, onPressed = { setClipboard(context, url); box.message(copied) }))
             }
             ContextMenuRegion(menu) {
                 ListItem(

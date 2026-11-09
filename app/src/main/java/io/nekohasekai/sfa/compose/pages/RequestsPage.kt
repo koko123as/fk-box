@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
-import io.nekohasekai.sfa.compose.theme.itemMotion
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -38,7 +39,7 @@ import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.ui.ActionSection
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CapturedBody
@@ -47,7 +48,7 @@ import io.nekohasekai.sfa.compose.ui.CommonScaffold
 import io.nekohasekai.sfa.compose.ui.EmptyState
 import io.nekohasekai.sfa.compose.ui.ErrorState
 import io.nekohasekai.sfa.compose.ui.FormPage
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListFooter
@@ -241,9 +242,9 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
             query = it
             limit = 50
         },
-        iconActions = listOf(IconAction(AppGlyphs.refresh, tr("Refresh"), poll.refresh)),
+        iconActions = listOf(IconAction(AppIcons.refresh, tr("Refresh"), poll.refresh)),
         menuItems = listOf(
-            PopupMenuItem(tr("Capture settings"), AppGlyphs.sliders, onPressed = if (busy || active) null else ({
+            PopupMenuItem(tr("Capture settings"), AppIcons.sliders, onPressed = if (busy || active) null else ({
                 busy = true
                 scope.launch {
                     try {
@@ -259,10 +260,10 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
                     }
                 }
             })),
-            PopupMenuItem(tr("MITM certificate"), AppGlyphs.lock, onPressed = { navigator?.push { MitmCertificatePage(box) } }),
-            PopupMenuItem(tr("Capture logs"), AppGlyphs.logs, onPressed = { navigator?.push { CaptureLogsPage(box) } }),
-            PopupMenuItem(tr("Export HAR"), AppGlyphs.arrowDown, onPressed = if (busy || entries.isEmpty()) null else ({ act { capture.export("har", query = query) } })),
-            PopupMenuItem(tr("Clear requests"), AppGlyphs.delete, onPressed = if (busy) null else ({
+            PopupMenuItem(tr("MITM certificate"), AppIcons.lock, onPressed = { navigator?.push { MitmCertificatePage(box) } }),
+            PopupMenuItem(tr("Capture logs"), AppIcons.logs, onPressed = { navigator?.push { CaptureLogsPage(box) } }),
+            PopupMenuItem(tr("Export HAR"), AppIcons.arrowDown, onPressed = if (busy || entries.isEmpty()) null else ({ act { capture.export("har", query = query) } })),
+            PopupMenuItem(tr("Clear requests"), AppIcons.delete, onPressed = if (busy) null else ({
                 scope.launch { if (dialogs?.confirm("Clear captured requests?") == true) act { capture.clear() } }
             })),
         ) + filters.menuItems(pinned),
@@ -308,7 +309,7 @@ private fun CapturedFeed(box: BoxController, title: String, titleMenuItems: List
                 recordGroups(groups, folds, keyOf = { it["id"].toString() }) { item -> CapturedRecord(box, item) }
             } else {
                 items(shownEntries, key = { it["id"].toString() }) { item ->
-                    Box(itemMotion()) { CapturedRecord(box, item) }
+                    CapturedRecord(box, item)
                 }
             }
             item(key = "more") {
@@ -431,8 +432,8 @@ fun RequestDetailPage(box: BoxController, id: String) {
         "Request details",
         loading = busy,
         actions = listOf(
-            IconAction(AppGlyphs.copy, tr("Copy URL"), if (detail == null) null else ({ copy(request["url"]?.toString() ?: "") })),
-            IconAction(AppGlyphs.arrowDown, tr("Export cURL"), if (curlBlocked) null else ({
+            IconAction(AppIcons.copy, tr("Copy URL"), if (detail == null) null else ({ copy(request["url"]?.toString() ?: "") })),
+            IconAction(AppIcons.arrowDown, tr("Export cURL"), if (curlBlocked) null else ({
                 busy = true
                 scope.launch {
                     box.act { capture.export("curl", id = id) }
@@ -478,7 +479,7 @@ private fun HeadersSection(message: Json, response: Boolean, copy: (String) -> U
     val headers = rows(message["headers"])
     ActionSection(
         tr(if (response) "Response headers" else "Request headers"),
-        listOf(IconAction(AppGlyphs.copy, tr("Copy headers"), if (headers.isEmpty()) null else ({ copy(headers.joinToString("\n") { "${it["name"]}: ${it["value"]}" }) }))),
+        listOf(IconAction(AppIcons.copy, tr("Copy headers"), if (headers.isEmpty()) null else ({ copy(headers.joinToString("\n") { "${it["name"]}: ${it["value"]}" }) }))),
         footer = if (message["headersTruncated"] == true) tr("Headers truncated") else null,
         rows = if (headers.isEmpty()) {
             listOf<@Composable (ItemPosition) -> Unit> { position -> ListItem(title = { Text(tr("No headers captured")) }, position = position) }
@@ -497,7 +498,7 @@ private fun CookiesSection(message: Json, response: Boolean, copy: (String) -> U
     val caption = ListStyles.caption
     ActionSection(
         tr(if (response) "Response cookies" else "Request cookies"),
-        listOf(IconAction(AppGlyphs.copy, tr("Copy cookies"), if (cookies.isEmpty()) null else ({ copy(cookies.joinToString("\n") { it.raw }) }))),
+        listOf(IconAction(AppIcons.copy, tr("Copy cookies"), if (cookies.isEmpty()) null else ({ copy(cookies.joinToString("\n") { it.raw }) }))),
         footer = if (message["headersTruncated"] == true) tr("Headers truncated") else null,
         rows = if (cookies.isEmpty()) {
             listOf<@Composable (ItemPosition) -> Unit> { position -> ListItem(title = { Text(tr("No cookies captured")) }, position = position) }
@@ -626,7 +627,7 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
             } else {
                 ListItem(
                     title = { Text(tr("Quick edit")) },
-                    leading = { GlyphIcon(AppGlyphs.compose) },
+                    leading = { AppIcon(AppIcons.compose) },
                     position = position,
                     onClick = {
                         navigator?.push {
@@ -687,7 +688,7 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
                     ListItem(
                         title = { Text(tr("Capture applications")) },
                         subtitle = { Text(if (packages.isEmpty()) tr("All applications") else packages.joinToString(", ")) },
-                        leading = { GlyphIcon(AppGlyphs.appsList) },
+                        leading = { AppIcon(AppIcons.appsList) },
                         position = position,
                         onClick = {
                             navigator?.pushPage({ CaptureAppsPage(box, packages) }) { result ->
@@ -735,9 +736,9 @@ fun CaptureAppsPage(box: BoxController, initial: List<String>) {
     CommonScaffold(
         title = tr("Capture applications"),
         searchState = SearchState { query = it.lowercase() },
-        confirmationAction = IconAction(AppGlyphs.check, tr("Done"), { navigator?.pop(selected.toList().sorted()) }),
+        confirmationAction = IconAction(AppIcons.check, tr("Done"), { navigator?.pop(selected.toList().sorted()) }),
         iconActions = listOf(
-            IconAction(AppGlyphs.compose, tr("Quick edit"), {
+            IconAction(AppIcons.compose, tr("Quick edit"), {
                 navigator?.push {
                     ListQuickEditPage(tr("Capture applications"), selected.toList(), hint = "com.example.app") { items ->
                         selected.clear()
@@ -745,7 +746,7 @@ fun CaptureAppsPage(box: BoxController, initial: List<String>) {
                     }
                 }
             }),
-            IconAction(AppGlyphs.clearAll, tr("All applications"), { selected.clear() }),
+            IconAction(AppIcons.clearAll, tr("All applications"), { selected.clear() }),
         ),
     ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = contentTopPadding(), bottom = 24.dp + bottomInset())) {
@@ -802,12 +803,12 @@ fun CaptureDomainsPage(box: BoxController, query: String = "", select: Boolean =
     CommonScaffold(
         title = tr("Extract domains"),
         loading = busy,
-        confirmationAction = if (select) IconAction(AppGlyphs.check, tr("Add domains"), if (selected.isEmpty()) null else ({ navigator?.pop(selected.toList().sorted()) })) else null,
+        confirmationAction = if (select) IconAction(AppIcons.check, tr("Add domains"), if (selected.isEmpty()) null else ({ navigator?.pop(selected.toList().sorted()) })) else null,
         iconActions = buildList {
-            add(IconAction(AppGlyphs.copy, tr("Copy domains"), if (list.isEmpty()) null else ({ copy(list.joinToString("\n")) })))
+            add(IconAction(AppIcons.copy, tr("Copy domains"), if (list.isEmpty()) null else ({ copy(list.joinToString("\n")) })))
             if (!select) {
                 add(
-                    IconAction(AppGlyphs.arrowDown, tr("Export domains"), if (list.isEmpty() || busy) null else ({
+                    IconAction(AppIcons.arrowDown, tr("Export domains"), if (list.isEmpty() || busy) null else ({
                         busy = true
                         scope.launch {
                             box.act { capture.export("domains", query = query) }
@@ -816,7 +817,7 @@ fun CaptureDomainsPage(box: BoxController, query: String = "", select: Boolean =
                     })),
                 )
             }
-            add(IconAction(AppGlyphs.refresh, tr("Refresh"), { attempt++ }))
+            add(IconAction(AppIcons.refresh, tr("Refresh"), { attempt++ }))
         },
     ) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = contentTopPadding(), bottom = 24.dp + bottomInset())) {
@@ -876,11 +877,11 @@ fun CaptureLogsPage(box: BoxController) {
         title = tr("Capture logs"),
         loading = busy,
         searchState = SearchState { query = it },
-        iconActions = listOf(IconAction(AppGlyphs.refresh, tr("Refresh"), poll.refresh)),
+        iconActions = listOf(IconAction(AppIcons.refresh, tr("Refresh"), poll.refresh)),
         menuItems = listOf(
-            PopupMenuItem(tr("Copy logs"), AppGlyphs.copy, onPressed = if (logs.isEmpty()) null else ({ copy(text) })),
-            PopupMenuItem(tr("Export"), AppGlyphs.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct { saveDocument("B-box-capture.log", text) } })),
-            PopupMenuItem(tr("Clear"), AppGlyphs.delete, onPressed = if (busy) null else ({
+            PopupMenuItem(tr("Copy logs"), AppIcons.copy, onPressed = if (logs.isEmpty()) null else ({ copy(text) })),
+            PopupMenuItem(tr("Export"), AppIcons.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct { saveDocument("B-box-capture.log", text) } })),
+            PopupMenuItem(tr("Clear"), AppIcons.delete, onPressed = if (busy) null else ({
                 busy = true
                 scope.launch {
                     box.act { capture.clearLogs() }
@@ -947,7 +948,7 @@ fun CaptureLogsPage(box: BoxController) {
                                 RecordLabel(level, if (level == "error") RecordTone.Error else if (level == "warn") RecordTone.Warning else RecordTone.Neutral)
                             }
                         },
-                        body = { io.nekohasekai.sfa.compose.ui.SelectionArea { Text(log["message"]?.toString() ?: "", style = styles.primary) } },
+                        body = { SelectionContainer { Text(log["message"]?.toString() ?: "", style = styles.primary) } },
                     )
                 }
             }
@@ -1031,7 +1032,7 @@ fun MitmCertificatePage(box: BoxController) {
         current?.get("userTrusted") == true -> "Present in user CA store"
         else -> "CA not installed"
     }
-    BoxPage("MITM certificate", loading = busy, actions = listOf(IconAction(AppGlyphs.refresh, tr("Refresh trust"), if (busy) null else ({ refresh() })))) {
+    BoxPage("MITM certificate", loading = busy, actions = listOf(IconAction(AppIcons.refresh, tr("Refresh trust"), if (busy) null else ({ refresh() })))) {
         ListFooter(tr("HTTPS decryption requires the target app to trust this CA. Apps with certificate pinning or their own trust store may reject it; add those domains to HTTPS exclusions."))
         error?.let { ErrorState(describe(it)) { refresh() } }
         if (current != null) {

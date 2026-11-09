@@ -1,5 +1,9 @@
 package io.nekohasekai.sfa.compose.ui
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
+import androidx.compose.ui.graphics.vector.ImageVector
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -51,7 +55,7 @@ import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import kotlinx.coroutines.launch
 
-/** search_field.dart's SearchField: the glyph's center 22 dp in, the clear button's 24.5. */
+/** search_field.dart's SearchField: the icon's center 22 dp in, the clear button's 24.5. */
 @Composable
 fun SearchField(
     text: String,
@@ -73,7 +77,7 @@ fun SearchField(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(41.dp).padding(start = 12.dp), contentAlignment = Alignment.CenterStart) {
-            GlyphIcon(AppGlyphs.search, size = 20.dp, color = scheme.onSurfaceVariant)
+            AppIcon(AppIcons.search, size = 20.dp, color = scheme.onSurfaceVariant)
         }
         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
             if (text.isEmpty()) {
@@ -100,7 +104,7 @@ fun SearchField(
                     .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) { onChanged("") },
                 contentAlignment = Alignment.Center,
             ) {
-                GlyphIcon(AppGlyphs.clearField, size = 24.dp, fill = 1f, color = scheme.onSurface)
+                AppIcon(AppIcons.clearField, size = 24.dp, color = scheme.onSurface)
             }
         } else {
             Spacer(Modifier.width(12.dp))
@@ -113,7 +117,7 @@ fun SearchField(
 fun ListItemOpen(
     title: String,
     position: ItemPosition?,
-    leading: Glyph? = null,
+    leading: ImageVector? = null,
     subtitle: String? = null,
     onClosed: ((Any?) -> Unit)? = null,
     page: @Composable () -> Unit,
@@ -122,8 +126,8 @@ fun ListItemOpen(
     ListItem(
         title = { Text(title) },
         subtitle = subtitle?.let { { Text(it) } },
-        leading = leading?.let { { GlyphIcon(it) } },
-        trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+        leading = leading?.let { { AppIcon(it) } },
+        trailing = { AppIcon(AppIcons.chevronForward) },
         position = position,
         onClick = { navigator?.pushPage(page, onClosed) },
     )
@@ -176,7 +180,7 @@ fun <T> ListItemOptions(
                         textAlign = TextAlign.End,
                         style = ListStyles.title.copy(color = scheme.onSurfaceVariant),
                     )
-                    GlyphIcon(AppGlyphs.picker, color = scheme.onSurfaceVariant)
+                    AppIcon(AppIcons.picker, color = scheme.onSurfaceVariant)
                 }
             }
         },
@@ -219,7 +223,7 @@ fun DetailRows(values: List<Pair<String, Any?>>) {
         values.forEachIndexed { index, (key, value) ->
             ListItem(
                 title = { Text(tr(key)) },
-                subtitle = { SelectionArea { Text(value?.toString() ?: "—") } },
+                subtitle = { SelectionContainer { Text(value?.toString() ?: "—") } },
                 position = ItemPosition.of(index, values.size),
             )
         }
@@ -239,7 +243,7 @@ fun FormPage(
     CommonScaffold(
         title = tr(title),
         iconActions = actions,
-        confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else onSave, loading = saving),
+        confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else onSave, loading = saving),
     ) {
         Column(
             Modifier

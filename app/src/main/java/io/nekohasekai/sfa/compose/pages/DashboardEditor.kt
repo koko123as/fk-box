@@ -65,39 +65,30 @@ import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.SurfaceLevel
 import io.nekohasekai.sfa.compose.theme.tabular
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
-import io.nekohasekai.sfa.compose.ui.BoxShadowSpec
-import io.nekohasekai.sfa.compose.ui.Glyph
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
-import io.nekohasekai.sfa.compose.ui.boxShadows
+import io.nekohasekai.sfa.compose.ui.AppIcons
+import androidx.compose.ui.graphics.vector.ImageVector
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.tr
 import kotlinx.coroutines.launch
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
 /*
- * components/dashboard_editor.dart: the in-place card editor adapted from
- * FlClash v0.9.2 dashboard/edit.dart (GPL-3.0). Cards sway while editing, a
- * long press lifts one to reorder, the minus badge removes it, and the
- * Available cards list adds it back. Every change is saved at once.
+ * The in-place dashboard card editor (layout after FlClash's dashboard
+ * editor): a long press on a card drags it to reorder, the minus button
+ * removes it, and the Available cards list adds it back. Every change is
+ * saved at once.
  */
 
 private const val ROW_HEIGHT = 64
 private const val ROW_GAP = 8
 private const val ADDABLE_TOP = 14
-private const val SWAY_LOOP_MS = 3600
-private val swaysPerLoop = intArrayOf(6, 7, 5)
-private const val SWAY_PHASE_STEP = 1.7f
-private const val SWAY_TURN_DEGREES = .7f
-private const val SWAY_BOB = 1.25f
-private const val ROOM_MS = 260
-private const val APPEAR_MS = 200
-private const val APPEAR_SCALE = .92f
-private const val LIFT_GROWTH = .03f
 private const val AUTO_SCROLL_EDGE = 72
 private const val AUTO_SCROLL_STEP = 14
-private val EaseOut = CubicBezierEasing(0f, 0f, .58f, 1f)
 
 private val dashboardDescriptions = mapOf(
     "Memory" to "App and core memory",
@@ -108,18 +99,16 @@ private val dashboardDescriptions = mapOf(
     "Outbound mode" to "Available routing modes",
 )
 
-/** DashboardEditorState: the edited order, with cards still animating in or out. */
+/** The edited card order. */
 class DashboardEditorState(shown: List<String>) {
     val cards = mutableStateListOf<String>().apply { addAll(shown) }
-    val leaving = mutableStateListOf<String>()
-    val entering = mutableStateListOf<String>()
     var saving by mutableStateOf(false)
     var dirty by mutableStateOf(false)
     internal var onChanged: suspend (List<String>) -> Boolean = { true }
     internal var onBusyChanged: (Boolean) -> Unit = {}
     internal var onDone: () -> Unit = {}
 
-    val shown: List<String> get() = cards.filter { it !in leaving }
+    val shown: List<String> get() = cards.toList()
 
     suspend fun save(): Boolean {
         if (saving) return false
@@ -140,16 +129,10 @@ class DashboardEditorState(shown: List<String>) {
 
     fun sync(available: List<String>, shownNow: List<String>) {
         cards.removeAll { it !in available }
-        leaving.removeAll { it !in available }
-        entering.removeAll { it !in available }
         if (!saving && !dirty && shown != shownNow) {
-            cards.clear(); cards.addAll(shownNow); leaving.clear(); entering.clear()
+            cards.clear()
+            cards.addAll(shownNow)
         }
-    }
-
-    internal fun settle(card: String) {
-        entering.remove(card)
-        if (leaving.remove(card)) cards.remove(card)
     }
 }
 
@@ -172,26 +155,19 @@ fun DashboardEditor(
     state.sync(available, shown)
     val scope = rememberCoroutineScope()
     BackHandler { scope.launch { state.finish() } }
-    val context = LocalContext.current
-    val reduceMotion = remember {
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-    }
-    val sway = if (reduceMotion) null else rememberInfiniteTransition(label = "sway").animateFloat(
-        initialValue = 0f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(SWAY_LOOP_MS, easing = LinearEasing), RepeatMode.Restart),
-        label = "sway",
-    )
 
     fun save() { scope.launch { state.save() } }
     fun remove(card: String) {
         if (state.saving || card == "Status") return
-        state.leaving.add(card); state.dirty = true; save()
+        state.cards.remove(card)
+        state.dirty = true
+        save()
     }
     fun add(card: String) {
         if (state.saving) return
-        if (!state.leaving.remove(card)) { state.entering.add(card); state.cards.add(card) }
-        state.dirty = true; save()
+        state.cards.add(card)
+        state.dirty = true
+        save()
     }
     fun move(from: Int, to: Int) {
         if (state.saving || from == to) return
@@ -202,7 +178,6 @@ fun DashboardEditor(
     val heights = remember { mutableStateMapOf<String, Int>() }
     var dragging by remember { mutableStateOf<String?>(null) }
     var offset by remember { mutableFloatStateOf(0f) }
-    val lift = remember { Animatable(0f) }
     val haptics = LocalHapticFeedback.current
     val gapPx = with(LocalDensity.current) { gap.toPx() }
     val cards by rememberUpdatedState(state.cards.toList())
@@ -225,17 +200,12 @@ fun DashboardEditor(
         }
     }
     fun dragEnd() {
-        scope.launch { lift.animateTo(0f, tween(200)) }
-        val settle = Animatable(offset)
-        scope.launch {
-            settle.animateTo(0f, tween(200)) { offset = value }
-            dragging = null
-        }
+        offset = 0f
+        dragging = null
         if (state.dirty) save()
     }
 
-    // A card held near the top or bottom of the page scrolls it, faster the
-    // closer it is, as Flutter's reorderable list does while dragging.
+    // A card held near the top or bottom of the page scrolls it, faster the closer it is.
     androidx.compose.runtime.LaunchedEffect(dragging, scrollState) {
         val scroll = scrollState ?: return@LaunchedEffect
         if (dragging == null) return@LaunchedEffect
@@ -258,31 +228,11 @@ fun DashboardEditor(
     Column {
         for (card in state.cards.toList()) {
             androidx.compose.runtime.key(card) {
-                val visibility = remember { MutableTransitionState(card !in state.entering).apply { targetState = true } }
-                val leaving = card in state.leaving
-                visibility.targetState = !leaving
-                androidx.compose.runtime.LaunchedEffect(visibility.isIdle, visibility.currentState) {
-                    if (visibility.isIdle && (card in state.entering || (card in state.leaving && !visibility.currentState))) {
-                        state.settle(card)
-                    }
-                }
                 val lifted = dragging == card
-                AnimatedVisibility(
-                    visibleState = visibility,
-                    modifier = Modifier.zIndex(if (lifted) 1f else 0f),
-                    enter = expandVertically(tween(ROOM_MS, easing = EaseOutCubic), expandFrom = Alignment.Top) +
-                        fadeIn(tween(APPEAR_MS, ROOM_MS, EaseOutCubic)) +
-                        scaleIn(tween(APPEAR_MS, ROOM_MS, EaseOutCubic), initialScale = APPEAR_SCALE),
-                    exit = fadeOut(tween(APPEAR_MS, easing = EaseOutCubic)) +
-                        scaleOut(tween(APPEAR_MS, easing = EaseOutCubic), targetScale = APPEAR_SCALE) +
-                        shrinkVertically(tween(ROOM_MS, APPEAR_MS, EaseInCubic), shrinkTowards = Alignment.Top),
-                ) {
+                Box(Modifier.zIndex(if (lifted) 1f else 0f)) {
                     Box(Modifier.padding(bottom = gap)) {
                         EditableCard(
                             name = card,
-                            seed = dashboardCards.indexOf(card),
-                            sway = sway?.value,
-                            lift = if (lifted) lift.value else 0f,
                             offset = if (lifted) offset else 0f,
                             onRemove = if (state.saving || card == "Status") null else ({ remove(card) }),
                             modifier = Modifier
@@ -295,7 +245,6 @@ fun DashboardEditor(
                                             dragging = card
                                             offset = 0f
                                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                                            scope.launch { lift.animateTo(1f, tween(200)) }
                                         },
                                         onDrag = { change, amount ->
                                             change.consume()
@@ -322,7 +271,7 @@ fun DashboardEditor(
                     Box(Modifier.padding(bottom = ROW_GAP.dp)) {
                         AddRow(
                             name = card,
-                            glyph = dashboardGlyph(card),
+                            icon = dashboardIcon(card),
                             description = dashboardDescriptions[card]?.let { tr(it) },
                             onAdd = if (state.saving) null else ({ add(card) }),
                         )
@@ -336,43 +285,23 @@ fun DashboardEditor(
 @Composable
 private fun EditableCard(
     name: String,
-    seed: Int,
-    sway: Float?,
-    lift: Float,
     offset: Float,
     onRemove: (() -> Unit)?,
     modifier: Modifier,
     content: @Composable () -> Unit,
 ) {
     val scheme = BoxTheme.scheme
-    val density = LocalDensity.current
-    val t = EaseOut.transform(lift.coerceIn(0f, 1f))
-    val shape = AppShape.all(34f)
-    val shadows = liftShadows(scheme.dark).map { it.copy(color = it.color.copy(alpha = it.color.alpha * t)) }
-    Box(
-        Modifier.graphicsLayer {
-            translationY = offset
-            if (sway != null && lift == 0f) {
-                val swings = swaysPerLoop[Math.floorMod(seed, swaysPerLoop.size)]
-                val turn = sway * 2f * PI.toFloat() * swings + seed * SWAY_PHASE_STEP
-                translationY += cos(turn) * with(density) { SWAY_BOB.dp.toPx() }
-                rotationZ = sin(turn) * SWAY_TURN_DEGREES
-            }
-            val scale = 1f + LIFT_GROWTH * t
-            scaleX = scale
-            scaleY = scale
-        },
-    ) {
-        Box(modifier.then(if (t > 0f) Modifier.boxShadows(shape, shadows) else Modifier)) {
+    Box(Modifier.offset { IntOffset(0, offset.roundToInt()) }) {
+        Box(modifier) {
             content()
-            // AbsorbPointer: the card's own controls stay still while editing.
+            // The card's own controls stay still while editing.
             Box(Modifier.matchParentSize().pointerInput(Unit) {
                 awaitPointerEventScope { while (true) awaitPointerEvent() }
             })
         }
         if (onRemove != null) {
             RoundButton(
-                glyph = AppGlyphs.remove,
+                icon = AppIcons.remove,
                 description = "${tr("Remove")} ${tr(name)}",
                 background = scheme.errorContainer,
                 foreground = scheme.onErrorContainer,
@@ -384,7 +313,7 @@ private fun EditableCard(
 }
 
 @Composable
-private fun AddRow(name: String, glyph: Glyph, description: String?, onAdd: (() -> Unit)?) {
+private fun AddRow(name: String, icon: ImageVector, description: String?, onAdd: (() -> Unit)?) {
     val scheme = BoxTheme.scheme
     val cardColor = SurfaceLevel.Card.colorOf(scheme)
     val label = tr(name)
@@ -392,14 +321,14 @@ private fun AddRow(name: String, glyph: Glyph, description: String?, onAdd: (() 
         Modifier
             .fillMaxWidth()
             .height(ROW_HEIGHT.dp)
-            .background(cardColor.copy(alpha = .55f), AppShape.all(22f))
+            .background(cardColor, AppShape.card)
             .padding(start = 12.dp, end = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        RoundButton(AppGlyphs.add, "${tr("Add")} $label", scheme.primary, scheme.onPrimary, onAdd)
-        Box(Modifier.size(40.dp).background(cardColor, AppShape.all(14f)), contentAlignment = Alignment.Center) {
-            GlyphIcon(glyph, size = 20.dp, color = scheme.onSurfaceVariant)
+        RoundButton(AppIcons.add, "${tr("Add")} $label", scheme.primary, scheme.onPrimary, onAdd)
+        Box(Modifier.size(40.dp).background(cardColor, AppShape.card), contentAlignment = Alignment.Center) {
+            AppIcon(icon, size = 20.dp, color = scheme.onSurfaceVariant)
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.Center) {
             Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, style = AppTextStyle.Subheadline.of(true).copy(color = scheme.onSurface))
@@ -412,7 +341,7 @@ private fun AddRow(name: String, glyph: Glyph, description: String?, onAdd: (() 
 
 @Composable
 private fun RoundButton(
-    glyph: Glyph,
+    icon: ImageVector,
     description: String,
     background: Color,
     foreground: Color,
@@ -428,24 +357,17 @@ private fun RoundButton(
             .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
-        GlyphIcon(glyph, size = 16.dp, color = foreground)
+        AppIcon(icon, size = 16.dp, color = foreground)
     }
 }
 
-/** DashboardShadows.e2: the lifted card's drop. */
-private fun liftShadows(dark: Boolean): List<BoxShadowSpec> = if (dark) {
-    listOf(BoxShadowSpec(Color(0x80000000), 2f, 6f), BoxShadowSpec(Color(0xB3000000), 32f, 64f, -12f))
-} else {
-    listOf(BoxShadowSpec(Color(0x0F000000), 1f, 3f), BoxShadowSpec(Color(0x14000000), 10f, 24f), BoxShadowSpec(Color(0x38000000), 32f, 64f, -12f))
-}
-
-private fun dashboardGlyph(card: String): Glyph = when (card) {
-    "Status" -> AppGlyphs.status
-    "Network speed" -> AppGlyphs.speed
-    "Outbound mode" -> AppGlyphs.split
-    "Current profile" -> AppGlyphs.profiles
-    "Proxy groups" -> AppGlyphs.layers
-    "Memory" -> AppGlyphs.cpu
-    "Intranet IP" -> AppGlyphs.devices
-    else -> dashboardSystemProxyGlyph
+private fun dashboardIcon(card: String): ImageVector = when (card) {
+    "Status" -> AppIcons.status
+    "Network speed" -> AppIcons.speed
+    "Outbound mode" -> AppIcons.split
+    "Current profile" -> AppIcons.profiles
+    "Proxy groups" -> AppIcons.layers
+    "Memory" -> AppIcons.cpu
+    "Intranet IP" -> AppIcons.devices
+    else -> AppIcons.systemProxy
 }

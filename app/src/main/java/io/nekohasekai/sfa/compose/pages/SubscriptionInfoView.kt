@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -241,8 +243,8 @@ fun SubscriptionInfoSection(info: SubscriptionInfo, webPage: String?, openWebPag
             }
         }
     }
-    // subscription_info_view.dart wraps the detail in a SelectionArea.
-    io.nekohasekai.sfa.compose.ui.SelectionArea { Section(title = tr("Subscription info"), rows = rows) }
+    // subscription_info_view.dart wraps the detail in a SelectionContainer.
+    SelectionContainer { Section(title = tr("Subscription info"), rows = rows) }
 }
 
 /** profiles.dart's dashboard _UsageMeter: percent used, used / total, and the wavy quota bar. */

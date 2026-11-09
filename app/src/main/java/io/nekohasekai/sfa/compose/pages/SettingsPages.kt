@@ -1,5 +1,7 @@
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import io.nekohasekai.sfa.bridge.BoxSettings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -20,7 +22,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -49,7 +50,7 @@ import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.AppShape
 import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxPage
 import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
@@ -57,12 +58,11 @@ import io.nekohasekai.sfa.compose.ui.CommonDialog
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
 import io.nekohasekai.sfa.compose.ui.DialogAction
 import io.nekohasekai.sfa.compose.ui.ErrorState
-import io.nekohasekai.sfa.compose.ui.FloatingDialog
 import io.nekohasekai.sfa.compose.ui.FormPage
 import io.nekohasekai.sfa.compose.ui.FormRow
 import io.nekohasekai.sfa.compose.ui.FormRowTextField
-import io.nekohasekai.sfa.compose.ui.Glyph
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import androidx.compose.ui.graphics.vector.ImageVector
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ItemPosition
 import io.nekohasekai.sfa.compose.ui.ListItem
@@ -120,9 +120,9 @@ fun GeneralSettingsPage(box: BoxController) {
     BoxPage("General") {
         Section(count = 2) { index, position ->
             if (index == 0) {
-                ListItemOpen(tr("Service"), position, leading = AppGlyphs.vpn) { ServiceSettingsPage(box) }
+                ListItemOpen(tr("Service"), position, leading = AppIcons.vpn) { ServiceSettingsPage(box) }
             } else {
-                ListItemOpen(tr("Core"), position, leading = AppGlyphs.cpu) { CoreSettingsPage(box) }
+                ListItemOpen(tr("Core"), position, leading = AppIcons.cpu) { CoreSettingsPage(box) }
             }
         }
     }
@@ -223,7 +223,7 @@ fun AboutPage(box: BoxController) {
         LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = contentTopPadding(), bottom = 32.dp + bottomInset())) {
             item(key = "hero") {
                 Column(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 16.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.background(raisedSurfaceLevel.colorOf(scheme), AppShape.all(28f)).padding(14.dp)) {
+                    Box(Modifier.background(raisedSurfaceLevel.colorOf(scheme), AppShape.card).padding(14.dp)) {
                         Image(painterResource(R.drawable.box_icon), contentDescription = null, modifier = Modifier.size(68.dp))
                     }
                     Spacer(Modifier.height(20.dp))
@@ -241,19 +241,19 @@ fun AboutPage(box: BoxController) {
                         style = AppTextStyle.Subheadline.of().copy(color = scheme.onSurfaceVariant, lineHeight = AppTextStyle.Subheadline.of().fontSize * 1.5f),
                     )
                     Spacer(Modifier.height(20.dp))
-                    TonalButton(tr("Check for updates"), if (checking) null else ({ check() }), glyph = AppGlyphs.sync, size = TonalButtonSize.Bar)
+                    TonalButton(tr("Check for updates"), if (checking) null else ({ check() }), icon = AppIcons.sync, size = TonalButtonSize.Bar)
                 }
             }
             item(key = "links") {
                 Spacer(Modifier.height(8.dp))
                 val links = listOf(
-                    Triple(AppGlyphs.code, "Source code", "github.com/koko123as/fk-box") to "https://github.com/koko123as/fk-box",
-                    Triple(AppGlyphs.code, "Based on sing-box-for-android", "SagerNet/sing-box-for-android · GPL-3.0") to "https://github.com/SagerNet/sing-box-for-android",
-                    Triple(AppGlyphs.code, "Predecessor: B-box", "giturass/B-box · GPL-3.0") to "https://github.com/giturass/B-box",
-                    Triple(AppGlyphs.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
-                    Triple(AppGlyphs.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
-                    Triple(AppGlyphs.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
-                    Triple(AppGlyphs.paintbrush, "FlClash design", "v0.9.2 · rewritten in Kotlin + Compose, no Flutter code · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
+                    Triple(AppIcons.code, "Source code", "github.com/koko123as/fk-box") to "https://github.com/koko123as/fk-box",
+                    Triple(AppIcons.code, "Based on sing-box-for-android", "SagerNet/sing-box-for-android · GPL-3.0") to "https://github.com/SagerNet/sing-box-for-android",
+                    Triple(AppIcons.code, "Predecessor: B-box", "giturass/B-box · GPL-3.0") to "https://github.com/giturass/B-box",
+                    Triple(AppIcons.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
+                    Triple(AppIcons.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
+                    Triple(AppIcons.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
+                    Triple(AppIcons.paintbrush, "FlClash design", "v0.9.2 · rewritten in Kotlin + Compose, no Flutter code · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
                 )
                 Section(title = tr("More"), count = links.size + 1) { index, position ->
                     if (index < links.size) {
@@ -262,13 +262,13 @@ fun AboutPage(box: BoxController) {
                             leading = { LinkBadge(info.first) },
                             title = { Text(tr(info.second)) },
                             subtitle = { Text(info.third, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                            trailing = { GlyphIcon(AppGlyphs.openExternal) },
+                            trailing = { AppIcon(AppIcons.openExternal) },
                             position = position,
                             onClick = { box.launchAct { openUrl(url) } },
                         )
                     } else {
                         ListItem(
-                            leading = { LinkBadge(AppGlyphs.info) },
+                            leading = { LinkBadge(AppIcons.info) },
                             title = { Text(tr("Open-source licenses")) },
                             position = position,
                             onClick = { navigator?.push { LicensesPage(box) } },
@@ -285,8 +285,9 @@ fun AboutPage(box: BoxController) {
 private fun UpdateDialog(box: BoxController, result: Json, dismiss: () -> Unit) {
     val available = result["available"] == true
     val noMetadata = result["hasMetadata"] == false
-    FloatingDialog(onDismiss = dismiss) {
+    run {
         CommonDialog(
+            onDismiss = dismiss,
             title = tr(if (available) "Update available" else "Check for updates"),
             actions = buildList {
                 add(DialogAction(tr("Close"), dismiss))
@@ -303,7 +304,7 @@ private fun UpdateDialog(box: BoxController, result: Json, dismiss: () -> Unit) 
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(if (available) "FK-box ${result["version"]}" else tr(if (noMetadata) "No release metadata available" else "You are up to date"))
                 val notes = result["notes"] as? String ?: ""
-                if (available && notes.isNotEmpty()) SelectionArea { Text(notes) }
+                if (available && notes.isNotEmpty()) SelectionContainer { Text(notes) }
             }
         }
     }
@@ -319,9 +320,9 @@ private fun Pill(label: String, color: androidx.compose.ui.graphics.Color, foreg
 }
 
 @Composable
-private fun LinkBadge(glyph: Glyph) {
-    Box(Modifier.size(40.dp).background(raisedSurfaceLevel.colorOf(BoxTheme.scheme), AppShape.md), contentAlignment = Alignment.Center) {
-        GlyphIcon(glyph, size = 20.dp, color = BoxTheme.scheme.onSurfaceVariant)
+private fun LinkBadge(icon: ImageVector) {
+    Box(Modifier.size(40.dp).background(raisedSurfaceLevel.colorOf(BoxTheme.scheme), AppShape.card), contentAlignment = Alignment.Center) {
+        AppIcon(icon, size = 20.dp, color = BoxTheme.scheme.onSurfaceVariant)
     }
 }
 
@@ -360,7 +361,7 @@ private fun LicensesPage(box: BoxController) {
             ListItem(
                 title = { Text(credit.name) },
                 subtitle = { Text(credit.license + " · " + tr(credit.taken)) },
-                trailing = { GlyphIcon(AppGlyphs.openExternal) },
+                trailing = { AppIcon(AppIcons.openExternal) },
                 position = position,
                 onClick = { box.launchAct { openUrl(url) } },
             )
@@ -529,7 +530,7 @@ fun BackupPage(box: BoxController) {
                             accountError != null -> add { _ -> ErrorState(describe(accountError!!)) { scope.launch { loadAccount() } } }
                             current == null -> add { p ->
                                 ListItem(
-                                    leading = { GlyphIcon(AppGlyphs.account) },
+                                    leading = { AppIcon(AppIcons.account) },
                                     title = { Text(tr("No account")) },
                                     subtitle = { Text(tr("Bind a WebDAV account")) },
                                     trailing = { TonalButton(tr("Bind"), if (locked) null else ({ edit() })) },
@@ -544,7 +545,7 @@ fun BackupPage(box: BoxController) {
                                         else -> "Connection failed"
                                     }
                                     ListItem(
-                                        leading = { GlyphIcon(AppGlyphs.account) },
+                                        leading = { AppIcon(AppIcons.account) },
                                         title = {
                                             val user = current["user"] as? String ?: ""
                                             Text(user.ifEmpty { current["uri"] as? String ?: "" }, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -623,11 +624,11 @@ fun BackupPage(box: BoxController) {
         }
     }
     when (val shown = dialog) {
-        is BackupDialog.Scope -> FloatingDialog(onDismiss = {
-            dialog = null
-            shown.result.complete(null)
-        }) {
-            CommonDialog(title = tr("Restore"), actions = emptyList()) {
+        is BackupDialog.Scope -> run {
+            CommonDialog(title = tr("Restore"), onDismiss = {
+                dialog = null
+                shown.result.complete(null)
+            }, actions = emptyList()) {
                 Column {
                     for ((label, value) in listOf("Restore profiles only" to "profiles", "Restore all data" to "all")) {
                         ListItem(title = { Text(tr(label)) }, onClick = {
@@ -638,12 +639,13 @@ fun BackupPage(box: BoxController) {
                 }
             }
         }
-        is BackupDialog.Approve -> FloatingDialog(onDismiss = {
-            dialog = null
-            shown.result.complete(false)
-        }) {
+        is BackupDialog.Approve -> run {
             CommonDialog(
                 title = tr("Restore backup"),
+                onDismiss = {
+                    dialog = null
+                    shown.result.complete(false)
+                },
                 destructive = shown.override,
                 actions = listOf(
                     DialogAction(tr("Cancel"), {
@@ -663,8 +665,8 @@ fun BackupPage(box: BoxController) {
                 }
             }
         }
-        is BackupDialog.Done -> FloatingDialog(onDismiss = { dialog = null }) {
-            CommonDialog(title = tr(shown.title), actions = listOf(DialogAction(tr("Close"), { dialog = null }))) { Text(tr(shown.message)) }
+        is BackupDialog.Done -> run {
+            CommonDialog(title = tr(shown.title), onDismiss = { dialog = null }, actions = listOf(DialogAction(tr("Close"), { dialog = null }))) { Text(tr(shown.message)) }
         }
         null -> Unit
     }
@@ -893,7 +895,7 @@ fun AccessPage(box: BoxController) {
     }
     val allSelected = visible.isNotEmpty() && visible.all { it["package"] in selected }
     val selectAll = if (enabled && !managed && visible.isNotEmpty()) {
-        IconAction(if (allSelected) AppGlyphs.deselect else AppGlyphs.selectAll, tr(if (allSelected) "Deselect all" else "Select all"), if (saving) null else ({
+        IconAction(if (allSelected) AppIcons.deselect else AppIcons.selectAll, tr(if (allSelected) "Deselect all" else "Select all"), if (saving) null else ({
             val next = selected.toMutableSet()
             val packages = visible.map { it["package"].toString() }
             if (allSelected) next.removeAll(packages.toSet()) else next.addAll(packages)
@@ -908,11 +910,11 @@ fun AccessPage(box: BoxController) {
     val trProxy = tr("Proxy selected apps")
     val trBypass = tr("Bypass selected apps")
     val menu = listOf(
-        PopupMenuItem(tr("Turn on"), AppGlyphs.toggleOn, checked = enabled, section = PopupMenuSection(tr("Access control")), onPressed = { set("perAppEnabled", true) }),
-        PopupMenuItem(tr("Turn off"), AppGlyphs.toggle, checked = !enabled, onPressed = { set("perAppEnabled", false) }),
+        PopupMenuItem(tr("Turn on"), AppIcons.toggleOn, checked = enabled, section = PopupMenuSection(tr("Access control")), onPressed = { set("perAppEnabled", true) }),
+        PopupMenuItem(tr("Turn off"), AppIcons.toggle, checked = !enabled, onPressed = { set("perAppEnabled", false) }),
         PopupMenuItem(
             tr("Settings"),
-            AppGlyphs.sliders,
+            AppIcons.sliders,
             subtitle = if (mode == 2) trProxy else trBypass,
             section = PopupMenuSection(),
             subItems = listOf(
@@ -929,22 +931,22 @@ fun AccessPage(box: BoxController) {
         ),
         PopupMenuItem(
             tr("Action"),
-            AppGlyphs.moreCircle,
+            AppIcons.moreCircle,
             subItems = buildList {
-                add(PopupMenuItem(tr("Clipboard export"), AppGlyphs.copy, onPressed = { setClipboard(context, selected.joinToString("\n")) }))
+                add(PopupMenuItem(tr("Clipboard export"), AppIcons.copy, onPressed = { setClipboard(context, selected.joinToString("\n")) }))
                 if (!managed) {
                     add(
-                        PopupMenuItem(tr("Clipboard import"), AppGlyphs.paste, onPressed = {
+                        PopupMenuItem(tr("Clipboard import"), AppIcons.paste, onPressed = {
                             val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                             val text = clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
                             if (text != null) set("perAppList", text.split(Regex("\\s+")).filter { it.isNotEmpty() }.distinct().sorted())
                         }),
                     )
                 }
-                add(PopupMenuItem(tr("Refresh"), AppGlyphs.refresh, onPressed = { reload() }))
+                add(PopupMenuItem(tr("Refresh"), AppIcons.refresh, onPressed = { reload() }))
                 if (managed) {
                     add(
-                        PopupMenuItem(tr("Rescan managed apps"), AppGlyphs.appsList, onPressed = if (scanning || saving || hasChanges) null else ({
+                        PopupMenuItem(tr("Rescan managed apps"), AppIcons.appsList, onPressed = if (scanning || saving || hasChanges) null else ({
                             scanning = true
                             scope.launch {
                                 try {
@@ -958,7 +960,7 @@ fun AccessPage(box: BoxController) {
                         })),
                     )
                 }
-                add(PopupMenuItem(tr("Application query"), AppGlyphs.lockOpen, onPressed = { querySettings() }))
+                add(PopupMenuItem(tr("Application query"), AppIcons.lockOpen, onPressed = { querySettings() }))
             },
         ),
     )
@@ -972,7 +974,7 @@ fun AccessPage(box: BoxController) {
             pinned = selected
         },
         iconActions = listOfNotNull(selectAll),
-        confirmationAction = if (hasChanges) IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({ scope.launch { save() } })) else null,
+        confirmationAction = if (hasChanges) IconAction(AppIcons.check, tr("Save"), if (saving) null else ({ scope.launch { save() } })) else null,
         menuItems = menu,
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -982,7 +984,7 @@ fun AccessPage(box: BoxController) {
                         label = tr("Application query failed"),
                         description = describe(appsError!!),
                         illustration = NullStatusIllustration.Permission,
-                        action = { TonalButton(tr("Application query"), { querySettings(retry = true) }, glyph = AppGlyphs.lockOpen, size = TonalButtonSize.Bar) },
+                        action = { TonalButton(tr("Application query"), { querySettings(retry = true) }, icon = AppIcons.lockOpen, size = TonalButtonSize.Bar) },
                     )
                     apps == null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CommonCircleLoading(40.dp) }
                     else -> NullStatusSwitcher(
@@ -1026,7 +1028,7 @@ fun AccessPage(box: BoxController) {
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                GlyphIcon(if (enabled) AppGlyphs.appsList else AppGlyphs.info, size = 20.dp, color = scheme.onSurfaceVariant)
+                AppIcon(if (enabled) AppIcons.appsList else AppIcons.info, size = 20.dp, color = scheme.onSurfaceVariant)
                 Text(
                     tr(
                         when {
@@ -1059,7 +1061,7 @@ private fun PackageIcon(box: BoxController, pkg: String) {
     Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
         val bitmap = icon
         if (bitmap == null) {
-            GlyphIcon(AppGlyphs.appsList, size = 32.dp, color = BoxTheme.scheme.onSurfaceVariant)
+            AppIcon(AppIcons.appsList, size = 32.dp, color = BoxTheme.scheme.onSurfaceVariant)
         } else {
             Image(bitmap, contentDescription = null, modifier = Modifier.size(48.dp))
         }

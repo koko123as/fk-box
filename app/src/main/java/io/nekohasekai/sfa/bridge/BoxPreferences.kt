@@ -12,27 +12,29 @@ internal object BoxPreferences {
         "proxyDensity" to setOf("Tight", "Standard", "Loose"),
         "proxyIconStyle" to setOf("Filled", "Plain", "Hidden"),
         "restoreStrategy" to setOf("Compatible", "Override"),
-        "tabAnimation" to setOf("slide", "fade"),
-        "liquidGlass" to setOf("none", "standard", "ultra"),
-        // Appearance → Style: the FlClash look or the flat minimal one (compose/theme/Appearance.kt).
-        "appearanceStyle" to setOf("standard", "minimal"),
-        // requests.dart's requestFeed, with fk-box's captured HTTP feed.
+        // The requests page's feed: recent and live connections, or captured HTTP.
         "requestFeed" to setOf("recent", "live", "captured"),
     )
 
+    /**
+     * Retired keys older settings and backups may still carry: the language
+     * choice, and the appearance options of the earlier FlClash-style UI
+     * (tab animation, liquid glass, style, floating dock, sidebar width).
+     */
+    private val retired = setOf("locale", "tabAnimation", "liquidGlass", "appearanceStyle", "floatingNavigation", "sidebarExpanded")
+
     fun validate(values: Map<String, Any?>): Map<String, Any?> {
-        // Ignore the retired language choice in older settings and backups.
-        val activeValues = values.filterKeys { it != "locale" }
+        val activeValues = values.filterKeys { it !in retired }
         activeValues.forEach { (key, value) ->
             val valid = when (key) {
                 in choices -> value in choices.getValue(key)
-                "floatingNavigation", "sidebarExpanded", "closeConnectionsOnSelect", "hideTimeoutProxies", "pureBlack", "systemColor", "customFontScale" -> value is Boolean
+                "closeConnectionsOnSelect", "hideTimeoutProxies", "pureBlack", "systemColor", "customFontScale" -> value is Boolean
                 "proxyColumns" -> value is Number && value.toDouble() == value.toInt().toDouble() && value.toInt() in 1..4
                 "proxyUnfolded" -> value is Map<*, *> && value.size <= 128 && value.all { (profile, groups) ->
                     profile is String && profile.length in 1..4096 && groups is List<*> && groups.size <= 4096 &&
                         groups.distinct().size == groups.size && groups.all { it is String && it.length in 1..4096 }
                 }
-                // record_filter.dart's recordGroupings: a page id to its grouping.
+                // A record page id to its grouping.
                 "recordGroupings" -> value is Map<*, *> && value.size <= 16 && value.all { (page, grouping) ->
                     page is String && page.length in 1..64 && grouping in setOf("app", "host", "rule", "exit")
                 }

@@ -2,6 +2,8 @@
 
 package io.nekohasekai.sfa.compose.pages
 
+import androidx.compose.foundation.text.selection.SelectionContainer
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,7 +15,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
-import io.nekohasekai.sfa.compose.ui.SelectionArea
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -35,10 +36,9 @@ import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.json
 import io.nekohasekai.sfa.compose.rows
-import io.nekohasekai.sfa.compose.theme.AppCorner
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.asLong
-import io.nekohasekai.sfa.compose.ui.AppGlyphs
+import io.nekohasekai.sfa.compose.ui.AppIcons
 import io.nekohasekai.sfa.compose.ui.BoxEditGuard
 import io.nekohasekai.sfa.compose.ui.BoxMenu
 import io.nekohasekai.sfa.compose.ui.BoxPage
@@ -47,7 +47,7 @@ import io.nekohasekai.sfa.compose.ui.CommonCircleLoading
 import io.nekohasekai.sfa.compose.ui.CommonScaffold
 import io.nekohasekai.sfa.compose.ui.ContextMenuRegion
 import io.nekohasekai.sfa.compose.ui.ErrorState
-import io.nekohasekai.sfa.compose.ui.GlyphIcon
+import io.nekohasekai.sfa.compose.ui.AppIcon
 import io.nekohasekai.sfa.compose.ui.IconAction
 import io.nekohasekai.sfa.compose.ui.ListFooter
 import io.nekohasekai.sfa.compose.ui.ListItem
@@ -255,7 +255,7 @@ fun ProfileConfigurationPage(box: BoxController, profile: Json? = null, resource
                 label = tr(if (box.remote) "Disconnect remote session to edit local profiles" else "No profile"),
                 illustration = NullStatusIllustration.Profile,
                 action = if (box.remote) null else ({
-                    TonalButton(tr("Profiles"), { navigator?.openForm { ProfilesPage(box, picker = true) } }, glyph = AppGlyphs.profiles, size = TonalButtonSize.Bar)
+                    TonalButton(tr("Profiles"), { navigator?.openForm { ProfilesPage(box, picker = true) } }, icon = AppIcons.profiles, size = TonalButtonSize.Bar)
                 }),
             )
         }
@@ -278,26 +278,26 @@ fun ProfileConfigurationPage(box: BoxController, profile: Json? = null, resource
     BoxPage(
         "Advanced configuration",
         loading = store.saving,
-        actions = listOf(IconAction(AppGlyphs.refresh, tr("Reload"), if (store.saving) null else ({ store.load() }))),
+        actions = listOf(IconAction(AppIcons.refresh, tr("Reload"), if (store.saving) null else ({ store.load() }))),
     ) {
         StoreError(store)
         Section(count = 6, footer = store.profile["name"].toString()) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Network"), position, leading = AppGlyphs.key) { NetworkConfigPage(store) }
-                1 -> ListItemOpen("DNS", position, leading = AppGlyphs.dns) { DnsConfigPage(store) }
-                2 -> ListItemOpen(tr("Routing rules"), position, leading = AppGlyphs.rules) { RouteConfigPage(store) }
-                3 -> ListItemOpen(tr("Rule sets"), position, leading = AppGlyphs.resources) {
+                0 -> ListItemOpen(tr("Network"), position, leading = AppIcons.key) { NetworkConfigPage(store) }
+                1 -> ListItemOpen("DNS", position, leading = AppIcons.dns) { DnsConfigPage(store) }
+                2 -> ListItemOpen(tr("Routing rules"), position, leading = AppIcons.rules) { RouteConfigPage(store) }
+                3 -> ListItemOpen(tr("Rule sets"), position, leading = AppIcons.resources) {
                     ConfigListPage(store, "Rule sets", listOf("route", "rule_set"), mapOf("type" to "inline", "tag" to "new-rules", "rules" to emptyList<Any>()))
                 }
-                4 -> ListItemOpen(tr("Log settings"), position, leading = AppGlyphs.logs) { LogConfigPage(store) }
-                else -> ListItemOpen(tr("HTTP rewriting"), position, leading = AppGlyphs.code) { HttpRewriteConfigPage(store) }
+                4 -> ListItemOpen(tr("Log settings"), position, leading = AppIcons.logs) { LogConfigPage(store) }
+                else -> ListItemOpen(tr("HTTP rewriting"), position, leading = AppIcons.code) { HttpRewriteConfigPage(store) }
             }
         }
         Section(count = 1) { _, position ->
             ListItem(
                 title = { Text(tr("Open configuration")) },
-                leading = { GlyphIcon(AppGlyphs.code) },
-                trailing = { GlyphIcon(AppGlyphs.chevronForward) },
+                leading = { AppIcon(AppIcons.code) },
+                trailing = { AppIcon(AppIcons.chevronForward) },
                 position = position,
                 onClick = { navigator?.pushPage({ ProfileEditor(box, store.profile) }) { store.load() } },
             )
@@ -309,7 +309,7 @@ fun ProfileConfigurationPage(box: BoxController, profile: Json? = null, resource
 private fun StoreError(store: ProfileConfigStore) {
     val error = store.error ?: return
     Box(Modifier.padding(bottom = 12.dp)) {
-        SelectionArea { Text(error, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
+        SelectionContainer { Text(error, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
     }
 }
 
@@ -340,7 +340,7 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
                 Section(count = 5) { index, position ->
                     when (index) {
                         0 -> ListItemToggle(tr("Enable HTTP rewriting"), store.value(HTTP_REWRITE + "enabled") == true, position, onChanged = if (store.saving) null else ({ store.launchSet(HTTP_REWRITE + "enabled", it) }))
-                        1 -> ListItemOpen("MITM", position, leading = AppGlyphs.lock, subtitle = tr("Choose HTTPS hosts in this profile")) {
+                        1 -> ListItemOpen("MITM", position, leading = AppIcons.lock, subtitle = tr("Choose HTTPS hosts in this profile")) {
                             ConfigValueEditor("MITM", store.value(HTTP_REWRITE + "mitm") ?: mapOf("enabled" to false, "hosts" to emptyList<Any>(), "excluded_hosts" to emptyList<Any>(), "block_quic" to false)) {
                                 store.set(HTTP_REWRITE + "mitm", it, expectedRevision = revision, rethrowFailure = true)
                             }
@@ -349,20 +349,20 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
                             // quick_edit.dart's list quick edit over the profile's mitm.hosts / mitm.excluded_hosts string arrays.
                             val (label, key) = if (index == 2) "MITM hosts" to "hosts" else "MITM excluded hosts" to "excluded_hosts"
                             val hosts = ((store.value(HTTP_REWRITE + "mitm" + key) as? List<*>) ?: emptyList<Any>()).map { it.toString() }
-                            ListItemOpen(tr(label), position, leading = AppGlyphs.compose, subtitle = "${hosts.size}") {
+                            ListItemOpen(tr(label), position, leading = AppIcons.compose, subtitle = "${hosts.size}") {
                                 ListQuickEditPage(tr(label), hosts, hint = "*.example.com") { items ->
                                     if (!store.set(HTTP_REWRITE + "mitm" + key, items, expectedRevision = revision, rethrowFailure = true)) throw QuickEditCancelled()
                                 }
                             }
                         }
-                        else -> ListItemOpen(tr("MITM certificate"), position, leading = AppGlyphs.key) { MitmCertificatePage() }
+                        else -> ListItemOpen(tr("MITM certificate"), position, leading = AppIcons.key) { MitmCertificatePage() }
                     }
                 }
             }
             item {
                 Section(count = sections.size, footer = tr("New example rules are disabled. Edit their pattern and content, then set disabled to false.")) { index, position ->
                     val (title, key, initial) = sections[index]
-                    ListItemOpen(title, position, leading = AppGlyphs.code, subtitle = "${store.entries(HTTP_REWRITE + key).size}") {
+                    ListItemOpen(title, position, leading = AppIcons.code, subtitle = "${store.entries(HTTP_REWRITE + key).size}") {
                         ConfigListPage(store, title, HTTP_REWRITE + key, mapOf("pattern" to pattern, "disabled" to true) + initial)
                     }
                 }
@@ -370,13 +370,13 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
             item {
                 Section(count = 2) { index, position ->
                     if (index == 0) {
-                        ListItemOpen(tr("Embedded rewrite resources"), position, leading = AppGlyphs.resources) {
+                        ListItemOpen(tr("Embedded rewrite resources"), position, leading = AppIcons.resources) {
                             ConfigValueEditor("Embedded rewrite resources", store.value(HTTP_REWRITE + "resources") ?: emptyMap<String, Any>()) {
                                 store.set(HTTP_REWRITE + "resources", it, expectedRevision = revision, rethrowFailure = true)
                             }
                         }
                     } else {
-                        ListItemOpen(tr("Edit HTTP rewrite options"), position, leading = AppGlyphs.code) {
+                        ListItemOpen(tr("Edit HTTP rewrite options"), position, leading = AppIcons.code) {
                             ConfigValueEditor("HTTP rewriting", store.value(HTTP_REWRITE) ?: mapOf("enabled" to false)) {
                                 store.set(HTTP_REWRITE, it, expectedRevision = revision, rethrowFailure = true)
                             }
@@ -405,10 +405,10 @@ fun DnsConfigPage(store: ProfileConfigStore) {
         val invalid = tr("Invalid value")
         Section(count = 7) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("DNS servers"), position, leading = AppGlyphs.dns, subtitle = "${store.entries(listOf("dns", "servers")).size}") {
+                0 -> ListItemOpen(tr("DNS servers"), position, leading = AppIcons.dns, subtitle = "${store.entries(listOf("dns", "servers")).size}") {
                     ConfigListPage(store, "DNS servers", listOf("dns", "servers"), mapOf("type" to "local", "tag" to "new-dns"))
                 }
-                1 -> ListItemOpen(tr("DNS rules"), position, leading = AppGlyphs.rules) { ConfigListPage(store, "DNS rules", listOf("dns", "rules"), emptyMap()) }
+                1 -> ListItemOpen(tr("DNS rules"), position, leading = AppIcons.rules) { ConfigListPage(store, "DNS rules", listOf("dns", "rules"), emptyMap()) }
                 2 -> ListItemOptions(
                     tr("Default DNS server"), listOf("") + store.tags(listOf("dns", "servers")), store.value(listOf("dns", "final")) as? String ?: "", position,
                     textOf = { if (it.isEmpty()) defaultLabel else it },
@@ -434,7 +434,7 @@ fun RouteConfigPage(store: ProfileConfigStore) {
         val defaultLabel = tr("Default")
         Section(count = 3) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Routing rules"), position, leading = AppGlyphs.rules, subtitle = "${store.entries(listOf("route", "rules")).size}") {
+                0 -> ListItemOpen(tr("Routing rules"), position, leading = AppIcons.rules, subtitle = "${store.entries(listOf("route", "rules")).size}") {
                     ConfigListPage(store, "Routing rules", listOf("route", "rules"), emptyMap())
                 }
                 1 -> ListItemOptions(
@@ -446,7 +446,7 @@ fun RouteConfigPage(store: ProfileConfigStore) {
             }
         }
         Section(count = 1) { _, position ->
-            ListItemOpen(tr("Edit route options"), position, leading = AppGlyphs.code) {
+            ListItemOpen(tr("Edit route options"), position, leading = AppIcons.code) {
                 ConfigValueEditor("Routing rules", store.value(listOf("route")) ?: emptyMap<String, Any>()) {
                     store.set(listOf("route"), it, expectedRevision = revision, rethrowFailure = true)
                 }
@@ -460,13 +460,13 @@ fun NetworkConfigPage(store: ProfileConfigStore) {
     BoxPage("Network", loading = store.saving) {
         Section(count = 3) { index, position ->
             when (index) {
-                0 -> ListItemOpen(tr("Inbounds"), position, leading = AppGlyphs.devices) {
+                0 -> ListItemOpen(tr("Inbounds"), position, leading = AppIcons.devices) {
                     ConfigListPage(store, "Inbounds", listOf("inbounds"), mapOf("type" to "socks", "tag" to "new-socks", "listen" to "127.0.0.1", "listen_port" to 2080))
                 }
-                1 -> ListItemOpen(tr("Outbounds"), position, leading = AppGlyphs.proxies) {
+                1 -> ListItemOpen(tr("Outbounds"), position, leading = AppIcons.proxies) {
                     ConfigListPage(store, "Outbounds", listOf("outbounds"), mapOf("type" to "direct", "tag" to "new-direct"))
                 }
-                else -> ListItemOpen(tr("Endpoints"), position, leading = AppGlyphs.devices) { ConfigListPage(store, "Endpoints", listOf("endpoints"), emptyMap()) }
+                else -> ListItemOpen(tr("Endpoints"), position, leading = AppIcons.devices) { ConfigListPage(store, "Endpoints", listOf("endpoints"), emptyMap()) }
             }
         }
     }
@@ -542,18 +542,18 @@ fun ConfigListPage(store: ProfileConfigStore, title: String, path: List<String>,
     CommonScaffold(
         title = tr(title),
         loading = store.saving,
-        primaryAction = IconAction(AppGlyphs.add, tr("Add"), if (store.saving) null else ({ edit() })),
+        primaryAction = IconAction(AppIcons.add, tr("Add"), if (store.saving) null else ({ edit() })),
         iconActions = listOfNotNull(
-            IconAction(AppGlyphs.compose, tr("Quick edit"), if (store.saving) null else ({ quickEdit() })),
-            IconAction(AppGlyphs.refresh, tr("Reload"), if (store.saving) null else ({ store.load() })),
-            if (entries.size > 1) IconAction(AppGlyphs.sort, tr("Reorder"), if (store.saving) null else ({ navigator?.openForm { ConfigOrderPage(store, title, path) } })) else null,
+            IconAction(AppIcons.compose, tr("Quick edit"), if (store.saving) null else ({ quickEdit() })),
+            IconAction(AppIcons.refresh, tr("Reload"), if (store.saving) null else ({ store.load() })),
+            if (entries.size > 1) IconAction(AppIcons.sort, tr("Reorder"), if (store.saving) null else ({ navigator?.openForm { ConfigOrderPage(store, title, path) } })) else null,
         ),
     ) {
         if (entries.isEmpty()) {
             NullStatus(
                 label = tr("No results"),
                 illustration = NullStatusIllustration.Profile,
-                action = { TonalButton(tr("Add"), { edit() }, glyph = AppGlyphs.add, size = TonalButtonSize.Bar) },
+                action = { TonalButton(tr("Add"), { edit() }, icon = AppIcons.add, size = TonalButtonSize.Bar) },
             )
         } else {
             LazyColumn(
@@ -564,8 +564,8 @@ fun ConfigListPage(store: ProfileConfigStore, title: String, path: List<String>,
                     val revision = store.revision
                     val label = (entry["tag"] ?: entry["action"] ?: entry["type"] ?: "${t(title)} ${index + 1}").toString()
                     val menu = listOf(
-                        PopupMenuItem(t("Edit"), AppGlyphs.edit, onPressed = { edit(index) }),
-                        PopupMenuItem(t("Delete"), AppGlyphs.delete, danger = true, onPressed = {
+                        PopupMenuItem(t("Edit"), AppIcons.edit, onPressed = { edit(index) }),
+                        PopupMenuItem(t("Delete"), AppIcons.delete, danger = true, onPressed = {
                             scope.launch {
                                 if (dialogs?.confirm("Delete", message = label) == true) {
                                     store.set(path, entries.toMutableList().also { it.removeAt(index) }, expectedRevision = revision)
@@ -574,11 +574,11 @@ fun ConfigListPage(store: ProfileConfigStore, title: String, path: List<String>,
                         }),
                     )
                     ContextMenuRegion(menu) {
-                        CommonCard(Modifier.fillMaxWidth(), radius = AppCorner.XL, onPressed = { edit(index) }) {
+                        CommonCard(Modifier.fillMaxWidth(), onPressed = { edit(index) }) {
                             ListItem(
                                 title = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
                                 subtitle = { Text((entry["url"] ?: entry["path"] ?: entry["server"])?.toString() ?: encodeJson(entry).replace(Regex("\\s+"), " "), maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                                leading = { GlyphIcon(AppGlyphs.profiles) },
+                                leading = { AppIcon(AppIcons.profiles) },
                                 trailing = { BoxMenu(menu) },
                             )
                         }
@@ -603,7 +603,7 @@ fun ConfigOrderPage(store: ProfileConfigStore, title: String, path: List<String>
         CommonScaffold(
             title = tr("Reorder"),
             loading = saving,
-            confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+            confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
                 saving = true
                 scope.launch {
                     try {
@@ -621,7 +621,7 @@ fun ConfigOrderPage(store: ProfileConfigStore, title: String, path: List<String>
             Column(Modifier.fillMaxSize()) {
                 if (error != null) {
                     Box(Modifier.padding(start = 16.dp, top = contentTopPadding(), end = 16.dp, bottom = 8.dp)) {
-                        SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
+                        SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error)) }
                     }
                 }
                 ReorderableColumn(
@@ -638,7 +638,7 @@ fun ConfigOrderPage(store: ProfileConfigStore, title: String, path: List<String>
                 ) { index, entry ->
                     ListItem(
                         title = { Text((entry["tag"] ?: entry["action"] ?: "${index + 1}").toString()) },
-                        trailing = { GlyphIcon(AppGlyphs.sort) },
+                        trailing = { AppIcon(AppIcons.sort) },
                     )
                 }
             }
@@ -659,7 +659,7 @@ fun ConfigValueEditor(title: String, initial: Any?, onSave: suspend (Any?) -> Bo
         BoxPage(
             title,
             loading = saving,
-            confirmationAction = IconAction(AppGlyphs.check, tr("Save"), if (saving) null else ({
+            confirmationAction = IconAction(AppIcons.check, tr("Save"), if (saving) null else ({
                 val value = try {
                     decodeJson(text.text)
                 } catch (failure: Exception) {
@@ -685,7 +685,7 @@ fun ConfigValueEditor(title: String, initial: Any?, onSave: suspend (Any?) -> Bo
         ) {
             if (error != null) {
                 Box(Modifier.padding(bottom = 12.dp)) {
-                    SelectionArea { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.error)) }
+                    SelectionContainer { Text(error!!, style = androidx.compose.material3.LocalTextStyle.current.copy(color = scheme.error)) }
                 }
             }
             // An outlined field 8–16 lines tall, labelled Configuration, in JetBrains Mono 13 at 1.6.
