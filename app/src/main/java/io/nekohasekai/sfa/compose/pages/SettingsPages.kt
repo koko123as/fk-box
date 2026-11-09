@@ -96,10 +96,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 // ---------------------------------------------------------------------------
-// pages/settings.dart: General, Service and Core
+// Settings: General, Service and Core
 // ---------------------------------------------------------------------------
 
-/** settings.dart's NativeToggle: a native setting, restarting the service as asked. */
+/** A native setting, restarting the service as asked. */
 @Composable
 private fun NativeToggle(box: BoxController, title: String, setting: String, position: ItemPosition, restart: Boolean = true, autoRestart: Boolean = false) {
     val scope = rememberCoroutineScope()
@@ -195,7 +195,7 @@ private fun CoreSettingsPage(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/about.dart (hero and link badges adapted from FlClash v0.9.2 views/about.dart)
+// About
 // ---------------------------------------------------------------------------
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -253,7 +253,7 @@ fun AboutPage(box: BoxController) {
                     Triple(AppIcons.cpu, "sing-box", listOf(box.coreVersion, "SagerNet/sing-box").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/SagerNet/sing-box",
                     Triple(AppIcons.cpu, "Xray", listOf(box.xrayVersion, "XTLS/Xray-core").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/XTLS/Xray-core",
                     Triple(AppIcons.cpu, "mihomo", listOf(box.mihomoVersion, "MetaCubeX/mihomo").filter { it.isNotEmpty() }.joinToString(" · ")) to "https://github.com/MetaCubeX/mihomo",
-                    Triple(AppIcons.paintbrush, "FlClash design", "v0.9.2 · rewritten in Kotlin + Compose, no Flutter code · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
+                    Triple(AppIcons.paintbrush, "FlClash", "Page layout reference · GPL-3.0") to "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
                 )
                 Section(title = tr("More"), count = links.size + 1) { index, position ->
                     if (index < links.size) {
@@ -335,7 +335,7 @@ private val licenses = listOf(
     Credit("sing-box", "GPL-3.0", "Proxy core (libbox)", "https://github.com/SagerNet/sing-box"),
     Credit("Xray-core", "MPL-2.0", "Second core", "https://github.com/XTLS/Xray-core"),
     Credit("mihomo", "GPL-3.0", "Third core (Clash YAML)", "https://github.com/MetaCubeX/mihomo"),
-    Credit("FlClash", "GPL-3.0", "UI design, rewritten in Kotlin + Compose (no Flutter code)", "https://github.com/chen08209/FlClash"),
+    Credit("FlClash", "GPL-3.0", "Page layout reference", "https://github.com/chen08209/FlClash"),
     Credit("shadowsocks-android", "GPL-3.0", "DefaultNetworkListener", "https://github.com/shadowsocks/shadowsocks-android"),
     Credit("Android Open Source Project", "Apache-2.0", "ParceledListSlice, Material 3 shapes", "https://github.com/androidx/androidx"),
     Credit("Jetpack Compose", "Apache-2.0", "UI framework", "https://developer.android.com/jetpack/compose"),
@@ -369,7 +369,7 @@ private fun LicensesPage(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/backup.dart (layout and dialogs adapted from FlClash v0.9.2 backup_and_restore.dart)
+// Backup
 // ---------------------------------------------------------------------------
 
 const val DEFAULT_BACKUP_FILE_NAME = "B-box-backup.json"
@@ -760,7 +760,7 @@ private fun WebDAVForm(box: BoxController, initial: Json?) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/access.dart
+// Access
 // ---------------------------------------------------------------------------
 
 private fun stringSet(value: Any?): Set<String> = (value as? List<*>)?.map { it.toString() }?.toSet() ?: emptySet()

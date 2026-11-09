@@ -93,7 +93,7 @@ import kotlin.math.min
 
 
 // ---------------------------------------------------------------------------
-// proxy_card.dart: metrics and the node card (FlClash v0.9.2 proxies/common.dart and card.dart)
+// Metrics and the node card
 // ---------------------------------------------------------------------------
 
 class ProxyCardMetrics(preferences: Json, private val fontScale: Float) {
@@ -190,7 +190,7 @@ fun ProxyNodeCard(box: BoxController, group: Json, node: Json, testing: Boolean,
 }
 
 // ---------------------------------------------------------------------------
-// pages/proxies.dart
+// Proxies
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -371,7 +371,7 @@ private fun ProxyGrid(
 }
 
 // ---------------------------------------------------------------------------
-// group_tabs.dart: the group chips over the tab view
+// The group chips over the tab view
 // ---------------------------------------------------------------------------
 
 private const val STRIP_INSET = 16f

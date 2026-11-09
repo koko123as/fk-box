@@ -119,7 +119,6 @@ private fun clipboardText(context: Context): String? {
     return clipboard.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(context)?.toString()
 }
 
-/** profile_card.dart's profileCardHeight. */
 @Composable
 fun profileCardHeight(withMeter: Boolean = false): Float {
     val scale = LocalDensity.current.fontScale
@@ -128,7 +127,7 @@ fun profileCardHeight(withMeter: Boolean = false): Float {
 }
 
 // ---------------------------------------------------------------------------
-// pages/profiles.dart
+// Profiles
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -314,13 +313,13 @@ private fun ProfilesGrid(box: BoxController, profiles: List<Json>, selectedId: L
 }
 
 // ---------------------------------------------------------------------------
-// components/profile_card.dart
+// Profile card
 // ---------------------------------------------------------------------------
 
 @Composable
 fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: List<PopupMenuItem>, onPressed: (() -> Unit)?) {
     val scheme = BoxTheme.scheme
-    // FlClash's url-profile row: expiry chip after the title, used / total as the subtitle.
+    // Remote profile row: expiry chip after the title, used / total as the subtitle.
     val info = profile.subscriptionInfo()
     val usage = info?.usage
     ContextMenuRegion(if (updating) null else menuItems) {
@@ -482,7 +481,6 @@ fun AddProfileMenu(box: BoxController, target: @Composable (open: () -> Unit) ->
     ) { open -> target(if (busy) ({}) else open) }
 }
 
-/** pages/profiles.dart's AddProfilePage. */
 @Composable
 fun AddProfilePage(box: BoxController) {
     val scope = rememberCoroutineScope()
@@ -523,7 +521,7 @@ fun AddProfilePage(box: BoxController) {
     }
 }
 
-/** pages/profiles.dart's ProfileForm: name, remote URL and its updates. */
+/** Name, remote URL and its updates. */
 @Composable
 fun ProfileForm(box: BoxController, initial: Json) {
     val navigator = LocalBoxNavigator.current
@@ -640,7 +638,6 @@ fun ProfileForm(box: BoxController, initial: Json) {
     }
 }
 
-/** pages/profiles.dart's ProfileOrderPage. */
 @Composable
 fun ProfileOrderPage(box: BoxController) {
     val navigator = LocalBoxNavigator.current

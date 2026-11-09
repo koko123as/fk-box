@@ -22,9 +22,7 @@ import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 
 /*
- * flutter/lib/common/ip_probe.dart, routed_ip_probe.dart, ip_quality.dart,
- * ip_quality_cache.dart and ip_quality_models.dart (adapted from FlClash v0.9.2,
- * GPL-3.0): provider order, parsing, inferred fallback, quality rules and the
+ * Outbound IP and IP quality probing, adapted from FlClash (GPL-3.0): provider order, parsing, inferred fallback, quality rules and the
  * cache lifetimes are unchanged; requests use the cancellable sing-box probe.
  */
 
@@ -417,7 +415,7 @@ private fun asnOf(value: Any?): Long? {
     return if (asn == 0L) null else asn
 }
 
-/** FlClash providers/ip_quality.dart: records live three days; failures five minutes in memory. */
+/** Records live three days; failures five minutes in memory. */
 class IpQualityCache(
     private val read: suspend (String) -> Any?,
     private val write: suspend (String, Map<String, Any?>) -> Unit,

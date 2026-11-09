@@ -95,19 +95,18 @@ import io.nekohasekai.sfa.compose.ui.recordGroupingsWith
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
-// pages/tools.dart
+// Tools
 // ---------------------------------------------------------------------------
 
 private val endpointKinds = listOf("tailscale", "openvpn", "openconnect", "usbip")
 private val reportKinds = listOf("crash", "oom", "power")
 
 /**
- * tools.dart's ToolsView (v0.9.3): the "more" navigation items first
+ * The Tools tab: the "more" navigation items first
  * (Requests, Resources, Logs; whatever the sidebar shows is left out), then
  * Settings and Other. fk-box's own tools (endpoints such as Tailscale with
  * Taildrop, OpenVPN, OpenConnect and USB/IP, the terminal and remote control)
- * join the top section; diagnostics and reports sit under Other, where
- * FlClash keeps its developer page.
+ * join the top section; diagnostics and reports sit under Other.
  */
 @Composable
 fun ToolsPage(box: BoxController) {
@@ -136,7 +135,7 @@ fun ToolsPage(box: BoxController) {
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppIcons.proxies) { RemotePage(box) }
             }
         }
-        // tools.dart _getSettingList: theme, access, backup, general (fk-box follows the system language).
+        // Theme, access, backup, general (fk-box follows the system language).
         Section(title = tr("Settings"), count = 4) { index, position ->
             when (index) {
                 0 -> ListItemOpen(tr("Appearance"), position, leading = AppIcons.paintbrush) { AppearancePage(box) }
@@ -160,7 +159,7 @@ fun ToolsPage(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/connections.dart
+// Connections
 // ---------------------------------------------------------------------------
 
 /**
@@ -191,7 +190,7 @@ private fun connectionChain(c: Json): List<String> {
     return chain.ifEmpty { listOfNotNull((c["outbound"] as? String)?.takeIf(String::isNotEmpty)) }
 }
 
-/** common.dart's trackerInfoFacets for fk-box's connection records (no MITM flag on a connection). */
+/** Filter facets for fk-box's connection records (no MITM flag on a connection). */
 val connectionFacets: List<RecordFacet<Json>> = listOf(
     RecordFacet<Json>(RecordFacetKind.Network, { listOf(it["network"]?.toString()?.lowercase().orEmpty()) }, offered = true, order = listOf("tcp", "udp"), labelOf = { it.uppercase() }),
     RecordFacet<Json>(RecordFacetKind.Rule, { listOf((it["rule"] as? String).orEmpty()) }, offered = true),
@@ -199,7 +198,6 @@ val connectionFacets: List<RecordFacet<Json>> = listOf(
     RecordFacet<Json>(RecordFacetKind.Proxy, { connectionChain(it) }),
 )
 
-/** common.dart's trackerInfoGroupers. */
 val connectionGroupers: List<RecordGrouper<Json>> = listOf(
     RecordGrouper<Json>(RecordGrouping.App) { connectionApp(it) },
     RecordGrouper<Json>(RecordGrouping.Host) { (it["displayDestination"] ?: it["destination"])?.toString().orEmpty() },
@@ -208,8 +206,8 @@ val connectionGroupers: List<RecordGrouper<Json>> = listOf(
 )
 
 /**
- * requests.dart's _RecentFeed ([recent]: closed connections, the kept history,
- * or every connection when "All" is chosen) and _LiveFeed (running
+ * The recent feed ([recent]: closed connections, the kept history,
+ * or every connection when "All" is chosen) and the live feed (running
  * connections with close-all), each with its own record filter and grouping.
  */
 @Composable
@@ -326,7 +324,7 @@ private fun ConnectionRecord(box: BoxController, c: Json) {
         body = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(c["displayDestination"]?.toString() ?: c["destination"]?.toString() ?: "—", style = styles.title, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                // tracker_info_item.dart: the rule, then each outbound of the chain; a tap filters on it.
+                // The rule, then each outbound of the chain; a tap filters on it.
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(4.dp), itemVerticalAlignment = Alignment.CenterVertically) {
                     val rule = c["rule"] as? String ?: ""
                     val chain = connectionChain(c)
@@ -408,7 +406,7 @@ private fun ConnectionDetail(box: BoxController, initial: Json) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/logs.dart
+// Logs
 // ---------------------------------------------------------------------------
 
 private val logQuerySeparator = Regex("\\s+")
@@ -448,7 +446,7 @@ fun LogsPage(box: BoxController) {
     }
     SideEffect { filters.offer(searched) }
     val logs = filters.apply(searched)
-    // reverse: true, as the Flutter list: the newest record sits at the bottom and the view follows it.
+    // Reversed: the newest record sits at the bottom and the view follows it.
     val reversed = logs.asReversed()
     val state = rememberLazyListState()
     LaunchedEffect(state) {
@@ -535,7 +533,7 @@ fun LogsPage(box: BoxController) {
     }
 }
 
-/** common.dart's logFacets: the level, in the core's order. */
+/** The level, in the core's order. */
 private val logFacets: List<RecordFacet<Json>> = listOf(
     RecordFacet<Json>(
         RecordFacetKind.Level,

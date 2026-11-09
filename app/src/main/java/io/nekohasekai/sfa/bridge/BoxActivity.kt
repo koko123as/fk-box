@@ -98,7 +98,7 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
         documentRequest = null
     }
 
-    /** Hosts the Compose UI over the same native facade the Flutter engine used. */
+    /** Hosts the Compose UI over the native bridge facade. */
     private fun attachUi() {
         val facade = BoxBridge(this)
         bridge = facade

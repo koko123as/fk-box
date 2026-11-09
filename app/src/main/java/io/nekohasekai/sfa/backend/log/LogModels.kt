@@ -16,7 +16,7 @@ enum class LogLevel(val label: String, val priority: Int) {
     }
 }
 
-/** Bounded, unfiltered records. Filtering and pause snapshots belong to Flutter. */
+/** Bounded, unfiltered records. Filtering and pause snapshots belong to the UI. */
 internal class LogBuffer(private val limit: Int = 3000, private val now: () -> Long = System::currentTimeMillis) {
     private val records = ArrayDeque<ProcessedLogEntry>()
     private var nextId = 0L

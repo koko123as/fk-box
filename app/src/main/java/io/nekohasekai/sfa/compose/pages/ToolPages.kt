@@ -71,7 +71,7 @@ import kotlinx.coroutines.launch
 import java.util.Locale
 
 // ---------------------------------------------------------------------------
-// pages/diagnostics.dart
+// Diagnostics
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -167,7 +167,7 @@ fun DiagnosticsPage(box: BoxController, quality: Boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/reports.dart
+// Reports
 // ---------------------------------------------------------------------------
 
 fun reportTitle(kind: String): String = mapOf("crash" to "Crash reports", "oom" to "Memory reports", "power" to "Power reports")[kind] ?: kind
@@ -316,7 +316,7 @@ private fun ReportText(box: BoxController, kind: String, id: String, name: Strin
 }
 
 // ---------------------------------------------------------------------------
-// pages/settings.dart: RemotePage and RemoteForm
+// Settings: RemotePage and RemoteForm
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -411,7 +411,7 @@ private fun RemoteForm(box: BoxController, initial: Json) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/endpoints.dart
+// Endpoints
 // ---------------------------------------------------------------------------
 
 fun endpointName(kind: String): String = mapOf("tailscale" to "Tailscale", "openconnect" to "OpenConnect", "openvpn" to "OpenVPN", "usbip" to "USB/IP")[kind] ?: kind
@@ -660,7 +660,7 @@ private fun UsbPicker(box: BoxController, server: String) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/taildrop.dart
+// Taildrop
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -786,7 +786,7 @@ fun SharePage(box: BoxController, token: String) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/authentication.dart
+// Authentication
 // ---------------------------------------------------------------------------
 
 @Composable

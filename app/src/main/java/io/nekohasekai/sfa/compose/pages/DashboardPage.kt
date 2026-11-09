@@ -93,8 +93,8 @@ import kotlinx.coroutines.launch
 import kotlin.math.max
 
 /*
- * pages/dashboard.dart and the dashboard panels in components/ (FlClash
- * v0.9.2 adaptations, GPL-3.0), over the native state BoxController carries.
+ * The dashboard and its panels (layout after FlClash, GPL-3.0), over the
+ * native state BoxController carries.
  */
 
 val dashboardCards = listOf("Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy")
@@ -123,7 +123,7 @@ fun DashboardPage(box: BoxController) {
     var editor by remember { mutableStateOf<DashboardEditorState?>(null) }
     var saving by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    // pages/dashboard.dart's _saveLayout: cards this device cannot show keep their place.
+    // Cards this device cannot show keep their place.
     suspend fun saveLayout(next: List<String>): Boolean {
         val availableKeys = available.keys
         val order = dashboardOrder(box.preferences)
@@ -144,7 +144,7 @@ fun DashboardPage(box: BoxController) {
         hiddenSet.remove("Status")
         return box.setPreferences(mapOf("dashboardCards" to result, "hiddenCards" to hiddenSet.toList()))
     }
-    // dashboard.dart: the desktop grid has no editing; the content size is known a frame late.
+    // The desktop grid has no editing; the content size is known a frame late.
     var desktopLayout by remember { mutableStateOf(false) }
     if (desktopLayout && editor != null) editor = null
     val editing = editor
@@ -160,7 +160,7 @@ fun DashboardPage(box: BoxController) {
         val pageScroll = rememberScrollState()
         var viewportBounds by remember { mutableStateOf<androidx.compose.ui.geometry.Rect?>(null) }
         BoxWithConstraints(Modifier.fillMaxSize().onGloballyPositioned { viewportBounds = it.boundsInRoot() }) {
-            // layout.dart's DashboardDensity, read from the content room over the text scale.
+            // The dashboard density, read from the content room over the text scale.
             val scale = max(1f, LocalDensity.current.fontScale)
             val density = io.nekohasekai.sfa.compose.ui.dashboardDensityOf(maxWidth.value / scale, maxHeight.value / scale)
             if (density.isDesktop != desktopLayout) androidx.compose.runtime.SideEffect { desktopLayout = density.isDesktop }
@@ -244,7 +244,7 @@ private fun DashboardBanners(box: BoxController, remoteAndApply: Boolean = true,
     }
 }
 
-// Adapted from FlClash v0.9.2 dashboard/widgets/traffic.dart.
+// Network speed
 @Composable
 internal fun SpeedPanel(box: BoxController) {
     BoxPanel {
@@ -305,7 +305,7 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
     }
 }
 
-// FlClash Android's outbound_mode.dart, using sing-box's case-insensitive modes.
+// Outbound mode, using sing-box's case-insensitive modes.
 @Composable
 private fun ModePanel(box: BoxController) {
     val scheme = BoxTheme.scheme
@@ -340,7 +340,7 @@ private fun ModePanel(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// components/profile_panel.dart
+// Profile panel
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -351,7 +351,7 @@ internal fun ProfilePanel(box: BoxController) {
     val name = if (box.remote) tr("Remote configuration") else profile?.get("name")?.toString()
     val label = AppTextStyle.Caption1.of().copy(color = scheme.onSurfaceVariant)
     var updating by remember { mutableStateOf(false) }
-    // dashboard/widgets/profiles.dart: the grid's fixed height puts the usage at the bottom.
+    // The grid's fixed height puts the usage at the bottom.
     val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     BoxPanel(onClick = {
         navigator?.openForm { if (box.remote) ProfileDetailsPage(box, null) else if (profile == null) AddProfilePage(box) else ProfileDetailsPage(box, profile) }
@@ -386,7 +386,7 @@ internal fun ProfilePanel(box: BoxController) {
                 }
             }
             if (profile != null || box.remote) {
-                // dashboard/widgets/profiles.dart: days left replaces the source once the provider reports an expiry,
+                // Days left replaces the source once the provider reports an expiry,
                 // and the usage meter replaces the counts once it reports a quota.
                 val info = profile?.subscriptionInfo()
                 val days = subscriptionDaysLabel(info)
@@ -407,7 +407,6 @@ internal fun ProfilePanel(box: BoxController) {
     }
 }
 
-/** components/profile_card.dart's profileUpdateLabel. */
 fun profileUpdateLabel(milliseconds: Long?, now: Long, chinese: Boolean): String {
     if (milliseconds == null || milliseconds <= 0) return if (chinese) "未知" else "Unknown"
     val elapsed = now - milliseconds
@@ -457,7 +456,7 @@ internal fun ProfileStats(box: BoxController, profile: Json?) {
 }
 
 // ---------------------------------------------------------------------------
-// components/proxy_groups_panel.dart
+// Proxy groups panel
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -537,7 +536,7 @@ internal fun GroupIconStack(groups: List<Json>, size: Float = 40f) {
 }
 
 // ---------------------------------------------------------------------------
-// components/memory_panel.dart and data_subscription.dart
+// Memory panel
 // ---------------------------------------------------------------------------
 
 /** Shares native sampling between visible consumers of the same data. */
@@ -681,7 +680,7 @@ private fun MemoryDetails(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// components/intranet_panel.dart
+// Intranet panel
 // ---------------------------------------------------------------------------
 
 private fun copyText(context: android.content.Context, text: String) {
@@ -722,7 +721,7 @@ internal fun IntranetPanel(box: BoxController) {
     val navigator = LocalBoxNavigator.current
     val addresses = box.lanAddresses
     val copy = box.lanCopyText
-    // intranet_ip.dart: the grid uses Title2 and, when compact, a tighter LAN row.
+    // The grid uses Title2 and, when compact, a tighter LAN row.
     val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     val figureText = if (density.isDesktop) AppTextStyle.Title2 else AppTextStyle.Title1
     val figure = figureText.of(true).tabular.copy(letterSpacing = 0.sp, color = scheme.onSurface)
@@ -909,7 +908,7 @@ private fun NewLANProxy(box: BoxController, profileId: Long, revision: String) {
 }
 
 // ---------------------------------------------------------------------------
-// components/system_proxy_panel.dart
+// System proxy panel
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -918,7 +917,7 @@ internal fun SystemProxyPanel(box: BoxController) {
     val enabled = box.dashboard["systemProxy"] == true
     val title = tr("System HTTP proxy")
     val change: (Boolean) -> Unit = { box.launchAct { setSystemProxy(it) } }
-    // network_takeover.dart's _tileMetricsOf: the grid's control-row tile, the icon and switch inset as from the edges.
+    // The grid's control-row tile, the icon and switch inset as from the edges.
     val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     val tile = density.isDesktop
     val icon = if (!tile) 48.dp else if (density.isCompact) 36.dp else 40.dp

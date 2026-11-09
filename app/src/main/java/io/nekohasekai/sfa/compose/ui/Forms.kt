@@ -55,7 +55,7 @@ import io.nekohasekai.sfa.compose.theme.AppTextStyle
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import kotlinx.coroutines.launch
 
-/** search_field.dart's SearchField: the icon's center 22 dp in, the clear button's 24.5. */
+/** The icon's center 22 dp in, the clear button's 24.5. */
 @Composable
 fun SearchField(
     text: String,
@@ -216,7 +216,7 @@ fun ListItemInput(
     )
 }
 
-/** widgets.dart's DetailRows: titled, selectable values on one card. */
+/** Titled, selectable values on one card. */
 @Composable
 fun DetailRows(values: List<Pair<String, Any?>>) {
     Column {
@@ -230,7 +230,7 @@ fun DetailRows(values: List<Pair<String, Any?>>) {
     }
 }
 
-/** components/form.dart's FormPage: a confirmation in the bar and grouped rows. */
+/** A confirmation in the bar and grouped rows. */
 @Composable
 fun FormPage(
     title: String,
@@ -259,7 +259,7 @@ fun FormPage(
     }
 }
 
-/** components/form.dart's FormRow: the title takes at most half the row beside a trailing control. */
+/** The title takes at most half the row beside a trailing control. */
 @Composable
 fun FormRow(
     title: String,
@@ -294,7 +294,7 @@ fun FormRow(
     )
 }
 
-/** components/form.dart's FormRowTextField: a bare field set against the row's end. */
+/** A bare field set against the row's end. */
 @Composable
 fun FormRowTextField(
     value: String,

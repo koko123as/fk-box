@@ -23,8 +23,7 @@ import java.net.URI
 import java.security.MessageDigest
 
 /**
- * Geo data shared by Xray and mihomo (FlClash's views/resources.dart and
- * Controller.initGeo): a copy ships in the APK's `assets/geo`, is extracted
+ * Geo data shared by Xray and mihomo (as FlClash handles it): a copy ships in the APK's `assets/geo`, is extracted
  * on first use, and each file can be replaced from its own URL. The directory
  * is libbox's GeoDataDir (mihomo's home, also Xray's xray.location.asset).
  */

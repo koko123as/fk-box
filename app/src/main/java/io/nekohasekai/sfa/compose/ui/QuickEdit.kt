@@ -1,5 +1,4 @@
-// Translated from FlClash v0.9.3 (be84736) lib/features/form/quick_edit.dart
-// and lib/common/input_entries.dart (parseListInput / parseLineInput).
+// List quick edit (after FlClash's quick edit, GPL-3.0): edit a list as text.
 package io.nekohasekai.sfa.compose.ui
 
 import androidx.compose.foundation.layout.Box
@@ -60,7 +59,7 @@ private fun unquote(value: String): String {
     return if ((first == '"' || first == '\'') && value.endsWith(first)) value.substring(1, value.length - 1).trim() else value
 }
 
-/** input_entries.dart's parseListInput: one item a line (commas also split), blanks and repeats dropped. */
+/** One item a line (commas also split), blanks and repeats dropped. */
 fun parseListInput(text: String, maxLength: Int? = null, isValid: ((String) -> Boolean)? = null): ParsedInput {
     val entries = mutableListOf<String>()
     val issues = mutableListOf<InputIssue>()
@@ -83,11 +82,11 @@ fun parseListInput(text: String, maxLength: Int? = null, isValid: ((String) -> B
     return ParsedInput(entries, issues)
 }
 
-/** input_entries.dart's parseLineInput: keeps each non-blank line whole, so its commas and quotes stay its own. */
+/** Keeps each non-blank line whole, so its commas and quotes stay its own. */
 fun parseLineInput(text: String): List<Pair<Int, String>> =
     text.split(lineSeparator).mapIndexedNotNull { index, line -> line.trim().takeIf { it.isNotEmpty() }?.let { index + 1 to it } }
 
-/** quick_edit.dart's _throwIssues: the first three issues as "Line n: message". */
+/** The first three issues as "Line n: message". */
 fun throwQuickEditIssues(issues: List<InputIssue>, t: (String) -> String, messageOf: (InputIssue) -> String) {
     if (issues.isEmpty()) return
     throw QuickEditInvalid(issues.take(QUICK_EDIT_MAX_SHOWN_ISSUES).joinToString("\n") { lineIssue(t, it.line, messageOf(it)) })
@@ -96,7 +95,7 @@ fun throwQuickEditIssues(issues: List<InputIssue>, t: (String) -> String, messag
 fun lineIssue(t: (String) -> String, line: Int, message: String): String = t("Line %1\$d: %2\$s").replace("%1\$d", "$line").replace("%2\$s", message)
 
 /**
- * quick_edit.dart's showQuickEdit: edits a list as text. Saving an unchanged
+ * Edits a list as text. Saving an unchanged
  * text closes the page; otherwise [apply] runs, and a failure shows its
  * message (or [invalidMessage] for an invalid number) with "Discard changes?",
  * leaving the editor open unless the user discards. [QuickEditCancelled]
@@ -161,7 +160,7 @@ fun QuickEditPage(title: String, content: String, invalidMessage: String? = null
     }
 }
 
-/** quick_edit.dart's showListQuickEdit: one item a line; [validator] names why an item is rejected. */
+/** One item a line; [validator] names why an item is rejected. */
 @Composable
 fun ListQuickEditPage(
     title: String,

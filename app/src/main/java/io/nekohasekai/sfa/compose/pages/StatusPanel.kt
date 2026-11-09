@@ -82,11 +82,10 @@ import kotlin.math.max
 import kotlin.math.min
 
 /*
- * components/status_panel.dart (mobile layout from FlClash's
- * current_outbound.dart): run state, start toggle, the routed outbound IP with
+ * The status panel: run state, start toggle, the routed outbound IP with
  * its country, type and quality, run time and organization. The refresh state
  * machine (route stamp, 5 s throttle, 300 ms settle, quality expiry, manual
- * retry) is translated as is.
+ * retry).
  */
 
 private const val THROTTLE_MILLIS = 5000L
@@ -308,7 +307,7 @@ fun StatusPanel(box: BoxController) {
     val ipLoading = model.checking || (model.routeChanged && model.ipDue && !box.transitioning && !box.remote)
     val loading = (ipLoading && ip == null) || model.qualityChecking
     val organization = (info?.get("organization") as? String)?.takeIf { it.isNotEmpty() } ?: info?.get("asn") as? String
-    // current_outbound.dart's _OutboundMetrics: the grid's compact and standard sizes.
+    // The grid's compact and standard sizes.
     val density = io.nekohasekai.sfa.compose.ui.LocalDashboardDensity.current
     val desktop = density.isDesktop
     val compact = density.isCompact
@@ -356,7 +355,7 @@ fun StatusPanel(box: BoxController) {
                                         style = ipStyle,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis,
-                                        // FlClash stops shrinking at 75% so a long IPv6 address stays readable.
+                                        // Text stops shrinking at 75% so a long IPv6 address stays readable.
                                         autoSize = TextAutoSize.StepBased(minFontSize = (ipText.size * .75f).sp, maxFontSize = ipText.size.sp, stepSize = 0.5.sp),
                                     )
                                     ipLoading -> SkeletonText(140.dp, ipStyle)
@@ -536,7 +535,7 @@ fun DetailRow(key: String, value: Any?, position: io.nekohasekai.sfa.compose.ui.
     ListItem(title = { Text(tr(key)) }, subtitle = { Text(value?.toString() ?: "—") }, position = position)
 }
 
-/** widgets.dart's localDate: libbox millisecond timestamps, local time, no fractions. */
+/** Libbox millisecond timestamps, local time, no fractions. */
 fun localDate(value: Any?): String {
     val ms = value.asLong() ?: 0L
     if (ms <= 0) return "—"

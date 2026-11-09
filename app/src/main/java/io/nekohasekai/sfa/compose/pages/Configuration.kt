@@ -131,7 +131,7 @@ private fun toElement(value: Any?): JsonElement = when (value) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/configuration.dart
+// Configuration
 // ---------------------------------------------------------------------------
 
 /** ProfileConfigStore: the profile's formatted JSON, its stats and revision, saved through profiles.write. */
@@ -346,7 +346,7 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
                             }
                         }
                         2, 3 -> {
-                            // quick_edit.dart's list quick edit over the profile's mitm.hosts / mitm.excluded_hosts string arrays.
+                            // List quick edit over the profile's mitm.hosts / mitm.excluded_hosts string arrays.
                             val (label, key) = if (index == 2) "MITM hosts" to "hosts" else "MITM excluded hosts" to "excluded_hosts"
                             val hosts = ((store.value(HTTP_REWRITE + "mitm" + key) as? List<*>) ?: emptyList<Any>()).map { it.toString() }
                             ListItemOpen(tr(label), position, leading = AppIcons.compose, subtitle = "${hosts.size}") {
@@ -388,7 +388,7 @@ fun HttpRewriteConfigPage(store: ProfileConfigStore) {
     }
 }
 
-/** pages/mitm_certificate.dart belongs to the Tools phase; until then its row opens this notice. */
+/** The MITM certificate notice shown from the profile's HTTP rewriting page. */
 @Composable
 private fun MitmCertificatePage() {
     BoxPage("MITM certificate") {
@@ -516,7 +516,7 @@ fun ConfigListPage(store: ProfileConfigStore, title: String, path: List<String>,
             }
         }
     }
-    // quick_edit.dart over a list of objects: one compact JSON object a line (parseLineInput keeps each line whole).
+    // One compact JSON object a line (parseLineInput keeps each line whole).
     fun quickEdit() {
         val current = store.entries(path)
         val revision = store.revision

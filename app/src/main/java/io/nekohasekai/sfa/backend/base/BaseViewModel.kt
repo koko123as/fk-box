@@ -7,7 +7,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** State shared by the Android services and Flutter bridge. */
+/** State shared by the Android services and the Compose UI bridge. */
 abstract class BaseViewModel<State> : ViewModel() {
     private val state by lazy { MutableStateFlow(createInitialState()) }
     val uiState = state.asStateFlow()

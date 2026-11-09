@@ -17,8 +17,7 @@ import com.google.android.material.color.utilities.TonalPalette
 import kotlin.math.min
 
 /**
- * Translated from flutter/lib/ui/color.dart (FlClash UI kit, GPL-3.0): the
- * seeded scheme with its neutral, accent and surface adjustments, using the
+ * Seeded colour schemes (adapted from FlClash, GPL-3.0): the seeded scheme with its neutral, accent and surface adjustments, using the
  * same material color utilities through Material Components.
  */
 enum class ColorStyle {
@@ -104,7 +103,7 @@ data class BoxScheme(
     }
 
     companion object {
-        // Flutter's Colors.green and Colors.orange.
+        // Material green 500 and orange 500.
         private val successPalette = TonalPalette.fromHct(Hct.fromInt(0xFF4CAF50.toInt()))
         private val warningPalette = TonalPalette.fromHct(Hct.fromInt(0xFFFF9800.toInt()))
     }

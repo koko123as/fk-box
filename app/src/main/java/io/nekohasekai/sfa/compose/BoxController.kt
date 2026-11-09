@@ -37,8 +37,8 @@ fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
 enum class BoxData { Memory, Lan, Logs, Connections }
 
 /**
- * Compose port of flutter/lib/box.dart's BoxController: the same state fields,
- * event handling and commands, fed by [BoxBridge]'s former channel messages.
+ * UI state, event handling and commands for every page, fed by [BoxBridge]
+ * events.
  */
 class BoxController(private val bridge: BoxBridge) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -259,7 +259,7 @@ class BoxController(private val bridge: BoxBridge) {
 
     suspend fun setPreference(key: String, value: Any?): Boolean = setPreferences(mapOf(key to value))
 
-    /** box.dart's setSetting: an auto-restart setting restarts a running local service itself. */
+    /** An auto-restart setting restarts a running local service itself. */
     suspend fun setSetting(key: String, value: Any?, restart: Boolean = true, autoRestart: Boolean = false) {
         if (serviceSettingsChanging || autoRestart && transitioning && !remote) return
         val restartService = autoRestart && running && !remote
@@ -423,7 +423,7 @@ class BoxController(private val bridge: BoxBridge) {
     }
 }
 
-/** box.dart's bytes(): 1024-based units, no decimals for bytes. */
+/** 1024-based units, no decimals for bytes. */
 fun bytes(value: Number): String {
     val units = listOf("B", "KB", "MB", "GB", "TB")
     var size = value.toDouble()

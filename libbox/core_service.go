@@ -48,7 +48,6 @@ import (
 var (
 	coreTunInet4 = netip.MustParsePrefix("172.19.0.1/30")
 	coreTunInet6 = netip.MustParsePrefix("fdfe:dcba:9876::1/126")
-	coreTunDNS   = "172.19.0.2"
 )
 
 const coreTunMTU = 9000

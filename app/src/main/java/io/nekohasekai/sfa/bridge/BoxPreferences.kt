@@ -18,7 +18,7 @@ internal object BoxPreferences {
 
     /**
      * Retired keys older settings and backups may still carry: the language
-     * choice, and the appearance options of the earlier FlClash-style UI
+     * choice, and the appearance options of the earlier decorated UI
      * (tab animation, liquid glass, style, floating dock, sidebar width).
      */
     private val retired = setOf("locale", "tabAnimation", "liquidGlass", "appearanceStyle", "floatingNavigation", "sidebarExpanded")

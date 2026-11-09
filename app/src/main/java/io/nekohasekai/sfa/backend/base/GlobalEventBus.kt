@@ -5,7 +5,7 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 
 /**
- * Backend errors observed by the Flutter host.
+ * Backend errors observed by the UI host.
  */
 object GlobalEventBus {
     private val _events =

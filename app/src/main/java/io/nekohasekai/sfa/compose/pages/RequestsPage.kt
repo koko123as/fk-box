@@ -108,10 +108,10 @@ private fun LocalOnlyPage(title: String) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/requests.dart
+// Requests
 // ---------------------------------------------------------------------------
 
-/** enum.dart's RequestFeed, with fk-box's HTTP capture list as a third feed. */
+/** The request feeds, with fk-box's HTTP capture list as a third feed. */
 private val requestFeeds = listOf("recent", "live", "captured")
 
 private fun requestFeedLabel(feed: String): String = when (feed) {
@@ -121,7 +121,7 @@ private fun requestFeedLabel(feed: String): String = when (feed) {
 }
 
 /**
- * requests.dart's RequestsPage: one page whose title menu switches between
+ * One page whose title menu switches between
  * recent (closed) and running connections and the captured HTTP requests.
  * The chosen feed persists as `requestFeed` unless [initialFeed] opens one.
  * HTTP capture is a sing-box feature: its feed stays greyed on Xray/mihomo.
@@ -172,7 +172,7 @@ private fun captureHost(item: Json): String {
     return url.substringAfter("://", url).substringBefore('/').substringBefore('?').substringAfterLast('@')
 }
 
-/** common.dart's mitm facet for fk-box's capture records, with the app they came from. */
+/** The MITM facet for fk-box's capture records, with the app they came from. */
 private val captureFacets: List<RecordFacet<Json>> = listOf(
     RecordFacet<Json>(RecordFacetKind.Mitm, { listOf(captureMitm(it)) }, offered = true, order = listOf("mitm", "http", "domain"), labelOf = { mitmLabel(it) }),
     RecordFacet<Json>(RecordFacetKind.App, { (it["packages"] as? List<*>).orEmpty().mapNotNull { p -> (p as? String)?.takeIf(String::isNotEmpty) } }),
@@ -518,7 +518,7 @@ private fun CookiesSection(message: Json, response: Boolean, copy: (String) -> U
 }
 
 // ---------------------------------------------------------------------------
-// pages/request_settings.dart
+// Request settings
 // ---------------------------------------------------------------------------
 
 private fun lines(value: String): List<String> = value.trim().split(Regex("[\\s,;]+")).filter { it.isNotEmpty() }.distinct()
@@ -617,7 +617,7 @@ fun RequestSettingsPage(box: BoxController, initial: Json, source: Json = emptyM
         validator: ((String) -> String?)? = null,
         joiner: String = "\n",
     ) {
-        // quick_edit.dart: the list opens as text, one item a line; the result lands in this draft.
+        // The list opens as text, one item a line; the result lands in this draft.
         Section(title = tr(label), count = 2, footer = footer?.let { tr(it) }) { index, position ->
             if (index == 0) {
                 BareField(value, {
@@ -771,7 +771,7 @@ fun CaptureAppsPage(box: BoxController, initial: List<String>) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/capture_domains.dart
+// Capture domains
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -841,7 +841,7 @@ fun CaptureDomainsPage(box: BoxController, query: String = "", select: Boolean =
 }
 
 // ---------------------------------------------------------------------------
-// pages/capture_logs.dart
+// Capture logs
 // ---------------------------------------------------------------------------
 
 private fun captureLine(log: Json): String {
@@ -957,7 +957,7 @@ fun CaptureLogsPage(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/mitm_certificate.dart
+// Mitm certificate
 // ---------------------------------------------------------------------------
 
 @Composable

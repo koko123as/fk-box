@@ -48,9 +48,8 @@ import kotlinx.coroutines.delay
 import kotlin.math.max
 
 // ---------------------------------------------------------------------------
-// FlClash v0.9.2 widgets/subscription_info_view.dart, widgets/chip_title.dart's
-// ExpireChip and dashboard/widgets/profiles.dart's _UsageMeter, fed by the
-// provider's subscription-userinfo header saved with each remote profile.
+// Subscription traffic and expiry (expiry chip, info rows, usage meter), fed
+// by the provider's subscription-userinfo header saved with each remote profile.
 // ---------------------------------------------------------------------------
 
 /** The traffic/expiry a remote profile's provider reported, or null when it sent none. */
@@ -92,7 +91,7 @@ private fun expireMillis(info: SubscriptionInfo): Long? = info.expire.takeIf { i
 /** Whole days left until expiry, 0 once it has passed. */
 fun subscriptionDaysLeft(info: SubscriptionInfo, now: Long): Long? = expireMillis(info)?.let { max(0L, (it - now) / 86_400_000L) }
 
-/** widgets.dart's DateTime.show: the local calendar date. */
+/** The local calendar date. */
 fun subscriptionExpireDate(info: SubscriptionInfo): String? = expireMillis(info)?.let {
     java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.ROOT).format(java.util.Date(it))
 }

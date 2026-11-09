@@ -36,7 +36,7 @@ import java.text.DateFormat
 import java.util.Date
 
 // ---------------------------------------------------------------------------
-// views/resources.dart (FlClash): auto update, its interval in hours, and one
+// Resources: auto update, its interval in hours, and one
 // row per geo file with its size, last update, single update, URL edit and
 // copy. Only the geo section is carried over; FK-box has no icon sets,
 // scripts or rule providers of FlClash's kind.

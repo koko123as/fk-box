@@ -18,7 +18,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /*
- * flutter/lib/ui/line_chart.dart: a right-aligned sample window, Gaussian
+ * A right-aligned sample window, Gaussian
  * smoothed, drawn as monotone cubic segments with a 14% fill, its height
  * scaled to the larger of the peak and [minScale].
  */

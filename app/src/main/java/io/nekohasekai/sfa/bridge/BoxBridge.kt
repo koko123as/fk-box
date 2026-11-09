@@ -47,8 +47,7 @@ import java.io.Closeable
 
 /**
  * Native facade for the Compose UI: typed commands run through [call] once the
- * bridge is initialized, and state is streamed as events ([listen]). Every
- * backend implementation behind them is reused as it was under Flutter.
+ * bridge is initialized, and state is streamed as events ([listen]).
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun interface EventSink {
@@ -200,8 +199,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private fun required(value: Long?, key: String = "id"): Long = value ?: error("Missing argument: " + key)
 
     // -----------------------------------------------------------------------
-    // Commands. Each was a MethodChannel method of the Flutter UI; arguments
-    // the UI may leave out stay nullable and fail with the former messages.
+    // Commands. Arguments the UI may leave out stay nullable and fail with a
+    // "Missing argument" message.
     // -----------------------------------------------------------------------
 
     suspend fun checkUpdates() = withContext(Dispatchers.IO) { BoxUpdates.check() }

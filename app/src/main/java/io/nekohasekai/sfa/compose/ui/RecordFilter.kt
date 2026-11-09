@@ -31,19 +31,16 @@ import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.tabular
 
 /*
- * FlClash v0.9.3 (be84736) lib/models/record_filter.dart,
- * lib/widgets/record_filter.dart and the facet/grouper tables of
- * lib/models/common.dart, with prism_ui 63450c0 collapsible_section.dart's
- * CollapsibleHeader, GPL-3.0. A list page owns one RecordFilterController:
+ * Record filters (after FlClash's record filter, GPL-3.0). A list page owns one RecordFilterController:
  * values tapped in its rows (RecordFilterScope) become chips in the scaffold
  * header, offered facets fill the Filter menu (or the pinned strip on wide
- * layouts), and a grouper folds the list under headers. Phase 6's merged
- * Requests page reuses the same controller for each of its feeds.
+ * layouts), and a grouper folds the list under headers. The Requests page
+ * reuses the same controller for each of its feeds.
  */
 
 const val RECORD_FACET_MAX_OPTIONS = 12
 
-/** enum.dart's RecordFacetKind, the facets fk-box's records carry. */
+/** The facets fk-box's records carry. */
 enum class RecordFacetKind(val title: String) {
     Network("Network"),
     Rule("Rule"),
@@ -53,7 +50,6 @@ enum class RecordFacetKind(val title: String) {
     Level("Level"),
 }
 
-/** enum.dart's RecordGrouping. */
 enum class RecordGrouping(val id: String, val label: String) {
     App("app", "App"),
     Host("host", "Host"),
@@ -114,7 +110,7 @@ fun <T> Iterable<T>.whereFilters(facets: List<RecordFacet<T>>, filters: List<Rec
     return filter { item -> selected.all { (facet, values) -> facet.valuesOf(item).any { it in values } } }
 }
 
-/** record_filter.dart's RecordFilterController, as Compose state. */
+/** Record filter state: query, facet selections and grouping. */
 @Stable
 class RecordFilterController<T>(
     val facets: List<RecordFacet<T>>,

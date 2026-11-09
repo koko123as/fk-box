@@ -71,10 +71,10 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 // ---------------------------------------------------------------------------
-// components/record.dart: the cards of the logs, connections and requests lists
+// Record: the cards of the logs, connections and requests lists
 // ---------------------------------------------------------------------------
 
-/** record.dart's recordTime: HH:mm:ss in local time, or a dash. */
+/** HH:mm:ss in local time, or a dash. */
 fun recordTime(value: Any?): String {
     val ms = value.asLong() ?: 0L
     if (ms <= 0) return "—"
@@ -117,7 +117,7 @@ private fun RecordTone.labelContainerColor(): Color {
     }
 }
 
-/** record.dart's RecordListItem: a 16 dp inset card, its header over its body. */
+/** A 16 dp inset card, its header over its body. */
 @Composable
 fun RecordListItem(
     header: @Composable () -> Unit,
@@ -146,7 +146,7 @@ fun RecordListItem(
     }
 }
 
-/** record.dart's RecordHeader: chips on the start, an optional trailing control at the end. */
+/** Chips on the start, an optional trailing control at the end. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RecordHeader(trailing: (@Composable () -> Unit)? = null, children: @Composable () -> Unit) {
@@ -194,7 +194,7 @@ fun RecordArrow() {
     Text("→", style = recordTextStyles().secondary.jetBrainsMono)
 }
 
-/** record.dart's DetailRow: a tap copies the value; [stacked] puts it under the title. */
+/** A tap copies the value; [stacked] puts it under the title. */
 @Composable
 fun RecordDetailRow(
     title: String,
@@ -235,7 +235,7 @@ fun RecordDetailRow(
     )
 }
 
-/** list.dart's ListItem.checkbox: the whole row flips the box. */
+/** The whole row flips the box. */
 @Composable
 fun ListItemCheckbox(
     title: String,
@@ -259,7 +259,7 @@ fun ListItemCheckbox(
     )
 }
 
-/** list.dart's ListHeader: a section title with its icon buttons. */
+/** A section title with its icon buttons. */
 @Composable
 fun ListHeader(title: String, actions: List<IconAction> = emptyList()) {
     Row(
@@ -314,7 +314,7 @@ fun rememberPageActive(): Boolean {
 }
 
 // ---------------------------------------------------------------------------
-// components/capture_poll.dart
+// Capture poll
 // ---------------------------------------------------------------------------
 
 class PollState(val value: Json?, val error: Throwable?, val refresh: () -> Unit)
@@ -354,7 +354,7 @@ fun rememberCapturePoll(
 }
 
 // ---------------------------------------------------------------------------
-// common/http_message.dart
+// HTTP message
 // ---------------------------------------------------------------------------
 
 fun capturedHeader(headers: List<Json>, name: String): String =
@@ -465,7 +465,7 @@ fun capturedTextPrefix(text: String, limit: Int): String {
 }
 
 // ---------------------------------------------------------------------------
-// components/captured_body.dart
+// Captured body
 // ---------------------------------------------------------------------------
 
 private const val BODY_PAGE_SIZE = 16384

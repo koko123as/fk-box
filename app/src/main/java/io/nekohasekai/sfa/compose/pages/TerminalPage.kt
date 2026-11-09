@@ -85,7 +85,7 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 // ---------------------------------------------------------------------------
-// pages/terminal.dart
+// Terminal
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -196,7 +196,7 @@ fun TerminalPage(box: BoxController, endpoint: String? = null, peer: String? = n
 
 private val terminalKeys = listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "↓", "←", "→", "Home", "End", "PgUp", "PgDn", "Paste", "Keyboard")
 
-/** terminal.dart's GhosttySurface: the native Ghostty view and, unless a preview, its extra keys. */
+/** The native Ghostty view and, unless a preview, its extra keys. */
 @Composable
 fun GhosttySurface(box: BoxController, sessionId: String, settingsRevision: Int, preview: Boolean = false) {
     val context = LocalContext.current
@@ -332,7 +332,7 @@ private fun TerminalPeerPicker(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/terminal_settings.dart
+// Terminal settings
 // ---------------------------------------------------------------------------
 
 @Composable

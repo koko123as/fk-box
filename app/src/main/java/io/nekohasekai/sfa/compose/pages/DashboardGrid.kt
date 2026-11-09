@@ -67,11 +67,9 @@ import io.nekohasekai.sfa.compose.ui.tr
 import kotlin.math.min
 
 /*
- * FlClash v0.9.3 lib/views/dashboard/dashboard.dart (_DesktopDashboard) and
- * the desktop cards in widgets/ (traffic.dart SpeedCard, outbound_mode.dart
- * OutboundModeBar, connection_stats.dart, proxy_groups.dart ProxyGroupsCard
- * and ProxyGroupsSummaryCard), GPL-3.0, over the native state BoxController
- * carries. fk-box has no service-status probe or DNS feed, so the grid has no
+ * The tablet / desktop dashboard grid (layout after FlClash's desktop
+ * dashboard, GPL-3.0): speed, outbound mode, connection stats and proxy
+ * groups over the native state BoxController carries. fk-box has no service-status probe or DNS feed, so the grid has no
  * ServiceStatus card and the stats card has no DNS cell; the profile card
  * takes the freed middle cell.
  */
@@ -83,7 +81,7 @@ private typealias GridCell = Pair<Int, @Composable () -> Unit>
 /** A card spanning [count] columns. */
 private fun cell(count: Int, content: @Composable () -> Unit): GridCell = count to content
 
-/** connections_table.dart's connectionsTableMinHeight: tab inset + tab + gap + header + three rows. */
+/** Tab inset + tab + gap + header + three rows. */
 private fun groupListMinHeight(density: DashboardDensity, scale: Float): Float {
     val tab = if (density.isCompact) 32f else 36f
     val row = if (density.isCompact) 32f else 34f
@@ -121,7 +119,7 @@ fun DashboardGrid(box: BoxController, density: DashboardDensity, scale: Float, c
                 }
             }
 
-            // The control row: the mode bar beside fk-box's System HTTP proxy tile (FlClash's VPN tile slot).
+            // The control row: the mode bar beside fk-box's System HTTP proxy tile .
             val controls = buildList<GridCell> {
                 val half = columns / 2
                 if (modes) add(cell(if (systemProxy && columns == 4) half else columns) { OutboundModeBar(box) })
@@ -136,7 +134,7 @@ fun DashboardGrid(box: BoxController, density: DashboardDensity, scale: Float, c
                     banners()
                     GridRow(topHeight, listOf(cell(2) { StatusPanel(box) }))
                     GridRow(topHeight, listOf(cell(1) { SpeedCard(box, upload = true) }, cell(1) { SpeedCard(box, upload = false) }))
-                    // dashboard.dart stacks the mode bar and the switches in two columns.
+                    // Narrow grids stack the mode bar and the switches in two columns.
                     for (control in controls) GridRow(controlHeight, listOf(2 to control.second))
                     GridRow(middleHeight, listOf(cell(1) { IntranetPanel(box) }, cell(1) { ProfilePanel(box) }))
                     GridRow(middleHeight, listOf(cell(1) { MemoryPanel(box) }, cell(1) { ProxyGroupsSummaryCard(box) }))
@@ -173,7 +171,7 @@ fun DashboardGrid(box: BoxController, density: DashboardDensity, scale: Float, c
 }
 
 // ---------------------------------------------------------------------------
-// widgets/traffic.dart SpeedCard
+// Traffic
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -235,7 +233,7 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
 }
 
 // ---------------------------------------------------------------------------
-// widgets/outbound_mode.dart OutboundModeBar
+// Outbound mode
 // ---------------------------------------------------------------------------
 
 /** The control row's mode switch; its buttons sit as far in from the card's ends as from its edges. */
@@ -284,7 +282,7 @@ private fun OutboundModeBar(box: BoxController) {
 }
 
 // ---------------------------------------------------------------------------
-// widgets/connection_stats.dart
+// Connection stats
 // ---------------------------------------------------------------------------
 
 /**
@@ -328,7 +326,7 @@ private fun RowScope.StatCell(count: Int, label: String, shape: androidx.compose
     }
 }
 
-/** connections_table.dart's dashboardCount: thousands shortened past 9999. */
+/** Thousands shortened past 9999. */
 private fun dashboardCount(count: Int): String = when {
     count < 10_000 -> count.toString()
     count < 1_000_000 -> "${count / 1000}K"
@@ -336,7 +334,7 @@ private fun dashboardCount(count: Int): String = when {
 }
 
 // ---------------------------------------------------------------------------
-// widgets/proxy_groups.dart ProxyGroupsSummaryCard and ProxyGroupsCard
+// Proxy groups
 // ---------------------------------------------------------------------------
 
 @Composable

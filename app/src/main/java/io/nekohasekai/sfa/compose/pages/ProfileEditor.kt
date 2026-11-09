@@ -88,7 +88,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 // ---------------------------------------------------------------------------
-// pages/profile_details.dart
+// Profile details
 // ---------------------------------------------------------------------------
 
 @Composable
@@ -119,7 +119,7 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
             Spacer(Modifier.height(14.dp))
             ProfileStats(box, p)
         }
-        // profile_detail.dart's subscription section, shown only when the provider sent subscription-userinfo.
+        // The subscription section, shown only when the provider sent subscription-userinfo.
         val subscription = p.subscriptionInfo()
         val webPage = p.subscriptionWebPage()
         if (subscription != null) {
@@ -176,7 +176,7 @@ fun ProfileDetailsPage(box: BoxController, profile: Json?) {
 }
 
 // ---------------------------------------------------------------------------
-// pages/profile_editor.dart and components/code_editor.dart
+// Profile editor
 // ---------------------------------------------------------------------------
 
 /** JsonEditorController: keys in primary, strings in tertiary, literals and numbers in secondary. */
@@ -260,7 +260,7 @@ private fun codeStyle(scheme: BoxScheme) = TextStyle(
     lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.None),
 )
 
-/** code_editor.dart's CodeEditor: a JSON field with a gutter of logical line numbers, wrapped lines included. */
+/** A JSON field with a gutter of logical line numbers, wrapped lines included. */
 @Composable
 fun CodeEditor(value: TextFieldValue, onValueChange: (TextFieldValue) -> Unit, readOnly: Boolean, modifier: Modifier = Modifier, scroll: ScrollState = rememberScrollState(), language: String = "json") {
     val scheme = BoxTheme.scheme
