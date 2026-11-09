@@ -36,6 +36,12 @@ jobs:
         with:
           platform: android/arm64
 
+      # Unit tests use the debug variant; the signed APK uses the release AAR.
+      - name: Build Flutter UI
+        uses: ./.github/actions/build-flutter-aar
+        with:
+          modes: debug release
+
       - name: Set up Java for Gradle
         uses: actions/setup-java@v5
         with:

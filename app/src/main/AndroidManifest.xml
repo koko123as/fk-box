@@ -41,6 +41,7 @@
         android:theme="@style/AppTheme"
         tools:targetApi="31">
 
+        <meta-data android:name="flutterEmbedding" android:value="2" />
 
         <activity
             android:name=".compose.MainActivity"
@@ -51,6 +52,8 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/AppTheme">
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/AppTheme" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 
@@ -117,6 +120,8 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/AppTheme">
+            <meta-data android:name="flutter_deeplinking_enabled" android:value="false" />
+            <meta-data android:name="io.flutter.embedding.android.NormalTheme" android:resource="@style/AppTheme" />
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SEND_MULTIPLE" />

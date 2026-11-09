@@ -10,8 +10,8 @@ concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: false
 
-# FK-box builds the Kotlin + Jetpack Compose app; it no longer consumes the
-# Flutter AAR, so the debug APK only needs the patched core.
+# The native Android host consumes the patched core (libbox.aar) and the
+# Flutter UI module (flutter/, built as a local AAR repository).
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -29,6 +29,11 @@ jobs:
         uses: ./.github/actions/build-libbox
         with:
           platform: android/arm64
+
+      - name: Build Flutter UI
+        uses: ./.github/actions/build-flutter-aar
+        with:
+          modes: debug
 
       - name: Set up Java for Gradle
         uses: actions/setup-java@v5

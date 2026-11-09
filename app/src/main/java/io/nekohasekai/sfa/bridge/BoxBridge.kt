@@ -46,9 +46,9 @@ import org.json.JSONObject
 import java.io.Closeable
 
 /**
- * Native facade for the Compose UI: typed commands run through [call] once the
- * bridge is initialized, and state is streamed as events ([listen]). Every
- * backend implementation behind them is reused as it was under Flutter.
+ * Native facade for the Flutter UI: typed commands run through [call] once the
+ * bridge is initialized, and state is streamed as events ([listen]).
+ * [BoxChannel] maps the Flutter MethodChannel/EventChannel onto them.
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun interface EventSink {
@@ -477,7 +477,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return result
     }
 
-    /** The app's launcher icon drawn at 48 dp on IO; handed to Compose as a bitmap, without a PNG round-trip. */
+    /** The app's launcher icon drawn at 48 dp on IO (encoded as PNG for Flutter by [BoxChannel]). */
     suspend fun appIcon(packageName: String): android.graphics.Bitmap = withContext(Dispatchers.IO) {
         val drawable = activity.packageManager.getApplicationIcon(packageName)
         val size = (48 * activity.resources.displayMetrics.density).toInt().coerceIn(48, 192)

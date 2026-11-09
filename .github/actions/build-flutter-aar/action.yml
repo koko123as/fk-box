@@ -1,0 +1,41 @@
+name: Build the FK-box Flutter UI
+description: >-
+  Pinned Flutter SDK and committed lockfile; builds the flutter/ module as the
+  local AAR repository (flutter/build/host/outputs/repo) the app consumes.
+  Expects Java and the Android SDK with NDK 28.2.13676358 (build-libbox
+  installs both) unless analyze-only is set.
+
+inputs:
+  modes:
+    description: AAR build modes to keep, space separated (debug, release).
+    required: false
+    default: debug release
+  analyze-only:
+    description: Only resolve dependencies (for analysis and tests); build no AAR.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    - uses: subosito/flutter-action@v2
+      with:
+        flutter-version: '3.47.6'
+        channel: stable
+        cache: true
+    - name: Resolve locked Flutter dependencies
+      shell: bash
+      working-directory: flutter
+      run: flutter pub get --enforce-lockfile
+    - name: Build Flutter Android libraries (arm64-v8a)
+      if: ${{ inputs.analyze-only != 'true' }}
+      shell: bash
+      working-directory: flutter
+      env:
+        MODES: ${{ inputs.modes }}
+      run: |
+        flags=(--no-profile)
+        [[ " $MODES " == *" debug "* ]] || flags+=(--no-debug)
+        [[ " $MODES " == *" release "* ]] || flags+=(--no-release)
+        flutter build aar "${flags[@]}" --target-platform android-arm64
+        ls build/host/outputs/repo/io/ericlee/bbox_ui

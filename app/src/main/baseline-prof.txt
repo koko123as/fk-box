@@ -1,17 +1,13 @@
 # FK-box app Baseline Profile (hand-written startup profile).
 #
 # AGP merges this file into assets/dexopt/baseline.prof together with the
-# library profiles (Compose, AndroidX); R8 rewrites the rules to the minified
-# names. profileinstaller compiles the listed code at install, so the app's
-# own startup and first-navigation code does not start interpreted.
+# library profiles (AndroidX, Flutter embedding); R8 rewrites the rules to the
+# minified names. profileinstaller compiles the listed code at install, so the
+# native host's startup code does not start interpreted. The UI itself is
+# AOT-compiled Dart in the Flutter module and needs no ART profile.
 #
-# Scope: the cold-start path (Application, MainActivity → BoxActivity →
-# BoxApp), the Compose UI kit and theme, the bridge and view models every
-# page reads, and the pages most sessions open (Home/Dashboard, Proxies,
-# Profiles, Tools/Logs). Rarely used pages and tools are left to JIT.
-#
-# Replace with a generated profile when one is collected on an ARM64 device:
-# see baselineprofile/ and app.md ("Baseline Profile").
+# Scope: the cold-start path (Application, MainActivity → BoxActivity → the
+# Flutter channel), the bridge and the view models every page reads.
 
 # Process start
 HSPLio/nekohasekai/sfa/Application;->**(**)**
@@ -21,13 +17,11 @@ HSPLio/nekohasekai/sfa/bg/CrashReportManager**;->**(**)**
 HSPLio/nekohasekai/sfa/database/Settings**;->**(**)**
 HSPLio/nekohasekai/sfa/database/preference/**;->**(**)**
 
-# Activity, root composable and controller
+# Activity, Flutter channel and bridge
 HSPLio/nekohasekai/sfa/compose/MainActivity**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxApp**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxController**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxStrings**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxActivity**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxBridge**;->**(**)**
+HSPLio/nekohasekai/sfa/bridge/BoxChannel**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxWire**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxDashboard**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxProfiles**;->**(**)**
@@ -49,27 +43,11 @@ HSPLio/nekohasekai/sfa/utils/CommandTarget**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 
-# UI kit, theme and Liquid Glass
-HSPLio/nekohasekai/sfa/compose/theme/**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/ui/**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/common/**;->**(**)**
-
-# Pages on the common path
-HSPLio/nekohasekai/sfa/compose/pages/HomePage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardGrid**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardComponents**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/StatusPanel**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ProxiesPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ProfilesPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ToolsPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/SubscriptionInfoView**;->**(**)**
 
 # Classes loaded during startup
 Lio/nekohasekai/sfa/Application;
 Lio/nekohasekai/sfa/compose/MainActivity;
 Lio/nekohasekai/sfa/bridge/BoxActivity;
 Lio/nekohasekai/sfa/bridge/BoxBridge;
-Lio/nekohasekai/sfa/compose/BoxController;
-Lio/nekohasekai/sfa/compose/**;
+Lio/nekohasekai/sfa/bridge/BoxChannel;
 Lio/nekohasekai/sfa/backend/**;

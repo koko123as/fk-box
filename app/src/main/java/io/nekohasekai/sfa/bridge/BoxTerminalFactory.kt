@@ -29,7 +29,7 @@ interface TerminalChannel {
     fun notify(method: String, value: Any?)
 }
 
-/** Only the terminal surface is native. Navigation, settings and prompts are Compose. */
+/** Only the terminal surface is native. Navigation, settings and prompts are Flutter. */
 internal class BoxTerminalFactory {
     fun create(context: Context, viewId: Int, args: Any?, channel: TerminalChannel): TerminalSurface = TerminalSurface(context, viewId, args, channel)
 }

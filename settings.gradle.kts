@@ -11,6 +11,9 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://jitpack.io") }
+        // The Flutter UI module, built by `cd flutter && flutter build aar --no-profile`.
+        maven { url = uri("flutter/build/host/outputs/repo") }
+        maven { url = uri("https://storage.googleapis.com/download.flutter.io") }
         maven {
             url = uri("https://central.sonatype.com/repository/maven-snapshots/")
             mavenContent { snapshotsOnly() }
@@ -20,7 +23,3 @@ dependencyResolutionManagement {
 }
 rootProject.name = "FK-box"
 include(":app")
-// Baseline Profile generator, only with -PbaselineProfile=true (see app.md).
-if (providers.gradleProperty("baselineProfile").orNull.toBoolean()) {
-    include(":baselineprofile")
-}
