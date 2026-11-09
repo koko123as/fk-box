@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import '../widgets.dart';
+import '../components/subscription_info.dart';
 import '../components/form.dart';
 import '../components/profile_card.dart';
 import 'profile_editor.dart';
@@ -104,6 +105,7 @@ class _ProfilesPageState extends State<ProfilesPage> {
             selected: profile['id'] == box.selectedProfileId,
             updating: _updating.contains(profile['id']),
             menuItems: _menu(profile),
+            withMeter: profilesShowMeter(profiles),
             onPressed: box.transitioning ? null : () async {
               if (box.transitioning || box.remote) return;
               if (await box.act('profiles.select', {'id': profile['id']}) && widget.picker && context.mounted) context.safeNestedPop();
@@ -134,7 +136,7 @@ class _ProfilesGridState extends State<_ProfilesGrid> {
     final active = PageActivityScope.isActiveOf(context);
     final spacing = (context.isMobileView ? 8.0 : 12.0).mAp(context);
     final padding = EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 16 + context.bottomInset);
-    final height = profileCardHeight(context);
+    final height = profileCardHeight(context, withMeter: profilesShowMeter(widget.profiles));
     return LayoutBuilder(builder: (context, constraints) {
       final columns = ((constraints.maxWidth - 32 + spacing) / (300.ap(context) + spacing)).floor().clamp(1, 3);
       if (!_revealed && !widget.picker && active && widget.profiles.isNotEmpty) {
@@ -262,6 +264,29 @@ Future<void> openImported(BuildContext context, Object? result) async {
   box.message(message.replaceAll('%d', '${ids is List ? ids.length : entries.length}'));
 }
 
+/// The cores a profile can run on, "auto" first.
+List<(String, String)> coreLabels(BuildContext context) => [
+  ('auto', context.tr('Automatic')),
+  ('sing-box', 'sing-box'),
+  ('xray', 'Xray'),
+  ('mihomo', 'mihomo'),
+];
+
+/// Whether the profile resolves to the sing-box core (structured configuration, HTTP capture).
+bool runsSingBox(Json profile) => (profile['resolvedCore'] as String? ?? 'sing-box') == 'sing-box';
+
+/// The core a profile resolves to (sing-box, Xray or mihomo), in the expiry chip's shape.
+class ProfileCoreChip extends StatelessWidget {
+  const ProfileCoreChip(this.profile, {super.key});
+  final Json profile;
+  @override Widget build(BuildContext context) {
+    final core = profile['resolvedCore'] as String?;
+    if (core == null) return const SizedBox.shrink();
+    final label = coreLabels(context).firstWhere((item) => item.$1 == core, orElse: () => (core, core)).$2;
+    return TintedChip(label, color: context.colorScheme.secondary);
+  }
+}
+
 class ProfileForm extends StatefulWidget {
   const ProfileForm({super.key, required this.initial});
   final Json initial;
@@ -273,6 +298,8 @@ class _ProfileFormState extends State<ProfileForm> {
   late final _interval = TextEditingController(text: (widget.initial['interval'] ?? 60).toString());
   late bool _remote = widget.initial['remote'] == true || _url.text.isNotEmpty;
   late bool _auto = widget.initial['autoUpdate'] != false;
+  late String _core = widget.initial['core'] as String? ?? 'auto';
+  late final String _initialInterval = (widget.initial['interval'] ?? 60).toString();
   bool _saving = false, _attempted = false;
 
   ({String field, String message})? get _issue {
@@ -280,7 +307,7 @@ class _ProfileFormState extends State<ProfileForm> {
     if (!_remote) return null;
     final uri = Uri.tryParse(_url.text.trim());
     if (uri == null || !['http', 'https'].contains(uri.scheme) || uri.host.isEmpty) {
-      return (field: 'url', message: context.tr('sing-box JSON URL'));
+      return (field: 'url', message: context.tr('Subscription URL'));
     }
     if (_auto && (int.tryParse(_interval.text) ?? 0) < 15) {
       return (field: 'interval', message: context.tr('At least 15 minutes'));
@@ -302,6 +329,9 @@ class _ProfileFormState extends State<ProfileForm> {
         ...widget.initial, 'name': _name.text.trim(), 'url': _remote ? _url.text.trim() : '',
         'autoUpdate': _remote && _auto,
         'interval': interval != null && interval >= 15 ? interval : previousInterval >= 15 ? previousInterval : 60,
+        // A typed interval outranks the provider's profile-update-interval.
+        'intervalEdited': widget.initial['intervalEdited'] == true || (_remote && _auto && _interval.text != _initialInterval),
+        'core': _core,
       });
       if (mounted) context.safeNestedPop();
     } catch (error) { box.report(error); }
@@ -319,11 +349,21 @@ class _ProfileFormState extends State<ProfileForm> {
               textInputAction: TextInputAction.next, onChanged: _changed)),
           FormRow(title: context.tr('Remote'), onPressed: () => setState(() => _remote = !_remote),
             trailing: Switch(value: _remote, onChanged: (value) => setState(() => _remote = value))),
+          PopupAnchor(
+            targetBuilder: (open) => FormRow(title: context.tr('Core'), onPressed: open,
+              trailing: Text(coreLabels(context).firstWhere((core) => core.$1 == _core, orElse: () => (_core, _core)).$2)),
+            popupBuilder: (_) => PopupMenu(items: [
+              for (final (value, label) in coreLabels(context))
+                PopupMenuItem(label: label, checked: _core == value, onPressed: () => setState(() => _core = value)),
+            ]),
+          ),
           if (_remote) FormRow(title: context.tr('URL'), invalid: issue?.field == 'url',
             trailing: FormRowTextField(controller: _url, hintText: context.tr('Required'),
               keyboardType: TextInputType.url, textInputAction: TextInputAction.next,
               autocorrect: false, enableSuggestions: false, onChanged: _changed)),
-        ], footer: _remote ? context.tr('This URL must serve a sing-box JSON configuration.') : null),
+        ], footer: context.tr(_remote
+          ? 'Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content.'
+          : 'Automatic picks the core from the content.')),
         if (_remote) generateSection(items: [
           FormRow(title: context.tr('Auto update'), onPressed: () => setState(() => _auto = !_auto),
             trailing: Switch(value: _auto, onChanged: (value) => setState(() => _auto = value))),

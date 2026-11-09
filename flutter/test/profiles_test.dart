@@ -139,7 +139,7 @@ void main() {
     expect(find.text('Update interval'), findsNothing);
     await tester.tap(find.byTooltip('Save').last);
     await tester.pumpAndSettle();
-    expect(saved, {..._remote, 'autoUpdate': false});
+    expect(saved, {..._remote, 'autoUpdate': false, 'intervalEdited': false, 'core': 'auto'});
     expect(find.byType(ProfileForm), findsNothing);
     expect(tester.takeException(), isNull);
   });
@@ -285,7 +285,8 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Save').last);
     await tester.pumpAndSettle();
-    expect(saved, imported);
+    // The form always records whether the interval was typed and the chosen core.
+    expect(saved, {...imported, 'intervalEdited': false, 'core': 'auto'});
     expect(find.byType(ProfileForm), findsNothing);
   });
 }

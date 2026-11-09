@@ -1,6 +1,7 @@
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 import '../components/profile_panel.dart';
+import '../components/subscription_info.dart';
 import 'profiles.dart';
 import 'profile_editor.dart';
 import 'configuration.dart';
@@ -24,6 +25,12 @@ class ProfileDetailsPage extends StatelessWidget {
         EmojiText(p['name'].toString(), style: AppTextStyle.title2.of(context, emphasized: true)),
         ProfileStats(profile: p),
       ])),
+      // profile_detail.dart's subscription section, shown only when the provider sent subscription-userinfo.
+      if (subscriptionInfoOf(p) case final info?) subscriptionInfoSection(context, info, subscriptionWebPageOf(p), (url) => box.act('url.open', {'url': url}))
+      else if (subscriptionWebPageOf(p) case final webPage?) generateSection(title: context.tr('Subscription info'), items: [
+        ListItem(title: Text(context.tr('Open website')), subtitle: Text(webPage, maxLines: 1, overflow: TextOverflow.ellipsis),
+          onTap: () => box.act('url.open', {'url': webPage})),
+      ]),
       generateSection(items: [
         if (p['remote'] == true) ListItem(title: Text(context.tr('URL')), subtitle: SelectableText(p['url'].toString()),
           trailing: IconButton(icon: const GlyphIcon(AppGlyphs.copy), tooltip: context.tr('Copy'), onPressed: () => Clipboard.setData(ClipboardData(text: p['url'].toString())))),
@@ -35,7 +42,8 @@ class ProfileDetailsPage extends StatelessWidget {
         ],
       ]),
       generateSection(items: [
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.customize), title: Text(context.tr('Advanced configuration')), widget: ProfileConfigurationPage(profile: p)),
+        // The structured editor understands sing-box options only.
+        if (runsSingBox(p)) ListItem.open(leading: const GlyphIcon(AppGlyphs.customize), title: Text(context.tr('Advanced configuration')), widget: ProfileConfigurationPage(profile: p)),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.code), title: Text(context.tr('Open configuration')), widget: ProfileEditor(profile: p)),
       ]),
     ]);

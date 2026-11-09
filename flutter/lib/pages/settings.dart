@@ -45,22 +45,49 @@ class ServiceSettingsPage extends StatelessWidget {
 
 class CoreSettingsPage extends StatelessWidget {
   const CoreSettingsPage({super.key});
-  @override Widget build(BuildContext context) => BoxPage(title: 'Core', children: [
-    generateSection(items: [
-      ListItem(title: Text(context.tr('Core version')), subtitle: Text(context.box.coreVersion)),
-      const NativeToggle('Disable deprecation warnings', 'disableDeprecatedWarnings', restart: false),
-      const NativeToggle('Enable memory protection', 'oomKillerEnabled'),
-      const NativeToggle('Disable core memory killer', 'oomKillerDisabled'),
-      ListItem.input(title: Text(context.tr('Memory limit')), dialogTitle: context.tr('Memory limit'),
-        value: (context.box.settings['oomMemoryLimitMB'] ?? 50).toString(), suffixText: 'MiB',
-        keyboardType: TextInputType.number, validator: (value) {
-          final number = int.tryParse(value ?? '') ?? 0;
-          return number >= 10 && number <= 4096 ? null : '10–4096 MiB';
-        },
-        onChanged: (value) { if (value != null) context.box.setSetting('oomMemoryLimitMB', int.parse(value)); }),
-      const NativeToggle('Power reports', 'powerReportEnabled'),
-    ]),
-  ]);
+  @override Widget build(BuildContext context) {
+    final box = context.box;
+    // One switch per linked core, with its version; a core that is off is
+    // skipped by auto and refuses to start. The last one cannot go off.
+    final cores = [
+      ('sing-box', 'singBoxEnabled', box.coreVersion),
+      ('Xray', 'xrayEnabled', box.xrayVersion),
+      ('mihomo', 'mihomoEnabled', box.mihomoVersion),
+    ];
+    final onCount = cores.where((core) => box.settings[core.$2] != false).length;
+    final limit = ((box.settings['oomMemoryLimitMB'] as num?)?.toInt() ?? 50).toString();
+    return BoxPage(title: 'Core', children: [
+      generateSection(title: context.tr('Cores'),
+        footer: context.tr('A core that is off is skipped when choosing automatically, and profiles that need it will not start.'),
+        items: [
+          for (final (name, setting, version) in cores) ListItem.toggle(
+            title: Text(name), subtitle: version.isEmpty ? null : Text(version),
+            value: box.settings[setting] != false,
+            onChanged: box.serviceSettingsChanging || box.settings[setting] != false && onCount == 1
+              ? null : (value) => box.setSetting(setting, value, restart: false),
+          ),
+        ]),
+      generateSection(footer: context.tr('Deprecation warnings and memory protection apply to the sing-box core only.'), items: [
+        const NativeToggle('Disable deprecation warnings', 'disableDeprecatedWarnings', restart: false),
+        const NativeToggle('Enable memory protection', 'oomKillerEnabled'),
+        const NativeToggle('Disable core memory killer', 'oomKillerDisabled'),
+        // The dialog edits the bare number; "MiB" is only shown beside it.
+        ListItem.input(title: Text(context.tr('Memory limit')), dialogTitle: context.tr('Memory limit'),
+          value: limit, trailing: Text('$limit MiB'), suffixText: 'MiB',
+          keyboardType: TextInputType.number, validator: (value) => _parseMemoryLimit(value ?? '') != null ? null : '10–4096 MiB',
+          onChanged: (value) { final limit = _parseMemoryLimit(value ?? ''); if (limit != null) box.setSetting('oomMemoryLimitMB', limit); }),
+        const NativeToggle('Power reports', 'powerReportEnabled'),
+      ]),
+    ]);
+  }
+}
+
+/// BoxSettings.parseMemoryLimit: spaces and a trailing "MiB"/"MB" tolerated, 10–4096.
+int? _parseMemoryLimit(String text) {
+  var value = text.trim();
+  if (value.endsWith('MiB')) { value = value.substring(0, value.length - 3); } else if (value.endsWith('MB')) { value = value.substring(0, value.length - 2); }
+  final number = int.tryParse(value.trim());
+  return number != null && number >= 10 && number <= 4096 ? number : null;
 }
 
 class RemotePage extends StatefulWidget {

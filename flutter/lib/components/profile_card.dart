@@ -1,36 +1,56 @@
 import 'dart:async';
 import '../widgets.dart';
+import '../pages/profiles.dart' show ProfileCoreChip;
+import 'subscription_info.dart';
 
 // FlClash v0.9.2 profile rows, using only metadata supplied by Room.
-double profileCardHeight(BuildContext context) {
+/// The quota bar's gap and height, added to the row height while any profile shows one.
+const profileMeterGap = 6.0;
+const profileMeterHeight = 4.0;
+
+double profileCardHeight(BuildContext context, {bool withMeter = false}) {
   final measure = MeasureScope.of(context);
   return measure.textHeight(AppTextStyle.headline) + 4 +
-      measure.textHeight(AppTextStyle.footnote) + 2 * listRowVerticalPadding;
+      measure.textHeight(AppTextStyle.footnote) + 2 * listRowVerticalPadding +
+      (withMeter ? profileMeterGap + profileMeterHeight : 0);
 }
+
+/// Whether any profile in the list shows a quota bar.
+bool profilesShowMeter(Iterable<Json> profiles) => profiles.any((profile) => subscriptionInfoOf(profile)?.usage != null);
 
 class ProfileCard extends StatelessWidget {
   const ProfileCard({super.key, required this.profile, required this.selected,
-    required this.updating, required this.onPressed, required this.menuItems});
+    required this.updating, required this.onPressed, required this.menuItems, this.withMeter = false});
   final Json profile;
-  final bool selected, updating;
+  final bool selected, updating, withMeter;
   final VoidCallback? onPressed;
   final List<PopupMenuItem> menuItems;
 
   @override Widget build(BuildContext context) {
     final titleStyle = AppTextStyle.headline.of(context);
+    final info = subscriptionInfoOf(profile);
+    final usage = info?.usage;
     return ContextMenuRegion(
       menuItems: updating ? null : menuItems,
       child: Card(radius: AppCorner.xl, isSelected: selected, enterActionsOnRight: true,
         onPressed: onPressed,
         child: ListItem(
-          minTileHeight: profileCardHeight(context), minVerticalPadding: listRowVerticalPadding,
+          minTileHeight: profileCardHeight(context, withMeter: withMeter), minVerticalPadding: listRowVerticalPadding,
+          // FlClash's url-profile row: expiry chip after the title, used / total as the subtitle.
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(profile['name'].toString(), style: titleStyle,
-              strutStyle: StrutStyle.fromTextStyle(DefaultTextStyle.of(context).style.merge(titleStyle), forceStrutHeight: true),
-              maxLines: 1, overflow: TextOverflow.ellipsis, textWidthBasis: TextWidthBasis.longestLine),
+            SubscriptionChipTitle(profile['name'].toString(), info: info, style: titleStyle,
+              strutStyle: StrutStyle.fromTextStyle(DefaultTextStyle.of(context).style.merge(titleStyle), forceStrutHeight: true)),
             const SizedBox(height: 4),
-            Text(context.tr(profile['remote'] == true ? 'Remote' : 'Local'),
-              style: AppTextStyle.footnote.of(context).toLighter, maxLines: 1, overflow: TextOverflow.ellipsis),
+            // fk-box: the core the profile runs on, as a chip before the subtitle.
+            Row(spacing: 6, children: [
+              ProfileCoreChip(profile),
+              Flexible(child: Text((info == null ? null : subscriptionTrafficLine(context, info)) ?? context.tr(profile['remote'] == true ? 'Remote' : 'Local'),
+                style: AppTextStyle.footnote.of(context).toLighter, maxLines: 1, overflow: TextOverflow.ellipsis)),
+            ]),
+            if (info != null && usage != null) ...[
+              const SizedBox(height: profileMeterGap),
+              SubscriptionProgressBar(usage, color: subscriptionColor(info, context.colorScheme, DateTime.now())),
+            ],
           ]),
           trailing: Row(mainAxisSize: MainAxisSize.min, spacing: 8, children: [
             AnimatedSwitcher(

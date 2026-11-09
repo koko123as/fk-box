@@ -2,6 +2,7 @@ import '../widgets.dart';
 import '../pages/profiles.dart';
 import '../pages/profile_details.dart';
 import 'profile_card.dart';
+import 'subscription_info.dart';
 
 class ProfilePanel extends StatefulWidget {
   const ProfilePanel({super.key});
@@ -14,6 +15,8 @@ class _ProfilePanelState extends State<ProfilePanel> {
     final profile = box.remote ? null : box.selectedProfile;
     final name = box.remote ? context.tr('Remote configuration') : profile?['name'];
     final label = AppTextStyle.caption1.of(context).copyWith(color: context.colorScheme.onSurfaceVariant);
+    final info = subscriptionInfoOf(profile);
+    final days = subscriptionDaysLabel(context, info);
     return BoxPanel(onTap: () => box.remote ? openForm(context, const ProfileDetailsPage()) : profile == null
       ? openForm(context, const AddProfilePage()) : openForm(context, ProfileDetailsPage(profile: profile)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -29,18 +32,22 @@ class _ProfilePanelState extends State<ProfilePanel> {
         const SizedBox(height: 12),
         Row(children: [
           Flexible(child: EmojiText(name?.toString() ?? context.tr('Add profile'), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyle.headline.of(context, emphasized: true))),
+          if (profile != null) ...[const SizedBox(width: 8), ProfileCoreChip(profile)],
           if (!box.remote && box.profiles.length > 1) SizedBox.square(dimension: 32, child: IconButton(padding: EdgeInsets.zero,
             tooltip: context.tr('Switch profile'), icon: const GlyphIcon(AppGlyphs.swap, size: 18),
             onPressed: box.transitioning ? null : () => openForm(context, const ProfilesPage(picker: true)))),
         ]),
         if (profile != null || box.remote) ...[
+          // dashboard/widgets/profiles.dart: days left replaces the source once the provider reports an expiry,
+          // and the usage meter replaces the counts once it reports a quota.
           Row(spacing: 12, children: [
             Expanded(child: profile == null ? const SizedBox.shrink() : ProfileUpdateTime(
               milliseconds: (profile['updatedAt'] as num?)?.toInt(), style: label, showLabel: true)),
-            Text(context.tr(box.remote || profile?['remote'] == true ? 'Remote' : 'Local'), style: label),
+            if (days != null) Text(days.$1, maxLines: 1, style: days.$2 == null ? label : label.copyWith(color: days.$2))
+            else Text(context.tr(box.remote || profile?['remote'] == true ? 'Remote' : 'Local'), style: label),
           ]),
           const SizedBox(height: 14),
-          ProfileStats(profile: profile),
+          if (info?.usage != null) SubscriptionUsageMeter(info!) else ProfileStats(profile: profile),
         ],
       ]),
     );

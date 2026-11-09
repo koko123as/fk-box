@@ -58,7 +58,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
     final box = context.box;
     setState(() { _checking = true; _error = null; });
     try {
-      final result = await box.call(format ? 'config.format' : 'config.check', {'content': _text.text});
+      final result = await box.call(format ? 'config.format' : 'config.check', {'core': widget.profile['core'] as String? ?? 'auto', 'content': _text.text});
       if (!mounted) return;
       if (format) _text.text = result as String;
       else context.box.message(context.tr('Configuration is valid'));

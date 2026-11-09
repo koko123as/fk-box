@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:prism_ui/shapes/shapes.dart';
 import '../widgets.dart';
 import '../pages/configuration.dart';
+import '../pages/profile_editor.dart';
+import '../pages/profiles.dart' show runsSingBox;
 import 'shape_badge.dart';
 
 Future<void> _copy(BuildContext context, String text) async {
@@ -146,7 +148,7 @@ class IntranetDetails extends StatelessWidget {
         ]),
         if (box.selectedProfile != null) generateSection(items: [
           ListItem.open(leading: const GlyphIcon(AppGlyphs.code), title: Text(context.tr('Open configuration')),
-            widget: ProfileConfigurationPage(profile: box.selectedProfile)),
+            widget: runsSingBox(box.selectedProfile!) ? ProfileConfigurationPage(profile: box.selectedProfile) : ProfileEditor(profile: box.selectedProfile!)),
         ]),
       ],
     ]);

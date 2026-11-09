@@ -211,6 +211,7 @@ class DnsConfigPage extends StatelessWidget {
       ListItem.toggle(title: Text(context.tr('Disable DNS cache expiration')), value: store.value(const ['dns', 'disable_expire']) == true,
         onChanged: (value) => store.set(const ['dns', 'disable_expire'], value)),
       ListItem.input(title: Text(context.tr('DNS cache capacity')), dialogTitle: context.tr('DNS cache capacity'),
+        trailing: Text('${store.value(const ['dns', 'cache_capacity']) ?? 0}'),
         value: '${store.value(const ['dns', 'cache_capacity']) ?? 0}', keyboardType: TextInputType.number,
         validator: (value) { final number = int.tryParse(value ?? ''); return number != null && number >= 0 && number <= 0xffffffff ? null : context.tr('Invalid value'); },
         onChanged: (value) { if (value != null) store.set(const ['dns', 'cache_capacity'], int.parse(value)); }),
