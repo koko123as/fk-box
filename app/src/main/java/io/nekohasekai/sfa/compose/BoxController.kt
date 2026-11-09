@@ -4,6 +4,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import io.nekohasekai.sfa.compose.common.IpQualityCache
 import io.nekohasekai.sfa.bridge.BoxBridge
 import kotlinx.coroutines.CancellationException
@@ -288,18 +290,41 @@ class BoxController(private val bridge: BoxBridge) {
         false
     }
 
-    val appIcons = HashMap<String, Deferred<ByteArray?>>()
+    // Per-app icon bitmaps, bounded by bytes (8 MiB holds about 100 icons at 48 dp xxhdpi);
+    // icons that failed to load are remembered until the list is reloaded.
+    private val appIconCache = object : android.util.LruCache<String, ImageBitmap>(APP_ICON_CACHE_BYTES) {
+        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
+    }
+    private val appIconLoads = HashMap<String, Deferred<ImageBitmap?>>()
+    private val appIconMisses = HashSet<String>()
 
-    fun appIcon(packageName: String): Deferred<ByteArray?> = appIcons.getOrPut(packageName) {
-        scope.async {
-            try {
-                call { appIcon(packageName) }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (_: Exception) {
-                null
+    /** An icon already in memory, for the first frame of a row. */
+    fun cachedAppIcon(packageName: String): ImageBitmap? = appIconCache.get(packageName)
+
+    /** Loads [packageName]'s icon off the main thread; concurrent requests share one load. Main thread only. */
+    suspend fun appIcon(packageName: String): ImageBitmap? {
+        appIconCache.get(packageName)?.let { return it }
+        if (packageName in appIconMisses) return null
+        val load = appIconLoads.getOrPut(packageName) {
+            scope.async(start = kotlinx.coroutines.CoroutineStart.LAZY) {
+                try {
+                    call { appIcon(packageName) }.asImageBitmap().also { appIconCache.put(packageName, it) }
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                    appIconMisses += packageName
+                    null
+                } finally {
+                    appIconLoads.remove(packageName)
+                }
             }
         }
+        return load.await()
+    }
+
+    fun clearAppIcons() {
+        appIconCache.evictAll()
+        appIconMisses.clear()
     }
 
     fun report(error: Throwable) {
@@ -403,6 +428,8 @@ fun bytes(value: Number): String {
     }
     return if (unit == 0) "${size.toLong()} ${units[unit]}" else "${String.format(java.util.Locale.ROOT, "%.1f", size)} ${units[unit]}"
 }
+
+private const val APP_ICON_CACHE_BYTES = 8 * 1024 * 1024
 
 /** A line for the message banner; [error] picks the error look. */
 data class BoxMessage(val text: String, val error: Boolean = false)

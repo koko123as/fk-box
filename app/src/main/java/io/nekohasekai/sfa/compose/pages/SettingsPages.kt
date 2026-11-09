@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.compose.pages
 
-import android.graphics.BitmapFactory
 import io.nekohasekai.sfa.bridge.BoxSettings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -35,8 +34,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.KeyboardType
@@ -815,7 +812,7 @@ fun AccessPage(box: BoxController) {
         refresh = false
     }
     fun reload() {
-        box.appIcons.clear()
+        box.clearAppIcons()
         refresh = true
         load++
     }
@@ -1056,8 +1053,8 @@ fun AccessPage(box: BoxController) {
 
 @Composable
 private fun PackageIcon(box: BoxController, pkg: String) {
-    val icon by produceState<ImageBitmap?>(null, pkg) {
-        value = box.appIcon(pkg).await()?.let { bytes -> BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap() }
+    val icon by produceState(box.cachedAppIcon(pkg), pkg) {
+        value = box.appIcon(pkg)
     }
     Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
         val bitmap = icon

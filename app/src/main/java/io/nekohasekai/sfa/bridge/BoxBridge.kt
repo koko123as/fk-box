@@ -472,18 +472,15 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return result
     }
 
-    suspend fun appIcon(packageName: String): ByteArray = withContext(Dispatchers.IO) {
+    /** The app's launcher icon drawn at 48 dp on IO; handed to Compose as a bitmap, without a PNG round-trip. */
+    suspend fun appIcon(packageName: String): android.graphics.Bitmap = withContext(Dispatchers.IO) {
         val drawable = activity.packageManager.getApplicationIcon(packageName)
         val size = (48 * activity.resources.displayMetrics.density).toInt().coerceIn(48, 192)
         val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-        try {
-            drawable.setBounds(0, 0, size, size)
-            drawable.draw(android.graphics.Canvas(bitmap))
-            java.io.ByteArrayOutputStream().use { output ->
-                bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, output)
-                output.toByteArray()
-            }
-        } finally { bitmap.recycle() }
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(android.graphics.Canvas(bitmap))
+        bitmap.prepareToDraw()
+        bitmap
     }
 
     fun requestAppsPermission() { PackageQueryManager.requestShizukuPermission() }
