@@ -244,7 +244,6 @@ private fun OutboundModeBar(box: BoxController) {
     val scheme = BoxTheme.scheme
     val density = LocalDashboardDensity.current
     val inset = 8.dp
-    val outer = dashboardCardRadius(density) - inset.value
     val modes = (box.dashboard["modes"] as? List<*>).orEmpty().filterIsInstance<String>()
     val selected = (box.dashboard["mode"] as? String ?: "").lowercase()
     val labels = mapOf("rule" to "Rule", "global" to "Global", "direct" to "Direct")

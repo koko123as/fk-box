@@ -346,14 +346,13 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraVersion")
     implementation("com.google.zxing:core:3.5.4")
 
-    // Compose UI (dependencies as at 84e71e4^, before the Flutter switch)
+    // Compose UI: stock Material 3 and Material icons
     val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
     implementation(composeBom)
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.compose.animation:animation")
     implementation("androidx.activity:activity-compose:1.13.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
     // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on

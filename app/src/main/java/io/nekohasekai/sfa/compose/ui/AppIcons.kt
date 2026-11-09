@@ -7,13 +7,11 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.automirrored.filled.Sort
 import androidx.compose.material.icons.automirrored.filled.Undo
-import androidx.compose.material.icons.automirrored.filled.WrapText
 import androidx.compose.material.icons.automirrored.outlined.Article
 import androidx.compose.material.icons.automirrored.outlined.CallSplit
 import androidx.compose.material.icons.automirrored.outlined.List
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.automirrored.outlined.Rule
-import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDownward
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -29,7 +27,6 @@ import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Link
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.Pause
@@ -54,9 +51,7 @@ import androidx.compose.material.icons.outlined.CloudDownload
 import androidx.compose.material.icons.outlined.CloudSync
 import androidx.compose.material.icons.outlined.Colorize
 import androidx.compose.material.icons.outlined.ContentCopy
-import androidx.compose.material.icons.outlined.ContentCut
 import androidx.compose.material.icons.outlined.ContentPaste
-import androidx.compose.material.icons.outlined.DarkMode
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.DashboardCustomize
 import androidx.compose.material.icons.outlined.Delete
@@ -66,7 +61,6 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.EditNote
-import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.FileOpen
 import androidx.compose.material.icons.outlined.FileUpload
 import androidx.compose.material.icons.outlined.FlashlightOff
@@ -78,7 +72,6 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Key
-import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.LightMode
@@ -88,28 +81,21 @@ import androidx.compose.material.icons.outlined.Memory
 import androidx.compose.material.icons.outlined.MonitorHeart
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.Password
-import androidx.compose.material.icons.outlined.Pattern
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Public
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material.icons.outlined.QrCode
-import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Speed
-import androidx.compose.material.icons.outlined.StarOutline
 import androidx.compose.material.icons.outlined.SwapVert
 import androidx.compose.material.icons.outlined.ToggleOff
 import androidx.compose.material.icons.outlined.ToggleOn
 import androidx.compose.material.icons.outlined.TrackChanges
-import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.VerifiedUser
-import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
-import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material.icons.outlined.Wifi
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.Icon
@@ -129,7 +115,6 @@ object AppIcons {
     val systemProxy: ImageVector get() = Icons.Outlined.Language
     val profiles: ImageVector get() = Icons.Outlined.Description
     val requests: ImageVector get() = Icons.Outlined.SwapVert
-    val clock: ImageVector get() = Icons.Outlined.Schedule
     val connections: ImageVector get() = Icons.Outlined.Hub
     val dns: ImageVector get() = Icons.Outlined.Dns
     val resources: ImageVector get() = Icons.Outlined.Inventory2
@@ -160,30 +145,24 @@ object AppIcons {
     val checkCircle: ImageVector get() = Icons.Filled.CheckCircle
     val block: ImageVector get() = Icons.Outlined.Block
     val info: ImageVector get() = Icons.Outlined.Info
-    val warning: ImageVector get() = Icons.Outlined.WarningAmber
-    val error: ImageVector get() = Icons.Outlined.ErrorOutline
     val more: ImageVector get() = Icons.Filled.MoreVert
     val moreCircle: ImageVector get() = Icons.Outlined.MoreHoriz
     val dragHandle: ImageVector get() = Icons.Filled.DragHandle
     val sort: ImageVector get() = Icons.AutoMirrored.Filled.Sort
     val filter: ImageVector get() = Icons.Filled.FilterList
-    val wrap: ImageVector get() = Icons.AutoMirrored.Filled.WrapText
     val edit: ImageVector get() = Icons.Outlined.Edit
     val compose: ImageVector get() = Icons.Outlined.EditNote
     val delete: ImageVector get() = Icons.Outlined.Delete
     val clearAll: ImageVector get() = Icons.Filled.ClearAll
     val copy: ImageVector get() = Icons.Outlined.ContentCopy
-    val cut: ImageVector get() = Icons.Outlined.ContentCut
     val paste: ImageVector get() = Icons.Outlined.ContentPaste
     val selectAll: ImageVector get() = Icons.Filled.SelectAll
     val deselect: ImageVector get() = Icons.Filled.Deselect
     val search: ImageVector get() = Icons.Filled.Search
-    val regex: ImageVector get() = Icons.Outlined.Pattern
     val importFile: ImageVector get() = Icons.Outlined.FileOpen
     val cloudDownload: ImageVector get() = Icons.Outlined.CloudDownload
     val cloudSync: ImageVector get() = Icons.Outlined.CloudSync
     val link: ImageVector get() = Icons.Filled.Link
-    val send: ImageVector get() = Icons.AutoMirrored.Outlined.Send
     val rules: ImageVector get() = Icons.AutoMirrored.Outlined.Rule
     val code: ImageVector get() = Icons.Filled.Code
     val settings: ImageVector get() = Icons.Outlined.Settings
@@ -191,27 +170,21 @@ object AppIcons {
     val toggle: ImageVector get() = Icons.Outlined.ToggleOff
     val toggleOn: ImageVector get() = Icons.Outlined.ToggleOn
     val pin: ImageVector get() = Icons.Outlined.PushPin
-    val eye: ImageVector get() = Icons.Outlined.Visibility
     val eyeOff: ImageVector get() = Icons.Outlined.VisibilityOff
     val lock: ImageVector get() = Icons.Outlined.Lock
     val lockOpen: ImageVector get() = Icons.Outlined.LockOpen
     val key: ImageVector get() = Icons.Outlined.Key
-    val password: ImageVector get() = Icons.Outlined.Password
     val account: ImageVector get() = Icons.Outlined.AccountCircle
     val bolt: ImageVector get() = Icons.Outlined.Bolt
     val locate: ImageVector get() = Icons.Filled.MyLocation
-    val star: ImageVector get() = Icons.Outlined.StarOutline
     val customize: ImageVector get() = Icons.Outlined.DashboardCustomize
     val layers: ImageVector get() = Icons.Outlined.Layers
     val sun: ImageVector get() = Icons.Outlined.LightMode
-    val pureBlack: ImageVector get() = Icons.Outlined.DarkMode
     val palette: ImageVector get() = Icons.Outlined.Palette
     val paintbrush: ImageVector get() = Icons.Outlined.Brush
     val eyedropper: ImageVector get() = Icons.Outlined.Colorize
     val font: ImageVector get() = Icons.Outlined.FontDownload
     val textSize: ImageVector get() = Icons.Outlined.FormatSize
-    val language: ImageVector get() = Icons.Outlined.Translate
-    val keyboard: ImageVector get() = Icons.Outlined.Keyboard
     val camera: ImageVector get() = Icons.Outlined.PhotoCamera
     val qrCode: ImageVector get() = Icons.Outlined.QrCode
     val torch: ImageVector get() = Icons.Outlined.FlashlightOn
@@ -230,7 +203,6 @@ object AppIcons {
     val wifiOff: ImageVector get() = Icons.Outlined.WifiOff
     val appsList: ImageVector get() = Icons.AutoMirrored.Outlined.List
     val iconTile: ImageVector get() = Icons.Outlined.Image
-    val menu: ImageVector get() = Icons.Filled.Menu
     val start: ImageVector get() = Icons.Filled.PlayArrow
     val stop: ImageVector get() = Icons.Filled.Stop
     val pause: ImageVector get() = Icons.Filled.Pause

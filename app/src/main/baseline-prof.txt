@@ -49,7 +49,7 @@ HSPLio/nekohasekai/sfa/utils/CommandTarget**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 
-# UI kit, theme and Liquid Glass
+# UI kit and theme
 HSPLio/nekohasekai/sfa/compose/theme/**;->**(**)**
 HSPLio/nekohasekai/sfa/compose/ui/**;->**(**)**
 HSPLio/nekohasekai/sfa/compose/common/**;->**(**)**

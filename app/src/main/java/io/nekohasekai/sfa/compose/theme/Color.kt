@@ -112,12 +112,6 @@ data class BoxScheme(
 
 val Color.tone: Double get() = Hct.fromInt(toArgb()).tone
 
-/** The color at [tone] with this color's hue and chroma. */
-fun toneOf(color: Color, tone: Double): Color {
-    val hct = Hct.fromInt(color.toArgb())
-    return Color(Hct.from(hct.hue, hct.chroma, tone).toInt())
-}
-
 fun Color.shiftTone(delta: Double): Color {
     val hct = Hct.fromInt(toArgb())
     return Color(Hct.from(hct.hue, hct.chroma, (hct.tone + delta).coerceIn(0.0, 100.0)).toInt())

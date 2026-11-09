@@ -934,7 +934,7 @@ fun CaptureLogsPage(box: BoxController) {
                     ListFooter(tr("Recent logs are kept until the app process exits. Export logs to keep them."))
                     poll.error?.let { ErrorState(describe(it), poll.refresh) }
                     if (snapshot == null && poll.error == null) CenteredLoading()
-                    if (snapshot != null && logs.isEmpty()) EmptyState(if (query.isBlank()) "No Capture logs" else "No results")
+                    if (snapshot != null && logs.isEmpty()) EmptyState(if (query.isBlank()) "No capture logs" else "No results")
                 }
             }
             items(logs.asReversed(), key = { it["id"].toString() }) { log ->

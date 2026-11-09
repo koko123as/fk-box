@@ -23,9 +23,6 @@ fun viewModeOf(width: Dp): ViewMode = when {
     else -> ViewMode.Desktop
 }
 
-/** An expanded sidebar at laptop widths would leave the content narrower than the mobile layout. */
-fun canExpandSidebar(mode: ViewMode): Boolean = mode == ViewMode.Desktop
-
 /** layout.dart's cardSpacingOf: 8 / 12 / 16. */
 fun cardSpacingOf(mode: ViewMode): Dp = when (mode) {
     ViewMode.Mobile -> 8.dp
