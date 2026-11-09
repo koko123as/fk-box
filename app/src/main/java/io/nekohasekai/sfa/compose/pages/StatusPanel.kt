@@ -475,8 +475,10 @@ private fun StatusCell(label: String, content: @Composable () -> Unit) {
 @Composable
 private fun RuntimeValue(startedAt: Long?) {
     var now by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(startedAt) {
-        while (startedAt != null) {
+    // The ticker pauses while the Dashboard is hidden behind another tab.
+    val active = LocalPageActive.current
+    LaunchedEffect(startedAt, active) {
+        while (startedAt != null && active) {
             now = System.currentTimeMillis()
             delay(1000)
         }

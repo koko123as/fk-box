@@ -52,6 +52,48 @@ import kotlinx.coroutines.launch
 /** components/page_switcher.dart's PageActivityScope. */
 val LocalPageActive = staticCompositionLocalOf { true }
 
+private class HeldValue {
+    var set = false
+    var value: Any? = null
+}
+
+/**
+ * [read] while the enclosing page is shown; while it is hidden, the last value
+ * read, without observing [read]'s state. Core pages stay composed behind the
+ * dock, so a per-second value read this way no longer recomposes (and re-records
+ * the glass backdrop of) a hidden page.
+ */
+@Suppress("UNCHECKED_CAST")
+@Composable
+fun <T> whileActive(read: () -> T): T {
+    val held = remember { HeldValue() }
+    val active = LocalPageActive.current
+    if (!active && held.set) return held.value as T
+    val value = if (active) read() else androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation(read)
+    held.value = value
+    held.set = true
+    return value
+}
+
+/**
+ * [whileActive] for the draw phase: a reader to call from a draw or layer lambda,
+ * so a live value invalidates only drawing, and nothing while the page is hidden.
+ */
+@Suppress("UNCHECKED_CAST")
+@Composable
+fun <T> activeReader(read: () -> T): () -> T {
+    val held = remember { HeldValue() }
+    val active = LocalPageActive.current
+    val latest = androidx.compose.runtime.rememberUpdatedState(read)
+    return remember(active) {
+        if (active) {
+            { latest.value().also { held.value = it; held.set = true } }
+        } else {
+            { if (held.set) held.value as T else androidx.compose.runtime.snapshots.Snapshot.withoutReadObservation { latest.value() } }
+        }
+    }
+}
+
 private val EaseInOut = CubicBezierEasing(0.42f, 0f, 0.58f, 1f)
 private val EaseOut = CubicBezierEasing(0f, 0f, 0.58f, 1f)
 
@@ -143,7 +185,8 @@ fun HomePage(box: BoxController) {
         box.intents.collect { drain() }
     }
     val pages: @Composable () -> Unit = {
-        val progress = motion.value
+        // motion.value is read only inside graphicsLayer, so a tab switch redraws the
+        // page layers each frame without recomposing every page wrapper.
         val direction = if (previous == null || index >= previous) 1f else -1f
         items.forEachIndexed { i, item ->
             val active = i == index
@@ -155,6 +198,7 @@ fun HomePage(box: BoxController) {
                         .fillMaxSize()
                         .zIndex(if (active) 1f else 0f)
                         .graphicsLayer {
+                            val progress = motion.value
                             alpha = when {
                                 !shown -> 0f
                                 fade && previous != null -> if (active) progress else 1 - progress

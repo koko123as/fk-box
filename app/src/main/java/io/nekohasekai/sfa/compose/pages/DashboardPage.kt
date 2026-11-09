@@ -267,7 +267,9 @@ internal fun SpeedPanel(box: BoxController) {
 private fun SpeedTile(box: BoxController, upload: Boolean) {
     val scheme = BoxTheme.scheme
     val color = if (upload) scheme.onSurfaceVariant else scheme.primary
-    val show = bytes(box.rates[if (upload) "upload" else "download"] as? Number ?: 0).split(" ")
+    val rates = whileActive { box.rates }
+    val history = activeReader { if (upload) box.uploadHistory else box.downloadHistory }
+    val show = bytes(rates[if (upload) "upload" else "download"] as? Number ?: 0).split(" ")
     val scale = max(1f, LocalDensity.current.fontScale)
     val textHeight = 14 + 4 + (AppTextStyle.Footnote.leading + AppTextStyle.Title1.leading + AppTextStyle.Caption1.leading) * scale
     val shape = AppShape.all(22f)
@@ -275,8 +277,7 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
         val chartHeight = max(36f, maxWidth.value / 1.06f - textHeight - 12 + 2)
         Box(Modifier.fillMaxWidth().height((chartHeight - 2 + 12 + textHeight).dp)) {
             io.nekohasekai.sfa.compose.ui.LineChart(
-                values = if (upload) box.uploadHistory else box.downloadHistory,
-                revision = box.sampleRevision,
+                values = history,
                 capacity = 30,
                 minScale = 8.0 * 1024,
                 color = if (upload) alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme)) else scheme.primary,
@@ -299,7 +300,7 @@ private fun SpeedTile(box: BoxController, upload: Boolean) {
                     style = AppTextStyle.Title1.of(true),
                 )
                 Text(
-                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = AppTextStyle.Caption1.of().tabular.copy(color = scheme.onSurfaceVariant),

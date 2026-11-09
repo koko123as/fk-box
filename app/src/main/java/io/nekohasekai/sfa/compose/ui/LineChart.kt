@@ -54,10 +54,27 @@ private fun slopes(values: DoubleArray): DoubleArray {
     }
 }
 
+private class ChartCache {
+    var source: List<Double>? = null
+    var capacity = -1
+    var heights = DoubleArray(0)
+}
+
+/**
+ * [values] is read in the draw phase, so a new sample redraws the chart without
+ * recomposing its caller; each window is smoothed once (cached by identity).
+ */
 @Composable
-fun LineChart(values: List<Double>, revision: Int, capacity: Int, minScale: Double, color: Color, baselineRatio: Float, modifier: Modifier = Modifier) {
-    val heights = remember(revision, values, capacity) { blur(series(values, capacity + RADIUS + 1)) }
+fun LineChart(values: () -> List<Double>, capacity: Int, minScale: Double, color: Color, baselineRatio: Float, modifier: Modifier = Modifier) {
+    val cache = remember { ChartCache() }
     Canvas(modifier) {
+        val window = values()
+        if (cache.source !== window || cache.capacity != capacity) {
+            cache.heights = blur(series(window, capacity + RADIUS + 1))
+            cache.source = window
+            cache.capacity = capacity
+        }
+        val heights = cache.heights
         val step = size.width / (capacity - 1)
         val baseline = size.height * baselineRatio
         val slope = slopes(heights)

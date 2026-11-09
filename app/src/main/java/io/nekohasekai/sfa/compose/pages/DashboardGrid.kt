@@ -183,16 +183,16 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
     val compact = density.isCompact
     val scale = LocalDashboardScale.current
     val (padX, padY) = dashboardCardPadding(density)
-    val history = if (upload) box.uploadHistory else box.downloadHistory
-    val current = bytes(box.rates[if (upload) "upload" else "download"] as? Number ?: 0).split(" ")
+    val rates = whileActive { box.rates }
+    val history = whileActive { if (upload) box.uploadHistory else box.downloadHistory }
+    val current = bytes(rates[if (upload) "upload" else "download"] as? Number ?: 0).split(" ")
     val peak = history.maxOrNull() ?: 0.0
     val label = AppTextStyle.Footnote.of().tabular.copy(color = scheme.onSurfaceVariant)
     val figure = if (compact) AppTextStyle.LargeTitle else AppTextStyle.Display
     BoxPanel(padding = PaddingValues(0.dp)) {
         Box(Modifier.fillMaxSize()) {
             LineChart(
-                values = history,
-                revision = box.sampleRevision,
+                values = { history },
                 capacity = 30,
                 minScale = 8.0 * 1024,
                 color = if (upload) alphaBlend(scheme.primary.copy(alpha = .45f), SurfaceLevel.Card.colorOf(scheme)) else scheme.primary,
@@ -224,7 +224,7 @@ private fun SpeedCard(box: BoxController, upload: Boolean) {
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
-                    "${tr("Total")} ${box.rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
+                    "${tr("Total")} ${rates[if (upload) "uploadTotal" else "downloadTotal"] ?: "0 B"}",
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     style = label,

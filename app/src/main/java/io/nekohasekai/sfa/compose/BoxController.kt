@@ -74,7 +74,6 @@ class BoxController(private val bridge: BoxBridge) {
     var xrayVersion by mutableStateOf("")
     var mihomoVersion by mutableStateOf("")
     var systemAccentColor by mutableStateOf(0xff007aff.toInt())
-    var sampleRevision by mutableIntStateOf(0)
     var profilesRevision by mutableIntStateOf(0)
     var ready by mutableStateOf(false)
     var lanChanging by mutableStateOf(false)
@@ -352,7 +351,6 @@ class BoxController(private val bridge: BoxBridge) {
             "preferences" -> preferences = json(value)
             "systemAccent" -> value.asLong()?.let { systemAccentColor = it.toInt() }
             "rates" -> {
-                sampleRevision++
                 rates = json(value)
                 uploadHistory = (uploadHistory + (rates["upload"].asDouble() ?: 0.0)).takeLast(30)
                 downloadHistory = (downloadHistory + (rates["download"].asDouble() ?: 0.0)).takeLast(30)
