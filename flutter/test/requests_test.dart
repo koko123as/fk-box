@@ -118,7 +118,14 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // A copy confirmation banner sits over the top bar until it times out.
+  Future<void> waitForBanner(WidgetTester tester) async {
+    await tester.pump(const Duration(seconds: 4));
+    await tester.pumpAndSettle();
+  }
+
   Future<void> chooseMessage(WidgetTester tester, String part) async {
+    await waitForBanner(tester);
     await tester.tap(find.byTooltip('More').last);
     await tester.pumpAndSettle();
     expect(find.text('Message type'), findsOneWidget);
@@ -126,12 +133,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Requests precedes Connections in Tools and is isolated from remote sessions', (tester) async {
+  testWidgets('Requests merges Connections in Tools and is isolated from remote sessions', (tester) async {
     await mount(tester, remote: true);
     await tester.tap(find.text('Tools').last);
     await tester.pumpAndSettle();
-    expect(tester.getTopLeft(find.text('Requests')).dy, lessThan(tester.getTopLeft(find.text('Connections')).dy));
+    // Connections is a feed of the Requests page, like Compose's RequestsPage.
+    expect(find.text('Requests'), findsOneWidget);
+    expect(find.text('Connections'), findsNothing);
     await tester.tap(find.text('Requests'));
+    await tester.pumpAndSettle();
+    expect(calls.where((call) => call.method.startsWith('capture.')), isEmpty);
+    openPage(tester.element(find.byType(RequestsPage).first), const RequestsPage(initialFeed: 'captured'));
     await tester.pumpAndSettle();
     expect(find.text('HTTP debugging is only available for the local service'), findsOneWidget);
     expect(calls.where((call) => call.method.startsWith('capture.')), isEmpty);
@@ -363,6 +375,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Client TLS for origin.test: certificate rejected'), findsOneWidget);
     expect(find.text('upstream certificate verified'), findsNothing);
+    await waitForBanner(tester);
     await tester.tap(find.byTooltip('More').last);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Export').last);

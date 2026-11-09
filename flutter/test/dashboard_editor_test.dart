@@ -152,6 +152,10 @@ void main() {
           expect(preferences['hiddenCards'], isNot(contains(addCard)));
         }
       }
+      if (scenario == 'failed-save') {
+        // The save error banner covers the top bar until it times out.
+        for (var i = 0; i < 9; i++) { await advance(); }
+      }
       await tester.tap(find.byTooltip('Done'));
       await tester.pumpAndSettle();
       expect(find.byType(DashboardEditor), findsNothing);

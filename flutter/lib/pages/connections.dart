@@ -57,14 +57,16 @@ class _ConnectionsFeedState extends State<ConnectionsFeed> {
   String _query = '';
   late String _filter = widget.recent ? 'Closed' : 'Active', _sort = widget.recent ? 'Created' : 'Speed';
   String get _pageId => widget.recent ? 'recentRequests' : 'connections';
-  late final RecordFilterController<Json> _filters = RecordFilterController<Json>(
+  // Built on first use; a remote session never shows the list, so it may never exist.
+  RecordFilterController<Json>? _filtersOrNull;
+  RecordFilterController<Json> get _filters => _filtersOrNull ??= RecordFilterController<Json>(
     facets: connectionFacets,
     groupers: connectionGroupers,
     grouping: savedRecordGrouping(context.box.preferences, _pageId),
     onGroupingChanged: (grouping) => saveRecordGrouping(context.box, _pageId, grouping),
   );
 
-  @override void dispose() { _filters.dispose(); super.dispose(); }
+  @override void dispose() { _filtersOrNull?.dispose(); super.dispose(); }
 
   Future<void> _closeAll() async {
     final box = context.box;

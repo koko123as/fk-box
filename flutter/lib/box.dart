@@ -296,6 +296,11 @@ class BoxController extends ChangeNotifier {
       case 'dashboard':
         final nextDashboard = json(value);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
+        // Counter-only changes repaint the traffic readers, not every page.
+        const counters = {'memory', 'goroutines', 'uploadTotal', 'downloadTotal', 'connections'};
+        Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
+        aspects = const DeepCollectionEquality().equals(state(dashboard), state(nextDashboard))
+          ? const [BoxAspect.traffic] : const [BoxAspect.state, BoxAspect.traffic];
         dashboard = nextDashboard;
       case 'profiles': profilesRevision++; _profileStats.clear(); profiles = rows(value);
       case 'groups': groups = rows(value);

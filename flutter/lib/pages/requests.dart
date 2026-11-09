@@ -110,14 +110,16 @@ class _CapturedFeedState extends State<_CapturedFeed> {
   String _query = '';
   int _limit = 50, _revision = 0;
   bool _busy = false;
-  late final RecordFilterController<Json> _filters = RecordFilterController<Json>(
+  // Built on first use; a remote session never shows the list, so it may never exist.
+  RecordFilterController<Json>? _filtersOrNull;
+  RecordFilterController<Json> get _filters => _filtersOrNull ??= RecordFilterController<Json>(
     facets: _captureFacets,
     groupers: _captureGroupers,
     grouping: savedRecordGrouping(context.box.preferences, 'captured'),
     onGroupingChanged: (grouping) => saveRecordGrouping(context.box, 'captured', grouping),
   );
 
-  @override void dispose() { _filters.dispose(); super.dispose(); }
+  @override void dispose() { _filtersOrNull?.dispose(); super.dispose(); }
 
   Future<void> _act(String method, [Json arguments = const {}]) async {
     if (_busy) return;

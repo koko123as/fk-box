@@ -70,6 +70,11 @@ void main() {
   });
 
   testWidgets('automatic groups cannot send manual selection commands', (tester) async {
+    // Phone width: Proxies is a dock destination, not a dashboard card.
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final calls = <MethodCall>[];
     final events = StreamController<dynamic>.broadcast();
     const channel = MethodChannel('test.automatic');

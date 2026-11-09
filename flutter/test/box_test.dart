@@ -20,7 +20,7 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (_) async => throw PlatformException(code: 'startup', message: 'configuration error'));
     await box.initialize();
     expect(box.ready, false);
-    expect(box.startupError, 'configuration error');
+    expect(box.startupError, 'Configuration error');
     messenger.setMockMethodCallHandler(channel, (_) async => {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}});
     await box.initialize();
     expect(box.ready, true);
@@ -45,7 +45,9 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (_) async => throw PlatformException(code: 'core', message: 'automatic group'));
     final error = box.messages.stream.first;
     expect(await box.act('groups.select', {'group': 'auto', 'tag': 'node'}), false);
-    expect(await error, 'automatic group');
+    final message = await error;
+    expect(message.text, 'Automatic group');
+    expect(message.error, true);
   });
 
   test('service setting changes wait for the native restart and ignore repeated edits', () async {
@@ -125,7 +127,9 @@ void main() {
     reply.complete();
     await saving;
     await Future<void>.delayed(Duration.zero);
-    expect(await error, 'Startup failed');
+    final message = await error;
+    expect(message.text, 'Startup failed');
+    expect(message.error, true);
     expect(box.settings['allowBypass'], false);
     expect(box.serviceSettingsChanging, false);
     expect(box.applyRequired, 'Restart');
