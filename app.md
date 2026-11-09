@@ -10,7 +10,7 @@
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
 | FlClash 布局参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（仅页面布局；控件为 Material 3），见 [flclash.md](flclash.md#参考版本与来源清单) |
-| FK-box 版本 / versionCode | `1.15.4` / `754`，以 [version.properties](version.properties) 为准 |
+| FK-box 版本 / versionCode | `1.15.5-beta.1` / `755`，以 [version.properties](version.properties) 为准 |
 | 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
 | 源码 namespace / 包路径 | `io.nekohasekai.sfa` |
