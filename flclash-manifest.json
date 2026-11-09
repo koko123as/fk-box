@@ -12,21 +12,19 @@
     "commit": "7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
     "note": "The Flutter UI in flutter/ was first imported from these v0.9.2 sources; later pages and components follow v0.9.3 + prism_ui 63450c0."
   },
-  "changes": "Dart package imports renamed from fl_clash to b_box_ui. prism_ui 63450c0 is vendored verbatim under packages/prism_ui (FlClash v0.9.3 keeps it as a submodule). No Clash core included.",
+  "changes": "Dart package imports renamed from fl_clash to fk_box_ui. prism_ui 63450c0 is vendored verbatim under packages/prism_ui (FlClash v0.9.3 keeps it as a submodule). No Clash core included.",
   "files": {
     "assets/fonts/JetBrainsMono-Regular.ttf": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
     "assets/fonts/Twemoji.Mozilla.ttf": "61db6397b8b32b72c585d538ef698a84cf78cf2558a14046b3fa0ec4cc362540",
-    "lib/common/input_limits.dart": "02d4eda17530bc036e9ec7505a1632f26ebe8d9f2b43a1bc0a1c598d570d0cef",
-    "lib/common/iterable.dart": "8a2732858de2e65357acf77df155ba2234efec71b1495dcdc9f11c9beb29c24d",
     "lib/ui/delay_color.dart": "ce615641ad4aaff3203e0912bb8f3fc254be9c7447f83645e4beeb38d596f31d",
     "lib/ui/emoji.dart": "7528631b68baeaf36fa47591a700e402c34142b8f1daae6050500a93785e2c05",
     "lib/ui/fonts.dart": "d6371737a7b907522df3453cc4f26a304c888ef40b3665dee24545a50b450897",
     "lib/ui/icons/app_glyphs.dart": "4a2a252feea72f93a73538c1f874f6a477474b5483189ac429b47829c9efb029",
     "lib/ui/icons/icons.dart": "430f3178375dd236ca427d5fe3ae2ea6fbb259d5ae10328e8516e7ff2cf95a9c",
     "lib/ui/list_item.dart": "e3e71e418d72ab423732b00dd412e87ce5633ceeb9f5ac2b0c9ea0e56d2e0afb",
-    "lib/ui/null_status_illustration.dart": "b313913dd8caedb7a8cb48bb89c410c289d42758f3f9800b272575b9373c3232",
+    "lib/ui/null_status_illustration.dart": "e00501c684dcae4b7ec28c6f7cf9725d8751dc542b6342e2ca095f149d74ceed",
     "lib/ui/profile_id.dart": "9762e4c05a9108a8a5f9f2e2a8e5f6c211f0370013198d5a4e7ee3ca14792279",
-    "lib/ui/qr_code.dart": "e8141bc5f8c4d7e9cf8ac33e1a044e194ab17c404282f8be6d126373ff805923",
+    "lib/ui/qr_code.dart": "e9cc5de9f47ff03e5c406b5ddf687223f9169ec0c5dfe2f90af23dcc695b440d",
     "lib/ui/qr_matrix.dart": "842f779809a20045d6fed2a763e5b166143f46cc532c5e2d1126465f1ffd5b87",
     "lib/ui/scaffold/scaffold.dart": "9ebbfb1bb0293e97ff366f52834dd6a8a31b4357b6afe067ea2a6bfbb2b9d52e",
     "lib/ui/scaffold/scaffold_actions.dart": "0d3fee5a534de3f5b5e101c91e887558deb6145358544ae10fde7d213c9e2557",
@@ -44,7 +42,7 @@
     "packages/prism_ui/lib/animated_entries.dart": "b26e8dea653d6947a0256dfdfee58c792bf2c33de3f7529f6f12091f9fb240f3",
     "packages/prism_ui/lib/animated_visibility.dart": "42dddcdd7d1119375263a9cf6134636ab7030a0e5d805f8e8be47594fb17d615",
     "packages/prism_ui/lib/app.dart": "98c8a7c68e17a33c5071bc17bd9e4754f1cb88b44cee1a3a1e2c83102dfbe6e2",
-    "packages/prism_ui/lib/banner.dart": "c3aa285d14b0a6b87787c9df13889e22ef11323e559ed2507bd71098a26521ad",
+    "packages/prism_ui/lib/banner.dart": "07ce2d23d2ff46544aceec7705332f09638fa19a6b021f574e0f21a1fc4712f8",
     "packages/prism_ui/lib/bar_item_presence.dart": "1a42cef6c5eff50793386add3a471bf1973299a48ff776b2644410cbfad3406e",
     "packages/prism_ui/lib/builder.dart": "f30437e033fe340f74d180b5ebc78829d2689cdd378a212e81acd538d57de61c",
     "packages/prism_ui/lib/button.dart": "c309ab70f2c330ab4ce384e28dc57a415f5c106b19723462585c9332a9c49cd9",
@@ -60,11 +58,11 @@
     "packages/prism_ui/lib/context.dart": "1ef8a07775cc5b6700e53a8ea750d10194ea8496b60942a732f5fa5874ee49df",
     "packages/prism_ui/lib/context_menu.dart": "abf06fd9c7a0f9dafb7a539fceaa327568185bf2eafceb9e955c48525d670583",
     "packages/prism_ui/lib/deferred_push.dart": "2bf4cf35ee51f40b82baa031f14548a60e00de45697c56994b17f7c7ba635a04",
-    "packages/prism_ui/lib/dialog.dart": "7ca6ad78189d6a97a450523d43cfba7dfe365fa1c0871a8f52f0eee072de9bef",
+    "packages/prism_ui/lib/dialog.dart": "d1c47b31cead877c6805e6f2e8dcc4f12861653d4cf20b97b3030e21cfc487cb",
     "packages/prism_ui/lib/disabled_mask.dart": "7b4a199d0075f90e8fb35508603fe6a0719392be049aac5d9211348550cb0532",
     "packages/prism_ui/lib/divider.dart": "d363e19b5aa0d5a17044e2beac44a4152798c4009e2ba132e71c6d00ae7131aa",
     "packages/prism_ui/lib/drag_back.dart": "c673acd90adf9455c73623582bb8a0d40009f619801d1fde486472300f608e1c",
-    "packages/prism_ui/lib/edit_menu.dart": "a7c450ea2166d019f24e2f2b6879fa26a8da1bcea336f5ec3b7f18d2c92bdd75",
+    "packages/prism_ui/lib/edit_menu.dart": "a8aa65289087f101b9558755d39d1fc6581e5bc52b9b68118c82892ba4533e17",
     "packages/prism_ui/lib/effect.dart": "67f207094bba12387547e29af8e527661b29d7fd733c08636ab506ffe1c08224",
     "packages/prism_ui/lib/fade_box.dart": "9931b9a163fa652825931fa4f244c557ac08f6b446590835ed71a7471cdf3845",
     "packages/prism_ui/lib/fade_through.dart": "64f23e5afa83d6fde48804458d3cd0ffa2c99adf1bc47784c892ed06e0f243a1",
@@ -105,7 +103,7 @@
     "packages/prism_ui/lib/l10n.dart": "2dabcd6efe4525115daed03488e82699ee2e3767d8d27edc708df8e1ecc07e71",
     "packages/prism_ui/lib/line_chart.dart": "27ffa8f5b6d064f0a511e42c137868b29bbb2607eefc3a8d90498eb065b84444",
     "packages/prism_ui/lib/linear_progress.dart": "b81010bc6a0f503599f8bea7e3e5e7c52045c6199345c62e26ca2875f64eed51",
-    "packages/prism_ui/lib/liquid_glass.dart": "e71b88315f590dc4e3b0908727c08897cf9f4763a33e7def1d00e4093efcb66d",
+    "packages/prism_ui/lib/liquid_glass.dart": "af2120061b4098707448f2f7e6ff0834d1f00607aac837f7ab3d8dae865ed3a1",
     "packages/prism_ui/lib/liquid_glass_capture.dart": "6abd0b2f5fae7f748d32fe39457d9f624da398e42da49c0f4f67d6adb290e4b6",
     "packages/prism_ui/lib/list.dart": "3ebabade17b4d07207cc02aec40ccf20db8fc61394f869ad02271ef9006afe99",
     "packages/prism_ui/lib/list_row.dart": "d0668749464cf24a59691de7b3a89b45468a137bce3a95aa80031f384ef548fa",
@@ -117,18 +115,18 @@
     "packages/prism_ui/lib/models.dart": "a99b9b5a6313b1175358679026bcfec9780877932f76152f767c61ccf2216fa6",
     "packages/prism_ui/lib/motion.dart": "1530b64d185f7d730fcf55d8587c61110d44a366dc6a7fac1c7f1ed2a57e7df4",
     "packages/prism_ui/lib/navigation_bar.dart": "75e311953c2715c312e0ca718fb339af2bd1828055b7e97a761395b090be999e",
-    "packages/prism_ui/lib/navigation_dock.dart": "acafc3ed461f46fd81d0cd72f3f09fd9d86480ba37924fd2cab7e9baa3768cec",
+    "packages/prism_ui/lib/navigation_dock.dart": "73a13eddcf4f44f3e46820ebecfa20d84ee6838a1ac5f801ae190d90b053c03d",
     "packages/prism_ui/lib/navigator.dart": "250a220d7e25be1a61e0ccd9f8abe84e718f54fb8e88fb025d731cf1b4fd4f77",
     "packages/prism_ui/lib/navigator_resizable.dart": "3798a9208525657c6d363962adfa88e319987628b2aeb68a3b9a165d20b7abfe",
     "packages/prism_ui/lib/null_status.dart": "9529f18bfa85b2358ad43bb1ab6551053b02eb75f9f8f54ca2221382d80e784e",
     "packages/prism_ui/lib/open_container.dart": "5de0f7860ec20f86b5d5566cba1b99963114356d9a133536bb49a810786bd164",
-    "packages/prism_ui/lib/page_transition.dart": "117bd378435d5b771888c085b02e8b46b92e60d0e2c20d982d9928ac18854609",
+    "packages/prism_ui/lib/page_transition.dart": "4b229a5d29c849368411f42aad8d547e72e0a79966f6f52110bc31fef29cdd0d",
     "packages/prism_ui/lib/paged_sheet.dart": "7d5bfe25ba5208b32c530befb22eb36e2820772d130f6141a83088c314e164be",
     "packages/prism_ui/lib/pop_scope.dart": "fa4b65660a643615e5750d4d2ed296cae786957b29737a3e6e2fca627418b870",
-    "packages/prism_ui/lib/popup.dart": "55dc14e65088f0cac0a464488b52fd1ab8d393157a7d86302cbd74f0fa7387c6",
+    "packages/prism_ui/lib/popup.dart": "c87c096f063d5bc9077c9ffd4df7590909eefc75bfd089940de971602ada9047",
     "packages/prism_ui/lib/press_region.dart": "1a190f64a4b778adfd7f328d7da6b649d87cbe30ac75d892887f9257c6be6be6",
     "packages/prism_ui/lib/press_sparkle.dart": "a3a6bf01dc65ab37026a1df51efd817157206be004b26e7b96146c84613e7e81",
-    "packages/prism_ui/lib/press_surface.dart": "5e379aa6713a7532dbc4d3e9aa1f8d0a03b17eabc18ee999c76ebe3488da609f",
+    "packages/prism_ui/lib/press_surface.dart": "3d7f718751766b8ff976036c689cb30329aa386daf14afffbd655116af4428ae",
     "packages/prism_ui/lib/prism_list.dart": "4e045621df41624c2774a6588314d0e14f4d9e5f58bdb21246d9083ed977d58e",
     "packages/prism_ui/lib/prism_ui.dart": "dbee7e07fea9ca029a8958e6b88992e791a45b5d101e46223dcb8194a4cb8a25",
     "packages/prism_ui/lib/route_motion_hold.dart": "bdb9cc1f0c98a6a8221885f59ceda4c93bf778959851753549f62c1fc6a16a95",
@@ -139,7 +137,7 @@
     "packages/prism_ui/lib/segmented_control.dart": "c86642505d2a9ad515b9f3627cdc40fc9bdf4e3a679b97b7e02d56a648944255",
     "packages/prism_ui/lib/selectable_text.dart": "1dbbc58c2e37176925fdf0de6d1d12c9d7f2d54459355dfd8ed3b51fe6ba6cf3",
     "packages/prism_ui/lib/selection_mark.dart": "b9dd4009ecb20b3169cba46ab4ce11da27840b8287cb7da404f5159372d5fdd5",
-    "packages/prism_ui/lib/shape.dart": "2d8a73ab0dd6c1622153b5002840c2582b91b8020251b2f5b169ba9a1d5f6edf",
+    "packages/prism_ui/lib/shape.dart": "842d6878031bc844f058fc013bc85dbd0ae7ee74486fdd44f3563a5cbc64a096",
     "packages/prism_ui/lib/shapes/corner_rounding.dart": "fea56acd47264a24e46d874ffa78346a8ffa53e42e6d8ef3b29d06e99cc8253f",
     "packages/prism_ui/lib/shapes/cubic.dart": "f3c2f06e0f50e68942062963f22102469dc8a9777c0be1e054f5b4d6982234b4",
     "packages/prism_ui/lib/shapes/feature_mapping.dart": "4ad0532c444636eeafb7a2e468b23e874a0bd064aa1fbb811dfff74794b7d791",
@@ -156,7 +154,7 @@
     "packages/prism_ui/lib/sheet_header.dart": "b86eb3e100eca226010f2ce9ae1d7c949e01744f014737cc13ee2dea124eb4e7",
     "packages/prism_ui/lib/sheet_navigator.dart": "93787c532c11127428a9505b3153edf86298248c56ed96b5fa1ca9c0a593bf01",
     "packages/prism_ui/lib/side_sheet.dart": "fac5a2e5b45df42e478cbd1251bfe11a0b217f8124d4c5d6a186079d0f50bb52",
-    "packages/prism_ui/lib/sidebar.dart": "cd277371c5fd4c7e278745201887b2ebdb9ad6e9db5b1886c9e23e0d237b5f94",
+    "packages/prism_ui/lib/sidebar.dart": "67de2e2031f584929d919c5ee6bee646d87a4ac35d9341e9d0ed12fcf828a7d3",
     "packages/prism_ui/lib/skeleton.dart": "71195d322c223ea30127bbf34f5af1c518237d870d3aca9e07bf5a2d27b2a8ae",
     "packages/prism_ui/lib/slider.dart": "08f943fdf3a89763e2d443adb286a9c5ad7f4130dc9fdc6539416f92871997cf",
     "packages/prism_ui/lib/sliver_list/element.dart": "5a1fd30ba6f870e2e599cdfa72c2008b15ac91b8baedcdc7ceef43cb6567f214",
@@ -174,7 +172,7 @@
     "packages/prism_ui/lib/tab_view.dart": "7a15aadc2d30eeaf1b7fb87c0fb31778e22dbef1af7996998c7674c874d22fad",
     "packages/prism_ui/lib/table_layout.dart": "4ce44ad97af4ffe13819d6ce1cb674332287fcc8e95689a6e65983b874d48152",
     "packages/prism_ui/lib/text.dart": "f75c9e4009fe95f7fa9b1ebefd269b29ce0b3dbd973d2f6c9091ee502468cf78",
-    "packages/prism_ui/lib/text_field.dart": "de140d6a0afba8a1e3aa1c9c3cdb4524137f5c4d792e1bfa3166fed76fb64d37",
+    "packages/prism_ui/lib/text_field.dart": "daa17c99e6a491e360bfd61b22a410adb82361f09f0909752c7aae5efa1f4bc9",
     "packages/prism_ui/lib/text_loupe.dart": "35135705e372b19046b37edaabcde390c6dec4890e9206f5486e8695489a620b",
     "packages/prism_ui/lib/text_selection_controls.dart": "3dfe58c4c545f482a0bfee659892fad79dacb6ef9df77a67b7d3391090c3e700",
     "packages/prism_ui/lib/text_selection_menu.dart": "04aeee55b0c304ccb1af33fdb8af13583e7a934e1f312e623429e1fb6149a4e0",
@@ -209,22 +207,22 @@
     "lib/components/start_toggle.dart": {
       "source": "lib/views/dashboard/widgets/current_outbound.dart",
       "sourceSHA256": "ee6f397a9b1bc78968699e2852c7a6ba36d1d1a05dfa4cbcd6545e09c6b55f28",
-      "changes": "Flutter presentation preserved; application state and actions use B-box callbacks."
+      "changes": "Flutter presentation preserved; application state and actions use FK-box callbacks."
     },
     "lib/components/shape_badge.dart": {
       "source": "lib/views/dashboard/widgets/card.dart",
       "sourceSHA256": "7e1a759eae758576c4005fe250c7441bb606b4256a09e327f502e30d0851c8ab",
-      "changes": "Flutter presentation preserved; application state and actions use B-box callbacks."
+      "changes": "Flutter presentation preserved; application state and actions use FK-box callbacks."
     },
     "lib/components/connected_buttons.dart": {
       "source": "lib/views/dashboard/widgets/card.dart",
       "sourceSHA256": "7e1a759eae758576c4005fe250c7441bb606b4256a09e327f502e30d0851c8ab",
-      "changes": "Flutter presentation preserved; application state and actions use B-box callbacks."
+      "changes": "Flutter presentation preserved; application state and actions use FK-box callbacks."
     },
     "lib/pages/dashboard.dart": {
       "source": "lib/views/dashboard/widgets/traffic.dart",
       "sourceSHA256": "e218e48571bb9ab33b840d2a52eb037b59fba2ee8831bec7971d8c63f339a619",
-      "changes": "NetworkSpeedCard and SpeedTile layout adapted to sing-box traffic samples; traffic tiles subscribe independently from other dashboard cards. Other cards use B-box capability state. The capability-gated SystemProxyPanel uses the shared editable card order and visibility preferences."
+      "changes": "NetworkSpeedCard and SpeedTile layout adapted to sing-box traffic samples; traffic tiles subscribe independently from other dashboard cards. Other cards use FK-box capability state. The capability-gated SystemProxyPanel uses the shared editable card order and visibility preferences."
     },
     "lib/pages/proxies.dart": {
       "source": "lib/views/proxies/card.dart",
@@ -253,17 +251,17 @@
     "lib/components/theme_preview.dart": {
       "source": "lib/views/theme_preview.dart",
       "sourceSHA256": "03565aea92009f1115f1c0c774d1bfec5d07f28872e9e8aafc298aa19f3cb0b1",
-      "changes": "Android appearance presentation adapted to B-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
+      "changes": "Android appearance presentation adapted to FK-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
     },
     "lib/components/palette.dart": {
       "source": "lib/widgets/palette.dart",
       "sourceSHA256": "0b7700d2190a9721da68e2a7e129af561f04a3f5473c271f65bed7a4556436bb",
-      "changes": "Android appearance presentation adapted to B-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
+      "changes": "Android appearance presentation adapted to FK-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
     },
     "lib/pages/appearance.dart": {
       "source": "lib/views/theme.dart",
       "sourceSHA256": "a5751491fbabb34065309577f84eb12f54a085cc9b827f2e3786156a17811bba",
-      "changes": "Android appearance presentation adapted to B-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
+      "changes": "Android appearance presentation adapted to FK-box preferences; shared theme preview and color picker retained. Desktop-only controls omitted."
     },
     "lib/components/status_panel.dart": {
       "source": "lib/views/dashboard/widgets/current_outbound.dart",
@@ -295,7 +293,7 @@
           "sourceSHA256": "7e1a759eae758576c4005fe250c7441bb606b4256a09e327f502e30d0851c8ab"
         }
       ],
-      "changes": "VpnCard mobile padding, 48px cookie/circle badge, title and enabled/disabled subtitle, whole-card tap and compact DashboardSwitch layout retained. Uses B-box's original continent globe glyph from system_proxy_glyph.dart and system HTTP proxy state/command instead of the VPN setting."
+      "changes": "VpnCard mobile padding, 48px cookie/circle badge, title and enabled/disabled subtitle, whole-card tap and compact DashboardSwitch layout retained. Uses FK-box's original continent globe glyph from system_proxy_glyph.dart and system HTTP proxy state/command instead of the VPN setting."
     },
     "lib/components/dashboard_chip.dart": {
       "source": "lib/views/dashboard/widgets/card.dart",
@@ -315,12 +313,12 @@
     "lib/pages/tools.dart": {
       "source": "lib/views/tools.dart",
       "sourceSHA256": "d493b7cfa19c3eb9d69e5c753603a26eb6b37cbca832a2021376765bcb6d0a9e",
-      "changes": "Android section order and glyphs adapted to Flutter pages for supported sing-box configuration and B-box tools."
+      "changes": "Android section order and glyphs adapted to Flutter pages for supported sing-box configuration and FK-box tools."
     },
     "lib/pages/about.dart": {
       "source": "lib/views/about.dart",
       "sourceSHA256": "0031e1fe57fae5e8f1b92b3db31acc167e7ec1a1e039e1535652b7fca18bf9e1",
-      "changes": "Hero geometry, version and license pills, update control and link badges retained with B-box branding and B-box release metadata."
+      "changes": "Hero geometry, version and license pills, update control and link badges retained with FK-box branding and FK-box release metadata."
     },
     "lib/components/proxy_list.dart": {
       "source": "lib/views/proxies/list.dart",
@@ -340,12 +338,12 @@
     "lib/components/dashboard_editor.dart": {
       "source": "lib/views/dashboard/edit.dart",
       "sourceSHA256": "22c6b0d835e2b7c7c0bd5d9e2e50580a816fff889d0f8eda0b4c561bf084e462",
-      "changes": "In-place live cards, sway, long-press reordering, remove badges, presence motion and addable rows retained, including the B-box system HTTP proxy card with B-box's original continent globe glyph. Saves native preferences, preserves card keys and retries failed saves before leaving."
+      "changes": "In-place live cards, sway, long-press reordering, remove badges, presence motion and addable rows retained, including the FK-box system HTTP proxy card with FK-box's original continent globe glyph. Saves native preferences, preserves card keys and retries failed saves before leaving."
     },
     "lib/components/form.dart": {
       "source": "lib/features/form/form_row.dart",
       "sourceSHA256": "bf982ce6351cc38784dff9493b01ac929516d20601c1ca45ec0e2c07c7361f03",
-      "changes": "Grouped rows and end-aligned text/secret fields retained. Uses the inherited B-box measurement scope and local error handling."
+      "changes": "Grouped rows and end-aligned text/secret fields retained. Uses the inherited FK-box measurement scope and local error handling."
     },
     "lib/pages/backup.dart": {
       "source": "lib/views/backup_and_restore.dart",
@@ -458,7 +456,7 @@
           "localPaths": [
             "app/src/main/assets/mitm-ca/inject.sh"
           ],
-          "changes": "Reference for system/Conscrypt APEX and init/zygote/app mount namespaces. B-box builds a complete tmpfs copy separately in each target namespace before binding it, retains hash collisions, has no live stale-certificate removal, and logs failures."
+          "changes": "Reference for system/Conscrypt APEX and init/zygote/app mount namespaces. FK-box builds a complete tmpfs copy separately in each target namespace before binding it, retains hash collisions, has no live stale-certificate removal, and logs failures."
         },
         {
           "source": "android/app/src/main/assets/mitm_ca/post-fs-data.sh",
@@ -467,7 +465,7 @@
           "localPaths": [
             "app/src/main/assets/mitm-ca/post-fs-data.sh"
           ],
-          "changes": "Uses the B-box module-relative injector and resets this boot’s diagnostic log."
+          "changes": "Uses the FK-box module-relative injector and resets this boot’s diagnostic log."
         },
         {
           "source": "android/app/src/main/assets/mitm_ca/service.sh",
@@ -476,7 +474,7 @@
           "localPaths": [
             "app/src/main/assets/mitm-ca/service.sh"
           ],
-          "changes": "Uses the B-box injector’s --apps option to reach existing app namespaces."
+          "changes": "Uses the FK-box injector’s --apps option to reach existing app namespaces."
         },
         {
           "source": "android/app/src/main/kotlin/com/follow/clash/SystemCaStore.kt",
@@ -486,7 +484,7 @@
             "app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificate.kt",
             "app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificateModule.kt"
           ],
-          "changes": "Reference for Android CA identity, hash names, store/namespace limitations and public module export. B-box implements non-exportable Keystore signing, revision checks and AtomicFile persistence; no automatic root command or private-key export."
+          "changes": "Reference for Android CA identity, hash names, store/namespace limitations and public module export. FK-box implements non-exportable Keystore signing, revision checks and AtomicFile persistence; no automatic root command or private-key export."
         },
         {
           "source": "lib/common/mitm_trust.dart",
@@ -495,7 +493,7 @@
           "localPaths": [
             "flutter/lib/pages/requests.dart"
           ],
-          "changes": "Distinguish user/system trust and refresh after returning from settings. B-box queries its local Android bridge and isolates remote sessions."
+          "changes": "Distinguish user/system trust and refresh after returning from settings. FK-box queries its local Android bridge and isolates remote sessions."
         },
         {
           "source": "lib/views/config/mitm.dart",
@@ -504,7 +502,7 @@
           "localPaths": [
             "flutter/lib/pages/requests.dart"
           ],
-          "changes": "Reference for explicit CA operations, HTTPS inclusion/exclusion and certificate setup. B-box uses private capture settings and shared components; profile HTTP rewriting is a separate B-box implementation documented in libbox.md. Certificate rotation is blocked while either capture or profile processing uses it; no Mihomo configuration."
+          "changes": "Reference for explicit CA operations, HTTPS inclusion/exclusion and certificate setup. FK-box uses private capture settings and shared components; profile HTTP rewriting is a separate FK-box implementation documented in libbox.md. Certificate rotation is blocked while either capture or profile processing uses it; no Mihomo configuration."
         },
         {
           "source": "lib/features/connection/mitm_exchanges.dart",
@@ -513,7 +511,7 @@
           "localPaths": [
             "flutter/lib/pages/requests.dart"
           ],
-          "changes": "Reference for HTTP exchange information. B-box keeps bounded libbox records and its independent live Connections page."
+          "changes": "Reference for HTTP exchange information. FK-box keeps bounded libbox records and its independent live Connections page."
         },
         {
           "source": "lib/features/connection/detail_tabs.dart",
@@ -522,7 +520,7 @@
           "localPaths": [
             "flutter/lib/pages/requests.dart"
           ],
-          "changes": "Reference for per-message detail navigation; B-box retains its record menu and copyable rows with actual route/TLS metadata and trailers."
+          "changes": "Reference for per-message detail navigation; FK-box retains its record menu and copyable rows with actual route/TLS metadata and trailers."
         },
         {
           "source": "lib/common/constant.dart",

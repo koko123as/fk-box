@@ -284,8 +284,8 @@ androidComponents {
 
 dependencies {
     // The Flutter UI (flutter/), consumed as the AAR repository built by `flutter build aar`.
-    debugImplementation("io.ericlee.bbox_ui:flutter_debug:1.0")
-    releaseImplementation("io.ericlee.bbox_ui:flutter_release:1.0")
+    debugImplementation("io.fkbox.ui:flutter_debug:1.0")
+    releaseImplementation("io.fkbox.ui:flutter_release:1.0")
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // libbox

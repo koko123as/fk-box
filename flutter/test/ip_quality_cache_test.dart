@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:b_box_ui/common/ip_probe.dart';
-import 'package:b_box_ui/common/ip_quality.dart';
-import 'package:b_box_ui/common/ip_quality_cache.dart';
+import 'package:fk_box_ui/common/ip_probe.dart';
+import 'package:fk_box_ui/common/ip_quality.dart';
+import 'package:fk_box_ui/common/ip_quality_cache.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/ip_probe.dart';
 

@@ -4,7 +4,7 @@ import 'package:flutter/services.dart';
 import '../widgets.dart';
 import '../components/form.dart';
 
-const defaultBackupFileName = 'B-box-backup.json';
+const defaultBackupFileName = 'FK-box-backup.json';
 
 // Layout and dialogs adapted from FlClash v0.9.2 backup_and_restore.dart.
 class BackupPage extends StatefulWidget {

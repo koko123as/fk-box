@@ -1,6 +1,6 @@
 // Adapted from FlClash v0.9.2 test/common/ip_quality_test.dart (GPL-3.0).
-import 'package:b_box_ui/common/ip_probe.dart';
-import 'package:b_box_ui/common/ip_quality.dart';
+import 'package:fk_box_ui/common/ip_probe.dart';
+import 'package:fk_box_ui/common/ip_quality.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/ip_probe.dart';
 

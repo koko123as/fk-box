@@ -1,6 +1,6 @@
 # FK-box 项目约束
 
-本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 FlClash 界面（由 Flutter 组件翻译为 Kotlin + Jetpack Compose）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
+本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 FlClash 的 Flutter 界面（`flutter/` 模块）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
 
 ## 文档职责
 
@@ -26,7 +26,7 @@
 
 ## 架构与兼容性约束
 
-1. 界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），已按原 `flutter/lib` 的 FlClash 界面逐项翻译完成；`flutter/` 目录已删除，翻译参考通过删除前的 Git 历史查询，应用不依赖 Flutter。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt`（沿用原通道命令与事件名的 Kotlin 门面）提供给 `compose/BoxController.kt`。
+1. 界面由 `flutter/` 下的 Flutter 模块（Dart 包 `fk_box_ui`，固定 Flutter 3.47.6，prism_ui `63450c0` 内置于 `flutter/packages/prism_ui`）提供，页面在 `flutter/lib/pages`、组件在 `flutter/lib/components` 与 `flutter/lib/ui`；CI 以 `flutter build aar`（Maven 坐标 `io.fkbox.ui:flutter_release`）生成本地仓库供 `app` 使用。Compose 界面已移除，视觉与交互以移除前的 Compose 版本（`94f7f6d:app/src/main/java/io/nekohasekai/sfa/compose`）为对齐基准。`compose.MainActivity` 与 `compose.ShareActivity` 仅保留稳定组件名，进入 Flutter 宿主 `bridge/BoxActivity.kt`；原生状态模型在 `backend/`，命令与事件经 `bridge/BoxChannel.kt`（通道 `io.koko123as.flbox/box` 与 `/events`）与 `flutter/lib/box.dart` 交互，新增命令须两端同时实现。
 2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
@@ -40,5 +40,5 @@
 - 更新核心时核对 legacy 补丁、所有 `libbox/ui_*.go` 扩展及生成的绑定，并同步检查 Release、源码验证和 Android smoke 工作流。官方原版 AAR 缺少 FK-box（继承自 B-box）新增绑定，不能仅凭版本相同直接替换。
 - 更新 FlClash 时检查源文件及哈希、适配差异、字体/着色器和许可。改动直接导入文件后，应如实更新来源清单及改动说明，不把业务改动伪装为机械包名替换。
 - 按受影响范围验证。本机可运行 `git diff --check` 和 `python3 tools/verify_newui.py`；文档变更还应检查链接和旧引用。后者仅检查源码约束，不证明运行行为。
-- [.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及 Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
+- [.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试、源码约束检查（`tools/verify_newui.py`）及 Flutter 分析和测试；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
 - 验证记录应说明源码 SHA、实际运行的检查、Actions 链接及未覆盖范围。已有 Release、旧提交的成功构建或测试代码的存在，都不等于当前源码已通过验收。仅构建下载产物时注意 Release 工作流的 `publish_release` 默认开启，具体发布规则见 [app.md](app.md)。

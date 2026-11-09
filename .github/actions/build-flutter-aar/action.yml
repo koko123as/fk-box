@@ -38,4 +38,4 @@ runs:
         [[ " $MODES " == *" debug "* ]] || flags+=(--no-debug)
         [[ " $MODES " == *" release "* ]] || flags+=(--no-release)
         flutter build aar "${flags[@]}" --target-platform android-arm64
-        ls build/host/outputs/repo/io/ericlee/bbox_ui
+        ls build/host/outputs/repo/io/fkbox/ui

@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/components/profile_card.dart';
-import 'package:b_box_ui/pages/profiles.dart';
+import 'package:fk_box_ui/main.dart';
+import 'package:fk_box_ui/widgets.dart';
+import 'package:fk_box_ui/components/profile_card.dart';
+import 'package:fk_box_ui/pages/profiles.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

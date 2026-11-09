@@ -45,7 +45,7 @@ class _CaptureLogsPageState extends State<CaptureLogsPage> {
           menuItems: [
             PopupMenuItem(glyph: AppGlyphs.copy, label: context.tr('Copy logs'), onPressed: logs.isEmpty ? null : () => _copy(text)),
             PopupMenuItem(glyph: AppGlyphs.export, label: context.tr('Export'), onPressed: logs.isEmpty ? null : () => context.box.act('document.save', {
-              'name': 'B-box-capture.log', 'content': text,
+              'name': 'FK-box-capture.log', 'content': text,
             })),
             PopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Clear'), onPressed: _busy ? null : () async {
               setState(() => _busy = true);

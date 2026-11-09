@@ -2,30 +2,29 @@
 
 本文记录界面来源、复用和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](AGENTS.md)。
 
-## Kotlin + Jetpack Compose 翻译
+## Flutter 界面
 
-本仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box) 的 `main`）已把下文列出的全部 Flutter 页面和组件用 Kotlin + Jetpack Compose 重写（仓库不再包含任何 Flutter/Dart 代码，只参考并翻译 FlClash 的设计与组件行为），位于 `app/src/main/java/io/nekohasekai/sfa/compose`（`theme/`、`ui/`、`pages/`），`flutter/` 目录随后删除。下文中的 `*.dart` 文件名指删除前的参考源码，可在 Git 历史中查看；对应关系：
+本仓库界面为 [flutter/](flutter) 下的 Flutter 模块（Dart 包 `fk_box_ui`，Flutter 3.47.6），直接导入或适配 FlClash v0.9.3 的页面与组件，prism_ui `63450c0` 原样内置于 `flutter/packages/prism_ui`（FK-box 对其的改动见 `adaptedFiles`）。此前的 Kotlin + Jetpack Compose 界面已移除；视觉与交互以移除前的 Compose 版本 `94f7f6d:app/src/main/java/io/nekohasekai/sfa/compose` 为对齐基准，下文提到的 `*.kt` 文件名均指该基准中的参考实现。对应关系：
 
-| 原 Flutter 页面 | Compose 实现 |
+| Compose 参考（94f7f6d） | Flutter 实现（`flutter/lib`） |
 | --- | --- |
-| dashboard、status_panel 等首页组件 | `pages/DashboardPage.kt`、`StatusPanel.kt`、`DashboardComponents.kt` |
-| proxies、proxy_card、proxy_list | `pages/ProxiesPage.kt` |
-| profiles、profile_details、profile_editor、configuration | `pages/ProfilesPage.kt`、`ProfileEditor.kt`、`Configuration.kt` |
-| tools、connections、logs | `pages/ToolsPage.kt` |
-| requests、request_settings、capture_domains、capture_logs、mitm_certificate、captured_body、capture_poll、http_message | `pages/RequestsPage.kt`、`ui/Records.kt` |
-| terminal、terminal_settings | `pages/TerminalPage.kt` |
-| diagnostics、reports、endpoints、taildrop、authentication、settings 中的远程控制 | `pages/ToolPages.kt` |
-| settings（常规/服务/核心）、about、backup、access | `pages/SettingsPages.kt` |
-| appearance、theme_preview、palette、segmented_control | `pages/AppearancePage.kt` |
-| record.dart、data_subscription.dart | `ui/Records.kt`、`DashboardPage.kt` 的 `BoxDataSubscription` |
+| `pages/DashboardPage.kt`、`StatusPanel.kt`、`DashboardComponents.kt`、`DashboardGrid.kt` | `pages/dashboard.dart`、`components/status_panel.dart`、`components/dashboard_grid.dart` 及各 `*_panel.dart` |
+| `pages/ProxiesPage.kt` | `pages/proxies.dart`、`components/proxy_card.dart`、`components/proxy_list.dart` |
+| `pages/ProfilesPage.kt`、`ProfileEditor.kt`、`Configuration.kt` | `pages/profiles.dart`、`profile_details.dart`、`profile_editor.dart`、`configuration.dart` |
+| `pages/ToolsPage.kt` | `pages/tools.dart`、`connections.dart`、`logs.dart` |
+| `pages/RequestsPage.kt`、`ui/Records.kt` | `pages/requests.dart`、`request_settings.dart`、`capture_domains.dart`、`capture_logs.dart`、`mitm_certificate.dart`、`components/record*.dart` |
+| `pages/TerminalPage.kt` | `pages/terminal.dart`、`terminal_settings.dart` |
+| `pages/ToolPages.kt` | `pages/diagnostics.dart`、`reports.dart`、`endpoints.dart`、`taildrop.dart`、`authentication.dart` |
+| `pages/SettingsPages.kt`、`ResourcesPage.kt` | `pages/settings.dart`、`about.dart`、`backup.dart`、`access.dart`、`resources.dart` |
+| `pages/AppearancePage.kt`、`theme/Appearance.kt` | `pages/appearance.dart`、`components/theme_preview.dart`、`theme_settings.dart` |
 
-已知与 Flutter 版的差异：搜索水滴变形和液态玻璃弹窗以弹簧缩放近似；列表行展开用侧滑；抽屉不随内容变短，宽屏列表单列；开关不支持拖动；导航坞和外观预览没有液态玻璃模糊（预览只画色调和高光边）；仪表盘卡片编辑器的进出场用 Compose 展开动画近似，拖动时不自动滚动；开源许可页改为列出主要组件及其许可和源码链接。
+已知与 Compose 参考的差异见 PR 说明与下文；外观“简约”样式由 prism_ui 的 `PrismStyle` 提供（`main.dart` 的 `_applyStyle`，`test/minimal_style_test.dart`）。
 
 ## 参考版本与来源清单
 
-固定参考 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，提交 `be84736605527034689c95bf27828ff27d912c5e`（2026-11-04），其界面套件为子模块 [chen08209/prism_ui](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185) `63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185`（v0.9.3 把 `lib/ui/` 移入 `plugins/prism_ui`）。FK-box 的 Compose 界面最初按 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`，2026-10-24）逐项翻译，`flclash-ui` 分支第 1–8、10 阶段再按 v0.9.3/prism_ui 对齐外壳、动效、按压、文本选择、横幅、记录筛选、请求页、快速编辑、宽屏仪表盘及工具页；服务状态、DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
+固定参考 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，提交 `be84736605527034689c95bf27828ff27d912c5e`（2026-11-04），其界面套件为子模块 [chen08209/prism_ui](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185) `63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185`（v0.9.3 把 `lib/ui/` 移入 `plugins/prism_ui`）。FK-box 此前的 Compose 界面最初按 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`，2026-10-24）逐项翻译，`flclash-ui` 分支第 1–8、10 阶段再按 v0.9.3/prism_ui 对齐外壳、动效、按压、文本选择、横幅、记录筛选、请求页、快速编辑、宽屏仪表盘及工具页；服务状态、DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
 
-[flclash-manifest.json](flclash-manifest.json) 记录参考版本（`previousReference` 为最初翻译依据的 v0.9.2 提交）、原生适配和补充参考。原 Flutter 导入的逐文件清单 `files`（直接导入的共享组件、工具文件、字体和 glass shader）和 `adaptedFiles`（仪表盘、配置/代理、外观、备份、IP 质量查询及参考测试等适配文件，含来源哈希和改动说明）的本地路径都在已删除的 `flutter/` 下，没有脚本读取，已随 `flutter/` 一并移出清单，可在 `6902a3d` 的 `flclash-manifest.json` 中查看。当前字段：
+[flclash-manifest.json](flclash-manifest.json) 记录参考版本（`previousReference` 为最初翻译依据的 v0.9.2 提交）、原生适配和补充参考。`files` 列出直接导入的共享组件、工具文件、字体和 glass shader 的本地 SHA-256（路径相对 `flutter/`，导入中的包名已从 `fl_clash` 换为 `fk_box_ui`），`adaptedFiles` 列出适配文件的来源哈希和改动说明；[verify_newui.py](tools/verify_newui.py) 校验两者，改动直接导入文件时须更新哈希并如实记录。其余字段：
 
 | 清单字段 | 使用方式 |
 | --- | --- |
@@ -36,11 +35,11 @@
 
 本次请求/MITM 功能补充核对 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)，相关提交为 [`f54486102172566e7342d7f5c138663c3c5dec0b`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计和 [`1a7556d30a38707f39abfba4b7d6a6b8f57774ed`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合。该 dev 源码的 `FEATURE_MITM` 默认关闭，公开 core 不提供完整 MITM 实现；B-box 自行实现 sing-box 路由上的 TLS 接管，不能把上游页面当成可用核心。此次采用证书信任、报文展示和 CA 模块设计，当时保留独立连接页（现已按 v0.9.3 合并入请求页，见上文），不整体迁移该版本的 UI 依赖。整体 FlClash UI、Android 上游和核心三个基线均不变。
 
-共享组件原位于 `flutter/lib/ui`，现由 `compose/ui` 与 `compose/theme` 翻译实现。原始许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [JetBrainsMono-OFL.txt](licenses/JetBrainsMono-OFL.txt) 和 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。Twemoji 原始图形来自 Twitter，字体转换由 Mozilla 提供，图形未修改。这些文件同时用于应用内许可证页，不再单独保存重复副本。
+共享组件位于 `flutter/lib/ui` 与 `flutter/packages/prism_ui`。原始许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [JetBrainsMono-OFL.txt](licenses/JetBrainsMono-OFL.txt) 和 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。Twemoji 原始图形来自 Twitter，字体转换由 Mozilla 提供，图形未修改。这些文件同时用于应用内许可证页，不再单独保存重复副本。
 
 ## 界面复用与业务适配
 
-Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（下文 `*.dart` 名称指翻译参考源文件）。复用 FlClash 的控件、字形、形状、排版、字体、动效、弹层及导航；页面状态和操作经 Android 桥接接入 B-box 的 Room 与 libbox。没有引入 FlClash/Mihomo 原生库、Clash 配置模型、Mihomo 配置覆写脚本、订阅转换器或 Clash 专用服务。B-box 请求/响应脚本的范围见 [核心 HTTP 改写](libbox.md#json-配置中的-http-改写)。
+Flutter 模块承担仪表盘、代理、配置、工具及所有子页面的导航（下文 `*.kt` 名称指 Compose 对齐基准）。复用 FlClash 的控件、字形、形状、排版、字体、动效、弹层及导航；页面状态和操作经 Android 桥接接入 B-box 的 Room 与 libbox。没有引入 FlClash/Mihomo 原生库、Clash 配置模型、Mihomo 配置覆写脚本、订阅转换器或 Clash 专用服务。B-box 请求/响应脚本的范围见 [核心 HTTP 改写](libbox.md#json-配置中的-http-改写)。
 
 | 区域 | 主要实现 | 当前适配 |
 | --- | --- | --- |
@@ -81,7 +80,7 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 - 代理列表保留圆角吸顶分组标题、固定高度的懒加载行、折叠动效及填充/普通/隐藏分组图标。折叠状态按选中配置保存，定位节点通过行偏移实现，不要求节点预先进入视口。
 - 访问控制按上游 SFA 的列表/扫描分离方式加载，进入页面直接显示应用与已保存的托管选择；“重新扫描托管应用”为独立操作，扫描期间保留列表。筛选/搜索/排序结果在列表及相关条件未变化时复用，流量等无关状态更新不重新排序。图标保持按可见行请求，在 IO 线程绘制为位图（不经 PNG 编解码）并存入按字节计的 8 MiB `LruCache`，切换显示范围或无修改地关闭查询设置不清空图标；查询策略变更或申请权限后关闭设置只刷新一次。原生查询与托管更新约定见 [app.md](app.md#配置服务应用与备份)。
 - 首页编辑保留卡片的全局 key，防止重复出口请求及丢失状态。改动立即保存；保存失败保留草稿，点击完成再次尝试。
-- sing-box 专属 Tailscale、Taildrop、终端、认证、USB/IP、诊断和报告使用统一 Compose 页面，复用原生后端；能力边界见 [app.md](app.md)。
+- sing-box 专属 Tailscale、Taildrop、终端、认证、USB/IP、诊断和报告使用统一 Flutter 页面，复用原生后端；能力边界见 [app.md](app.md)。
 
 `box.dart` 按应用状态、启动/外观、流量、内存、连接和日志分开通知；流量采样与仪表盘累计值只更新相关组件，日志和连接变化不触发应用根部、代理或配置列表重建。出口查询监听应用状态变化，不因流量或内存采样重新计算路由标识。显式批量通知仍刷新全部依赖。
 
@@ -140,9 +139,9 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 
 ## 验证与升级参考版本
 
-FK-box 删除 `flutter/` 后不再运行 Flutter 分析、Widget 测试、截图/像素比较或 AAR 构建，[newui.yml](.github/workflows/newui.yml) 也不再上传 `newui-validation` / `flutter-aar-arm64`。当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Compose 源码约束（由 newui.yml 和 build-debug-apk.yml 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)；Compose 页面尚无对应的截图或像素比较测试。
+[newui.yml](.github/workflows/newui.yml) 运行 [verify_newui.py](tools/verify_newui.py) 源码约束、`flutter analyze --no-fatal-infos` 与全部 `flutter/test` Widget 测试（含 `navigation_test.dart` 等输出的截图，作为布局回归产物，不是逐像素比较）；AAR 由 build-debug-apk.yml、newui-android.yml 与 build-release.yml 构建。模拟器 UI smoke 见 [app.md](app.md#验证与历史记录)。
 
-以下 `*_test.dart` 段落记录删除前 Flutter 版的测试覆盖，测试文件可在 Git 历史中查看，不代表当前 Compose 源码已通过同等测试。
+以下 `*_test.dart` 段落描述当前 `flutter/test` 的覆盖范围。
 
 `profiles_test.dart` 覆盖新建与二进制导入的内容/元数据、添加菜单与取消导入、菜单能力、原始订阅链接、相对时间边界、自动更新校验、选中配置定位、列表及弹层在启停期间禁止切换与状态稳定后恢复、切换失败、排序冲突及远程会话隔离。`navigation_test.dart` 另输出配置编辑与排序弹层在窄屏、大字号和宽屏下的截图；这些是布局回归产物，配置页尚未声明与上游逐像素一致。
 
