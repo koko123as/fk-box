@@ -19,7 +19,7 @@ void main() {
         BoxData.connections => 'connections.visible',
       };
       messenger.setMockMethodCallHandler(channel, (call) async {
-        if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test'};
+        if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test'};
         expect(call.method, method);
         changes.add(json(call.arguments)['visible'] as bool);
         return null;

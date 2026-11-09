@@ -43,7 +43,7 @@ Future<BoxController> openAccess(WidgetTester tester, Future<Object?> Function(M
 const visibleApp = {'package': 'visible.app', 'name': 'Visible app', 'internet': true};
 const systemApp = {'package': 'system.app', 'name': 'System app', 'internet': true, 'system': true};
 const offlineApp = {'package': 'offline.app', 'name': 'Offline app', 'internet': false};
-Json ready([Json settings = const {}]) => {'version': 'test', 'coreVersion': 'test',
+Json ready([Json settings = const {}]) => {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test',
   'settings': {'perAppEnabled': true, ...settings}, 'dashboard': {'status': 'Stopped'}};
 
 void main() {

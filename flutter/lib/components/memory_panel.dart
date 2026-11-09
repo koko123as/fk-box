@@ -5,17 +5,23 @@ import 'data_subscription.dart';
 /// FlClash's memory summary with same-process accounting from libbox.
 class MemoryPanel extends StatelessWidget {
   const MemoryPanel({super.key});
-  @override Widget build(BuildContext context) => BoxDataSubscription(data: BoxData.memory,
-    child: BoxPanel(onTap: () => openForm(context, const MemoryDetails()), child: Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-      const PanelTitle('Memory', AppGlyphs.memory, trailing: GlyphIcon(AppGlyphs.chevronForward, size: 18)),
-      const SizedBox(height: 12), MemorySummary(snapshot: context.watchBox(BoxAspect.memory).memory),
-    ])));
+  @override Widget build(BuildContext context) {
+    final density = DashboardDensityScope.of(context), memory = context.watchBox(BoxAspect.memory).memory;
+    return BoxDataSubscription(data: BoxData.memory,
+      child: BoxPanel(onTap: () => openForm(context, const MemoryDetails()), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        const PanelTitle('Memory', AppGlyphs.memory, trailing: GlyphIcon(AppGlyphs.chevronForward, size: 18)),
+        SizedBox(height: density.isCompact ? 4 : density.isDesktop ? 6 : 12),
+        if (density.isDesktop) Expanded(child: MemorySummary(snapshot: memory, desktop: true)) else MemorySummary(snapshot: memory),
+      ])));
+  }
 }
 
 class MemorySummary extends StatelessWidget {
-  const MemorySummary({super.key, required this.snapshot});
+  const MemorySummary({super.key, required this.snapshot, this.desktop = false});
   final Json snapshot;
+  /// The grid's fixed-height card: a smaller figure, the bar at the foot.
+  final bool desktop;
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
     final total = bytes(snapshot['total'] as num? ?? 0).split(' ');
@@ -25,10 +31,11 @@ class MemorySummary extends StatelessWidget {
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text.rich(TextSpan(children: [
-        TextSpan(text: snapshot.isEmpty ? '—' : total.first, style: AppTextStyle.title1.of(context, emphasized: true).toTabular),
+        TextSpan(text: snapshot.isEmpty ? '—' : total.first, style: (desktop ? AppTextStyle.title2 : AppTextStyle.title1).of(context, emphasized: true).toTabular),
         if (snapshot.isNotEmpty) TextSpan(text: ' ${total.last}', style: AppTextStyle.footnote.of(context).copyWith(color: color.onSurfaceVariant)),
       ]), maxLines: 1),
-      const SizedBox(height: 14), MemoryBar(parts: parts), const SizedBox(height: 10),
+      if (desktop) const Spacer() else const SizedBox(height: 14), MemoryBar(parts: parts),
+      SizedBox(height: desktop && DashboardDensityScope.of(context).isCompact ? 8 : 10),
       Wrap(spacing: 16, runSpacing: 4, children: [for (final part in parts) Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
         DecoratedBox(decoration: ShapeDecoration(color: part.$3, shape: AppShape.circle), child: const SizedBox.square(dimension: 8)),
         Text(context.tr(part.$1), style: context.listCaptionStyle),

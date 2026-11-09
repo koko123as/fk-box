@@ -14,7 +14,7 @@ void main() {
     final stored = <String, dynamic>{'locale': 'en', 'theme': 'light'};
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'preferences.set') { stored.addAll(Map<String, dynamic>.from((call.arguments as Map)['value'] as Map)); return stored; }
-      if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test', 'preferences': stored, 'dashboard': {'status': 'Stopped'}};
+      if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': stored, 'dashboard': {'status': 'Stopped'}};
       return null;
     });
     final box = BoxController(channel: channel, events: events.stream);

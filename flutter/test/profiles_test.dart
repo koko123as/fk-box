@@ -24,7 +24,7 @@ Future<BoxController> _mount(WidgetTester tester, {List<Json> profiles = const [
   final events = eventController ?? StreamController<dynamic>.broadcast();
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
-    'version': 'test', 'coreVersion': 'test', 'profiles': profiles,
+    'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'profiles': profiles,
     'dashboard': {'status': 'Stopped', 'selectedProfileId': selected,
       if (remoteSession) ...{'remote': 'Server', 'remoteConnected': true}, ...dashboard},
   } : await handler?.call(call));

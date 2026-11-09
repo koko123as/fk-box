@@ -19,7 +19,7 @@ Future<BoxController> _mount(WidgetTester tester, Future<dynamic> Function(Metho
   const channel = MethodChannel('test.backup');
   final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   messenger.setMockMethodCallHandler(channel, (call) async {
-    if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'},
+    if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'},
       'preferences': {'locale': 'en', 'restoreStrategy': strategy}};
     return handler(call);
   });

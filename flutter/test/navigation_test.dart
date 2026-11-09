@@ -34,7 +34,7 @@ void main() {
       const channel = MethodChannel('test.navigation');
       final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
       messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
-        'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped', 'modes': []},
+        'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Stopped', 'modes': []},
         'profiles': [], 'preferences': {'locale': 'zh', 'theme': dark ? 'dark' : 'light', 'fontScale': fontScale},
       } : null);
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));

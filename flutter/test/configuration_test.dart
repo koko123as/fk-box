@@ -86,7 +86,7 @@ void main() {
     final writes = <Json>[];
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'ready') return {
-        'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'},
+        'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'},
       };
       if (call.method == 'profiles.config') return wire();
       if (call.method == 'profiles.write') {
@@ -133,7 +133,7 @@ void main() {
     final events = StreamController<dynamic>.broadcast();
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
-      'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'},
+      'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'},
     } : null);
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
     final box = BoxController(channel: channel, events: events.stream);
@@ -180,7 +180,7 @@ void main() {
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'}};
+      if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'}};
       if (call.method == 'profiles.config') return wire('{}', 'loaded-revision');
       if (call.method == 'profiles.write') return wire(json(call.arguments)['content'] as String, 'saved-revision');
       return null;

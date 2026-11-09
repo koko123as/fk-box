@@ -1,5 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'box.dart';
+import 'common/layout.dart';
 import 'l10n.dart';
 import 'ui/ui.dart';
 import 'ui/icons/icons.dart';
@@ -159,6 +160,18 @@ class DetailRows extends StatelessWidget {
   ]);
 }
 
+/// layout.dart's DashboardDensityScope: the dashboard grid's density and the
+/// text scale every fixed height grows by. Outside the grid, the phone density.
+class DashboardDensityScope extends InheritedWidget {
+  const DashboardDensityScope({super.key, required this.density, required this.scale, required super.child});
+  final DashboardDensity density;
+  final double scale;
+  static DashboardDensityScope? _of(BuildContext context) => context.dependOnInheritedWidgetOfExactType<DashboardDensityScope>();
+  static DashboardDensity of(BuildContext context) => _of(context)?.density ?? DashboardDensity.mobile;
+  static double scaleOf(BuildContext context) => _of(context)?.scale ?? 1;
+  @override bool updateShouldNotify(DashboardDensityScope oldWidget) => density != oldWidget.density || scale != oldWidget.scale;
+}
+
 class BoxPanel extends StatelessWidget {
   const BoxPanel({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 18), this.clipBehavior = Clip.antiAlias});
   final Widget child;
@@ -168,6 +181,8 @@ class BoxPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dark = context.colorScheme.brightness == Brightness.dark;
+    // The panel shape for the dashboard density: 34 on the phone, 32 in the desktop grid.
+    final radius = dashboardCardRadius(DashboardDensityScope.of(context));
     BoxShadow shadow(int alpha, double y, double blur, [double spread = 0]) => BoxShadow(
       color: Color.fromARGB(alpha, 0, 0, 0), offset: Offset(0, y),
       blurRadius: blur <= 1 ? 0 : (blur / 2 - .5) / .57735, spreadRadius: spread,
@@ -175,13 +190,13 @@ class BoxPanel extends StatelessWidget {
     return Container(
       decoration: ShapeDecoration(
         color: SurfaceLevel.card.colorOf(context.colorScheme),
-        shape: AppShape.all(34),
+        shape: AppShape.all(radius),
         shadows: dark ? [shadow(0x80, 1, 2), shadow(0x8c, 10, 28, -6)]
             : [shadow(0x0d, .5, 1), shadow(0x0a, 2, 6), shadow(0x17, 12, 32, -6)],
       ),
       clipBehavior: clipBehavior,
       child: onTap == null ? Padding(padding: padding, child: child) : PressSurface(
-        fill: Colors.transparent, shape: AppShape.all(34), onPressed: onTap, childFills: true,
+        fill: Colors.transparent, shape: AppShape.all(radius), onPressed: onTap, childFills: true,
         child: Padding(padding: padding, child: child),
       ),
     );

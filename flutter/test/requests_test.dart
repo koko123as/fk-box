@@ -67,7 +67,7 @@ void main() {
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       if (call.method == 'ready') return {
-        'version': 'test', 'coreVersion': 'test', 'preferences': {'fontScale': scale, 'theme': dark ? 'dark' : 'light'},
+        'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': {'fontScale': scale, 'theme': dark ? 'dark' : 'light'},
         'dashboard': {'status': 'Started', if (remote) ...{'remote': 'Server', 'remoteConnected': true}},
       };
       if (extra != null) return extra!(call);

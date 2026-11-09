@@ -13,24 +13,28 @@ class SystemProxyPanel extends StatelessWidget {
     final enabled = box.dashboard['systemProxy'] == true;
     final title = context.tr('System HTTP proxy');
     void change(bool value) => box.act('systemProxy.set', {'enabled': value});
+    // network_takeover.dart's _tileMetricsOf: the grid's control-row tile, the icon and switch inset as from the edges.
+    final density = DashboardDensityScope.of(context), tile = density.isDesktop;
+    final icon = !tile ? 48.0 : density.isCompact ? 36.0 : 40.0;
     return Semantics(
       container: true,
       label: title,
       child: BoxPanel(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: !tile ? const EdgeInsets.symmetric(horizontal: 20, vertical: 16)
+          : density.isCompact ? const EdgeInsetsDirectional.only(start: 10, end: 12) : const EdgeInsetsDirectional.only(start: 12, end: 16),
         clipBehavior: Clip.none,
         onTap: () => change(!enabled),
         child: Row(spacing: 14, children: [
           ShapeBadge(
             shape: enabled ? MaterialShapes.cookie6Sided : MaterialShapes.circle,
             color: enabled ? colors.primary : SurfaceLevel.block.colorOf(colors),
-            size: 48,
-            child: GlyphIcon(systemProxyGlyph, size: 22,
+            size: icon,
+            child: GlyphIcon(systemProxyGlyph, size: icon * 22 / 48,
               color: enabled ? colors.onPrimary : colors.onSurfaceVariant),
           ),
-          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(title, style: AppTextStyle.callout.of(context, emphasized: true)),
-            Text(context.tr(enabled ? 'Enabled' : 'Disabled'),
+          Expanded(child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(title, maxLines: tile ? 1 : null, overflow: tile ? TextOverflow.ellipsis : null, style: AppTextStyle.callout.of(context, emphasized: true)),
+            if (!density.isCompact) Text(context.tr(enabled ? 'Enabled' : 'Disabled'),
               maxLines: 1, overflow: TextOverflow.ellipsis,
               style: AppTextStyle.footnote.of(context).copyWith(color: colors.onSurfaceVariant)),
           ])),

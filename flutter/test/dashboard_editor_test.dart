@@ -40,7 +40,7 @@ void main() {
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
         switch (call.method) {
-          case 'ready': return {'version': 'test', 'coreVersion': 'test', 'preferences': preferences,
+          case 'ready': return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': preferences,
             'profiles': [{'id': 1, 'name': 'Local profile', 'remote': false}],
             'dashboard': dashboard};
           case 'dashboard.egress': return {'ip': '203.0.113.1', 'country': 'CN', 'type': 'Residential'};

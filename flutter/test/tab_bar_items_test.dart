@@ -35,7 +35,7 @@ void main() {
     const channel = MethodChannel('test.tabBarItems');
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
-      'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped', 'modes': []},
+      'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Stopped', 'modes': []},
       'profiles': [], 'preferences': {'theme': 'light'},
     } : null);
     addTearDown(() => messenger.setMockMethodCallHandler(channel, null));

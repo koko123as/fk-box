@@ -27,28 +27,29 @@ class ProxyGroupsPanel extends StatelessWidget {
           TextSpan(text: '${groups.length}', style: AppTextStyle.display.of(context, emphasized: true).toTabular.copyWith(letterSpacing: 0)),
           TextSpan(text: ' ${context.tr('Groups')}', style: AppTextStyle.subheadline.of(context).copyWith(color: context.colorScheme.onSurfaceVariant)),
         ]), maxLines: 1, overflow: TextOverflow.clip)),
-        _GroupIconStack(groups: groups),
+        GroupIconStack(groups: groups),
       ]),
     ]));
   }
 }
 
-class _GroupIconStack extends StatelessWidget {
-  const _GroupIconStack({required this.groups});
+class GroupIconStack extends StatelessWidget {
+  const GroupIconStack({super.key, required this.groups, this.size = 40});
   final List<Json> groups;
+  final double size;
   @override Widget build(BuildContext context) {
     final shown = groups.take(4).toList(), rest = groups.length - groups.take(4).length;
     final count = shown.length + (rest > 0 ? 1 : 0);
     final colors = context.colorScheme;
-    return SizedBox(width: count * 40 - (count - 1) * 8, height: 40, child: Stack(clipBehavior: Clip.none, children: [
-      for (final (index, group) in shown.indexed) PositionedDirectional(start: index * 32, child: Container(
-        width: 40, height: 40, padding: const EdgeInsets.all(6),
+    return SizedBox(width: count * size - (count - 1) * 8, height: size, child: Stack(clipBehavior: Clip.none, children: [
+      for (final (index, group) in shown.indexed) PositionedDirectional(start: index * (size - 8), child: Container(
+        width: size, height: size, padding: const EdgeInsets.all(6),
         decoration: ShapeDecoration(color: SurfaceLevel.inset.colorOf(colors), shape: AppShape.all(14).copyWith(
           side: BorderSide(color: SurfaceLevel.card.colorOf(colors), width: 3, strokeAlign: BorderSide.strokeAlignOutside))),
         child: Center(child: EmojiText(String.fromCharCodes(group['tag'].toString().runes.take(2)).toUpperCase(), maxLines: 1,
           style: AppTextStyle.caption1.of(context, emphasized: true).copyWith(color: colors.onSurfaceVariant))),
       )),
-      if (rest > 0) PositionedDirectional(start: shown.length * 32, child: Container(width: 40, height: 40,
+      if (rest > 0) PositionedDirectional(start: shown.length * (size - 8), child: Container(width: size, height: size,
         decoration: ShapeDecoration(color: SurfaceLevel.block.colorOf(colors), shape: AppShape.all(14).copyWith(
           side: BorderSide(color: SurfaceLevel.card.colorOf(colors), width: 3, strokeAlign: BorderSide.strokeAlignOutside))),
         child: Center(child: Text('+$rest', style: AppTextStyle.caption1.of(context, emphasized: true).toTabular.copyWith(color: colors.onSurfaceVariant))))),

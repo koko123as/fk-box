@@ -28,7 +28,7 @@ void main() {
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       if (call.method == 'ready') return {
-        'version': 'test', 'coreVersion': 'test',
+        'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test',
         'dashboard': {'status': 'Stopped',
           if (remote) ...{'remote': 'Server', 'remoteConnected': true}},
       };

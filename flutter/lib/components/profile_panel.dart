@@ -17,6 +17,8 @@ class _ProfilePanelState extends State<ProfilePanel> {
     final label = AppTextStyle.caption1.of(context).copyWith(color: context.colorScheme.onSurfaceVariant);
     final info = subscriptionInfoOf(profile);
     final days = subscriptionDaysLabel(context, info);
+    // dashboard/widgets/profiles.dart: the grid's fixed height puts the usage at the bottom.
+    final density = DashboardDensityScope.of(context);
     return BoxPanel(onTap: () => box.remote ? openForm(context, const ProfileDetailsPage()) : profile == null
       ? openForm(context, const AddProfilePage()) : openForm(context, ProfileDetailsPage(profile: profile)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -29,9 +31,9 @@ class _ProfilePanelState extends State<ProfilePanel> {
             })),
           const GlyphIcon(AppGlyphs.chevronForward, size: 18),
         ])),
-        const SizedBox(height: 12),
+        SizedBox(height: density.isDesktop ? 10 : 12),
         Row(children: [
-          Flexible(child: EmojiText(name?.toString() ?? context.tr('Add profile'), maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyle.headline.of(context, emphasized: true))),
+          Flexible(child: EmojiText(name?.toString() ?? context.tr('Add profile'), maxLines: 1, overflow: TextOverflow.ellipsis, style: (density.isCompact ? AppTextStyle.callout : AppTextStyle.headline).of(context, emphasized: true))),
           if (profile != null) ...[const SizedBox(width: 8), ProfileCoreChip(profile)],
           if (!box.remote && box.profiles.length > 1) SizedBox.square(dimension: 32, child: IconButton(padding: EdgeInsets.zero,
             tooltip: context.tr('Switch profile'), icon: const GlyphIcon(AppGlyphs.swap, size: 18),
@@ -46,7 +48,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
             if (days != null) Text(days.$1, maxLines: 1, style: days.$2 == null ? label : label.copyWith(color: days.$2))
             else Text(context.tr(box.remote || profile?['remote'] == true ? 'Remote' : 'Local'), style: label),
           ]),
-          const SizedBox(height: 14),
+          if (density.isDesktop) const Spacer() else const SizedBox(height: 14),
           if (info?.usage != null) SubscriptionUsageMeter(info!) else ProfileStats(profile: profile),
         ],
       ]),

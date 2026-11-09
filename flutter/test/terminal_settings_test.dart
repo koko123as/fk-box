@@ -20,7 +20,7 @@ void main() {
     final settings = <String, dynamic>{'lightTheme': 'Alabaster', 'darkTheme': 'Afterglow', 'lightConfig': '', 'darkConfig': '',
       'fontFollowTheme': true, 'fontFamily': '', 'fontPath': '', 'fontSize': 14, 'defaultLightTheme': 'Alabaster', 'defaultDarkTheme': 'Afterglow'};
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
-      if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}, 'preferences': {'locale': 'en'}};
+      if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}, 'preferences': {'locale': 'en'}};
       if (call.method == 'ssh.snapshot') return {'sessions': []};
       if (call.method == 'terminal.settings') return settings;
       if (call.method == 'terminal.set') { final args = call.arguments as Map; settings[args['key'] as String] = args['value']; return settings; }

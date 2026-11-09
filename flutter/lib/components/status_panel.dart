@@ -178,24 +178,31 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final ip = info?['ip'] as String?;
     final foreground = box.running ? color.onSurface : color.onSurfaceVariant;
     final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-    final ipStyle = AppTextStyle.title2.of(context, emphasized: true).toTabular.copyWith(color: foreground, letterSpacing: 0);
+    // current_outbound.dart's _OutboundMetrics: the grid's compact and standard sizes.
+    final density = DashboardDensityScope.of(context), desktop = density.isDesktop, compact = density.isCompact;
+    final standard = density == DashboardDensity.standard;
+    final ipText = standard ? AppTextStyle.title1 : AppTextStyle.title2;
+    final (padX, padY) = dashboardCardPadding(density);
+    final buttonSize = switch (density) { DashboardDensity.standard => 104.0, DashboardDensity.compact => 84.0, DashboardDensity.mobile => 88.0 };
+    final buttonSlot = switch (density) { DashboardDensity.standard => 120.0, DashboardDensity.compact => 100.0, DashboardDensity.mobile => 88.0 };
+    final ipStyle = ipText.of(context, emphasized: true).toTabular.copyWith(color: foreground, letterSpacing: 0);
     final ipLoading = _checking || (_routeChanged && _ipDue && !box.transitioning && !box.remote);
     final loading = (ipLoading && ip == null) || _qualityChecking;
     final organization = (info?['organization'] as String?)?.isNotEmpty == true
       ? info!['organization'] as String : info?['asn'] as String?;
     return Semantics(container: true, label: context.tr('Status'), child: BoxPanel(padding: EdgeInsets.zero, clipBehavior: Clip.none, child: Stack(children: [
       Positioned.fill(child: ClipPath(
-        clipper: ShapeBorderClipper(shape: AppShape.all(34), textDirection: Directionality.of(context)),
+        clipper: ShapeBorderClipper(shape: AppShape.all(dashboardCardRadius(density)), textDirection: Directionality.of(context)),
         child: Stack(clipBehavior: Clip.none, children: [
-          PositionedDirectional(end: -60, top: -66, child: TweenAnimationBuilder<double>(
+          PositionedDirectional(end: desktop ? -64 : -60, top: standard ? -87 : compact ? -75 : -66, child: TweenAnimationBuilder<double>(
             tween: Tween(end: box.running ? 1 : 0), duration: context.motionDuration(const Duration(milliseconds: 450)), curve: Curves.easeOutBack,
             builder: (_, progress, _) => Transform.rotate(angle: math.pi / 6 * progress, child: Transform.scale(scale: 1 + .12 * progress,
-              child: ShapeBadge(shape: MaterialShapes.cookie12Sided, size: 240,
+              child: ShapeBadge(shape: MaterialShapes.cookie12Sided, size: standard ? 290 : compact ? 250 : 240,
                 color: Color.lerp(SurfaceLevel.block.colorOf(color), Color.alphaBlend(color.primary.withValues(alpha: .1), SurfaceLevel.card.colorOf(color)), progress.clamp(0, 1))!))),
           )),
         ]),
       )),
-      Padding(padding: const EdgeInsetsDirectional.fromSTEB(20, 18, 16, 18), child: Row(spacing: 10, children: [
+      Padding(padding: EdgeInsetsDirectional.fromSTEB(padX, padY, desktop ? padX : 16, padY), child: Row(spacing: desktop ? 16 : 10, children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           SizedBox(height: 26 * scale, child: Row(spacing: 8, children: [
             GlyphIcon(AppGlyphs.status, size: 18, color: color.onSurfaceVariant),
@@ -206,12 +213,12 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                   child: DashboardChip(label: context.tr(status), tone: box.running ? DashboardChipTone.ok : DashboardChipTone.idle, dot: box.running))),
             ]))),
           ])),
-          const SizedBox(height: 12),
+          SizedBox(height: compact ? 8 : desktop ? 10 : 12),
           Row(spacing: 12, children: [
-            _CountryBadge(country: info?['country'] as String?, active: box.running, checking: ipLoading || _qualityChecking,
+            _CountryBadge(size: compact ? 40 : 48, country: info?['country'] as String?, active: box.running, checking: ipLoading || _qualityChecking,
               onRefresh: !box.transitioning && !box.remote && !_checking && !_qualityChecking ? _retry : null),
             Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              SizedBox(height: AppTextStyle.title2.leading * scale, child: Align(alignment: AlignmentDirectional.centerStart,
+              SizedBox(height: ipText.leading * scale, child: Align(alignment: AlignmentDirectional.centerStart,
                 child: ip != null ? Tooltip(message: context.tr('Outbound IP details'), child: FocusRing(shape: AppShape.xs, standsOff: true,
                   child: PressRegion(onTap: () => openForm(context, EgressDetails(info: info!, updates: _detailsRevision)),
                     shape: AppShape.xs, overlay: PressRegion.focusOverlay,
@@ -234,8 +241,8 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                   ]))),
             ])),
           ]),
-          const SizedBox(height: 16),
-          LayoutBuilder(builder: (context, constraints) => Row(spacing: 24, children: [
+          if (desktop) const Spacer() else const SizedBox(height: 16),
+          LayoutBuilder(builder: (context, constraints) => Row(spacing: compact ? 22 : desktop ? 28 : 24, children: [
             ConstrainedBox(constraints: BoxConstraints(maxWidth: math.max(0, constraints.maxWidth - 24)),
               child: _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null))),
             Flexible(child: _StatusCell(label: 'Organization', child: organization != null
@@ -244,8 +251,8 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
               : Text('—', maxLines: 1, style: _statusCellStyle(context)))),
           ])),
         ])),
-        SizedBox(width: 88, child: Center(child: box.remote ? const GlyphIcon(AppGlyphs.proxies, size: 60) : StartToggle(
-          size: 88, enabled: (box.running || box.selectedProfile != null) && !_busy && !box.transitioning, running: box.running, suspended: false, onTap: _toggle))),
+        SizedBox(width: buttonSlot, child: Center(child: box.remote ? const GlyphIcon(AppGlyphs.proxies, size: 60) : StartToggle(
+          size: buttonSize, enabled: (box.running || box.selectedProfile != null) && !_busy && !box.transitioning, running: box.running, suspended: false, onTap: _toggle))),
       ])),
     ])));
   }
@@ -266,7 +273,8 @@ class _IpText extends StatelessWidget {
 }
 
 class _CountryBadge extends StatefulWidget {
-  const _CountryBadge({this.country, required this.active, required this.checking, this.onRefresh});
+  const _CountryBadge({this.size = 48, this.country, required this.active, required this.checking, this.onRefresh});
+  final double size;
   final String? country;
   final bool active, checking;
   final VoidCallback? onRefresh;
@@ -296,10 +304,10 @@ class _CountryBadgeState extends State<_CountryBadge> with SingleTickerProviderS
     return Tooltip(message: context.tr('Retry'), child: Semantics(button: true, label: context.tr('Retry'), enabled: enabled,
       child: PressRegion(onTap: widget.onRefresh, onHover: (value) => setState(() => _hovered = value), onFocusChange: (value) => setState(() => _focused = value),
         child: ElasticPress(enabled: enabled, child: AnimatedBuilder(animation: _turn, builder: (_, child) => ShapeBadge(
-          shape: MaterialShapes.clover4Leaf, color: background, size: 48,
+          shape: MaterialShapes.clover4Leaf, color: background, size: widget.size,
           rotation: _turn.value * 2 * math.pi, ring: _focused ? focusRingSide(context.colorScheme) : null, child: child), child: widget.country?.isNotEmpty == true
           ? Text(widget.country!.toUpperCase(), maxLines: 1, style: AppTextStyle.footnote.of(context, emphasized: true).copyWith(color: color, letterSpacing: .04 * AppTextStyle.footnote.size))
-          : GlyphIcon(AppGlyphs.proxies, size: 48 * .42, color: color))))));
+          : GlyphIcon(AppGlyphs.proxies, size: widget.size * .42, color: color))))));
   }
 }
 

@@ -22,7 +22,7 @@ void main() {
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test', 'preferences': preferences,
+      if (call.method == 'ready') return {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': preferences,
         'dashboard': {'status': 'Started', 'selectedProfileId': 1}};
       if (call.method == 'preferences.set') {
         preferences.addAll(json((call.arguments as Map)['value']));
@@ -80,7 +80,7 @@ void main() {
     const channel = MethodChannel('test.automatic');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      return call.method == 'ready' ? {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Started'}} : null;
+      return call.method == 'ready' ? {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Started'}} : null;
     });
     final box = BoxController(channel: channel, events: events.stream);
     await tester.pumpWidget(BoxApp(controller: box));
@@ -111,7 +111,7 @@ void main() {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
-      return call.method == 'ready' ? {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Started'}} : null;
+      return call.method == 'ready' ? {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Started'}} : null;
     });
     await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
     await tester.pumpAndSettle();
@@ -143,7 +143,7 @@ void main() {
     final events = StreamController<dynamic>.broadcast();
     const channel = MethodChannel('test.proxy-locate');
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
-      'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Started'}, 'preferences': {'locale': 'en'},
+      'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Started'}, 'preferences': {'locale': 'en'},
     } : null);
     await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
     await tester.pumpAndSettle();

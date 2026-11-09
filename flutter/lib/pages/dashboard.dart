@@ -4,6 +4,7 @@ import '../widgets.dart';
 import '../components/dashboard_editor.dart';
 
 import '../components/connected_buttons.dart';
+import '../components/dashboard_grid.dart';
 import '../components/status_panel.dart';
 import '../components/memory_panel.dart';
 import '../components/intranet_panel.dart';
@@ -32,6 +33,8 @@ class _DashboardPageState extends State<DashboardPage> {
   final _editor = GlobalKey<DashboardEditorState>();
   late final _scroll = sheetScrollController(context);
   bool _editing = false, _saving = false;
+  // dashboard.dart: the desktop grid has no editing; the content size is known a frame late.
+  bool _desktop = false;
   GlobalKey _keyOf(String card) => _cardKeys.putIfAbsent(card, GlobalKey.new);
 
   @override void dispose() { _scroll.dispose(); super.dispose(); }
@@ -79,11 +82,33 @@ class _DashboardPageState extends State<DashboardPage> {
       isLoading: _saving, backgroundColor: SurfaceLevel.page.colorOf(context.colorScheme),
       confirmationAction: _editing ? IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Done'),
         onPressed: _saving ? null : () { _editor.currentState?.finish(); }) : null,
-      iconActions: [if (!_editing) IconButtonData(glyph: AppGlyphs.edit, tooltip: context.tr('Dashboard cards'),
+      iconActions: [if (!_editing && !_desktop) IconButtonData(glyph: AppGlyphs.edit, tooltip: context.tr('Dashboard cards'),
         onPressed: () => setState(() => _editing = true))],
       body: LayoutBuilder(builder: (context, constraints) {
-        final maxContentWidth = context.isMobileView ? 560.0 : 900.0;
-        final side = math.max(16.0, (constraints.maxWidth - maxContentWidth) / 2), gap = context.isMobileView ? 8.0 : 12.0;
+        // layout.dart's DashboardDensity, read from the content room over the text scale.
+        final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
+        final density = DashboardDensity.of(constraints.maxWidth / scale, constraints.maxHeight / scale);
+        if (density.isDesktop != _desktop) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && density.isDesktop != _desktop) setState(() { _desktop = density.isDesktop; if (_desktop) _editing = false; });
+          });
+        }
+        final gap = cardSpacingFor(viewModeOf(ViewScope.sizeOf(context).width));
+        final banners = <Widget>[
+          if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
+            trailing: TextButton(onPressed: () => box.act('remote.disconnect'), child: Text(context.tr('Disconnect')))),
+          if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
+            onPressed: () async { if (await box.act('service.reload', {'restart': true})) box.clearApplyRequired(); },
+            child: Text(context.tr('Apply')))),
+        ];
+        final deprecated = [for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
+          onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']}))];
+        if (density.isDesktop && !_editing) {
+          return DashboardGrid(density: density, scale: scale, columns: dashboardColumnsOf(constraints.maxWidth / scale),
+            gap: gap, top: context.contentTopPadding, bottom: context.bottomInset, banners: [...banners, ...deprecated], controller: _scroll);
+        }
+        // dashboardMobileSideOf: the phone's one centred column.
+        final side = math.max(16.0, (constraints.maxWidth - dashboardMobileMaxWidth) / 2);
         final padding = EdgeInsets.fromLTRB(side, context.contentTopPadding, side, 16 + context.bottomInset);
         return CustomScrollView(key: const PageStorageKey('dashboard'), controller: _scroll,
           scrollCacheExtent: _editing ? ScrollCacheExtent.viewport(dashboardCards.length.toDouble()) : null,
@@ -94,14 +119,9 @@ class _DashboardPageState extends State<DashboardPage> {
               onChanged: _saveLayout, onBusyChanged: (busy) { if (mounted) setState(() => _saving = busy); },
               onDone: () { if (mounted) setState(() => _editing = false); })
             else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: Column(spacing: gap, children: [
-              if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
-                trailing: TextButton(onPressed: () => box.act('remote.disconnect'), child: Text(context.tr('Disconnect')))),
-              if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
-                onPressed: () async { if (await box.act('service.reload', {'restart': true})) box.clearApplyRequired(); },
-                child: Text(context.tr('Apply')))),
+              ...banners,
               for (final card in shown) RepaintBoundary(key: _keyOf(card), child: cards[card]),
-              for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
-                onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']})),
+              ...deprecated,
             ]))),
           ],
         );

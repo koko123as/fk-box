@@ -26,7 +26,7 @@ void main() {
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
         if (call.method == 'ready') return {
-          'version': 'test', 'coreVersion': 'test',
+          'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test',
           'preferences': {'fontScale': scale},
           'dashboard': {'status': 'Started', 'modes': provided, 'mode': cachedMode},
         };

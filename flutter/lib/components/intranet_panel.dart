@@ -6,6 +6,7 @@ import '../widgets.dart';
 import '../pages/configuration.dart';
 import '../pages/profile_editor.dart';
 import '../pages/profiles.dart' show runsSingBox;
+import 'data_subscription.dart';
 import 'shape_badge.dart';
 
 Future<void> _copy(BuildContext context, String text) async {
@@ -47,8 +48,11 @@ class IntranetPanel extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final box = context.box, addresses = context.box.lanAddresses;
     final copy = box.lanCopyText;
-    final figure = AppTextStyle.title1.of(context, emphasized: true).toTabular.copyWith(letterSpacing: 0);
-    return BoxPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+    // intranet_ip.dart: the grid uses Title2 and, when compact, a tighter LAN row.
+    final density = DashboardDensityScope.of(context);
+    final figureText = density.isDesktop ? AppTextStyle.title2 : AppTextStyle.title1;
+    final figure = figureText.of(context, emphasized: true).toTabular.copyWith(letterSpacing: 0);
+    return BoxDataSubscription(data: BoxData.lan, child: BoxPanel(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PanelTitle('Intranet IP', AppGlyphs.devices, trailing: Transform.translate(
         offset: const Offset(8, 0), child: SizedBox(width: 32, child: OverflowBox(
         fit: OverflowBoxFit.deferToChild, minHeight: 32, maxHeight: 32,
@@ -59,30 +63,30 @@ class IntranetPanel extends StatelessWidget {
           final text = box.lanCopyText;
           if (text != null) _copy(context, text);
         }))))),
-      const SizedBox(height: 12),
+      SizedBox(height: density.isCompact ? 8 : density.isDesktop ? 10 : 12),
       PressRegion(onTap: () => openForm(context, const IntranetDetails()), child: SizedBox(
-        height: AppTextStyle.title1.leading * MediaQuery.textScalerOf(context).scale(1),
+        height: figureText.leading * MediaQuery.textScalerOf(context).scale(1),
         child: Align(alignment: AlignmentDirectional.centerStart, child: box.lan['addresses'] is! List
           ? SkeletonText(width: 120, style: figure)
           : addresses.isEmpty ? Text(context.tr('No network'), maxLines: 1, overflow: TextOverflow.ellipsis,
               style: figure.copyWith(color: context.colorScheme.onSurfaceVariant))
           : FittedBox(fit: BoxFit.scaleDown, alignment: AlignmentDirectional.centerStart,
               child: Text(addresses.first, maxLines: 1, style: figure))))),
-      const SizedBox(height: 14),
+      if (density.isDesktop) const Spacer() else const SizedBox(height: 14),
       if (box.remote) DecoratedBox(decoration: ShapeDecoration(color: SurfaceLevel.block.colorOf(context.colorScheme), shape: AppShape.all(20)),
         child: ListItem(leading: const GlyphIcon(AppGlyphs.wifi, size: 32),
           title: Text(context.tr('This device')), subtitle: Text(context.tr('Device network addresses'))))
       else LANProxyRow(value: box.lan['enabled'] == true, subtitle: _subtitle(context),
-        onChanged: box.canSetLanProxy ? (value) => _change(context, value) : null),
-    ]));
+        onChanged: box.canSetLanProxy ? (value) => _change(context, value) : null, compact: density.isCompact),
+    ])));
   }
 }
 
 /// FlClash's mobile switch row: an enabled cookie badge, disabled circle,
 /// compact switch track, and an icon that yields space to larger text.
 class LANProxyRow extends StatelessWidget {
-  const LANProxyRow({super.key, required this.value, required this.subtitle, required this.onChanged});
-  final bool value;
+  const LANProxyRow({super.key, required this.value, required this.subtitle, required this.onChanged, this.compact = false});
+  final bool value, compact;
   final String subtitle;
   final ValueChanged<bool>? onChanged;
   @override Widget build(BuildContext context) {
@@ -91,14 +95,15 @@ class LANProxyRow extends StatelessWidget {
     return LayoutBuilder(builder: (context, constraints) {
       final measurement = TextPainter(text: TextSpan(text: title, style: style),
         textDirection: Directionality.of(context), textScaler: MediaQuery.textScalerOf(context))..layout();
-      final showIcon = measurement.width <= constraints.maxWidth - 22 - 38 - 24 - Switch.trackWidth;
+      final icon = compact ? 32.0 : 38.0, shape = AppShape.all(compact ? 16 : 20);
+      final showIcon = measurement.width <= constraints.maxWidth - 22 - icon - 24 - Switch.trackWidth;
       measurement.dispose();
-      return PressSurface(fill: SurfaceLevel.block.colorOf(scheme), shape: AppShape.all(20), onPressed: onChanged == null ? null : () => onChanged!(!value), child: Padding(
-          padding: EdgeInsets.fromLTRB(showIcon ? 10 : 14, 10, 12, 10), child: Row(spacing: 12, children: [
+      return PressSurface(fill: SurfaceLevel.block.colorOf(scheme), shape: shape, onPressed: onChanged == null ? null : () => onChanged!(!value), child: Padding(
+          padding: compact ? EdgeInsetsDirectional.fromSTEB(showIcon ? 8 : 12, 6, 8, 6) : EdgeInsetsDirectional.fromSTEB(showIcon ? 10 : 14, 10, 12, 10), child: Row(spacing: 12, children: [
             if (showIcon) AnimatedSwitcher(duration: context.motionDuration(commonDuration), child: ShapeBadge(
               key: ValueKey(value), shape: value ? MaterialShapes.cookie6Sided : MaterialShapes.circle,
-              color: value ? scheme.primary : SurfaceLevel.card.colorOf(scheme), size: 38,
-              child: GlyphIcon(AppGlyphs.wifi, size: 19, color: value ? scheme.onPrimary : scheme.onSurfaceVariant))),
+              color: value ? scheme.primary : SurfaceLevel.card.colorOf(scheme), size: icon,
+              child: GlyphIcon(AppGlyphs.wifi, size: icon / 2, color: value ? scheme.onPrimary : scheme.onSurfaceVariant))),
             Expanded(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: style),
               Text(subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: context.listCaptionStyle),
@@ -122,7 +127,7 @@ class IntranetDetails extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final box = context.box, active = !context.box.remote && context.box.running && context.box.lan['running'] == true;
     final bindings = rows(box.lan[active ? 'activeBindings' : 'bindings']);
-    return BoxPage(title: 'Intranet IP', actions: [
+    return BoxDataSubscription(data: BoxData.lan, child: BoxPage(title: 'Intranet IP', actions: [
       IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Reload'), onPressed: box.lanChanging ? null : box.refreshLan),
     ], children: [
       generateSection(title: context.tr('This device'), items: [
@@ -151,7 +156,7 @@ class IntranetDetails extends StatelessWidget {
             widget: runsSingBox(box.selectedProfile!) ? ProfileConfigurationPage(profile: box.selectedProfile) : ProfileEditor(profile: box.selectedProfile!)),
         ]),
       ],
-    ]);
+    ]));
   }
 }
 

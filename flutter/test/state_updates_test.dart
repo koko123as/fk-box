@@ -15,7 +15,7 @@ void main() {
     events = StreamController<dynamic>.broadcast();
     box = BoxController(channel: channel, events: events.stream);
     messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready'
-      ? {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}} : null);
+      ? {'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}} : null);
   });
 
   tearDown(() async {
