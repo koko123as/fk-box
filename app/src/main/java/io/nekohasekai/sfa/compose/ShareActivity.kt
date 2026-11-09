@@ -2,5 +2,5 @@ package io.nekohasekai.sfa.compose
 
 import io.nekohasekai.sfa.bridge.BoxActivity
 
-/** Shares use the same Flutter navigation and native file-transfer service. */
+/** Share intents open the same Compose UI as MainActivity. */
 class ShareActivity : BoxActivity()

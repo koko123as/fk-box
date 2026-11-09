@@ -23,11 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -49,9 +45,7 @@ import io.nekohasekai.sfa.compose.ui.Section
 import io.nekohasekai.sfa.compose.ui.tr
 import io.nekohasekai.sfa.database.SubscriptionInfo
 import kotlinx.coroutines.delay
-import kotlin.math.PI
 import kotlin.math.max
-import kotlin.math.sin
 
 // ---------------------------------------------------------------------------
 // FlClash v0.9.2 widgets/subscription_info_view.dart, widgets/chip_title.dart's

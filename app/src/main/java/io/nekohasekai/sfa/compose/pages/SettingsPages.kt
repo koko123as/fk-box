@@ -285,29 +285,28 @@ fun AboutPage(box: BoxController) {
 private fun UpdateDialog(box: BoxController, result: Json, dismiss: () -> Unit) {
     val available = result["available"] == true
     val noMetadata = result["hasMetadata"] == false
-    run {
-        CommonDialog(
-            onDismiss = dismiss,
-            title = tr(if (available) "Update available" else "Check for updates"),
-            actions = buildList {
-                add(DialogAction(tr("Close"), dismiss))
-                if (available || noMetadata) {
-                    add(
-                        DialogAction(tr(if (result["downloadUrl"] == null) "Releases" else "Download"), {
-                            dismiss()
-                            box.launchAct { openUrl((result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/fk-box/releases") as? String) }
-                        }),
-                    )
-                }
-            },
-        ) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(if (available) "FK-box ${result["version"]}" else tr(if (noMetadata) "No release metadata available" else "You are up to date"))
-                val notes = result["notes"] as? String ?: ""
-                if (available && notes.isNotEmpty()) SelectionContainer { Text(notes) }
+    CommonDialog(
+        onDismiss = dismiss,
+        title = tr(if (available) "Update available" else "Check for updates"),
+        actions = buildList {
+            add(DialogAction(tr("Close"), dismiss))
+            if (available || noMetadata) {
+                add(
+                    DialogAction(tr(if (result["downloadUrl"] == null) "Releases" else "Download"), {
+                        dismiss()
+                        box.launchAct { openUrl((result["downloadUrl"] ?: result["url"] ?: "https://github.com/koko123as/fk-box/releases") as? String) }
+                    }),
+                )
             }
+        },
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(if (available) "FK-box ${result["version"]}" else tr(if (noMetadata) "No release metadata available" else "You are up to date"))
+            val notes = result["notes"] as? String ?: ""
+            if (available && notes.isNotEmpty()) SelectionContainer { Text(notes) }
         }
     }
+
 }
 
 @Composable
@@ -624,50 +623,47 @@ fun BackupPage(box: BoxController) {
         }
     }
     when (val shown = dialog) {
-        is BackupDialog.Scope -> run {
-            CommonDialog(title = tr("Restore"), onDismiss = {
-                dialog = null
-                shown.result.complete(null)
-            }, actions = emptyList()) {
-                Column {
-                    for ((label, value) in listOf("Restore profiles only" to "profiles", "Restore all data" to "all")) {
-                        ListItem(title = { Text(tr(label)) }, onClick = {
-                            dialog = null
-                            shown.result.complete(value)
-                        })
-                    }
+        is BackupDialog.Scope -> CommonDialog(title = tr("Restore"), onDismiss = {
+            dialog = null
+            shown.result.complete(null)
+        }, actions = emptyList()) {
+            Column {
+                for ((label, value) in listOf("Restore profiles only" to "profiles", "Restore all data" to "all")) {
+                    ListItem(title = { Text(tr(label)) }, onClick = {
+                        dialog = null
+                        shown.result.complete(value)
+                    })
                 }
             }
         }
-        is BackupDialog.Approve -> run {
-            CommonDialog(
-                title = tr("Restore backup"),
-                onDismiss = {
+    
+        is BackupDialog.Approve -> CommonDialog(
+            title = tr("Restore backup"),
+            onDismiss = {
+                dialog = null
+                shown.result.complete(false)
+            },
+            destructive = shown.override,
+            actions = listOf(
+                DialogAction(tr("Cancel"), {
                     dialog = null
                     shown.result.complete(false)
-                },
-                destructive = shown.override,
-                actions = listOf(
-                    DialogAction(tr("Cancel"), {
-                        dialog = null
-                        shown.result.complete(false)
-                    }),
-                    DialogAction(tr("Restore"), {
-                        dialog = null
-                        shown.result.complete(true)
-                    }),
-                ),
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Text(tr("Restore {count} profiles?").replace("{count}", "${shown.count}"))
-                    Text(tr(if (shown.override) "Profiles missing from this backup will be removed." else "Matching profiles will be replaced. Other profiles will be kept."))
-                    if (shown.scope == "all") Text(tr("Application settings and remote servers will also be restored."))
-                }
+                }),
+                DialogAction(tr("Restore"), {
+                    dialog = null
+                    shown.result.complete(true)
+                }),
+            ),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(tr("Restore {count} profiles?").replace("{count}", "${shown.count}"))
+                Text(tr(if (shown.override) "Profiles missing from this backup will be removed." else "Matching profiles will be replaced. Other profiles will be kept."))
+                if (shown.scope == "all") Text(tr("Application settings and remote servers will also be restored."))
             }
         }
-        is BackupDialog.Done -> run {
-            CommonDialog(title = tr(shown.title), onDismiss = { dialog = null }, actions = listOf(DialogAction(tr("Close"), { dialog = null }))) { Text(tr(shown.message)) }
-        }
+    
+        is BackupDialog.Done -> CommonDialog(title = tr(shown.title), onDismiss = { dialog = null }, actions = listOf(DialogAction(tr("Close"), { dialog = null }))) { Text(tr(shown.message)) }
+    
         null -> Unit
     }
 }

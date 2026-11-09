@@ -2,16 +2,9 @@ package io.nekohasekai.sfa.compose.pages
 
 import io.nekohasekai.sfa.compose.ui.IconBadge
 
-import androidx.compose.ui.graphics.vector.ImageVector
 
 import android.content.ClipData
 import android.content.ClipboardManager
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
