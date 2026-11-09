@@ -227,7 +227,7 @@ void main() {
     snapshot['page'] = {'items': [{'id': 'saved', 'url': 'https://api.test/request',
       'method': 'GET', 'protocol': 'HTTP/1.1', 'status': 200, 'complete': true}], 'total': 1, 'storedBytes': 0};
     await open(tester, const RequestsPage());
-    final scaffold = tester.widget<CommonScaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(CommonScaffold)).first);
+    final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(Scaffold)).first);
     scaffold.onKeywordsUpdate!(['api.test']); await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('More').last); await tester.pumpAndSettle();
     await tester.tap(find.text('Export HAR').last); await tester.pumpAndSettle();
@@ -358,7 +358,7 @@ void main() {
     expect(copied.last, contains('[debug] upstream certificate verified'));
     expect(copied.last.indexOf('upstream certificate'), lessThan(copied.last.indexOf('MITM capture started')));
     expect(copied.last, contains('[error] Client TLS for origin.test: certificate rejected'));
-    final scaffold = tester.widget<CommonScaffold>(find.descendant(of: find.byType(CaptureLogsPage), matching: find.byType(CommonScaffold)).first);
+    final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(CaptureLogsPage), matching: find.byType(Scaffold)).first);
     scaffold.onKeywordsUpdate!(['origin.test']);
     await tester.pumpAndSettle();
     expect(find.text('Client TLS for origin.test: certificate rejected'), findsOneWidget);
@@ -525,7 +525,7 @@ void main() {
       if (query == 'old') return slow.future;
       return {...snapshot, 'page': {'items': [{'id': 'new', 'url': 'https://new.example/', 'method': 'GET', 'status': 200}], 'total': 1}};
     };
-    CommonScaffold scaffold() => tester.widget<CommonScaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(CommonScaffold)).first);
+    Scaffold scaffold() => tester.widget<Scaffold>(find.descendant(of: find.byType(RequestsPage), matching: find.byType(Scaffold)).first);
     scaffold().onKeywordsUpdate!(['old']);
     await tester.pump();
     scaffold().onKeywordsUpdate!(['new']);
@@ -596,7 +596,7 @@ void main() {
       } : snapshot;
       await tester.tap(find.textContaining('https://example.test/'));
       await tester.pumpAndSettle();
-      final scaffold = tester.widget<CommonScaffold>(find.descendant(of: find.byType(RequestDetailPage), matching: find.byType(CommonScaffold)).first);
+      final scaffold = tester.widget<Scaffold>(find.descendant(of: find.byType(RequestDetailPage), matching: find.byType(Scaffold)).first);
       expect(scaffold.iconActions.last.onPressed, isNull, reason: 'A truncated request must not be offered as replayable cURL.');
       expect(tester.takeException(), isNull);
       await capture(tester, '$label-details');

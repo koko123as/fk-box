@@ -52,7 +52,7 @@ class _DiagnosticsPageState extends State<DiagnosticsPage> {
         generateSection(items: [
           Padding(padding: const EdgeInsets.all(16), child: TextField(
             controller: _address, readOnly: running,
-            decoration: InputDecoration(labelText: context.tr(widget.quality ? 'URL' : 'Address')),
+            decoration: InputDecoration(hintText: context.tr(widget.quality ? 'URL' : 'Address')),
           )),
           if (box.running) ListItem.options(title: Text(context.tr('Outbound')), options: outbounds,
             value: outbounds.contains(_outbound) ? _outbound : '',

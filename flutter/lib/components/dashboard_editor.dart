@@ -404,7 +404,7 @@ class _LiftedCard extends StatelessWidget {
           ),
         );
       },
-      child: Material(type: MaterialType.transparency, child: child),
+      child: child,
     );
   }
 }
@@ -523,12 +523,12 @@ class _RoundButton extends StatelessWidget {
       child: IconButton(
         tooltip: tooltip,
         padding: EdgeInsets.zero,
-        style: IconButton.styleFrom(
+        style: ButtonStyle.from(
           backgroundColor: background,
           foregroundColor: foreground,
           minimumSize: const Size.square(28),
           fixedSize: const Size.square(28),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          tapTargetSize: TapTargetSize.shrinkWrap,
         ),
         onPressed: onPressed,
         icon: GlyphIcon(glyph, size: 16, color: foreground),

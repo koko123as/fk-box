@@ -13,7 +13,14 @@ Json json(Object? value) => value is Map
 List<Json> rows(Object? value) => value is List ? value.map(json).toList() : [];
 
 enum BoxAspect { state, appearance, traffic, memory, connections, logs }
-enum BoxData { memory, logs }
+enum BoxData { memory, lan, logs, connections }
+
+/// A line for the message banner; [error] picks the error look.
+class BoxMessage {
+  const BoxMessage(this.text, {this.error = false});
+  final String text;
+  final bool error;
+}
 
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
@@ -22,7 +29,7 @@ class BoxController extends ChangeNotifier {
 
   final MethodChannel _channel;
   final Stream<dynamic> _events;
-  final messages = StreamController<String>.broadcast();
+  final messages = StreamController<BoxMessage>.broadcast();
   final intents = StreamController<String>.broadcast();
   final browserEvents = StreamController<Json>.broadcast();
   StreamSubscription<dynamic>? _subscription;
@@ -40,7 +47,7 @@ class BoxController extends ChangeNotifier {
   String? defaultLogLevel;
   final uploadHistory = <double>[];
   final downloadHistory = <double>[];
-  String version = '', coreVersion = '';
+  String version = '', coreVersion = '', xrayVersion = '', mihomoVersion = '';
   int systemAccentColor = 0xff007aff;
   int sampleRevision = 0;
   int profilesRevision = 0;
@@ -78,8 +85,12 @@ class BoxController extends ChangeNotifier {
   }
 
   void _syncData(BoxData data) {
-    unawaited(act(data == BoxData.memory ? 'dashboard.memory.visible' : 'logs.visible',
-      {'visible': _dataOwners[data]?.isNotEmpty == true}));
+    unawaited(act(switch (data) {
+      BoxData.memory => 'dashboard.memory.visible',
+      BoxData.lan => 'dashboard.lan.visible',
+      BoxData.logs => 'logs.visible',
+      BoxData.connections => 'connections.visible',
+    }, {'visible': _dataOwners[data]?.isNotEmpty == true}));
   }
 
   Future<Json> profileStats(int id) => _profileStats.putIfAbsent(id, () async => json(await call('profiles.stats', {'id': id})));
@@ -161,6 +172,8 @@ class BoxController extends ChangeNotifier {
       final result = json(await call('ready'));
       version = result['version'] as String;
       coreVersion = result['coreVersion'] as String;
+      xrayVersion = result['xrayVersion'] as String? ?? '';
+      mihomoVersion = result['mihomoVersion'] as String? ?? '';
       systemAccentColor = (result['systemAccentColor'] as num?)?.toInt() ?? 0xff007aff;
       dashboard = json(result['dashboard']);
       profiles = rows(result['profiles']);
@@ -243,9 +256,20 @@ class BoxController extends ChangeNotifier {
     } catch (error) { report(error); return false; }
   }
 
-  void report(Object error) { if (!_disposed) messages.add(describe(error)); }
-  static String describe(Object error) => error is PlatformException
-      ? error.message ?? error.code : error.toString();
+  void report(Object error) { if (!_disposed) messages.add(BoxMessage(describe(error), error: true)); }
+  void message(String text) { if (!_disposed) messages.add(BoxMessage(text)); }
+  static String describe(Object error) => cleanErrorText(error is PlatformException
+      ? error.message ?? error.code : error.toString());
+
+  /// Drops gRPC/Go plumbing ("rpc error: code = Unknown desc = ", "start or
+  /// reload service: ") so the reason reads first.
+  static String cleanErrorText(String text) {
+    var value = text.trim();
+    value = value.replaceFirst(RegExp(r'^[a-z0-9 .]+ recv: '), '');
+    value = value.replaceAll(RegExp(r'rpc error: code = \w+ desc = '), '');
+    if (value.startsWith('start or reload service: ')) value = value.substring('start or reload service: '.length);
+    return value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
+  }
 
   void _onEvent(dynamic event) {
     if (_disposed) return;
@@ -272,10 +296,6 @@ class BoxController extends ChangeNotifier {
       case 'dashboard':
         final nextDashboard = json(value);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
-        const counters = {'memory', 'goroutines', 'uploadTotal', 'downloadTotal', 'connections'};
-        Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
-        aspects = const DeepCollectionEquality().equals(state(dashboard), state(nextDashboard))
-          ? const [BoxAspect.traffic] : const [BoxAspect.state, BoxAspect.traffic];
         dashboard = nextDashboard;
       case 'profiles': profilesRevision++; _profileStats.clear(); profiles = rows(value);
       case 'groups': groups = rows(value);
@@ -313,14 +333,9 @@ class BoxController extends ChangeNotifier {
         if (uploadHistory.length > 30) uploadHistory.removeAt(0);
         if (downloadHistory.length > 30) downloadHistory.removeAt(0);
         aspects = const [BoxAspect.traffic];
-      case 'error': messages.add(value.toString()); return;
-      case 'applyRequired': applyRequired = value.toString();
+      case 'error': messages.add(BoxMessage(value.toString(), error: true)); return;
       case 'intentAvailable':
         call('intent.take').then((uri) { if (uri is String) { pendingIntents.add(uri); intents.add(uri); } }).catchError(report);
-        return;
-      case 'openUrl':
-        // A backend request remains a visible user action in the Flutter UI.
-        messages.add(value.toString());
         return;
       default: return;
     }

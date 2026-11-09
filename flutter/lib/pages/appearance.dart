@@ -22,7 +22,7 @@ class AppearancePage extends StatelessWidget {
         progress: animation == null ? 1 : .55, tabAnimation: animation ?? tabAnimationOf(prefs),
       ),
     );
-    return CommonScaffold(title: context.tr('Appearance'), body: ListView(
+    return Scaffold(title: context.tr('Appearance'), body: ListView(
       padding: EdgeInsets.only(top: context.contentTopPadding, bottom: 32 + context.bottomInset),
       children: [
         const ThemeLivePreview(), const SizedBox(height: 16),
@@ -203,7 +203,7 @@ class _FontFamilyPageState extends State<FontFamilyPage> {
   @override Widget build(BuildContext context) {
     final box = context.box, selected = context.box.preferences['fontFamily'];
     final fonts = (_fonts ?? <String>[]).where((v) => v.toLowerCase().contains(_query.toLowerCase())).toList();
-    return CommonScaffold(title: context.tr('Font family'), isLoading: _fonts == null,
+    return Scaffold(title: context.tr('Font family'), isLoading: _fonts == null,
       searchState: AppBarSearchState(onSearch: (v) => setState(() => _query = v)),
       body: ListView.builder(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
         itemCount: fonts.length + 1, itemBuilder: (context, i) {
@@ -278,12 +278,12 @@ class _ColorSwatches extends StatelessWidget {
                     menuItems: color == null
                         ? null
                         : [
-                            CommonPopupMenuItem(
+                            PopupMenuItem(
                               glyph: AppGlyphs.edit,
                               label: context.tr('Edit'),
                               onPressed: () => onEdit(color),
                             ),
-                            CommonPopupMenuItem(
+                            PopupMenuItem(
                               danger: true,
                               glyph: AppGlyphs.delete,
                               label: context.tr('Delete'),
@@ -324,7 +324,7 @@ class _ColorSwatch extends StatefulWidget {
   final bool isSelected;
   final String label;
   final VoidCallback onPressed;
-  final List<CommonPopupMenuItem>? menuItems;
+  final List<PopupMenuItem>? menuItems;
 
   @override
   State<_ColorSwatch> createState() => _ColorSwatchState();
@@ -347,15 +347,7 @@ class _ColorSwatchState extends State<_ColorSwatch> {
       label: widget.label,
       child: SizedBox.square(
         dimension: _ColorSwatch.size,
-        child: Material(
-          type: MaterialType.transparency,
-          shape: AppShape.circle,
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            customBorder: AppShape.circle,
-            onTap: widget.onPressed,
-            onFocusChange: (value) => setState(() => _focused = value),
-            child: Stack(
+        child: PressRegion(shape: AppShape.circle, onTap: widget.onPressed, onFocusChange: (value) => setState(() => _focused = value), overlay: PressRegion.hoverOverlay, child: Stack(
               alignment: Alignment.center,
               children: [
                 AnimatedOpacity(
@@ -400,9 +392,7 @@ class _ColorSwatchState extends State<_ColorSwatch> {
                   ),
                 ),
               ],
-            ),
-          ),
-        ),
+            )),
       ),
     );
     final menuItems = widget.menuItems;
@@ -462,14 +452,7 @@ class _AddColorButton extends StatelessWidget {
         button: true,
         child: SizedBox.square(
           dimension: _ColorSwatch.size,
-          child: Material(
-            type: MaterialType.transparency,
-            shape: AppShape.circle,
-            clipBehavior: Clip.antiAlias,
-            child: InkWell(
-              customBorder: AppShape.circle,
-              onTap: onPressed,
-              child: Center(
+          child: PressRegion(shape: AppShape.circle, onTap: onPressed, overlay: PressRegion.hoverOverlay, child: Center(
                 child: Container(
                   width: _ColorSwatch.dot,
                   height: _ColorSwatch.dot,
@@ -483,9 +466,7 @@ class _AddColorButton extends StatelessWidget {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ),
-            ),
-          ),
+              )),
         ),
       ),
     );

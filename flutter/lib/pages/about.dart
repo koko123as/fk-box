@@ -46,7 +46,7 @@ class _AboutPageState extends State<AboutPage> {
 
   @override Widget build(BuildContext context) {
     final box = context.box, colors = context.colorScheme;
-    return CommonScaffold(title: context.tr('About'), isLoading: _checking,
+    return Scaffold(title: context.tr('About'), isLoading: _checking,
       body: ListView(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 32 + context.bottomInset), children: [
         Padding(padding: const EdgeInsets.fromLTRB(24, 16, 24, 0), child: Column(children: [
           DecoratedBox(decoration: ShapeDecoration(color: context.raisedSurfaceLevel.colorOf(colors), shape: AppShape.all(AppCorner.fit(96))),

@@ -71,7 +71,7 @@ class _AuthenticationPageState extends State<AuthenticationPage> {
           ) else Padding(padding: const EdgeInsets.all(16), child: TextField(
             controller: _controllers[field['submissionKey']], obscureText: field['kind'] == 'password',
             autocorrect: false, enableSuggestions: false,
-            decoration: InputDecoration(labelText: (field['label'] ?? field['name']).toString()),
+            decoration: InputDecoration(hintText: (field['label'] ?? field['name']).toString()),
           )),
       ] else if (challenge['kind'] == 'open-url') ListItem(
         title: Text(context.tr('Open sign-in page')), subtitle: SelectableText((challenge['url'] ?? '').toString()),
@@ -89,7 +89,7 @@ class _AuthenticationPageState extends State<AuthenticationPage> {
   }
   Widget _field(String key, String label, {bool secret = false}) => Padding(padding: const EdgeInsets.all(16), child: TextField(
     controller: _controllers[key], obscureText: secret, autocorrect: false, enableSuggestions: false,
-    decoration: InputDecoration(labelText: context.tr(label)),
+    decoration: InputDecoration(hintText: context.tr(label)),
   ));
 }
 
@@ -107,7 +107,7 @@ class _AuthBrowserState extends State<AuthBrowser> {
     });
   }
   @override void dispose() { _subscription?.cancel(); super.dispose(); }
-  @override Widget build(BuildContext context) => CommonScaffold(title: context.tr('Authentication'), body: Padding(
+  @override Widget build(BuildContext context) => Scaffold(title: context.tr('Authentication'), body: Padding(
     padding: EdgeInsets.only(top: context.contentTopPadding, bottom: context.bottomInset),
     child: AndroidView(viewType: 'io.koko123as.flbox/openconnect',
       creationParams: {'endpoint': widget.endpoint, 'challenge': widget.challenge},

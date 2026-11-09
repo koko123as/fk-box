@@ -108,13 +108,13 @@ class _ProfileConfigurationPageState extends State<ProfileConfigurationPage> {
   @override void dispose() { _store?.dispose(); super.dispose(); }
   @override Widget build(BuildContext context) {
     final store = _store;
-    if (store == null) return CommonScaffold(title: context.tr(widget.resources ? 'Resources' : 'Advanced configuration'),
+    if (store == null) return Scaffold(title: context.tr(widget.resources ? 'Resources' : 'Advanced configuration'),
       body: NullStatus(label: context.tr(context.box.remote ? 'Disconnect remote session to edit local profiles' : 'No profile'),
         illustration: NullStatusIllustration.profile, action: context.box.remote ? null : TonalButton(size: TonalButtonSize.bar,
           glyph: AppGlyphs.profiles, label: context.tr('Profiles'), onPressed: () => openForm(context, const ProfilesPage(picker: true)))));
     return ListenableBuilder(listenable: store, builder: (context, _) {
-      if (!store.ready) return CommonScaffold(title: context.tr(widget.resources ? 'Resources' : 'Advanced configuration'),
-        body: store.error == null ? const Center(child: CommonCircleLoading.page()) : ErrorState(store.error!, retry: store.load));
+      if (!store.ready) return Scaffold(title: context.tr(widget.resources ? 'Resources' : 'Advanced configuration'),
+        body: store.error == null ? const Center(child: ActivityIndicator.page()) : ErrorState(store.error!, retry: store.load));
       if (widget.resources) return ConfigListPage(store: store, title: 'Rule sets', path: const ['route', 'rule_set'],
         initial: const {'type': 'inline', 'tag': 'new-rules', 'rules': []});
       return BoxPage(title: 'Advanced configuration', loading: store.saving,
@@ -159,7 +159,7 @@ class HttpRewriteConfigPage extends StatelessWidget {
     // Keep scrolling rule names below the shared floating title.
     final inset = context.appBarInset;
     final contentGap = context.contentTopPadding - inset;
-    return CommonScaffold(title: context.tr('HTTP rewriting'), isLoading: store.saving,
+    return Scaffold(title: context.tr('HTTP rewriting'), isLoading: store.saving,
       body: Padding(padding: EdgeInsets.only(top: inset), child: ListView(
         padding: EdgeInsets.fromLTRB(16, contentGap > 0 ? contentGap : 0, 16, 24 + context.bottomInset),
         children: [
@@ -297,7 +297,7 @@ class ConfigListPage extends StatelessWidget {
 
   @override Widget build(BuildContext context) => ListenableBuilder(listenable: store, builder: (context, _) {
     final entries = store.entries(path);
-    return CommonScaffold(title: context.tr(title), isLoading: store.saving,
+    return Scaffold(title: context.tr(title), isLoading: store.saving,
       primaryAction: IconButtonData(glyph: AppGlyphs.add, tooltip: context.tr('Add'), onPressed: store.saving ? null : () => _edit(context)),
       iconActions: [
         IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Reload'), onPressed: store.saving ? null : store.load),
@@ -313,15 +313,15 @@ class ConfigListPage extends StatelessWidget {
               final revision = store.revision;
               final label = entry['tag'] ?? entry['action'] ?? entry['type'] ?? '${context.tr(title)} ${index + 1}';
               final menu = [
-                CommonPopupMenuItem(glyph: AppGlyphs.edit, label: context.tr('Edit'), onPressed: () => _edit(context, index)),
-                CommonPopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Delete'), danger: true, onPressed: () async {
+                PopupMenuItem(glyph: AppGlyphs.edit, label: context.tr('Edit'), onPressed: () => _edit(context, index)),
+                PopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Delete'), danger: true, onPressed: () async {
                   if (await confirm(context, 'Delete', message: label.toString())) {
                     final next = List<Json>.of(entries)..removeAt(index);
                     await store.set(path, next, expectedRevision: revision);
                   }
                 }),
               ];
-              return ContextMenuRegion(menuItems: menu, child: CommonCard(radius: AppCorner.xl, onPressed: () => _edit(context, index), child: ListItem(
+              return ContextMenuRegion(menuItems: menu, child: Card(radius: AppCorner.xl, onPressed: () => _edit(context, index), child: ListItem(
                 leading: const GlyphIcon(AppGlyphs.profiles), title: Text(label.toString(), maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(entry['url']?.toString() ?? entry['path']?.toString() ?? entry['server']?.toString() ?? jsonEncode(entry), maxLines: 2, overflow: TextOverflow.ellipsis),
                 trailing: BoxMenu(items: menu),
@@ -351,7 +351,7 @@ class _ConfigOrderPageState extends State<ConfigOrderPage> {
     _revision = widget.store.revision;
   }
   @override Widget build(BuildContext context) => BoxEditGuard(dirty: jsonEncode(_entries) != _original, busy: _saving,
-    child: CommonScaffold(title: context.tr('Reorder'), isLoading: _saving,
+    child: Scaffold(title: context.tr('Reorder'), isLoading: _saving,
     confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), onPressed: _saving ? null : () async {
       setState(() => _saving = true);
       try {

@@ -21,7 +21,7 @@ class _CaptureLogsPageState extends State<CaptureLogsPage> {
 
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) context.box.messages.add(context.tr('Copied'));
+    if (mounted) context.box.message(context.tr('Copied'));
   }
 
   @override Widget build(BuildContext context) {
@@ -38,17 +38,17 @@ class _CaptureLogsPageState extends State<CaptureLogsPage> {
             return order != 0 ? order : (a['id'] as num? ?? 0).compareTo(b['id'] as num? ?? 0);
           });
         final text = logs.map(_line).join('\n');
-        return CommonScaffold(
+        return Scaffold(
           title: context.tr('Capture logs'), isLoading: _busy,
           searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
           onKeywordsUpdate: (words) => setState(() => _query = words.join(' ')),
           iconActions: [IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Refresh'), onPressed: refresh)],
           menuItems: [
-            CommonPopupMenuItem(glyph: AppGlyphs.copy, label: context.tr('Copy logs'), onPressed: logs.isEmpty ? null : () => _copy(text)),
-            CommonPopupMenuItem(glyph: AppGlyphs.export, label: context.tr('Export'), onPressed: logs.isEmpty ? null : () => context.box.act('document.save', {
+            PopupMenuItem(glyph: AppGlyphs.copy, label: context.tr('Copy logs'), onPressed: logs.isEmpty ? null : () => _copy(text)),
+            PopupMenuItem(glyph: AppGlyphs.export, label: context.tr('Export'), onPressed: logs.isEmpty ? null : () => context.box.act('document.save', {
               'name': 'B-box-capture.log', 'content': text,
             })),
-            CommonPopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Clear'), onPressed: _busy ? null : () async {
+            PopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Clear'), onPressed: _busy ? null : () async {
               setState(() => _busy = true);
               await context.box.act('capture.logs.clear');
               if (mounted) setState(() { _busy = false; _revision++; });
@@ -84,7 +84,7 @@ class _CaptureLogsPageState extends State<CaptureLogsPage> {
                   ]),
                   ListFooter(text: context.tr('Recent logs are kept until the app process exits. Export logs to keep them.')),
                   if (error != null) ErrorState(error, retry: refresh),
-                  if (snapshot == null && error == null) const Center(child: CircularProgressIndicator()),
+                  if (snapshot == null && error == null) const Center(child: ActivityIndicator()),
                   if (snapshot != null && logs.isEmpty) EmptyState(_query.trim().isEmpty ? 'No Capture logs' : 'No results'),
                 ],
               ));

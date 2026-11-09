@@ -168,15 +168,11 @@ class DashboardConnectedButton extends StatelessWidget {
                   color: Color.lerp(background, colorScheme.primary, amount),
                   shape: shape,
                 ),
-                child: Material(
-                  type: MaterialType.transparency,
-                  child: InkWell(
-                    customBorder: shape,
-                    splashFactory: NoSplash.splashFactory,
-                    highlightColor: Colors.transparent,
-                    onTap: onTap,
-                    child: child,
-                  ),
+                child: PressRegion(
+                  shape: shape,
+                  overlay: PressRegion.hoverOverlay,
+                  onTap: onTap,
+                  child: child!,
                 ),
               ),
             );

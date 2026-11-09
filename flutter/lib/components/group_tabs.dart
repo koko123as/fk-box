@@ -137,17 +137,17 @@ class _GroupTabsState extends State<GroupTabs> {
     return TonalButtonTheme(
       size: TonalButtonSize.section,
       child: ElasticPress(
-        child: CommonPopupBox(
+        child: PopupAnchor(
           targetBuilder: (open) => IconButton(
             tooltip: context.tr('Proxy groups'),
             onPressed: open,
             icon: const GlyphIcon(AppGlyphs.chevronDown),
           ),
-          popupBuilder: (_) => CommonPopupMenu(
+          popupBuilder: (_) => PopupMenu(
             maxVisibleItems: 7,
             items: [
               for (final (index, group) in widget.groups.indexed)
-                CommonPopupMenuItem(
+                PopupMenuItem(
                   label: group['tag'].toString(),
                   checked: index == widget.controller.index,
                   onPressed: () => _select(index),
@@ -235,7 +235,7 @@ class _GroupTabsState extends State<GroupTabs> {
 }
 
 /// The width each chip lays its label out at, worked out the way a
-/// [CommonCard]'s button sizes itself.
+/// [Card]'s button sizes itself.
 class _TabExtents {
   _TabExtents._(this._key, this.widths) : starts = _startsOf(widths);
 
@@ -385,7 +385,7 @@ class _GroupTabState extends State<_GroupTab> {
   Widget build(BuildContext context) {
     final selected = _isSelected;
     final colorScheme = context.colorScheme;
-    return CommonCard(
+    return Card(
       isSelected: selected,
       fillsSelection: true,
       shape: AppShape.full,

@@ -14,7 +14,7 @@ class FormPage extends StatelessWidget {
   final List<IconButtonData> actions;
   final ScrollController? controller;
 
-  @override Widget build(BuildContext context) => CommonScaffold(
+  @override Widget build(BuildContext context) => Scaffold(
     title: context.tr(title), iconActions: actions,
     confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'),
       isLoading: saving, onPressed: saving ? null : onSave),
@@ -253,7 +253,7 @@ class _FormRowSecretTextFieldState extends State<FormRowSecretTextField> {
             onFieldSubmitted: widget.onFieldSubmitted,
           ),
         ),
-        CommonMinIconButtonTheme(
+        MinIconButtonTheme(
           child: IconButton(
             tooltip: _obscure
                 ? appLocalizations.showPassword

@@ -57,7 +57,7 @@ class _MitmCertificatePageState extends State<MitmCertificatePage> with WidgetsB
       if (method == 'capture.ca.generate') {
         setState(() => _state = json(result));
       } else if (result == true) {
-        context.box.messages.add(context.tr(switch (method) {
+        context.box.message(context.tr(switch (method) {
           'capture.ca.install' => 'Certificate settings opened. Refresh trust after installation.',
           'capture.ca.module' => 'CA module exported. Install it with your root manager, reboot, then refresh trust.',
           _ => 'Public CA certificate exported',

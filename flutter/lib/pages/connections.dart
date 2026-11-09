@@ -38,18 +38,18 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     final key = {'Created': 'createdAt', 'Upload': 'uploadTotal', 'Download': 'downloadTotal'}[_sort];
     num rank(Json c) => key == null ? (c['upload'] as num? ?? 0) + (c['download'] as num? ?? 0) : c[key] as num? ?? 0;
     list.sort((a, b) => rank(b).compareTo(rank(a)));
-    return CommonScaffold(
+    return Scaffold(
       title: context.tr('Connections'),
       onKeywordsUpdate: (words) => setState(() => _query = words.join(' ')),
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       iconActions: [IconButtonData(glyph: AppGlyphs.clearAll, tooltip: context.tr('Close all connections'), onPressed: box.running ? _closeAll : null)],
       menuItems: [
         for (final filter in ['Active', 'Closed', 'All'])
-          CommonPopupMenuItem(label: context.tr(filter), checked: filter == _filter,
-            section: filter == 'Active' ? CommonPopupMenuSection(title: context.tr('Connections')) : null,
+          PopupMenuItem(label: context.tr(filter), checked: filter == _filter,
+            section: filter == 'Active' ? PopupMenuSection(title: context.tr('Connections')) : null,
             onPressed: () => setState(() => _filter = filter)),
         for (final sort in ['Speed', 'Created', 'Upload', 'Download'])
-          CommonPopupMenuItem(glyph: AppGlyphs.sort, label: context.tr(sort), checked: sort == _sort, onPressed: () => setState(() => _sort = sort)),
+          PopupMenuItem(glyph: AppGlyphs.sort, label: context.tr(sort), checked: sort == _sort, onPressed: () => setState(() => _sort = sort)),
       ],
       body: NullStatusSwitcher(
         isEmpty: list.isEmpty, isSearching: _query.trim().isNotEmpty,
@@ -85,8 +85,8 @@ class ConnectionRecord extends StatelessWidget {
           if (closed) RecordLabel(label: context.tr('Closed')),
         ],
         trailing: !closed && box.running ? Tooltip(
-          message: context.tr('Close this connection'), child: Semantics(button: true, child: InkWell(
-            customBorder: AppShape.circle, onTap: () => box.act('connections.close', {'id': c['id']}),
+          message: context.tr('Close this connection'), child: Semantics(button: true, child: PressRegion(
+            shape: AppShape.circle, overlay: PressRegion.hoverOverlay, onTap: () => box.act('connections.close', {'id': c['id']}),
             child: SizedBox.square(dimension: 28, child: Center(child: GlyphIcon(AppGlyphs.block, size: 16, color: context.colorScheme.onSurfaceVariant))),
           )),
         ) : null,
@@ -135,7 +135,7 @@ class _ConnectionDetailState extends State<ConnectionDetail> {
       actions: [
         IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy'), onPressed: () async {
           await Clipboard.setData(ClipboardData(text: values.entries.map((e) => e.key + ': ' + e.value.toString()).join('\n')));
-          box.messages.add(context.tr('Copied'));
+          box.message(context.tr('Copied'));
         }),
         IconButtonData(glyph: AppGlyphs.close, tooltip: context.tr('Close this connection'),
           onPressed: box.running && present && (c['closedAt'] as num? ?? 0) == 0 ? () => box.act('connections.close', {'id': c['id']}) : null),

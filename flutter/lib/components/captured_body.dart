@@ -32,7 +32,7 @@ class _CapturedBodyState extends State<CapturedBody> {
 
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: _text));
-    if (mounted) context.box.messages.add(context.tr('Copied'));
+    if (mounted) context.box.message(context.tr('Copied'));
   }
 
   @override Widget build(BuildContext context) {
@@ -47,7 +47,7 @@ class _CapturedBodyState extends State<CapturedBody> {
           onPressed: () { setState(() { _formatted = !_formatted; _limit = _pageSize; }); if (_scroll.hasClients) _scroll.jumpTo(0); }),
         IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy body preview'), onPressed: _text.isEmpty ? null : _copy),
       ]),
-      CommonCard(shape: AppShape.xl, padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 12, children: [
+      Card(shape: AppShape.xl, padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 12, children: [
         Text([
           if (contentType.isNotEmpty) contentType,
           '${bytes(message['capturedBytes'] as num? ?? 0)} / ${bytes(message['bodyBytes'] as num? ?? 0)}',

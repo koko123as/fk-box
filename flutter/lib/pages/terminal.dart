@@ -77,7 +77,7 @@ class _TerminalPageState extends State<TerminalPage> {
     Json? active;
     for (final session in sessions) { if (session['id'] == snapshot['activeId']) active = session; }
     final progress = json(active?['progress']);
-    return CommonScaffold(title: _prompt ? 'SSH · ${widget.name ?? ''}' : active?['name'] as String? ?? context.tr('Terminal'),
+    return Scaffold(title: _prompt ? 'SSH · ${widget.name ?? ''}' : active?['name'] as String? ?? context.tr('Terminal'),
       isLoading: _loading || _busy,
       iconActions: [
         IconButtonData(glyph: AppGlyphs.add, tooltip: context.tr('New session'), onPressed: _newSession),
@@ -87,10 +87,10 @@ class _TerminalPageState extends State<TerminalPage> {
       body: Padding(padding: EdgeInsets.only(top: context.appBarInset, bottom: MediaQuery.paddingOf(context).bottom), child:
         _loading ? const SizedBox() : _prompt ? ListView(padding: const EdgeInsets.all(20), children: [
           TextField(controller: _username, autocorrect: false, enableSuggestions: false,
-            decoration: InputDecoration(labelText: context.tr('Username'))),
+            decoration: InputDecoration(hintText: context.tr('Username'))),
           const SizedBox(height: 16),
           TextField(controller: _terminalType, autocorrect: false, enableSuggestions: false,
-            decoration: InputDecoration(labelText: context.tr('Terminal type')), onSubmitted: (_) => _start()),
+            decoration: InputDecoration(hintText: context.tr('Terminal type')), onSubmitted: (_) => _start()),
           const SizedBox(height: 16),
           ListItem.toggle(title: Text(context.tr('Quick connect')), subtitle: Text(context.tr('Remember options and connect directly next time')),
             value: _remember, onChanged: (value) => setState(() => _remember = value)),
@@ -143,8 +143,8 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
         case 'modifiers': setState(() => _modifiers = json(call.arguments)); return null;
         case 'unsafePaste': return confirm(context, 'Paste multiple lines?', message: 'Pasted text may execute commands in this terminal.', action: 'Paste');
         case 'clipboardRead': return confirm(context, 'Allow terminal to read clipboard?', action: 'Allow');
-        case 'link': return showDialog<String>(context: context, builder: (context) => AlertDialog(
-          title: Text(context.tr('Link')), content: SelectableText(call.arguments.toString()), actions: [
+        case 'link': return showBoxDialog<String>(context, builder: (context) => AlertDialog(
+          title: context.tr('Link'), child: SelectableText(call.arguments.toString()), actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
             TextButton(onPressed: () => Navigator.pop(context, 'copy'), child: Text(context.tr('Copy'))),
             TextButton(onPressed: () => Navigator.pop(context, 'open'), child: Text(context.tr('Open'))),
@@ -167,7 +167,7 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
       for (final key in const ['Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→', 'Home', 'End', 'PgUp', 'PgDn', 'Paste', 'Keyboard'])
         TextButton(onPressed: _channel == null ? null : () => _key(key),
           style: _modifiers[key.toLowerCase()] == 'ARMED' || _modifiers[key.toLowerCase()] == 'LOCKED'
-            ? TextButton.styleFrom(backgroundColor: context.colorScheme.primaryContainer) : null,
+            ? ButtonStyle.from(backgroundColor: context.colorScheme.primaryContainer) : null,
           child: Text(context.tr(key) + (_modifiers[key.toLowerCase()] == 'LOCKED' ? ' •' : ''))),
     ])),
   ]);
