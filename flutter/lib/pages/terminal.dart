@@ -99,7 +99,8 @@ class _TerminalPageState extends State<TerminalPage> {
         ]) : active == null ? EmptyState('No terminal sessions',
           message: _error, action: FilledButton(onPressed: _newSession, child: Text(context.tr('New session')))) : Column(children: [
           if (active['phase'] == 'CONNECTING' || progress.isNotEmpty) LinearProgressIndicator(
-            value: active['phase'] == 'CONNECTING' || progress['percent'] == null ? null : (progress['percent'] as num).toDouble() / 100),
+            value: active['phase'] == 'CONNECTING' || progress['percent'] == null ? null : (progress['percent'] as num).toDouble() / 100,
+            color: progress['state'] == 'ERROR' ? context.colorScheme.error : context.colorScheme.primary),
           if (active['banner'] != null) Padding(padding: const EdgeInsets.all(12), child: SelectableText(active['banner'].toString())),
           Expanded(child: _covered ? const SizedBox() : GhosttySurface(sessionId: active['id'] as String, settingsRevision: _settingsRevision)),
           if (active['phase'] == 'FINISHED') TextButton(onPressed: () => box.act('ssh.close', {'id': active!['id']}), child: Text(context.tr('Close session'))),
