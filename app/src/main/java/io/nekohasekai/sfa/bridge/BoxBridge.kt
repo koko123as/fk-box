@@ -66,6 +66,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     internal lateinit var toolBridge: BoxTools
     private lateinit var dashboardDetails: BoxDashboard
     private var connectionsVisible = false
+    private val connectionWire = ConnectionWire()
     private val logsVisible = MutableStateFlow(false)
     private val operations = Mutex()
     private val apps = AppListCache {
@@ -154,7 +155,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
                     launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
                     launch { connections.uiState.collect { state ->
-                        if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { state.allConnections.map { it.toWire() } })
+                        if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
                     } }
                     launch {
                         val stream = LogStream()
@@ -433,7 +434,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             connectionsVisible = visible
             connections.setVisible(visible)
         }
-        if (visible) emit("connections", connections.uiState.value.allConnections.map { it.toWire() })
+        if (visible) emit("connections", connectionWire.rows(connections.uiState.value.allConnections))
     }
 
     suspend fun closeConnection(id: String?) {

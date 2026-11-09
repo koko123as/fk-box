@@ -41,3 +41,20 @@ internal fun Connection.toWire(): Map<String, Any?> = mapOf(
         mapOf("id" to it.processId, "path" to it.processPath, "user" to it.userName, "packages" to it.packageNames)
     },
 )
+
+/**
+ * Connection rows for the "connections" event. The connection store keeps an
+ * unchanged row's instance across batches, so its wire map is reused instead of
+ * rebuilt, and the UI sees the same map for a row that did not change.
+ */
+internal class ConnectionWire {
+    private var last = java.util.IdentityHashMap<Connection, Map<String, Any?>>()
+
+    @Synchronized
+    fun rows(connections: List<Connection>): List<Map<String, Any?>> {
+        val next = java.util.IdentityHashMap<Connection, Map<String, Any?>>(connections.size)
+        val rows = connections.map { connection -> (last[connection] ?: connection.toWire()).also { next[connection] = it } }
+        last = next
+        return rows
+    }
+}

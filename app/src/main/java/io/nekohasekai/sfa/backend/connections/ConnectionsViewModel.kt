@@ -2,22 +2,19 @@ package io.nekohasekai.sfa.backend.connections
 
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.ConnectionEvents
-import io.nekohasekai.libbox.Connections
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.backend.model.Connection
 import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 
@@ -41,8 +38,12 @@ class ConnectionsViewModel :
 
     private val _visibleCount = MutableStateFlow(0)
 
-    private var connectionsStore: Connections? = null
-    private val connectionsMutex = Mutex()
+    // Every event batch, reset and clear runs on one lane, in arrival order
+    // (as LogViewModel's buffer lane), so NEW/UPDATE/CLOSED deltas can never be
+    // applied out of order. Only the lane touches [connectionStore].
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val connectionsLane = Dispatchers.Default.limitedParallelism(1)
+    private val connectionStore = ConnectionStore()
     private val connectionsGeneration = AtomicLong(0)
 
     override fun createInitialState() = ConnectionsUiState()
@@ -87,10 +88,8 @@ class ConnectionsViewModel :
             return
         }
         if (status != Status.Started) {
-            withContext(Dispatchers.Default) {
-                connectionsMutex.withLock {
-                    connectionsStore = null
-                }
+            withContext(connectionsLane) {
+                connectionStore.clear()
                 connectionsGeneration.incrementAndGet()
             }
             updateState {
@@ -109,10 +108,8 @@ class ConnectionsViewModel :
     }
 
     override fun onDisconnected() {
-        viewModelScope.launch(Dispatchers.Default) {
-            connectionsMutex.withLock {
-                connectionsStore = null
-            }
+        viewModelScope.launch(connectionsLane) {
+            connectionStore.clear()
             connectionsGeneration.incrementAndGet()
             withContext(Dispatchers.Main) {
                 updateState {
@@ -123,19 +120,9 @@ class ConnectionsViewModel :
     }
 
     override fun writeConnectionEvents(events: ConnectionEvents) {
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch(connectionsLane) {
             val generation = connectionsGeneration.get()
-            val snapshot = connectionsMutex.withLock {
-                if (connectionsStore == null) {
-                    connectionsStore = Connections()
-                }
-                val store = connectionsStore ?: return@withLock null
-                store.applyEvents(events)
-                buildConnectionLists(store)
-            } ?: return@launch
-            if (connectionsGeneration.get() != generation) {
-                return@launch
-            }
+            val snapshot = connectionStore.apply(events, System.currentTimeMillis())
             withContext(Dispatchers.Main) {
                 if (connectionsGeneration.get() != generation) {
                     return@withContext
@@ -149,7 +136,74 @@ class ConnectionsViewModel :
             }
         }
     }
+}
 
-    private fun buildConnectionLists(connections: Connections): List<Connection> =
-        connections.iterator().toList().filter { it.outboundType != "dns" }.map { Connection.from(it) }
+/**
+ * A Kotlin port of libbox Connections.ApplyEvents (sing-box
+ * experimental/libbox/command_types.go): an id → [Connection] map updated from
+ * the NEW/UPDATE/CLOSED deltas. Only NEW and CLOSED-with-snapshot events read
+ * a libbox connection over JNI; UPDATE copies the existing row, and unchanged
+ * rows keep their instance across batches. Not thread-safe; callers serialize.
+ */
+internal class ConnectionStore {
+    private val connections = LinkedHashMap<String, Connection>()
+
+    fun clear() = connections.clear()
+
+    /** Applies one event batch in order and returns the visible connections. */
+    fun apply(events: ConnectionEvents, nowMillis: Long): List<Connection> {
+        if (events.reset) connections.clear()
+        val iterator = events.iterator()
+        while (iterator.hasNext()) {
+            val event = iterator.next() ?: continue
+            apply(event.type, event.id, event.connection?.let(Connection::from),
+                event.uplinkDelta, event.downlinkDelta, event.closedAt)
+        }
+        evictClosed(nowMillis)
+        return snapshot()
+    }
+
+    fun apply(type: Int, id: String, connection: Connection?, uplinkDelta: Long, downlinkDelta: Long, closedAt: Long): Boolean {
+        when (type) {
+            EVENT_NEW -> {
+                if (connection == null) return false
+                connections[id] = connection
+            }
+            EVENT_UPDATE -> {
+                val current = connections[id] ?: return false
+                connections[id] = current.copy(
+                    upload = uplinkDelta,
+                    download = downlinkDelta,
+                    uploadTotal = current.uploadTotal + uplinkDelta,
+                    downloadTotal = current.downloadTotal + downlinkDelta,
+                )
+            }
+            EVENT_CLOSED -> {
+                val current = connection ?: connections[id] ?: return false
+                connections[id] = current.copy(closedAt = closedAt.takeIf { it > 0 }, upload = 0, download = 0)
+            }
+            else -> return false
+        }
+        return true
+    }
+
+    fun evictClosed(nowMillis: Long) {
+        val iterator = connections.values.iterator()
+        while (iterator.hasNext()) {
+            val closedAt = iterator.next().closedAt ?: continue
+            if (nowMillis - closedAt > CLOSED_MAX_AGE_MILLIS) {
+                iterator.remove()
+            }
+        }
+    }
+
+    fun snapshot(): List<Connection> = connections.values.filter { it.outboundType != "dns" }
+
+    companion object {
+        // libbox ConnectionEventNew/Update/Closed (iota) and closedConnectionMaxAge.
+        const val EVENT_NEW = 0
+        const val EVENT_UPDATE = 1
+        const val EVENT_CLOSED = 2
+        const val CLOSED_MAX_AGE_MILLIS = 5 * 60 * 1000L
+    }
 }

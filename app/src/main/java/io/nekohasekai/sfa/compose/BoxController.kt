@@ -26,6 +26,10 @@ fun json(value: Any?): Json = (value as? Map<*, *>)?.entries?.associate { it.key
 
 fun rows(value: Any?): List<Json> = (value as? List<*>)?.map(::json) ?: emptyList()
 
+@Suppress("UNCHECKED_CAST")
+private fun wireRows(value: Any?): List<Json> =
+    (value as? List<*>)?.map { row -> if (row is Map<*, *> && row.keys.all { it is String }) row as Json else json(row) } ?: emptyList()
+
 fun Any?.asLong(): Long? = (this as? Number)?.toLong()
 
 fun Any?.asDouble(): Double? = (this as? Number)?.toDouble()
@@ -358,7 +362,9 @@ class BoxController(private val bridge: BoxBridge) {
                 profiles = rows(value)
             }
             "groups" -> groups = rows(value)
-            "connections" -> connections = rows(value)
+            // Bridge wire maps already have string keys; keeping them as is lets
+            // unchanged rows stay identical between batches, so Compose skips them.
+            "connections" -> connections = wireRows(value)
             "logs" -> {
                 val logState = json(value)
                 val entries = rows(logState["entries"])
