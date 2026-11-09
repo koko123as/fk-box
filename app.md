@@ -1,6 +1,6 @@
 # 与 sing-box-for-android 的差异
 
-本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，FlClash 界面的来源及 Compose 翻译情况见 [flclash.md](flclash.md)。
+本文记录 Android 应用相对上游的当前差异。项目约束见 [AGENTS.md](AGENTS.md)，核心补丁见 [libbox.md](libbox.md)，界面实现与 FlClash 布局参考见 [flclash.md](flclash.md)。
 
 ## 比较基线与应用身份
 
@@ -9,7 +9,7 @@
 | 仓库 | [koko123as/fk-box](https://github.com/koko123as/fk-box)（`main`；直接前身 [giturass/B-box](https://github.com/giturass/B-box)，经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入并保留完整历史） |
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
-| FlClash 界面参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e) + [prism_ui `63450c0`](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185)，见 [flclash.md](flclash.md#参考版本与来源清单) |
+| FlClash 布局参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（仅页面布局；控件为 Material 3），见 [flclash.md](flclash.md#参考版本与来源清单) |
 | FK-box 版本 / versionCode | `1.15.4` / `754`，以 [version.properties](version.properties) 为准 |
 | 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
@@ -27,12 +27,12 @@
 ## FK-box（本仓库 main）
 
 - 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产。
-- 界面已从 Flutter 迁移到 Kotlin + Jetpack Compose（4 期完成：外壳与仪表盘；界面套件、代理与配置；工具及其子页；设置、关于、备份、访问控制和外观），`flutter/` 目录已删除，页面对应关系见 [flclash.md](flclash.md#kotlin--jetpack-compose-翻译)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
+- 界面已从 Flutter 迁移到 Kotlin + Jetpack Compose（4 期完成：外壳与仪表盘；界面套件、代理与配置；工具及其子页；设置、关于、备份、访问控制和外观），`flutter/` 目录已删除，页面对应关系见 [flclash.md](flclash.md#kotlin--jetpack-compose-翻译)。`ui/plain` 起界面为朴素 Material 3（无玻璃、阴影、特效和转场动画，Material 图标），见 [flclash.md](flclash.md#朴素界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
 - [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Compose 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行 Compose 源码检查。
 
 ## 界面替换与 Android 桥接
 
-上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 `compose/pages` 的 FlClash 界面翻译提供（不是旧 SFA 页面）。`compose/` 保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。
+上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 `compose/pages` 提供（按 FlClash 布局、以 Material 3 组件实现，不是旧 SFA 页面）。`compose/` 保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。
 
 下表的原生路径以 `app/src/main/java/io/nekohasekai/sfa/` 为前缀。
 
@@ -69,7 +69,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 [BoxBackups.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用 Room 事务；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
 
-界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受 `System HTTP proxy` 键，外观样式 `appearanceStyle` 只接受 `standard`/`minimal`（界面见 [flclash.md](flclash.md#导航与交互约定)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
+界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受 `System HTTP proxy` 键；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
 
 备份读取/传输上限为 64 MiB，WebDAV 使用 [BoxWebDAV.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt) 与核心扩展；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
 
@@ -173,7 +173,7 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Compose 入口/字形/占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Compose 入口、朴素 Material 界面约束（禁止自绘字形、玻璃/着色器/模糊、弹簧与按压特效、装饰形状、样式开关）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
 | [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及 Compose 源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
 | [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；Compose 源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |

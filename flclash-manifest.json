@@ -2,11 +2,7 @@
   "repository": "https://github.com/chen08209/FlClash",
   "version": "v0.9.3",
   "commit": "be84736605527034689c95bf27828ff27d912c5e",
-  "uiKit": {
-    "repository": "https://github.com/chen08209/prism_ui",
-    "commit": "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185",
-    "note": "FlClash v0.9.3 moved lib/ui/ into the plugins/prism_ui submodule at this commit."
-  },
+  "usage": "Layout reference only: FK-box keeps FlClash's page sections, order and navigation layout, implemented with stock Material 3 components and Material icons. No FlClash/prism_ui widgets, glyphs, shapes, shaders, motion or press effects are used (see flclash.md).",
   "previousReference": {
     "version": "v0.9.2",
     "commit": "7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
