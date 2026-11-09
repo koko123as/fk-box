@@ -3,6 +3,7 @@ import '../widgets.dart';
 import 'profiles.dart';
 import 'profile_editor.dart';
 import 'mitm_certificate.dart';
+import '../components/quick_edit.dart';
 
 const configEncoder = JsonEncoder.withIndent('  ');
 
@@ -173,6 +174,17 @@ class HttpRewriteConfigPage extends StatelessWidget {
           subtitle: Text(context.tr('Choose HTTPS hosts in this profile')),
           widget: ConfigValueEditor(title: 'MITM', initial: store.value([...path, 'mitm']) ?? const {'enabled': false, 'hosts': [], 'excluded_hosts': [], 'block_quic': false},
             onSave: (value) => store.set([...path, 'mitm'], value, expectedRevision: revision, rethrowFailure: true))),
+        // quick_edit.dart's list quick edit over the profile's mitm.hosts / mitm.excluded_hosts string arrays.
+        for (final (label, key) in const [('MITM hosts', 'hosts'), ('MITM excluded hosts', 'excluded_hosts')])
+          Builder(builder: (context) {
+            final hosts = [for (final host in (store.value([...path, 'mitm', key]) as List?) ?? const []) host.toString()];
+            return ListItem(key: ValueKey('http-rewrite-$key'), leading: const GlyphIcon(AppGlyphs.compose), title: Text(context.tr(label)),
+              subtitle: Text('${hosts.length}'), trailing: const GlyphIcon(AppGlyphs.chevronForward),
+              onTap: () => openListQuickEdit(context, title: context.tr(label), items: hosts, hint: '*.example.com',
+                onChanged: (items) async {
+                  if (!await store.set([...path, 'mitm', key], items, expectedRevision: revision, rethrowFailure: true)) throw const QuickEditCancelled();
+                }));
+          }),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.key), title: Text(context.tr('MITM certificate')), widget: const MitmCertificatePage()),
       ]),
       generateSection(items: [
@@ -296,11 +308,30 @@ class ConfigListPage extends StatelessWidget {
     }));
   }
 
+  // quick_edit.dart over a list of objects: one compact JSON object a line (parseLineInput keeps each line whole).
+  Future<void> _quickEdit(BuildContext context) {
+    final current = store.entries(path);
+    final revision = store.revision;
+    return openPage<void>(context, QuickEditPage(title: context.tr(title), hint: '{"tag": "example"}',
+      content: current.map(jsonEncode).join('\n'),
+      apply: (context, content) async {
+        final issues = <String>[], next = <Json>[];
+        for (final (line, text) in parseLineInput(content)) {
+          Object? value;
+          try { value = jsonDecode(text); } catch (_) {}
+          if (value is Map) { next.add(json(value)); } else { issues.add(lineIssue(context, line, context.tr('JSON object required'))); }
+        }
+        if (issues.isNotEmpty) throw QuickEditInvalid(issues.take(quickEditMaxShownIssues).join('\n'));
+        if (!await store.set(path, next, expectedRevision: revision, rethrowFailure: true)) throw const QuickEditCancelled();
+      }));
+  }
+
   @override Widget build(BuildContext context) => ListenableBuilder(listenable: store, builder: (context, _) {
     final entries = store.entries(path);
     return Scaffold(title: context.tr(title), isLoading: store.saving,
       primaryAction: IconButtonData(glyph: AppGlyphs.add, tooltip: context.tr('Add'), onPressed: store.saving ? null : () => _edit(context)),
       iconActions: [
+        IconButtonData(glyph: AppGlyphs.compose, tooltip: context.tr('Quick edit'), onPressed: store.saving ? null : () => _quickEdit(context)),
         IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Reload'), onPressed: store.saving ? null : store.load),
         if (entries.length > 1) IconButtonData(glyph: AppGlyphs.sort, tooltip: context.tr('Reorder'),
           onPressed: store.saving ? null : () => openForm(context, ConfigOrderPage(store: store, title: title, path: path))),

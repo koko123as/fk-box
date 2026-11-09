@@ -125,6 +125,69 @@ void main() {
     expect(store.revision, 'after');
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
+    // Compose parity: MITM hosts open as a one-host-a-line quick edit.
+    reject = false;
+    await tester.tap(find.byKey(const ValueKey('http-rewrite-hosts')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, 'a.example.com\n\n*.b.example.com');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Save').last);
+    await tester.pumpAndSettle();
+    expect(json(json(writes.last['experimental'])['http_rewrite'])['mitm'], {'hosts': ['a.example.com', '*.b.example.com']});
+    expect(writes.last['outbounds'], [{'type': 'direct', 'tag': 'kept'}]);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('config lists quick edit one JSON object a line', (tester) async {
+    reportFlutterErrors();
+    const channel = MethodChannel('test.config-quick-edit');
+    final events = StreamController<dynamic>.broadcast();
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    var content = jsonEncode({'route': {'rules': [{'outbound': 'direct'}]}});
+    var revision = 'r1';
+    Json wire() => {'formatted': content, 'content': content, 'revision': revision};
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'ready') return {
+        'version': 'test', 'lan': {'addresses': <String>[]}, 'coreVersion': 'test', 'preferences': {'locale': 'en'}, 'dashboard': {'status': 'Stopped'},
+      };
+      if (call.method == 'profiles.config') return wire();
+      if (call.method == 'profiles.write') {
+        content = json(call.arguments)['content'] as String;
+        revision = 'r2';
+        return wire();
+      }
+      return null;
+    });
+    final box = BoxController(channel: channel, events: events.stream);
+    final store = ProfileConfigStore(box, {'id': 7, 'name': 'Profile'});
+    await store.load();
+    await tester.pumpWidget(BoxApp(controller: box));
+    addTearDown(() async {
+      await tester.pumpWidget(const SizedBox());
+      store.dispose();
+      await events.close();
+      messenger.setMockMethodCallHandler(channel, null);
+    });
+    await tester.pumpAndSettle();
+    openPage(tester.element(find.byType(HomePage)), ConfigListPage(store: store, title: 'Routing rules', path: const ['route', 'rules'], initial: const {}));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Quick edit').last);
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(find.byType(TextField).last).controller!.text, '{"outbound":"direct"}');
+    await tester.enterText(find.byType(TextField).last, '{"outbound":"direct"}\nnot json');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Save').last);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('JSON object required'), findsOneWidget);
+    expect(revision, 'r1');
+    await tester.tap(find.text('Cancel').last);
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField).last, '{"outbound":"direct"}\n{"action":"sniff"}');
+    await tester.pump();
+    await tester.tap(find.byTooltip('Save').last);
+    await tester.pumpAndSettle();
+    expect(json(jsonDecode(content))['route'], {'rules': [{'outbound': 'direct'}, {'action': 'sniff'}]});
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('config sheet keeps edits after canceling dismissal and a failed save', (tester) async {
