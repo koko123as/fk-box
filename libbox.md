@@ -112,7 +112,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 `ReadUIRuntimeMemory` 返回 `UIRuntimeMemory`，包含总量、在用/空闲堆、栈、其他运行时内存及 goroutine 数；总量为 `Sys - HeapReleased`。`CollectUIRuntimeMemory` 调用 `debug.FreeOSMemory`。Android 的 `BoxDashboard` 将这些值与同进程 RSS 结合显示；它们不是独立核心进程的系统内存统计。
 
-`Resident`/`HugePages` 是 `/proc/self/smaps` 中 Go 运行时自己命名的映射（`[anon: Go: …]`，Go 1.25+）的 Rss 与 AnonHugePages；内核不支持映射命名时为 0。内核用透明大页把 Go 已释放的内存重新填满时，`Resident` 会大于总量，Android 端把多出的部分计入核心（“其他运行时内存”），不再算进“应用”。
+`Resident`/`HugePages` 是 `/proc/self/smaps` 中 Go 运行时自己命名的映射（`[anon: Go: …]`，Go 1.25+）的 Rss 与 AnonHugePages；内核不支持映射命名时为 0。只有透明大页为 `always` 且 `PR_SET_THP_DISABLE` 失败（`coreTHPRefill`）时才遍历 smaps；其余情况内核不会回填已释放内存，两项为 0，避免每 2 秒扫描 smaps 并持有 `mmap_lock`。内核用透明大页把 Go 已释放的内存重新填满时，`Resident` 会大于总量，Android 端把多出的部分计入核心（“其他运行时内存”），不再算进“应用”。
 
 ### 进程内存（[core_memory.go](libbox/core_memory.go)）
 

@@ -39,10 +39,18 @@ const thpSysfs = "/sys/kernel/mm/transparent_hugepage"
 // coreTHPDisabled records whether init turned THP off for this process.
 var coreTHPDisabled atomic.Bool
 
+// coreTHPRefill records that THP runs in "always" mode and could not be
+// turned off, so the kernel may refill memory Go released. Only then can the
+// Go mappings' resident size exceed Go's own accounting, and only then does
+// ReadUIRuntimeMemory pay for the /proc/self/smaps walk.
+var coreTHPRefill atomic.Bool
+
 func init() {
 	if thpAlwaysOn(thpSysfs) {
 		if err := unix.Prctl(unix.PR_SET_THP_DISABLE, 1, 0, 0, 0); err == nil {
 			coreTHPDisabled.Store(true)
+		} else {
+			coreTHPRefill.Store(true)
 		}
 	}
 }

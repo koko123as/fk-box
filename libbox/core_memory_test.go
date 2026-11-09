@@ -70,6 +70,9 @@ func TestUIRuntimeMemorySmaps(t *testing.T) {
 		t.Fatal("missing smaps read as non-zero")
 	}
 	memory := ReadUIRuntimeMemory()
+	if !coreTHPRefill.Load() && (memory.Resident != 0 || memory.HugePages != 0) {
+		t.Fatalf("smaps walked without THP refill: resident %d, huge %d", memory.Resident, memory.HugePages)
+	}
 	t.Logf("live: total %d MiB, Go resident %d MiB, huge %d MiB", memory.Total>>20, memory.Resident>>20, memory.HugePages>>20)
 }
 

@@ -20,7 +20,9 @@ type UIRuntimeMemory struct {
 	Goroutines   int32
 	// Resident is what the kernel actually keeps resident for the Go
 	// runtime's own mappings ("[anon: Go: …]" in smaps, Go 1.25+), 0 when the
-	// kernel does not name anonymous mappings. It can exceed Total when the
+	// kernel does not name anonymous mappings, or when THP cannot refill
+	// released memory (THP off, "madvise"/"never", or disabled by init), in
+	// which case smaps is not walked. It can exceed Total when the
 	// kernel refills memory Go released (transparent huge pages).
 	Resident int64
 	// HugePages is the part of Resident backed by transparent huge pages.
@@ -32,7 +34,12 @@ func ReadUIRuntimeMemory() *UIRuntimeMemory {
 	runtime.ReadMemStats(&stats)
 	total := stats.Sys - stats.HeapReleased
 	heapIdle := stats.HeapIdle - stats.HeapReleased
-	resident, hugePages := readGoResidentMemory("/proc/self/smaps")
+	// Walking smaps costs milliseconds and takes mmap_lock (stalling page
+	// faults in every thread), so it runs only when THP refill is possible.
+	var resident, hugePages int64
+	if coreTHPRefill.Load() {
+		resident, hugePages = readGoResidentMemory("/proc/self/smaps")
+	}
 	return &UIRuntimeMemory{
 		Total: int64(total), HeapInuse: int64(stats.HeapInuse), HeapIdle: int64(heapIdle),
 		StackInuse: int64(stats.StackInuse), Goroutines: int32(runtime.NumGoroutine()),
