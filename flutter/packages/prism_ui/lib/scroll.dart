@@ -648,13 +648,14 @@ class _ScrollbarHintPill extends StatelessWidget {
       key: const ValueKey('scrollbarHintPill'),
       decoration: ShapeDecoration(
         color: SurfaceLevel.floatingOf(colorScheme).colorOf(colorScheme),
-        shape: AppShape.full,
+        shape: AppShape.full.copyWith(side: PrismStyle.hairline),
         shadows: [
-          BoxShadow(
-            color: colorScheme.shadow.withValues(alpha: 0.12),
-            blurRadius: 16,
-            offset: const Offset(0, 4),
-          ),
+          if (PrismStyle.shadows)
+            BoxShadow(
+              color: colorScheme.shadow.withValues(alpha: 0.12),
+              blurRadius: 16,
+              offset: const Offset(0, 4),
+            ),
         ],
       ),
       child: Padding(

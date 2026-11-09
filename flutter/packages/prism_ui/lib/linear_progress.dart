@@ -9,11 +9,15 @@ class LinearProgressIndicator extends StatefulWidget {
     super.key,
     this.value,
     this.backgroundColor,
+    this.color,
     this.minHeight = 4,
   });
 
   final double? value;
   final Color? backgroundColor;
+
+  /// The fill; the scheme's primary when null.
+  final Color? color;
   final double minHeight;
 
   @override
@@ -66,7 +70,7 @@ class _LinearProgressIndicatorState extends State<LinearProgressIndicator>
       child: CustomPaint(
         painter: _LinearProgressPainter(
           track: widget.backgroundColor ?? colorScheme.secondaryContainer,
-          fill: colorScheme.primary,
+          fill: widget.color ?? colorScheme.primary,
           value: value?.clamp(0.0, 1.0),
           textDirection: Directionality.of(context),
           progress: _controller,

@@ -211,7 +211,7 @@ class _SwitchState extends State<Switch> with TickerProviderStateMixin {
             on,
           )!;
     final shadows = [
-      if (lift > 0)
+      if (lift > 0 && PrismStyle.shadows)
         BoxShadow(
           color: colorScheme.shadow.withValues(alpha: 0.2 * lift),
           offset: const Offset(0, 2),
@@ -225,7 +225,8 @@ class _SwitchState extends State<Switch> with TickerProviderStateMixin {
     final thumb = DecoratedBox(
       decoration: ShapeDecoration(
         color: thumbFill,
-        shape: AppShape.full,
+        // The minimal style: a lifted thumb takes a hairline instead of a shadow.
+        shape: lift > 0 && !lens ? AppShape.full.copyWith(side: PrismStyle.hairline) : AppShape.full,
         shadows: lens ? null : shadows,
       ),
     );
