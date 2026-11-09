@@ -911,6 +911,17 @@ class _RenderPopupMorph extends RenderProxyBox {
       fill = _sourceColor.withValues(alpha: _sourceColor.a * (1 - settled));
     }
     context.canvas.drawPath(path, Paint()..color = fill);
+    // The minimal style's menu has no shadow: its edge is a hairline.
+    if (glass == null && !PrismStyle.shadows) {
+      final line = PrismStyle.hairlineColor;
+      context.canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0
+          ..color = line.withValues(alpha: line.a * settled),
+      );
+    }
     rim?.paintLine(context.canvas, platter.shift(offset), radius);
     if (image != null && droplet != null) {
       final under = math.min(1.0, settled / _glyphUnderAt);

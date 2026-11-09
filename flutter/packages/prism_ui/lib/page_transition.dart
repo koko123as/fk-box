@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:prism_ui/shape.dart';
 import 'package:prism_ui/drag_back.dart';
 import 'package:prism_ui/liquid_glass.dart';
 import 'package:prism_ui/motion.dart';
@@ -470,7 +471,7 @@ class _CardTransition extends SingleChildRenderObjectWidget {
       receding: receding,
       surface: SurfaceLevel.page.colorOf(colorScheme),
       backdrop: colorScheme.surfaceContainerLowest,
-      shadow: colorScheme.brightness == Brightness.light,
+      shadow: colorScheme.brightness == Brightness.light && PrismStyle.shadows,
       textDirection: Directionality.of(context),
       devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
     );
@@ -492,7 +493,7 @@ class _CardTransition extends SingleChildRenderObjectWidget {
       ..receding = receding
       ..surface = SurfaceLevel.page.colorOf(colorScheme)
       ..backdrop = colorScheme.surfaceContainerLowest
-      ..shadow = colorScheme.brightness == Brightness.light
+      ..shadow = PrismStyle.shadows && colorScheme.brightness == Brightness.light
       ..textDirection = Directionality.of(context)
       ..devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
   }

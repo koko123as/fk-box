@@ -190,9 +190,10 @@ class BoxPanel extends StatelessWidget {
     return Container(
       decoration: ShapeDecoration(
         color: SurfaceLevel.card.colorOf(context.colorScheme),
-        shape: AppShape.all(radius),
-        shadows: dark ? [shadow(0x80, 1, 2), shadow(0x8c, 10, 28, -6)]
-            : [shadow(0x0d, .5, 1), shadow(0x0a, 2, 6), shadow(0x17, 12, 32, -6)],
+        // The minimal style has no elevation: a raised surface takes a hairline instead.
+        shape: AppShape.all(radius).copyWith(side: PrismStyle.hairline),
+        shadows: PrismStyle.shadowsOr(dark ? [shadow(0x80, 1, 2), shadow(0x8c, 10, 28, -6)]
+            : [shadow(0x0d, .5, 1), shadow(0x0a, 2, 6), shadow(0x17, 12, 32, -6)]),
       ),
       clipBehavior: clipBehavior,
       child: onTap == null ? Padding(padding: padding, child: child) : PressSurface(

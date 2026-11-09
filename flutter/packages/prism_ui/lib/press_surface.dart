@@ -7,6 +7,7 @@ import 'package:prism_ui/card_surface.dart';
 import 'package:prism_ui/context.dart';
 import 'package:prism_ui/focus.dart';
 import 'package:prism_ui/press_sparkle.dart';
+import 'package:prism_ui/shape.dart';
 import 'package:prism_ui/surface.dart';
 import 'package:prism_ui/theme_data.dart';
 
@@ -231,7 +232,8 @@ class _PressSurfaceState extends State<PressSurface>
     _fadeInInk();
   }
 
-  bool get _sparkling => Theme.of(context).platform == TargetPlatform.android;
+  bool get _sparkling =>
+      PrismStyle.sparkle && Theme.of(context).platform == TargetPlatform.android;
 
   void _fadeInInk() {
     if (_inkHeld) {
@@ -241,7 +243,12 @@ class _PressSurfaceState extends State<PressSurface>
     if (_press == null) {
       setState(() => _press = AnimationController(vsync: this));
     }
-    _press!.animateTo(1, duration: context.motionDuration(_inkFade));
+    // The minimal style's press is a static dim: no spreading ink.
+    if (PrismStyle.inkSpread) {
+      _press!.animateTo(1, duration: context.motionDuration(_inkFade));
+    } else {
+      _press!.value = 1;
+    }
     widget.statesController?.update(WidgetState.pressed, true);
   }
 
@@ -294,6 +301,11 @@ class _PressSurfaceState extends State<PressSurface>
     }
     if (widget.look == PressLook.none) {
       _cancelPress();
+      return;
+    }
+    if (!PrismStyle.inkSpread) {
+      press.value = 0;
+      widget.statesController?.update(WidgetState.pressed, false);
       return;
     }
     final ink = widget.look == PressLook.ink;

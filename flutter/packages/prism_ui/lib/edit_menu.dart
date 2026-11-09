@@ -349,8 +349,8 @@ class _EditMenuState extends State<_EditMenu>
     return Surface(
       color: SurfaceLevel.floatingOf(colorScheme).colorOf(colorScheme),
       shadowColor: colorScheme.shadow.withValues(alpha: 0.6),
-      elevation: 3,
-      shape: AppShape.all(corner),
+      elevation: PrismStyle.shadows ? 3 : 0,
+      shape: AppShape.all(corner).copyWith(side: PrismStyle.hairline),
       child: child,
     );
   }

@@ -29,7 +29,7 @@ class QrCodeView extends StatelessWidget {
         child: AspectRatio(
           aspectRatio: 1,
           child: DecoratedBox(
-            decoration: const ShapeDecoration(
+            decoration: ShapeDecoration(
               shape: AppShape.md,
               color: Colors.white,
             ),

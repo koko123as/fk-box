@@ -392,9 +392,9 @@ class _LiftedCard extends StatelessWidget {
           scale: 1 + _liftGrowth * t,
           child: DecoratedBox(
             decoration: ShapeDecoration(
-              shape: shape,
+              shape: t > 0 ? shape.copyWith(side: PrismStyle.hairline) : shape,
               shadows: [
-                for (final shadow in shadows)
+                for (final shadow in PrismStyle.shadowsOr(shadows))
                   shadow.copyWith(
                     color: shadow.color.withValues(alpha: shadow.color.a * t),
                   ),

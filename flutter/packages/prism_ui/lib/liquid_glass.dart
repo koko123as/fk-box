@@ -518,6 +518,7 @@ Color _darkGlassTint(ColorScheme colorScheme) {
 /// it: one wide shadow, glass or not.
 List<BoxShadow> menuShadows(ColorScheme colorScheme, [double depth = 1]) {
   final strength = colorScheme.brightness == Brightness.dark ? 1.5 : 1.0;
+  if (!PrismStyle.shadows) return const [];
   return [
     BoxShadow(
       color: colorScheme.shadow.withValues(alpha: 0.118 * strength * depth),

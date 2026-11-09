@@ -637,8 +637,8 @@ class _BannerSurface extends StatelessWidget {
     return Surface(
       color: fill ?? surface.colorOf(colorScheme),
       shadowColor: colorScheme.shadow.withValues(alpha: 0.6),
-      elevation: 3,
-      shape: AppShape.xl,
+      elevation: PrismStyle.shadows ? 3 : 0,
+      shape: AppShape.xl.copyWith(side: PrismStyle.hairline),
       child: content,
     );
   }

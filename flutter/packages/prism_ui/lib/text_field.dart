@@ -253,7 +253,7 @@ class InputDecorationThemeData {
     this.filled = false,
     this.fillColor,
     this.hoverColor,
-    this.border = AppShape.input,
+    this.border,
     this.enabledBorder,
     this.disabledBorder,
     this.focusedBorder,

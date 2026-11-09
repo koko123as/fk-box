@@ -259,8 +259,9 @@ class ProxyGroupHeader extends StatelessWidget {
     final radius = AppCorner.xl.ap(context);
     final strength = colors.brightness == Brightness.dark ? 3.0 : 1.0;
     return DecoratedBox(decoration: ShapeDecoration(color: level.colorOf(colors),
-      shape: AppShape.vertical(top: radius, bottom: unfolded ? radius * floating : radius),
-      shadows: lift == 0 ? null : [
+      shape: AppShape.vertical(top: radius, bottom: unfolded ? radius * floating : radius)
+        .copyWith(side: lift == 0 ? BorderSide.none : PrismStyle.hairline),
+      shadows: lift == 0 || !PrismStyle.shadows ? null : [
         BoxShadow(color: colors.shadow.withValues(alpha: .08 * strength * lift), blurRadius: 16, offset: const Offset(0, 4)),
         BoxShadow(color: colors.shadow.withValues(alpha: .04 * strength * lift), blurRadius: 3, offset: const Offset(0, 1)),
       ]),

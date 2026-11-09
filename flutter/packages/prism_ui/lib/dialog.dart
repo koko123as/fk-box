@@ -345,7 +345,9 @@ class _AlertFrame extends StatelessWidget {
             constraints: const BoxConstraints(minWidth: _minWidth),
             child: Surface(
               color: color,
-              shape: AppShape.all(AppCorner.alert),
+              shape: AppShape.all(
+                AppCorner.alert,
+              ).copyWith(side: PrismStyle.hairline),
               child: child,
             ),
           ),

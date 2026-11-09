@@ -191,7 +191,8 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final organization = (info?['organization'] as String?)?.isNotEmpty == true
       ? info!['organization'] as String : info?['asn'] as String?;
     return Semantics(container: true, label: context.tr('Status'), child: BoxPanel(padding: EdgeInsets.zero, clipBehavior: Clip.none, child: Stack(children: [
-      Positioned.fill(child: ClipPath(
+      // The background cookie is decoration; the minimal style leaves it out.
+      if (appearanceTokensOf(box.preferences).decorations) Positioned.fill(child: ClipPath(
         clipper: ShapeBorderClipper(shape: AppShape.all(dashboardCardRadius(density)), textDirection: Directionality.of(context)),
         child: Stack(clipBehavior: Clip.none, children: [
           PositionedDirectional(end: desktop ? -64 : -60, top: standard ? -87 : compact ? -75 : -66, child: TweenAnimationBuilder<double>(

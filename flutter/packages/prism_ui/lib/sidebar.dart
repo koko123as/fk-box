@@ -217,7 +217,7 @@ class _SidebarOverlay extends StatelessWidget {
                   shape: BorderDirectional(
                     end: Divider.createBorderSide(context),
                   ),
-                  elevation: 8,
+                  elevation: PrismStyle.shadows ? 8 : 0,
                   shadowColor: colorScheme.shadow,
                   child: AnimatedBuilder(
                     animation: progress,

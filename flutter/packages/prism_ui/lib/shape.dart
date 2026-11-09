@@ -26,69 +26,85 @@ abstract final class AppCorner {
   }
 }
 
+/// App-wide style switches the host sets: fk-box's minimal style scales
+/// corners down, drops shadows for hairlines and presses with a static dim.
+abstract final class PrismStyle {
+  static const _minCorner = 4.0;
+
+  /// Corner radii from [AppRadius] and [AppShape] are multiplied by this.
+  static double cornerScale = 1;
+
+  /// Drop shadows; without them a raised surface takes a hairline outline.
+  static bool shadows = true;
+
+  /// Ink that spreads in and out; without it a press is a static dim.
+  static bool inkSpread = true;
+
+  /// The press sparkle from the touch point.
+  static bool sparkle = true;
+
+  /// ElasticPress swells a pressed control.
+  static bool elasticPress = true;
+
+  /// The outline-variant colour a raised surface's hairline takes when there
+  /// are no [shadows]; the host sets it with its colour scheme.
+  static Color hairlineColor = const Color(0x1F000000);
+
+  /// A raised surface's edge: nothing while it casts shadows, else a hairline.
+  static BorderSide get hairline =>
+      shadows ? BorderSide.none : BorderSide(color: hairlineColor, width: 0);
+
+  /// [list] while the style casts shadows, else none.
+  static List<BoxShadow> shadowsOr(List<BoxShadow> list) =>
+      shadows ? list : const [];
+
+  /// A corner radius for the style; small radii keep a readable floor.
+  static double corner(double radius) {
+    if (cornerScale >= 1 || radius <= 0 || radius >= AppCorner.full) return radius;
+    return radius * cornerScale < _minCorner ? (radius < _minCorner ? radius : _minCorner) : radius * cornerScale;
+  }
+}
+
 abstract final class AppRadius {
   static const BorderRadius none = BorderRadius.zero;
-  static const BorderRadius xs = BorderRadius.all(
-    Radius.circular(AppCorner.xs),
-  );
-  static const BorderRadius sm = BorderRadius.all(
-    Radius.circular(AppCorner.sm),
-  );
-  static const BorderRadius md = BorderRadius.all(
-    Radius.circular(AppCorner.md),
-  );
-  static const BorderRadius lg = BorderRadius.all(
-    Radius.circular(AppCorner.lg),
-  );
-  static const BorderRadius xl = BorderRadius.all(
-    Radius.circular(AppCorner.xl),
-  );
-  static const BorderRadius xxl = BorderRadius.all(
-    Radius.circular(AppCorner.xxl),
-  );
+  static BorderRadius get xs => all(AppCorner.xs);
+  static BorderRadius get sm => all(AppCorner.sm);
+  static BorderRadius get md => all(AppCorner.md);
+  static BorderRadius get lg => all(AppCorner.lg);
+  static BorderRadius get xl => all(AppCorner.xl);
+  static BorderRadius get xxl => all(AppCorner.xxl);
   static const BorderRadius full = BorderRadius.all(
     Radius.circular(AppCorner.full),
   );
 
-  static BorderRadius all(double corner) => BorderRadius.circular(corner);
+  static BorderRadius all(double corner) =>
+      BorderRadius.circular(PrismStyle.corner(corner));
 
   static BorderRadius top(double corner) =>
-      BorderRadius.vertical(top: Radius.circular(corner));
+      BorderRadius.vertical(top: Radius.circular(PrismStyle.corner(corner)));
 
   static BorderRadius vertical({
     double top = AppCorner.none,
     double bottom = AppCorner.none,
   }) => BorderRadius.vertical(
-    top: Radius.circular(top),
-    bottom: Radius.circular(bottom),
+    top: Radius.circular(PrismStyle.corner(top)),
+    bottom: Radius.circular(PrismStyle.corner(bottom)),
   );
 }
 
 abstract final class AppShape {
   static const RoundedSuperellipseBorder none = RoundedSuperellipseBorder();
-  static const RoundedSuperellipseBorder xs = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.xs,
-  );
-  static const RoundedSuperellipseBorder sm = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.sm,
-  );
-  static const RoundedSuperellipseBorder md = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.md,
-  );
-  static const RoundedSuperellipseBorder lg = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.lg,
-  );
-  static const RoundedSuperellipseBorder xl = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.xl,
-  );
-  static const RoundedSuperellipseBorder xxl = RoundedSuperellipseBorder(
-    borderRadius: AppRadius.xxl,
-  );
+  static RoundedSuperellipseBorder get xs => of(AppRadius.xs);
+  static RoundedSuperellipseBorder get sm => of(AppRadius.sm);
+  static RoundedSuperellipseBorder get md => of(AppRadius.md);
+  static RoundedSuperellipseBorder get lg => of(AppRadius.lg);
+  static RoundedSuperellipseBorder get xl => of(AppRadius.xl);
+  static RoundedSuperellipseBorder get xxl => of(AppRadius.xxl);
   static const RoundedSuperellipseBorder full = RoundedSuperellipseBorder(
     borderRadius: AppRadius.full,
   );
   static const CircleBorder circle = CircleBorder();
-  static const AppInputBorder input = AppInputBorder();
+  static AppInputBorder get input => AppInputBorder(borderRadius: AppRadius.md);
 
   static RoundedSuperellipseBorder all(double corner) =>
       RoundedSuperellipseBorder(borderRadius: AppRadius.all(corner));
@@ -110,7 +126,7 @@ abstract final class AppShape {
 class AppInputBorder extends InputBorder {
   const AppInputBorder({
     super.borderSide = const BorderSide(),
-    this.borderRadius = AppRadius.md,
+    this.borderRadius = const BorderRadius.all(Radius.circular(AppCorner.md)),
   });
 
   final BorderRadius borderRadius;

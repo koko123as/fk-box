@@ -236,6 +236,7 @@ class _Spring extends ChangeNotifier implements ValueListenable<double> {
 // A soft, wide drop in the manner of iOS rather than a Material elevation.
 List<BoxShadow> dockShadows(ColorScheme colorScheme) {
   final strength = colorScheme.brightness == Brightness.dark ? 3.0 : 1.0;
+  if (!PrismStyle.shadows) return const [];
   return [
     BoxShadow(
       color: colorScheme.shadow.withValues(alpha: 0.08 * strength),
@@ -277,7 +278,7 @@ class _DockSurface extends StatelessWidget {
     }
     return DecoratedBox(
       decoration: ShapeDecoration(
-        shape: AppShape.full,
+        shape: AppShape.full.copyWith(side: PrismStyle.hairline),
         shadows: dockShadows(colorScheme),
       ),
       child: child,
@@ -514,6 +515,9 @@ abstract interface class ElasticPressHandle {
 class _ElasticPressState extends State<ElasticPress>
     with TickerProviderStateMixin
     implements ElasticPressHandle {
+  // The minimal style presses without a swell.
+  bool get _enabled => widget.enabled && PrismStyle.elasticPress;
+
   late final _Spring _lift = _Spring(this, 0);
   late final _Spring _hover = _Spring(this, 0);
   late final _Spring _pullX = _Spring(this, 0);
@@ -551,7 +555,7 @@ class _ElasticPressState extends State<ElasticPress>
   }
 
   void _handlePointerDown(PointerDownEvent event) {
-    if (!widget.enabled ||
+    if (!_enabled ||
         _pointer != null ||
         event.buttons & kPrimaryButton == 0) {
       return;
@@ -614,7 +618,7 @@ class _ElasticPressState extends State<ElasticPress>
 
   @override
   void press(Offset position) {
-    if (!widget.enabled) {
+    if (!_enabled) {
       return;
     }
     _swell(_localOf(position));
@@ -633,7 +637,7 @@ class _ElasticPressState extends State<ElasticPress>
     }
     _hovers = math.max(0, _hovers + (entered ? 1 : -1));
     _hover.springTo(
-      widget.enabled && _hovers > 0 ? _hoverSwell : 0,
+      _enabled && _hovers > 0 ? _hoverSwell : 0,
       _settleSpring,
     );
   }

@@ -66,6 +66,7 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
       builder: (context) {
         final prefs = BoxScope.of(context, aspect: BoxAspect.appearance).preferences;
         final glass = prefs['liquidGlass'] as String? ?? 'none';
+        _applyStyle(appearanceTokensOf(prefs));
         return LayoutBuilder(builder: (context, constraints) {
           final mobile = constraints.maxWidth <= maxMobileWidth;
           return PrismApp(
@@ -106,12 +107,32 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
   );
 }
 
+/// Hands the appearance tokens to prism_ui's shape factories, presses and
+/// shadows (Compose AppearanceTokens.publish). A switch of style rebuilds and
+/// repaints everything once, as const shapes and cached paths would keep the old.
+void _applyStyle(AppearanceTokens tokens) {
+  final changed = PrismStyle.cornerScale != tokens.cornerScale || PrismStyle.shadows != tokens.shadows ||
+    PrismStyle.inkSpread != tokens.inkSpread || PrismStyle.sparkle != tokens.sparkle || PrismStyle.elasticPress != tokens.elasticPress;
+  final first = !_styleApplied;
+  _styleApplied = true;
+  if (!changed) return;
+  PrismStyle.cornerScale = tokens.cornerScale;
+  PrismStyle.shadows = tokens.shadows;
+  PrismStyle.inkSpread = tokens.inkSpread;
+  PrismStyle.sparkle = tokens.sparkle;
+  PrismStyle.elasticPress = tokens.elasticPress;
+  if (!first) WidgetsBinding.instance.addPostFrameCallback((_) => WidgetsBinding.instance.reassembleApplication());
+}
+var _styleApplied = false;
+
 /// FlClash theme_manager.dart _buildSystemUi: transparent bars drawn over by the pages.
 class _SystemUi extends StatelessWidget {
   const _SystemUi({required this.child});
   final Widget child;
   @override Widget build(BuildContext context) {
     final icons = Theme.of(context).brightness == Brightness.dark ? Brightness.light : Brightness.dark;
+    // The minimal style's stand-in for a shadow: a hairline in the outline-variant colour.
+    PrismStyle.hairlineColor = context.colorScheme.outlineVariant;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: SystemUiOverlayStyle(
         statusBarColor: const Color(0x00000000), statusBarIconBrightness: icons,
