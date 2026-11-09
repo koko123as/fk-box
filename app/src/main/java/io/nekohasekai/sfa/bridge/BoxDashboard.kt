@@ -30,7 +30,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
     @Volatile var remoteMemory = 0L
     private var networkSnapshot: Map<String, Any?>? = null
     private val networkMutex = Mutex()
-    private val configCache = DashboardConfigCache(ProfileContent::revision) { content, addresses ->
+    private val configCache = DashboardConfigCache(ProfileContent::revision, Libbox::detectCoreConfig) { content, addresses ->
         val values = JSONArray(Libbox.readUILANProxyListeners(content, addresses).value)
         (0 until values.length()).map { jsonObject(values.getJSONObject(it)) }
     }
@@ -156,7 +156,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
                 }
                 if (config != null) {
                     revision = config.revision
-                    lanSwitchable = Libbox.detectCoreConfig(config.content) !in setOf(Libbox.CoreXray, Libbox.CoreMihomo)
+                    lanSwitchable = config.core !in setOf(Libbox.CoreXray, Libbox.CoreMihomo)
                     bindings = config.listeners(encodedAddresses)
                 }
             } catch (error: CancellationException) {

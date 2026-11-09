@@ -12,11 +12,13 @@ class DashboardConfigCacheTest {
         var reads = 0
         var hashes = 0
         var parses = 0
+        var detections = 0
         var content = "original"
         var readFailure: Exception? = null
         var parseFailure: Exception? = null
         val cache = DashboardConfigCache(
             revision = { hashes++; "revision:$it" },
+            detectCore = { detections++; "core:$it" },
             parseListeners = { content, addresses ->
                 parses++
                 parseFailure?.let { throw it }
@@ -165,5 +167,15 @@ class DashboardConfigCacheTest {
         fixture.parseFailure = null
         assertEquals("wifi", config.listeners("wifi").single()["addresses"])
         assertEquals(2, fixture.parses)
+    }
+
+    @Test fun coreDetectionRunsOncePerContentAndFollowsEdits() {
+        val fixture = Fixture()
+        repeat(10) { assertEquals("core:original", fixture.saved(key).core) }
+        assertEquals("core:original", fixture.cache.active(Any()) { "original" }.core)
+        assertEquals(1, fixture.detections)
+        fixture.content = "edited"
+        assertEquals("core:edited", fixture.saved(key.copy(generation = 2)).core)
+        assertEquals(2, fixture.detections)
     }
 }

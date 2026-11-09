@@ -5,6 +5,7 @@ import kotlinx.coroutines.CancellationException
 /** Bounded to the selected file and the successfully started configuration. Caller serializes access. */
 internal class DashboardConfigCache(
     private val revision: (String) -> String,
+    private val detectCore: (String) -> String = { "" },
     private val parseListeners: (String, String) -> List<Map<String, Any?>>,
 ) {
     data class FileKey(
@@ -19,10 +20,16 @@ internal class DashboardConfigCache(
     class Configuration internal constructor(
         internal val content: String,
         val revision: String,
+        private val detectCore: (String) -> String,
         private val parseListeners: (String, String) -> List<Map<String, Any?>>,
     ) {
         private var addresses: String? = null
         private var parsed: Result<List<Map<String, Any?>>>? = null
+        private var detected: String? = null
+
+        /** The content's core kind (Libbox.detectCoreConfig), detected once per content. */
+        val core: String
+            get() = detected ?: detectCore(content).also { detected = it }
 
         fun listeners(interfaceAddresses: String): List<Map<String, Any?>> {
             if (addresses != interfaceAddresses || parsed == null) {
@@ -71,7 +78,7 @@ internal class DashboardConfigCache(
 
     private fun configuration(content: String): Configuration =
         saved?.takeIf { it.content == content } ?: active?.takeIf { it.content == content }
-            ?: Configuration(content, revision(content), parseListeners)
+            ?: Configuration(content, revision(content), detectCore, parseListeners)
 
     fun clearSaved() {
         savedKey = null
