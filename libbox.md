@@ -138,7 +138,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 `UIEgressProbe` 提供：
 
 - `LookupOutboundIP`：对八个来源错峰竞速，总时限 6 秒、间隔 800 毫秒、最多并发 3 个请求、响应上限 4096 字节；每个 HTTP 200 响应先按对应来源解析并校验公网 IP 与国家字段，首个完整解析成功的结果才取消其余请求。解析失败立即继续其他来源，国家字段允许空字符串表示未知。返回 IP、地理信息、来源与查询时间。
-- `Get`：供 Flutter 质量查询使用，保留 HTTP 状态，响应上限 128 KiB，调用方可指定 1～8000 毫秒超时。
+- `Get`：供 Compose 仪表盘的 IP 质量查询使用，保留 HTTP 状态，响应上限 128 KiB，调用方可指定 1～8000 毫秒超时。
 - `Close`：取消本次探测的请求和等待中的连接。每个请求独立持有连接与截止时间，不将 IP 竞速连接复用于后续质量查询。
 
 两种探测共用 libbox TLS 证书库；运行中的路由查询失败不能回退到设备网络。远程会话不提供本机出口探测。FlClash 来源、分批质量查询、缓存和界面刷新规则见 [flclash.md](flclash.md)；其中质量解析与缓存主要在 Dart/Android 层，不能将它们误记为 Go 核心补丁。
@@ -248,7 +248,7 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 
 参考依据为 2026-11-03 读取的 Surge [HTTP Processing](https://manual.nssurge.com/http/overview.html)、[MITM](https://manual.nssurge.com/http/mitm.html)、[URL Rewrite](https://manual.nssurge.com/http/url-rewrite.html)、[Header Rewrite](https://manual.nssurge.com/http/header-rewrite.html)、[Body Rewrite](https://manual.nssurge.com/http/body-rewrite.html)、[Map Local](https://manual.nssurge.com/http/map-local.html)、[请求脚本](https://manual.nssurge.com/scripting/http-request.html)和[响应脚本](https://manual.nssurge.com/scripting/http-response.html)。Surge 的 URL header 模式提供透明远端映射；B-box 另提供 map_remote 列表。上表明确 B-box 的字段、顺序与支持范围，不宣称配置或脚本完全兼容 Surge。
 
-核心集成固定 [Goja `a177d211bf606f6275674a35bc0d31d8ee0ee396`](https://github.com/dop251/goja/tree/a177d211bf606f6275674a35bc0d31d8ee0ee396)，模块版本 `v0.0.0-20261102223426-a177d211bf60`。共享 setup-core 先将核心模块最低 Go 版本调整为 1.26.0，加入 Xray/libXray 后 `go mod tidy` 再抬到它们要求的 Go 1.27.x，实际构建用 version.properties 的 go1.27.3；Goja 依赖将 x/text 提升到 v0.43.0，并引入 regexp2/v2、sourcemap 和 pprof。许可证随 Flutter assets 打包并在许可证页注册；三个上游基线不变。Release、Flutter 核心验证和 Android smoke 都使用同一个安装入口。
+核心集成固定 [Goja `a177d211bf606f6275674a35bc0d31d8ee0ee396`](https://github.com/dop251/goja/tree/a177d211bf606f6275674a35bc0d31d8ee0ee396)，模块版本 `v0.0.0-20261102223426-a177d211bf60`。共享 setup-core 先将核心模块最低 Go 版本调整为 1.26.0，加入 Xray/libXray 后 `go mod tidy` 再抬到它们要求的 Go 1.27.x，实际构建用 version.properties 的 go1.27.3；Goja 依赖将 x/text 提升到 v0.43.0，并引入 regexp2/v2、sourcemap 和 pprof。Goja 列在应用内开源许可页（`SettingsPages.kt` 的许可列表）；三个上游基线不变。Release、Flutter 核心验证和 Android smoke 都使用同一个安装入口。
 
 ### 旧抓包配置清理
 

@@ -26,13 +26,13 @@
 
 ## 架构与兼容性约束
 
-1. 界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），已按原 `flutter/lib` 的 FlClash 界面逐项翻译完成；`flutter/` 目录已删除，翻译参考通过删除前的 Git 历史查询，应用不依赖 Flutter。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `flutter/BoxBridge.kt`（原通道协议不变的 Kotlin 门面）提供给 `compose/BoxController.kt`。
+1. 界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），已按原 `flutter/lib` 的 FlClash 界面逐项翻译完成；`flutter/` 目录已删除，翻译参考通过删除前的 Git 历史查询，应用不依赖 Flutter。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt`（沿用原通道命令与事件名的 Kotlin 门面）提供给 `compose/BoxController.kt`。
 2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
 5. FK-box 的安装身份为 `io.fkbox.app`，源码 namespace、类路径及 AIDL 描述符保留 `io.nekohasekai.sfa`。任务未涉及这些约定时保持兼容；不要重排或复用已退役的 Binder 方法编号，也不要清空无关设置和数据库。
 6. 保留完整 sing-box 协议和 Tailscale/Taildrop、终端、普通 Root/Shizuku 能力。历史核心裁剪与 Tailscale/终端移除已回退；Android 5/6、legacy AAR、Xposed/LSPosed 和旧更新下载/静默安装链路则已移除。具体范围见 [libbox.md](libbox.md) 和 [app.md](app.md)。
-7. 复用 FlClash 组件时保留来源和许可，按 [flclash-manifest.json](flclash-manifest.json) 区分直接导入与业务适配。共享源码复用、编译成功或预览声明都不能代替视觉和实机验收。
+7. 复用 FlClash 组件时保留来源和许可；[flclash-manifest.json](flclash-manifest.json) 记录参考版本、`adaptedNativeFiles` 及补充参考，原 Flutter 导入的逐文件清单见 Git 历史（[flclash.md](flclash.md#参考版本与来源清单)）。共享源码复用、编译成功或预览声明都不能代替视觉和实机验收。
 
 ## 上游同步与验证
 

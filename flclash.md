@@ -25,16 +25,14 @@
 
 固定参考 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，提交 `be84736605527034689c95bf27828ff27d912c5e`（2026-11-04），其界面套件为子模块 [chen08209/prism_ui](https://github.com/chen08209/prism_ui/tree/63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185) `63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185`（v0.9.3 把 `lib/ui/` 移入 `plugins/prism_ui`）。FK-box 的 Compose 界面最初按 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`，2026-10-24）逐项翻译，`flclash-ui` 分支第 1–8、10 阶段再按 v0.9.3/prism_ui 对齐外壳、动效、按压、文本选择、横幅、记录筛选、请求页、快速编辑、宽屏仪表盘及工具页；服务状态、DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 仿制按钮和卡片不再定义界面。
 
-[flclash-manifest.json](flclash-manifest.json) 是逐文件来源清单（记录翻译所依据的原 Flutter 导入/适配文件；`files`/`adaptedFiles` 的哈希仍是最初导入的 v0.9.2 源文件，`previousReference` 记录该提交）：
+[flclash-manifest.json](flclash-manifest.json) 记录参考版本（`previousReference` 为最初翻译依据的 v0.9.2 提交）、原生适配和补充参考。原 Flutter 导入的逐文件清单 `files`（直接导入的共享组件、工具文件、字体和 glass shader）和 `adaptedFiles`（仪表盘、配置/代理、外观、备份、IP 质量查询及参考测试等适配文件，含来源哈希和改动说明）的本地路径都在已删除的 `flutter/` 下，没有脚本读取，已随 `flutter/` 一并移出清单，可在 `6902a3d` 的 `flclash-manifest.json` 中查看。当前字段：
 
 | 清单字段 | 使用方式 |
 | --- | --- |
-| `files` | 直接导入的共享组件、两个工具文件、字体和 glass shader；哈希对应将 Dart 包引用从 `fl_clash` 机械改名为 `b_box_ui` 后的文件 |
-| `adaptedFiles` | 仪表盘、配置/代理、外观、备份、IP 质量查询及参考测试等适配文件；记录原始来源哈希和实际改动说明 |
 | `adaptedNativeFiles` | `libbox/ui_egress.go` 对 FlClash IP 查询的适配来源；用 sing-box 路由和 libbox HTTP 替换原传输 |
 | `supplementalReferences` | 独立于整体 UI 基线的补充参考（MITM dev；地理数据资源页与更新设计，FlClash `be84736605527034689c95bf27828ff27d912c5e`），按原样导入、改写或设计参考记录源文件哈希；本地路径相对仓库根目录 |
 
-清单中 `files` 和 `adaptedFiles` 的本地路径相对已删除的 `flutter/`（可在删除前的 Git 历史中查看），`adaptedNativeFiles` 的本地路径相对仓库根目录；`source`/`sources` 指向固定参考提交内的上游路径。清单记录逐文件哈希和改动来源，本文维护使用说明，两者一并保留。
+`adaptedNativeFiles` 的本地路径相对仓库根目录；`source`/`sources` 指向固定参考提交内的上游路径。清单记录逐文件哈希和改动来源，本文维护使用说明，两者一并保留。
 
 本次请求/MITM 功能补充核对 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)，相关提交为 [`f54486102172566e7342d7f5c138663c3c5dec0b`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计和 [`1a7556d30a38707f39abfba4b7d6a6b8f57774ed`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合。该 dev 源码的 `FEATURE_MITM` 默认关闭，公开 core 不提供完整 MITM 实现；B-box 自行实现 sing-box 路由上的 TLS 接管，不能把上游页面当成可用核心。此次采用证书信任、报文展示和 CA 模块设计，当时保留独立连接页（现已按 v0.9.3 合并入请求页，见上文），不整体迁移该版本的 UI 依赖。整体 FlClash UI、Android 上游和核心三个基线均不变。
 
@@ -81,9 +79,9 @@ Compose 承担仪表盘、代理、配置、工具及所有子页面的导航（
 - 日志页默认选择“跟随配置”，显示内核上报的日志级别及更严重的记录；菜单同时显示当前级别，仍可手动选择“全部”或单一级别，手动筛选不会被后续状态更新覆盖。搜索、暂停和导出沿用同一筛选结果；默认级别尚未收到时保留已接收记录。日志来源及本地重载同步见 [app.md](app.md#配置服务应用与备份)。
 - 应用始终跟随系统语言并响应运行时变化。旧设置及备份中的语言选项丢弃，其他偏好保留。
 - 代理列表保留圆角吸顶分组标题、固定高度的懒加载行、折叠动效及填充/普通/隐藏分组图标。折叠状态按选中配置保存，定位节点通过行偏移实现，不要求节点预先进入视口。
-- 访问控制按上游 SFA 的列表/扫描分离方式加载，进入页面直接显示应用与已保存的托管选择；“重新扫描托管应用”为独立操作，扫描期间保留列表。筛选/搜索/排序结果在列表及相关条件未变化时复用，流量等无关状态更新不重新排序。图标保持按可见行请求和缓存，切换显示范围或无修改地关闭查询设置不清空图标；查询策略变更或申请权限后关闭设置只刷新一次。原生查询与托管更新约定见 [app.md](app.md#配置服务应用与备份)。
+- 访问控制按上游 SFA 的列表/扫描分离方式加载，进入页面直接显示应用与已保存的托管选择；“重新扫描托管应用”为独立操作，扫描期间保留列表。筛选/搜索/排序结果在列表及相关条件未变化时复用，流量等无关状态更新不重新排序。图标保持按可见行请求，在 IO 线程绘制为位图（不经 PNG 编解码）并存入按字节计的 8 MiB `LruCache`，切换显示范围或无修改地关闭查询设置不清空图标；查询策略变更或申请权限后关闭设置只刷新一次。原生查询与托管更新约定见 [app.md](app.md#配置服务应用与备份)。
 - 首页编辑保留卡片的全局 key，防止重复出口请求及丢失状态。改动立即保存；保存失败保留草稿，点击完成再次尝试。
-- sing-box 专属 Tailscale、Taildrop、终端、认证、USB/IP、诊断和报告使用统一 Flutter 页面，复用原生后端；能力边界见 [app.md](app.md)。
+- sing-box 专属 Tailscale、Taildrop、终端、认证、USB/IP、诊断和报告使用统一 Compose 页面，复用原生后端；能力边界见 [app.md](app.md)。
 
 `box.dart` 按应用状态、启动/外观、流量、内存、连接和日志分开通知；流量采样与仪表盘累计值只更新相关组件，日志和连接变化不触发应用根部、代理或配置列表重建。出口查询监听应用状态变化，不因流量或内存采样重新计算路由标识。显式批量通知仍刷新全部依赖。
 

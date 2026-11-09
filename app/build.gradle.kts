@@ -308,7 +308,6 @@ dependencies {
     val lifecycleVersion = "2.11.0"
     val roomVersion = "2.8.4"
 
-    implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
@@ -317,7 +316,8 @@ dependencies {
     }
     implementation("com.google.guava:guava:33.6.0-android")
 
-    implementation("androidx.lifecycle:lifecycle-livedata-ktx:$lifecycleVersion")
+    // BoxService status is a MutableLiveData observed with observeForever (core API only).
+    implementation("androidx.lifecycle:lifecycle-livedata-core:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-process:$lifecycleVersion")
     implementation("androidx.room:room-runtime:$roomVersion")

@@ -45,9 +45,10 @@ class GenerateLauncherIcons {
                 monochrome.setRGB(x, y, (alpha << 24) | 0xffffff);
             }
         }
-        save(fit(monochrome, 432, 288, false), res.resolve("drawable-nodpi/ic_launcher_monochrome.png"));
+        // The adaptive icon's <monochrome> layer reuses ic_launcher_foreground.png (the shipped
+        // ic_launcher_monochrome.png was a byte-identical copy of it); the silhouette feeds ic_menu.
         save(fit(monochrome, 96, 96, false), res.resolve("drawable/ic_menu.png"));
-        System.out.println("Generated launcher, round, adaptive, themed and notification icons from " + source);
+        System.out.println("Generated launcher, round, adaptive and notification icons from " + source);
     }
 
     private static BufferedImage fit(BufferedImage source, int size, int contentSize, boolean white) {

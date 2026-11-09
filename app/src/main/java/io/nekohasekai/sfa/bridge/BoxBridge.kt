@@ -375,11 +375,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         true
     }
 
-    suspend fun prepareConfig(core: String?, content: String): Map<String, Any?> = withContext(Dispatchers.IO) {
-        val prepared = ProfileContent.prepare(core ?: "auto", content)
-        mapOf("content" to prepared.content, "core" to prepared.core)
-    }
-
     suspend fun formatConfig(core: String?, content: String): String = withContext(Dispatchers.IO) {
         val resolved = Libbox.resolveProfileCore(core ?: "auto", content)
         Libbox.formatCoreConfig(resolved, content).value
