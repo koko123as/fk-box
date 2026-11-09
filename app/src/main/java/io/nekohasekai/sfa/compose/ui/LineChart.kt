@@ -36,7 +36,7 @@ private fun series(window: List<Double>, length: Int): DoubleArray {
     return values
 }
 
-private fun blur(values: DoubleArray): DoubleArray = DoubleArray(values.size) { i ->
+private fun smooth(values: DoubleArray): DoubleArray = DoubleArray(values.size) { i ->
     var sum = 0.0
     var weight = 0.0
     for (j in max(i - RADIUS, 0)..min(i + RADIUS, values.size - 1)) {
@@ -70,7 +70,7 @@ fun LineChart(values: () -> List<Double>, capacity: Int, minScale: Double, color
     Canvas(modifier) {
         val window = values()
         if (cache.source !== window || cache.capacity != capacity) {
-            cache.heights = blur(series(window, capacity + RADIUS + 1))
+            cache.heights = smooth(series(window, capacity + RADIUS + 1))
             cache.source = window
             cache.capacity = capacity
         }

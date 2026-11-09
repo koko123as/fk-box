@@ -96,8 +96,7 @@ class Application : Application() {
      * UI, VPN service and the Go cores share this process. When the UI goes
      * to the background or the system runs low, hand Go's idle heap back to
      * the kernel (what Dashboard → Memory → Release memory does). HWUI frees
-     * the window's render targets, including the Liquid Glass layers, itself
-     * when the UI is hidden.
+     * the window's render targets itself when the UI is hidden.
      */
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {

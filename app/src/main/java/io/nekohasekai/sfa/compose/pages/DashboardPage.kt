@@ -623,7 +623,7 @@ private fun MemoryBar(parts: List<Triple<String, Number, androidx.compose.ui.gra
         } else {
             positive.forEachIndexed { index, part ->
                 if (index > 0) Spacer(Modifier.width(2.dp))
-                val percent by animateFloatAsState(Math.round(part.second.toDouble() * 100 / total).toFloat(), tween(300), label = "memory")
+                val percent = Math.round(part.second.toDouble() * 100 / total).toFloat()
                 Box(Modifier.weight(max(1f, percent * 100)).fillMaxSize().background(part.third))
             }
         }
@@ -779,7 +779,7 @@ internal fun IntranetPanel(box: BoxController) {
     }
 }
 
-/** FlClash's mobile switch row: an enabled cookie badge, disabled circle and a compact switch. */
+/** The LAN proxy switch row: an icon badge, the title and subtitle, and a switch. */
 @Composable
 private fun LanProxyRow(value: Boolean, subtitle: String, onChanged: ((Boolean) -> Unit)?, compact: Boolean = false) {
     val scheme = BoxTheme.scheme

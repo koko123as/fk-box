@@ -129,13 +129,12 @@ fun RecordListItem(
     val scheme = BoxTheme.scheme
     val level = raisedSurfaceLevel
     val shape = AppShape.card
-    val interaction = remember { MutableInteractionSource() }
     Box(modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
         Column(
             Modifier
                 .fillMaxWidth()
                 .background(level.colorOf(scheme), shape)
-                // record.dart: a PressSurface ink on the raised row.
+                // The system ripple on the raised row.
                 .then(if (onTap != null) Modifier.clip(shape).clickable(onClick = onTap) else Modifier)
                 .padding(start = 16.dp, end = 16.dp, top = 10.dp, bottom = 12.dp),
         ) {
@@ -168,7 +167,7 @@ fun RecordHeader(trailing: (@Composable () -> Unit)? = null, children: @Composab
     }
 }
 
-/** chip.dart's TonalChip: a small superellipse with a caption label. */
+/** A small tonal label chip. */
 @Composable
 fun TonalChip(label: String, color: Color, foregroundColor: Color, onPressed: (() -> Unit)? = null) {
     Box(

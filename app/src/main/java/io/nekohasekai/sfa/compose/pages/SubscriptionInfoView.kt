@@ -2,7 +2,7 @@ package io.nekohasekai.sfa.compose.pages
 
 import androidx.compose.foundation.text.selection.SelectionContainer
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -162,20 +162,16 @@ fun SubscriptionChipTitle(title: String, info: SubscriptionInfo?, style: TextSty
     }
 }
 
-/** The 4dp rounded quota bar of SubscriptionInfoView's LinearProgressIndicator. */
+/** The quota bar: a Material 3 linear progress indicator. */
 @Composable
 fun SubscriptionProgressBar(share: Double, color: Color, modifier: Modifier = Modifier) {
-    val track = color.copy(alpha = 0.15f)
-    Canvas(modifier.fillMaxWidth().height(4.dp)) {
-        val stroke = size.height
-        val mid = size.height / 2
-        val start = stroke / 2
-        val end = size.width - stroke / 2
-        drawLine(track, Offset(start, mid), Offset(end, mid), strokeWidth = stroke, cap = StrokeCap.Round)
-        if (share > 0) {
-            drawLine(color, Offset(start, mid), Offset(start + (end - start) * share.toFloat().coerceIn(0f, 1f), mid), strokeWidth = stroke, cap = StrokeCap.Round)
-        }
-    }
+    LinearProgressIndicator(
+        progress = { share.toFloat().coerceIn(0f, 1f) },
+        modifier = modifier.fillMaxWidth(),
+        color = color,
+        trackColor = color.copy(alpha = 0.15f),
+        drawStopIndicator = {},
+    )
 }
 
 /** Profile card subtitle: "used / total · remaining" when the provider reported a quota. */
@@ -243,11 +239,10 @@ fun SubscriptionInfoSection(info: SubscriptionInfo, webPage: String?, openWebPag
             }
         }
     }
-    // subscription_info_view.dart wraps the detail in a SelectionContainer.
     SelectionContainer { Section(title = tr("Subscription info"), rows = rows) }
 }
 
-/** profiles.dart's dashboard _UsageMeter: percent used, used / total, and the wavy quota bar. */
+/** Percent used, used / total, and the quota bar. */
 @Composable
 fun SubscriptionUsageMeter(info: SubscriptionInfo) {
     val share = info.usage ?: return
@@ -272,40 +267,7 @@ fun SubscriptionUsageMeter(info: SubscriptionInfo) {
             )
         }
         Spacer(Modifier.height(8.dp))
-        WavyProgress(share, color, scheme.onSurface.copy(alpha = 0.12f))
-    }
-}
-
-/** _WavyProgressPainter: a wave up to [value], a gap, then a flat track ending in a stop dot. */
-@Composable
-private fun WavyProgress(value: Double, active: Color, track: Color) {
-    Canvas(Modifier.fillMaxWidth().height(12.dp)) {
-        val stroke = 4.dp.toPx()
-        val amplitude = 3.dp.toPx()
-        val wavelength = 12.dp.toPx()
-        val gap = 6.dp.toPx()
-        val stop = 4.dp.toPx()
-        val mid = size.height / 2
-        val start = stroke / 2
-        val end = size.width - stroke / 2
-        val share = value.toFloat().coerceIn(0f, 1f)
-        val split = start + (end - start) * share
-        if (share > 0) {
-            val wave = Path().apply {
-                moveTo(start, mid)
-                var x = start
-                while (x <= split) {
-                    lineTo(x, mid + amplitude * sin((x - start) / wavelength * 2 * PI).toFloat())
-                    x += 1f
-                }
-            }
-            drawPath(wave, active, style = Stroke(width = stroke, cap = StrokeCap.Round))
-        }
-        val trackStart = if (share > 0) split + gap + stroke else start
-        if (trackStart < end - stop) {
-            drawLine(track, Offset(trackStart, mid), Offset(end - stop - gap, mid), strokeWidth = stroke, cap = StrokeCap.Round)
-        }
-        if (share < 1) drawCircle(active, radius = stop / 2, center = Offset(end - stop / 2, mid))
+        SubscriptionProgressBar(share, color)
     }
 }
 

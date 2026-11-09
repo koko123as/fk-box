@@ -355,13 +355,8 @@ fun ProfileCard(profile: Json, selected: Boolean, updating: Boolean, menuItems: 
                 }
                 Spacer(Modifier.padding(start = 16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    AnimatedContent(
-                        targetState = updating,
-                        transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(300)) },
-                        contentAlignment = Alignment.CenterEnd,
-                        label = "updating",
-                    ) { busy ->
-                        if (busy) {
+                    Box(contentAlignment = Alignment.CenterEnd) {
+                        if (updating) {
                             CommonCircleLoading(size = 24.dp)
                         } else {
                             ProfileUpdateTime(profile["updatedAt"].asLong(), AppTextStyle.Footnote.of().copy(color = scheme.onSurface.copy(alpha = 0.6f)), showLabel = false)

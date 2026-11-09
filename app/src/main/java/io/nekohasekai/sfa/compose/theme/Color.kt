@@ -80,9 +80,6 @@ data class BoxScheme(
     val onWarningContainer: Color get() = tone(warningPalette, 30, 90)
 
 
-    /** iOS 27's systemRed, which an alert's destructive action takes. */
-    val destructive: Color get() = Color(if (dark) 0xFFFF4245 else 0xFFFF383C)
-
     fun delayColor(delay: Int?): Color? = when {
         delay == null -> null
         delay < 0 -> error

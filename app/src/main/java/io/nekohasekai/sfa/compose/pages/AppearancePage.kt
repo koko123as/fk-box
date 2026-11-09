@@ -510,7 +510,7 @@ private fun Palette(color: Color, onPicked: (Color) -> Unit) {
     Column(Modifier.fillMaxWidth()) {
         SegmentedControl(listOf("grid" to tr("Grid"), "spectrum" to tr("Spectrum"), "sliders" to tr("Sliders")), mode) { mode = it }
         Spacer(Modifier.height(16.dp))
-        Box(Modifier.animateContentSize(tween(250, easing = CubicBezierEasing(0.33f, 1f, 0.68f, 1f)))) {
+        Box {
             when (mode) {
                 "grid" -> ColorGrid(color, onPicked)
                 "spectrum" -> Spectrum(color, onPicked)

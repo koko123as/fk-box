@@ -27,8 +27,8 @@ import com.google.zxing.qrcode.encoder.Encoder
 import io.nekohasekai.sfa.compose.theme.AppShape
 
 /**
- * qr_code.dart's QrCodeView: dark modules on white whatever the theme, with
- * the four-module quiet zone, on a 16 dp superellipse; text too long for a
+ * A QR code: dark modules on white whatever the theme, with
+ * the four-module quiet zone, on a 12 dp rounded card; text too long for a
  * code is shown as selectable text instead.
  */
 private const val QUIET_ZONE = 4
