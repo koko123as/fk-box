@@ -188,7 +188,7 @@ internal class BoxCapture(private val activity: BoxActivity) {
     private suspend fun exportCertificateFile(revisionArgument: String?, module: Boolean): Boolean {
         val revision = revisionArgument ?: error("Missing certificate revision")
         val ca = mutex.withLock { withContext(Dispatchers.IO) { requireLocal(); certificate.publicCertificate(revision) } }
-        val name = "B-box-MITM-${MitmCertificate.fingerprint(ca).take(12)}" + if (module) ".zip" else ".crt"
+        val name = "FK-box-MITM-${MitmCertificate.fingerprint(ca).take(12)}" + if (module) ".zip" else ".crt"
         val destination = activity.pickDocument(name) ?: return false
         return mutex.withLock { withContext(Dispatchers.IO) {
             requireLocal()
@@ -203,9 +203,9 @@ internal class BoxCapture(private val activity: BoxActivity) {
 
     private suspend fun exportFile(format: String?, id: String?, query: String?): Boolean {
         val name = when (format) {
-            "curl" -> "B-box-request.sh"
-            "har" -> "B-box-requests.har"
-            "domains" -> "B-box-domains.txt"
+            "curl" -> "FK-box-request.sh"
+            "har" -> "FK-box-requests.har"
+            "domains" -> "FK-box-domains.txt"
             else -> error("Unknown capture export format")
         }
         val destination = activity.pickDocument(name) ?: return false

@@ -270,9 +270,13 @@ func mihomoGroups() []mihomoConstant.Proxy {
 	for _, name := range rest {
 		ordered = append(ordered, proxies[name])
 	}
-	if mihomoTunnel.Mode() == mihomoTunnel.Global {
-		if global, ok := proxies["GLOBAL"]; ok {
+	// GLOBAL leads in Global mode and trails otherwise, so its member can be
+	// chosen before switching.
+	if global, ok := proxies["GLOBAL"]; ok {
+		if mihomoTunnel.Mode() == mihomoTunnel.Global {
 			ordered = append([]mihomoConstant.Proxy{global}, ordered...)
+		} else {
+			ordered = append(ordered, global)
 		}
 	}
 	return ordered
@@ -552,9 +556,63 @@ func (s *coreStartedService) SetClashMode(ctx context.Context, request *daemon.C
 	if !ok {
 		return nil, status.Error(codes.InvalidArgument, "unknown mode: "+request.Mode)
 	}
+	previous := mihomoTunnel.Mode()
+	if mode == mihomoTunnel.Global {
+		pickMihomoGlobalDefault()
+	}
 	mihomoTunnel.SetMode(mode)
+	if mode != previous {
+		closeAllMihomoConnections()
+	}
 	notifyGroupsChange()
 	return &emptypb.Empty{}, nil
+}
+
+var mihomoBuiltinOutbounds = map[string]bool{"DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true, "GLOBAL": true}
+
+// pickMihomoGlobalDefault points the built-in GLOBAL selector at the profile's
+// first proxy group (or, with none, its first node) when it still sits on its
+// built-in default DIRECT and the user never chose a GLOBAL member; otherwise
+// Global mode would silently send everything direct.
+func pickMihomoGlobalDefault() {
+	global, ok := mihomoTunnel.Proxies()["GLOBAL"]
+	if !ok {
+		return
+	}
+	group, ok := global.Adapter().(mihomoOutboundGroup.ProxyGroup)
+	if !ok || group.Now() != "DIRECT" {
+		return
+	}
+	if _, chosen := mihomoCacheFile.Cache().SelectedMap()["GLOBAL"]; chosen {
+		return
+	}
+	selectable, ok := global.Adapter().(mihomoOutboundGroup.SelectAble)
+	if !ok {
+		return
+	}
+	target := ""
+	for _, member := range group.Proxies() {
+		if mihomoBuiltinOutbounds[member.Name()] {
+			continue
+		}
+		if _, isGroup := member.Adapter().(mihomoOutboundGroup.ProxyGroup); isGroup {
+			target = member.Name()
+			break
+		}
+		if target == "" {
+			target = member.Name()
+		}
+	}
+	if target != "" {
+		_ = selectable.Set(target)
+	}
+}
+
+func closeAllMihomoConnections() {
+	mihomoStatistic.DefaultManager.Range(func(tracker mihomoStatistic.Tracker) bool {
+		_ = tracker.Close()
+		return true
+	})
 }
 
 // ---- connections (mihomo; Xray has no connection tracker) ----

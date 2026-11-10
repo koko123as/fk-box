@@ -880,7 +880,7 @@ fun CaptureLogsPage(box: BoxController) {
         iconActions = listOf(IconAction(AppIcons.refresh, tr("Refresh"), poll.refresh)),
         menuItems = listOf(
             PopupMenuItem(tr("Copy logs"), AppIcons.copy, onPressed = if (logs.isEmpty()) null else ({ copy(text) })),
-            PopupMenuItem(tr("Export"), AppIcons.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct { saveDocument("B-box-capture.log", text) } })),
+            PopupMenuItem(tr("Export"), AppIcons.export, onPressed = if (logs.isEmpty()) null else ({ box.launchAct { saveDocument("FK-box-capture.log", text) } })),
             PopupMenuItem(tr("Clear"), AppIcons.delete, onPressed = if (busy) null else ({
                 busy = true
                 scope.launch {

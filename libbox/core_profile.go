@@ -254,7 +254,10 @@ func parseCheckedMihomoConfig(content string) (*mihomoConfig.RawConfig, error) {
 }
 
 func checkMihomoRaw(raw *mihomoConfig.RawConfig) error {
-	names := map[string]bool{"DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true, "GLOBAL": true}
+	names := map[string]bool{}
+	for name := range mihomoBuiltinOutbounds {
+		names[name] = true
+	}
 	for i, mapping := range raw.Proxy {
 		proxy, err := mihomoAdapter.ParseProxy(mapping)
 		if err != nil {
