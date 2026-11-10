@@ -20,7 +20,7 @@
 
 品牌、安装身份及组件约定：
 
-- 应用标签、Gradle 根项目名和 APK 前缀统一使用 FK-box。图标原图为 [artwork/bbox.png](artwork/bbox.png)，[GenerateLauncherIcons.java](tools/GenerateLauncherIcons.java) 生成普通/圆形、自适应、主题单色及通知图标。保留上游许可和非官方分支说明，不改写真实来源名称。
+- 应用标签、Gradle 根项目名和 APK 前缀统一使用 FK-box。应用图标为白底蓝色笔刷字母 S；自适应图标的主题单色层（`ic_launcher_monochrome`）与通知/快捷开关小图标（`ic_menu`，24dp 画布内 20dp 高）都是去掉白底的 S 剪影。保留上游许可和非官方分支说明，不改写真实来源名称。
 - namespace、Kotlin/Java 类路径、AIDL 描述符及 RootServer 反射类名继续使用 `io.nekohasekai.sfa`。Provider authorities 使用 `${applicationId}`，服务控制和 USB/Taildrop 等广播使用 `BuildConfig.APPLICATION_ID` 或运行时包名。
 - 可与原版 SFA 并行安装，私有配置和数据相互独立；原版数据需导出/导入。Flutter 迁移沿用 B-box 既有安装身份、数据库及配置，不以换 UI 为由清空数据。
 

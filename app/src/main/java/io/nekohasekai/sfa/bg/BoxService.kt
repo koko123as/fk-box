@@ -12,9 +12,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import android.os.ParcelFileDescriptor
-import android.os.PowerManager
 import android.util.Log
-import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
@@ -36,14 +34,10 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -86,21 +80,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private val binder = ServiceBinder(status)
     private val notification = ServiceNotification(status, service)
     private lateinit var commandServer: CommandServer
-    private val idleModeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-    private val idleModeUpdates = Channel<Boolean>(Channel.UNLIMITED)
-
-    init {
-        idleModeScope.launch {
-            for (idle in idleModeUpdates) {
-                if (idle) {
-                    commandServer.pause()
-                } else {
-                    commandServer.wake()
-                }
-            }
-        }
-    }
-
     private var receiverRegistered = false
     private val receiver =
         object : BroadcastReceiver() {
@@ -108,12 +87,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 when (intent.action) {
                     Action.SERVICE_CLOSE -> {
                         stopService()
-                    }
-
-                    PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED -> {
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                            serviceUpdateIdleMode()
-                        }
                     }
                 }
             }
@@ -298,13 +271,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         serviceReload()
     }
 
-    @RequiresApi(Build.VERSION_CODES.M)
-    private fun serviceUpdateIdleMode() {
-        if (::commandServer.isInitialized) {
-            idleModeUpdates.trySend(Application.powerManager.isDeviceIdleMode)
-        }
-    }
-
     @OptIn(DelicateCoroutinesApi::class)
     private fun stopService() {
         if (status.value != Status.Started && status.value != Status.Starting) return
@@ -380,7 +346,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("SameReturnValue")
     internal fun onStartCommand(): Int {
-        if (status.value != Status.Stopped) return Service.START_NOT_STICKY
+        if (status.value != Status.Stopped) return Service.START_STICKY
         stopRequested = false
         status.value = Status.Starting
         notification.show(lastProfileName, R.string.status_starting)
@@ -389,12 +355,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             ContextCompat.registerReceiver(
                 service,
                 receiver,
-                IntentFilter().apply {
-                    addAction(Action.SERVICE_CLOSE)
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        addAction(PowerManager.ACTION_DEVICE_IDLE_MODE_CHANGED)
-                    }
-                },
+                IntentFilter(Action.SERVICE_CLOSE),
                 ContextCompat.RECEIVER_NOT_EXPORTED,
             )
             receiverRegistered = true
@@ -411,7 +372,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             }
             startService()
         }
-        return Service.START_NOT_STICKY
+        // Sticky: if the system kills the process while connected, it recreates the
+        // service (null intent) and the connection is brought back up.
+        return Service.START_STICKY
     }
 
     internal fun onBind(): IBinder = binder
@@ -419,8 +382,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     internal fun onDestroy() {
         if (::commandServer.isInitialized && dashboardConfig.value?.server === commandServer) _dashboardConfig.value = null
         if (::commandServer.isInitialized && dashboardServer === commandServer) dashboardServer = null
-        idleModeUpdates.cancel()
-        idleModeScope.cancel()
         binder.close()
     }
 

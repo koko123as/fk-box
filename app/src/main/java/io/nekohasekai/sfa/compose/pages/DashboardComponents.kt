@@ -39,7 +39,7 @@ fun StartToggle(size: Dp, enabled: Boolean, running: Boolean, suspended: Boolean
         AppIcon(
             when {
                 suspended -> AppIcons.wifiOff
-                running -> AppIcons.stop
+                running -> AppIcons.pause
                 else -> AppIcons.start
             },
             size = size * 0.4f,

@@ -36,7 +36,6 @@ import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Sync
 import androidx.compose.material.icons.filled.UnfoldMore
@@ -204,7 +203,6 @@ object AppIcons {
     val appsList: ImageVector get() = Icons.AutoMirrored.Outlined.List
     val iconTile: ImageVector get() = Icons.Outlined.Image
     val start: ImageVector get() = Icons.Filled.PlayArrow
-    val stop: ImageVector get() = Icons.Filled.Stop
     val pause: ImageVector get() = Icons.Filled.Pause
 }
 
