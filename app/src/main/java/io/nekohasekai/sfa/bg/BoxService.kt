@@ -55,6 +55,13 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         internal val dashboardConfig = _dashboardConfig.asStateFlow()
         private const val TAG = "BoxService"
 
+        /**
+         * Set when the last reload failed but the previous configuration of the same
+         * profile was started again, so the service never stopped.
+         */
+        @Volatile internal var lastReloadFellBack = false
+            private set
+
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
             Settings.dataStore.initialize()
@@ -102,6 +109,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private var lastProfileName = ""
+
+    // The configuration the core last started with, used to fall back when a
+    // reload of the same profile fails (for example a remote rule set that cannot
+    // be downloaded while the phone sleeps) instead of stopping the service.
+    private class StartedConfig(val profileId: Long, val content: String, val core: String)
+    @Volatile private var lastStarted: StartedConfig? = null
     private var startupJob: Job? = null
     @Volatile private var stopRequested = false
 
@@ -134,6 +147,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             try {
                 startOrReloadCore(content, profile.typed.core)
+                lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core)
             } catch (e: Exception) {
                 stopAndAlert(Alert.CreateService, e.message)
                 return
@@ -202,9 +216,21 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             return
         }
         lastProfileName = profile.name
+        lastReloadFellBack = false
         try {
             startOrReloadCore(content, profile.typed.core)
+            lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core)
         } catch (e: Exception) {
+            val previous = lastStarted
+            if (previous != null && previous.profileId == selectedProfileId && previous.content != content) {
+                val fellBack = runCatching { startOrReloadCore(previous.content, previous.core) }
+                if (fellBack.isSuccess) {
+                    Log.w(TAG, "reload failed, kept the previous configuration", e)
+                    lastReloadFellBack = true
+                    throw e
+                }
+                fellBack.exceptionOrNull()?.let(e::addSuppressed)
+            }
             stopAndAlert(Alert.CreateService, e.message)
             // Return reload failures to the command client so configuration
             // editors can restore their previous content instead of reporting success.
@@ -281,6 +307,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             receiverRegistered = false
         }
         notification.close()
+        lastStarted = null
         GlobalScope.launch(Dispatchers.IO) {
             startupJob?.join()
             val pfd = fileDescriptor

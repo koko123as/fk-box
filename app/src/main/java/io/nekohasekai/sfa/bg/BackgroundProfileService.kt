@@ -44,7 +44,14 @@ internal class BackgroundProfileService(private val context: Context) : ServiceC
         val mode = withContext(Dispatchers.IO) { Settings.detectServiceMode() }
         if (!recover && mode == Settings.serviceMode) {
             recoveryRequired = true
-            withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().serviceReload() }
+            try {
+                withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().serviceReload() }
+            } catch (error: Exception) {
+                // The service went back to the previous configuration, which the
+                // rollback restores on disk too: nothing left to restart.
+                if (BoxService.lastReloadFellBack) recoveryRequired = false
+                throw error
+            }
             check(connection.status == Status.Started) { "The local service stopped while applying the subscription" }
         } else {
             if (mode == ServiceMode.VPN) {

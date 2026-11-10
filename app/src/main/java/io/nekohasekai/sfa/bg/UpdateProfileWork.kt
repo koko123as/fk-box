@@ -1,16 +1,23 @@
 package io.nekohasekai.sfa.bg
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequest
 import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
+import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.utils.HTTPClient
 import kotlinx.coroutines.CancellationException
@@ -21,6 +28,7 @@ import java.util.concurrent.TimeUnit
 class UpdateProfileWork {
     companion object {
         private const val WORK_NAME = "UpdateProfile"
+        private const val SCREEN_ON_WORK_NAME = "UpdateProfileOnScreenOn"
         private const val TAG = "UpdateProfileWork"
 
         suspend fun reconfigureUpdater() {
@@ -77,6 +85,9 @@ class UpdateProfileWork {
                         if (current.typed.type != TypedProfile.Type.Remote || !current.typed.autoUpdate) return@withLock
                         val age = (System.currentTimeMillis() - current.typed.lastUpdated.time) / 1000L
                         if (age < current.typed.autoUpdateInterval * 60) return@withLock
+                        // Applying a changed selected profile reloads the core and drops
+                        // every connection; with the screen off that is a silent outage.
+                        if (deferUntilScreenOn(current.id)) return@withLock
                         val fetch = HTTPClient().use { it.getSubscription(current.typed.remoteURL, current.typed.core) }
                         val interval = current.typed.autoUpdateInterval
                         val service = BackgroundProfileService(context)
@@ -97,6 +108,43 @@ class UpdateProfileWork {
             // A provider's profile-update-interval changed a schedule.
             if (intervalChanged) reconfigureUpdater()
             return success
+        }
+
+        private fun deferUntilScreenOn(profileId: Long): Boolean {
+            if (profileId != Settings.selectedProfile) return false
+            if (BoxService.dashboardConfig.value == null) return false
+            if (Application.powerManager.isInteractive) return false
+            ScreenOnUpdate.arm()
+            return true
+        }
+    }
+
+    /** Runs the update once the screen turns on again, while the process is alive. */
+    private object ScreenOnUpdate : BroadcastReceiver() {
+        private var armed = false
+
+        @Synchronized
+        fun arm() {
+            if (armed) return
+            ContextCompat.registerReceiver(
+                Application.application,
+                this,
+                IntentFilter(Intent.ACTION_SCREEN_ON),
+                ContextCompat.RECEIVER_NOT_EXPORTED,
+            )
+            armed = true
+        }
+
+        @Synchronized
+        override fun onReceive(context: Context, intent: Intent) {
+            if (!armed) return
+            runCatching { Application.application.unregisterReceiver(this) }
+            armed = false
+            WorkManager.getInstance(Application.application).enqueueUniqueWork(
+                SCREEN_ON_WORK_NAME,
+                ExistingWorkPolicy.KEEP,
+                OneTimeWorkRequest.Builder(UpdateTask::class.java).build(),
+            )
         }
     }
 

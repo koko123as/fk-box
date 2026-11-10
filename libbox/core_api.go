@@ -608,6 +608,25 @@ func pickMihomoGlobalDefault() {
 	}
 }
 
+// CoreDefaultNetworkChanged is called when the underlying default network is
+// replaced (Wi-Fi to cellular and back). Connections of mihomo and Xray are
+// still bound to the old network and would hang until their own timeouts;
+// close them so apps reconnect at once. sing-box resets its own connections
+// when its default interface changes.
+func CoreDefaultNetworkChanged() {
+	running := otherCore()
+	if running == nil {
+		return
+	}
+	if running.core == CoreMihomo {
+		flushCoreDNS()
+		closeAllMihomoConnections()
+	}
+	if running.xrayTrack != nil {
+		running.xrayTrack.closeAll()
+	}
+}
+
 func closeAllMihomoConnections() {
 	mihomoStatistic.DefaultManager.Range(func(tracker mihomoStatistic.Tracker) bool {
 		_ = tracker.Close()
