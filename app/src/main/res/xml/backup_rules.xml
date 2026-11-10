@@ -1,14 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and below. Profiles hold proxy credentials in plain text, so they
+     move only by direct device-to-device transfer, never to cloud backup. -->
 <full-backup-content>
 
     <include
         domain="database"
-        path="profiles.db" />
+        path="profiles.db"
+        requireFlags="deviceToDeviceTransfer" />
     <include
         domain="database"
-        path="settings.db" />
+        path="settings.db"
+        requireFlags="deviceToDeviceTransfer" />
     <include
         domain="file"
-        path="configs" />
+        path="configs"
+        requireFlags="deviceToDeviceTransfer" />
 
 </full-backup-content>

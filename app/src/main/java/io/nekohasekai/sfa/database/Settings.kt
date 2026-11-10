@@ -29,7 +29,7 @@ object Settings {
             Application.application,
             KeyValueDatabase::class.java,
             Path.SETTINGS_DATABASE_PATH,
-        ).fallbackToDestructiveMigration()
+        ).fallbackToDestructiveMigrationOnDowngrade()
             .enableMultiInstanceInvalidation()
             .setQueryExecutor { GlobalScope.launch { it.run() } }
             .build()
