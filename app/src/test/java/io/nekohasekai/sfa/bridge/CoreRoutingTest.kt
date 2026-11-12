@@ -124,6 +124,11 @@ class CoreRoutingTest {
         assertEquals(listOf("b", "c", "a"), moved.map { it.id })
         assertEquals(source, CoreRouting.move(source, 0, 5))
         assertEquals(listOf("a.com", "b.com", "geosite:cn", "1.2.3.0/24"), CoreRouting.splitValues(" a.com\nb.com, geosite:cn\t1.2.3.0/24 \n"))
+        // A regexp line stays whole: patterns may contain commas and spaces.
+        assertEquals(
+            listOf("a.com", "regexp:^a{1,3}\\.b, c$", "d.com"),
+            CoreRouting.splitValues("a.com\n  regexp:^a{1,3}\\.b, c$ \nd.com"),
+        )
     }
 
     @Test

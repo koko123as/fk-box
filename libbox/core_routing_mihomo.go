@@ -59,8 +59,9 @@ func yamlNames(sequence *yaml.Node) []string {
 }
 
 type mihomoTargets struct {
-	names map[string]bool
-	proxy string
+	names     map[string]bool
+	proxy     string
+	providers []string // proxy-providers: their nodes cannot be rule targets
 }
 
 func newMihomoTargets(root *yaml.Node, rules []string) *mihomoTargets {
@@ -72,6 +73,11 @@ func newMihomoTargets(root *yaml.Node, rules []string) *mihomoTargets {
 	groups := yamlNames(yamlMapValue(root, "proxy-groups"))
 	for _, name := range append(proxies, groups...) {
 		targets.names[name] = true
+	}
+	if node := yamlMapValue(root, "proxy-providers"); node != nil && node.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			targets.providers = append(targets.providers, node.Content[i].Value)
+		}
 	}
 	for i := len(rules) - 1; i >= 0; i-- {
 		if target, ok := mihomoMatchTarget(rules[i]); ok && !mihomoBuiltinTargets[strings.ToUpper(target)] {
@@ -109,6 +115,11 @@ func (t *mihomoTargets) target(target routingTarget) (string, error) {
 		return "REJECT", nil
 	case routingTargetNode:
 		if !t.names[target.Tag] {
+			if len(t.providers) > 0 {
+				// mihomo resolves rule targets among proxies and proxy-groups
+				// only (config.parseRules), not the nodes of a proxy-provider.
+				return "", fmt.Errorf("%q is not a proxy or group of the profile (nodes of proxy-providers %s cannot be rule targets in mihomo; choose the group that contains it)", target.Tag, strings.Join(t.providers, ", "))
+			}
 			return "", fmt.Errorf("proxy or group %q is not in the profile", target.Tag)
 		}
 		return target.Tag, nil
@@ -116,9 +127,28 @@ func (t *mihomoTargets) target(target routingTarget) (string, error) {
 	return "", fmt.Errorf("unknown target %s", target.Type)
 }
 
+// mihomoRoutingTargets lists the names a mihomo rule can target: the
+// profile's proxies and proxy-groups (not the nodes of its proxy-providers).
+func mihomoRoutingTargets(content string) ([]string, error) {
+	var document yaml.Node
+	if err := yaml.Unmarshal([]byte(normalizeCoreContent(content)), &document); err != nil {
+		return nil, err
+	}
+	if document.Kind != yaml.DocumentNode || len(document.Content) == 0 {
+		return nil, fmt.Errorf("not a YAML mapping")
+	}
+	root := document.Content[0]
+	return append(yamlNames(yamlMapValue(root, "proxy-groups")), yamlNames(yamlMapValue(root, "proxies"))...), nil
+}
+
 // mihomoPayloadSafe: a payload inside AND,((...)) must not contain the
-// characters that delimit logic rules.
-func mihomoPayloadSafe(payload string) bool {
+// characters that delimit logic rules. mihomo's logic parser splits on
+// parentheses (rules/logic/logic.go format) and then reads each part with
+// ParseRulePayload, which keeps commas in DOMAIN-REGEX payloads.
+func mihomoPayloadSafe(kind, payload string) bool {
+	if kind == "DOMAIN-REGEX" {
+		return !strings.ContainsAny(payload, "()")
+	}
 	return !strings.ContainsAny(payload, ",()")
 }
 
@@ -129,9 +159,11 @@ type mihomoProviders struct {
 	written map[string]bool
 }
 
+type mihomoRuleProvider struct{ name, behavior string }
+
 // list writes a downloaded list as up to three local providers and returns
-// their names.
-func (p *mihomoProviders) list(list *routingList) ([]string, error) {
+// their names and behaviors.
+func (p *mihomoProviders) list(list *routingList) ([]mihomoRuleProvider, error) {
 	type part struct {
 		behavior string
 		lines    []string
@@ -148,7 +180,7 @@ func (p *mihomoProviders) list(list *routingList) ([]string, error) {
 	for _, value := range list.match.regex {
 		classical = append(classical, "DOMAIN-REGEX,"+value)
 	}
-	var names []string
+	var names []mihomoRuleProvider
 	for _, item := range []part{{"domain", domains}, {"ipcidr", cidrs}, {"classical", classical}} {
 		if len(item.lines) == 0 {
 			continue
@@ -169,7 +201,7 @@ func (p *mihomoProviders) list(list *routingList) ([]string, error) {
 			return nil, fmt.Errorf("rule-provider %s already exists in the profile", name)
 		}
 		p.added[name] = map[string]any{"type": "file", "behavior": item.behavior, "format": "text", "path": relative}
-		names = append(names, name)
+		names = append(names, mihomoRuleProvider{name, item.behavior})
 	}
 	return names, nil
 }
@@ -183,7 +215,9 @@ func mihomoLine(matcher string, conditions []string, target string, params strin
 	}
 	parts := append([]string(nil), conditions...)
 	if matcher != "" {
-		parts = append([]string{matcher}, parts...)
+		// Inside a logic rule a sub-rule carries its own params
+		// ("(IP-CIDR,1.2.3.0/24,no-resolve)"), read by ParseRulePayload.
+		parts = append([]string{matcher + params}, parts...)
 	}
 	if len(parts) == 1 {
 		return parts[0] + "," + target
@@ -213,6 +247,14 @@ func applyMihomoRouting(content string, set *routingSet, rules []compiledRule, w
 			providers.used[node.Content[i].Value] = true
 		}
 	}
+	if mode := yamlMapValue(root, "find-process-mode"); mode != nil && strings.EqualFold(strings.TrimSpace(mode.Value), "off") {
+		for _, rule := range rules {
+			if len(rule.apps) > 0 {
+				warn("the profile sets find-process-mode: off, so mihomo never looks up apps and rules with apps (" + rule.label + ") match nothing; remove it or set it to strict")
+				break
+			}
+		}
+	}
 	var userRules []string
 	applied := 0
 	for _, rule := range rules {
@@ -239,7 +281,7 @@ func applyMihomoRouting(content string, set *routingSet, rules []compiledRule, w
 		}
 		var lines []string
 		add := func(kind, payload, params string) {
-			if len(conditions) > 0 && !mihomoPayloadSafe(payload) {
+			if len(conditions) > 0 && !mihomoPayloadSafe(kind, payload) {
 				warn(rule.label + ": " + payload + " cannot be combined with network/port/app conditions in mihomo, entry skipped")
 				return
 			}
@@ -272,15 +314,22 @@ func applyMihomoRouting(content string, set *routingSet, rules []compiledRule, w
 					// mihomo's pseudo country for private and LAN addresses.
 					value = "lan"
 				}
-				add("GEOIP", value, "")
+				// no-resolve: an IP rule matches connections to IP addresses
+				// (and fake-ip/sniffed hosts mihomo already resolved) without
+				// a DNS lookup for every domain that reaches it.
+				add("GEOIP", value, ",no-resolve")
 			}
 			if rule.list != nil {
 				names, err := providers.list(rule.list)
 				if err != nil {
 					warn(rule.label + ": " + err.Error() + ", list skipped")
 				}
-				for _, name := range names {
-					add("RULE-SET", name, "")
+				for _, provider := range names {
+					params := ""
+					if provider.behavior == "ipcidr" {
+						params = ",no-resolve"
+					}
+					add("RULE-SET", provider.name, params)
 				}
 			}
 		}

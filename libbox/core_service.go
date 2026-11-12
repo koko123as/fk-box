@@ -261,11 +261,13 @@ func (s *CommandServer) openCoreTun(options *OverrideOptions) (int, error) {
 }
 
 // Xray: the profile's inbounds are replaced by the TUN inbound; DNS sent to
-// the TUN's DNS address goes to a dns outbound.
-func startXrayCore(running *runningCore, content string) error {
+// the TUN's DNS address goes to a dns outbound. xrayStartRoot builds the JSON
+// the core is started with (also used by the routing tests, which start the
+// same configuration with xrayCore.New).
+func xrayStartRoot(content string) (map[string]any, map[string]any, error) {
 	var root map[string]any
 	if err := json.Unmarshal([]byte(normalizeCoreContent(content)), &root); err != nil {
-		return err
+		return nil, nil, err
 	}
 	root["inbounds"] = []any{map[string]any{
 		"tag":      "tun-in",
@@ -297,6 +299,14 @@ func startXrayCore(running *runningCore, content string) error {
 	xrayApplyAccessLog(logConfig)
 	delete(logConfig, "error")
 	root["log"] = logConfig
+	return root, logConfig, nil
+}
+
+func startXrayCore(running *runningCore, content string) error {
+	root, logConfig, err := xrayStartRoot(content)
+	if err != nil {
+		return err
+	}
 	encoded, err := json.Marshal(root)
 	if err != nil {
 		return err

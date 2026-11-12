@@ -3,13 +3,17 @@ package libbox
 // Xray: user rules become routing.rules field rules in front of the profile's
 // own rules (startXrayCore later puts its DNS rule ahead of all of them).
 // Conditions inside one Xray rule are all required, so a rule that matches
-// both domains and IPs is written as two rules. geosite:/geoip: are read from
+// both domains and IPs is written as two rules, with distinct ruleTags
+// ("… (domain)", "… (ip)"), since Xray rejects a repeated ruleTag. geosite:/geoip: are read from
 // the shared geo directory (core_geo.go). Targets use outboundTag, or
 // balancerTag when the profile routes through a balancer (link-converted and
 // merged-array profiles do), so existing balancers keep working.
 
 import (
+	"encoding/json"
 	"fmt"
+	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -19,20 +23,87 @@ var xrayNonProxyProtocols = map[string]bool{"freedom": true, "blackhole": true, 
 // with none of them except a network covering tcp and udp is a catch-all.
 var xrayMatcherKeys = []string{"domain", "domains", "ip", "port", "sourceIP", "source", "sourcePort", "user", "vlessRoute", "inboundTag", "protocol", "attrs", "localIP", "localPort", "process", "localOS", "webhook"}
 
+// A port condition covering every port ("0-65535", "1-65535", as v2rayN
+// writes its catch-all) narrows nothing either.
 func xrayIsCatchAll(rule map[string]any) bool {
 	if rule == nil || (anyString(rule["outboundTag"]) == "" && anyString(rule["balancerTag"]) == "") {
 		return false
 	}
 	for _, key := range xrayMatcherKeys {
-		if _, ok := rule[key]; ok {
-			return false
+		value, ok := rule[key]
+		if !ok {
+			continue
 		}
+		if key == "port" && xrayAllPorts(value) {
+			continue
+		}
+		return false
 	}
-	network := strings.ToLower(fmt.Sprint(rule["network"]))
-	if _, ok := rule["network"]; !ok {
+	value, ok := rule["network"]
+	if !ok {
 		return true
 	}
-	return strings.Contains(network, "tcp") && strings.Contains(network, "udp")
+	networks := map[string]bool{}
+	var parts []string
+	switch typed := value.(type) {
+	case string:
+		parts = strings.Split(typed, ",")
+	case []any:
+		for _, item := range typed {
+			parts = append(parts, fmt.Sprint(item))
+		}
+	default:
+		return false
+	}
+	for _, part := range parts {
+		networks[strings.ToLower(strings.TrimSpace(part))] = true
+	}
+	return networks["tcp"] && networks["udp"]
+}
+
+// xrayAllPorts reports whether an Xray port condition (a number, "a-b",
+// comma-separated list of either) covers 1-65535.
+func xrayAllPorts(value any) bool {
+	var text string
+	switch typed := value.(type) {
+	case string:
+		text = typed
+	case json.Number:
+		text = typed.String()
+	case float64:
+		text = strconv.FormatFloat(typed, 'f', -1, 64)
+	default:
+		return false
+	}
+	type span struct{ from, to int }
+	var spans []span
+	for _, part := range strings.Split(text, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		from, to, isRange := strings.Cut(part, "-")
+		if !isRange {
+			to = from
+		}
+		low, err1 := strconv.Atoi(strings.TrimSpace(from))
+		high, err2 := strconv.Atoi(strings.TrimSpace(to))
+		if err1 != nil || err2 != nil || low > high {
+			return false
+		}
+		spans = append(spans, span{low, high})
+	}
+	sort.Slice(spans, func(i, j int) bool { return spans[i].from < spans[j].from })
+	next := 1
+	for _, item := range spans {
+		if item.from > next {
+			return false
+		}
+		if item.to+1 > next {
+			next = item.to + 1
+		}
+	}
+	return next > 65535
 }
 
 type xrayTargets struct {
@@ -184,9 +255,25 @@ func applyXrayRouting(content string, set *routingSet, rules []compiledRule, war
 	}
 	targets := newXrayTargets(root, routing)
 	existing := anyList(routing["rules"])
+	// Xray refuses a config whose rules repeat a ruleTag (router.ReloadRules:
+	// "duplicate ruleTag"), so every tag written here is unique, also against
+	// the profile's own.
+	ruleTags := map[string]bool{}
+	for _, item := range existing {
+		if tag := anyString(anyMap(item)["ruleTag"]); tag != "" {
+			ruleTags[tag] = true
+		}
+	}
+	uniqueRuleTag := func(base string) string {
+		tag := base
+		for i := 2; ruleTags[tag]; i++ {
+			tag = fmt.Sprintf("%s [%d]", base, i)
+		}
+		ruleTags[tag] = true
+		return tag
+	}
 	var userRules []any
 	applied := 0
-	usesIP := false
 	for _, rule := range rules {
 		if len(rule.apps) > 0 {
 			warn(rule.label + ": Xray cannot match Android apps, skipped (use Access control or the sing-box / mihomo core)")
@@ -208,7 +295,9 @@ func applyXrayRouting(content string, set *routingSet, rules []compiledRule, war
 			}
 			conditions["port"] = strings.Join(parts, ",")
 		}
-		build := func(key string, values []string) map[string]any {
+		// suffix tells apart the two Xray rules one user rule becomes when it
+		// matches domains and IPs (conditions inside one Xray rule are ANDed).
+		build := func(key string, values []string, suffix string) map[string]any {
 			entry := map[string]any{}
 			for k, v := range conditions {
 				entry[k] = v
@@ -222,20 +311,24 @@ func applyXrayRouting(content string, set *routingSet, rules []compiledRule, war
 				entry[k] = v
 			}
 			if rule.label != "" {
-				entry["ruleTag"] = "fk " + rule.label
+				entry["ruleTag"] = uniqueRuleTag("fk " + rule.label + suffix)
 			}
 			return entry
 		}
 		if rule.all {
-			userRules = append(userRules, build("", nil))
+			userRules = append(userRules, build("", nil, ""))
 		} else {
 			destination := rule.destination()
-			if domains := xrayDomains(destination); len(domains) > 0 {
-				userRules = append(userRules, build("domain", domains))
+			domains, ips := xrayDomains(destination), xrayIPs(destination)
+			domainSuffix, ipSuffix := "", ""
+			if len(domains) > 0 && len(ips) > 0 {
+				domainSuffix, ipSuffix = " (domain)", " (ip)"
 			}
-			if ips := xrayIPs(destination); len(ips) > 0 {
-				userRules = append(userRules, build("ip", ips))
-				usesIP = true
+			if len(domains) > 0 {
+				userRules = append(userRules, build("domain", domains, domainSuffix))
+			}
+			if len(ips) > 0 {
+				userRules = append(userRules, build("ip", ips, ipSuffix))
 			}
 		}
 		applied++
@@ -263,7 +356,7 @@ func applyXrayRouting(content string, set *routingSet, rules []compiledRule, war
 					kept = append(kept, item)
 				}
 			}
-			final := map[string]any{"network": "tcp,udp", "ruleTag": "fk fallback"}
+			final := map[string]any{"network": "tcp,udp", "ruleTag": uniqueRuleTag("fk fallback")}
 			for k, v := range target {
 				final[k] = v
 			}
@@ -271,14 +364,12 @@ func applyXrayRouting(content string, set *routingSet, rules []compiledRule, war
 		}
 	}
 	routing["rules"] = append(userRules, tail...)
-	if usesIP {
-		// IP rules only see a sniffed domain's address when Xray resolves it.
-		switch strategy := anyString(routing["domainStrategy"]); strategy {
-		case "", "AsIs":
-			routing["domainStrategy"] = "IPIfNonMatch"
-			warn("Xray domainStrategy " + map[bool]string{true: "(unset)", false: strategy}[strategy == ""] + " -> IPIfNonMatch so IP rules also match domains")
-		}
-	}
+	// The profile's domainStrategy is kept. With AsIs (Xray's default) an IP
+	// rule matches connections to IP addresses (and to domains the profile
+	// resolves itself) without a DNS lookup for every unmatched domain, the
+	// way sing-box ip_cidr and mihomo no-resolve rules behave; a profile that
+	// wants IP rules to match sniffed domains as well sets IPIfNonMatch or
+	// IPOnDemand itself.
 	root["routing"] = routing
 	if len(targets.added) > 0 {
 		root["outbounds"] = append(anyList(root["outbounds"]), targets.added...)

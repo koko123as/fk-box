@@ -151,6 +151,22 @@ func (t *singBoxTargets) outbound(target routingTarget) (string, error) {
 	return "", fmt.Errorf("unknown target %s", target.Type)
 }
 
+// singBoxPlainSniff: a sniff action that applies to every connection (only
+// sniff options, no match conditions).
+func singBoxPlainSniff(rule map[string]any) bool {
+	if anyString(rule["action"]) != "sniff" {
+		return false
+	}
+	for key := range rule {
+		switch key {
+		case "action", "sniffer", "timeout", "type":
+		default:
+			return false
+		}
+	}
+	return anyString(rule["type"]) == "" || anyString(rule["type"]) == "default"
+}
+
 func singBoxAction(outbound string) map[string]any {
 	if outbound == "" {
 		return map[string]any{"action": "reject"}
@@ -202,9 +218,13 @@ func applySingBoxRouting(content string, set *routingSet, rules []compiledRule, 
 	}
 	existing := anyList(route["rules"])
 	leading := singBoxLeadingRules(existing)
+	// Domain rules need the domain a sniff action finds (rule actions run in
+	// order, so a sniff further down comes too late for the user rules);
+	// one sniff without conditions in the leading rules covers every
+	// connection.
 	hasSniff := false
-	for _, item := range existing {
-		if anyString(anyMap(item)["action"]) == "sniff" {
+	for _, item := range existing[:leading] {
+		if singBoxPlainSniff(anyMap(item)) {
 			hasSniff = true
 		}
 	}

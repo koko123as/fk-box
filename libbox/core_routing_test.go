@@ -217,8 +217,12 @@ func TestCoreRoutingXray(t *testing.T) {
 	if err := CheckCoreConfig(CoreXray, result.Content); err != nil {
 		t.Fatalf("Xray rejected the compiled profile: %v\n%s", err, result.Content)
 	}
-	if result.Applied != 5 || !strings.Contains(result.Warnings, "cannot match Android apps") || !strings.Contains(result.Warnings, "IPIfNonMatch") {
+	if result.Applied != 5 || !strings.Contains(result.Warnings, "cannot match Android apps") || strings.Contains(result.Warnings, "IPIfNonMatch") {
 		t.Fatalf("applied %d, warnings %q", result.Applied, result.Warnings)
+	}
+	before, err := decodeOrderedJSON(profile.Content)
+	if err != nil {
+		t.Fatal(err)
 	}
 	var root struct {
 		Routing struct {
@@ -230,12 +234,14 @@ func TestCoreRoutingXray(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := root.Routing.Rules
-	if root.Routing.DomainStrategy != "IPIfNonMatch" {
-		t.Fatalf("domainStrategy %s", root.Routing.DomainStrategy)
+	// The profile's domainStrategy is kept (no forced IPIfNonMatch).
+	if root.Routing.DomainStrategy != anyString(anyMap(before["routing"])["domainStrategy"]) {
+		t.Fatalf("domainStrategy changed to %s", root.Routing.DomainStrategy)
 	}
 	// ads(domain) | cn(domain, ip) | sites(domain, ip) | list(domain, ip) | node(domain) | profile private | fallback
 	if fmt.Sprint(r[0]["domain"]) != "[geosite:category-ads-all]" || r[0]["outboundTag"] != "block" ||
 		r[1]["outboundTag"] != "direct" || fmt.Sprint(r[2]["ip"]) != "[geoip:cn geoip:private]" ||
+		r[0]["ruleTag"] != "fk #1 ads" || r[1]["ruleTag"] != "fk #2 cn (domain)" || r[2]["ruleTag"] != "fk #2 cn (ip)" ||
 		r[3]["balancerTag"] != "proxy" || r[3]["port"] != "443,8000-9000" || r[3]["network"] != "tcp" ||
 		fmt.Sprint(r[3]["domain"]) != "[domain:example.com full:a.example.org keyword:foo]" || fmt.Sprint(r[4]["ip"]) != "[1.2.3.0/24 geoip:jp]" ||
 		r[7]["outboundTag"] != "ss-node" {
@@ -249,6 +255,14 @@ func TestCoreRoutingXray(t *testing.T) {
 		if rule["balancerTag"] == "proxy" && rule["network"] == "tcp,udp" && len(rule) <= 3 {
 			t.Fatalf("the profile's catch-all survived: %v", r)
 		}
+	}
+	tags := map[string]bool{}
+	for _, rule := range r {
+		tag, _ := rule["ruleTag"].(string)
+		if tag != "" && tags[tag] {
+			t.Fatalf("duplicate ruleTag %q in %v", tag, r)
+		}
+		tags[tag] = true
 	}
 }
 
@@ -308,9 +322,10 @@ func TestCoreRoutingMihomo(t *testing.T) {
 	want := []string{
 		"GEOSITE,category-ads-all,REJECT",
 		"GEOSITE,cn,DIRECT",
-		"GEOIP,lan,DIRECT",
+		"GEOIP,lan,DIRECT,no-resolve",
 		"AND,((DOMAIN-SUFFIX,example.com),(NETWORK,TCP),(DST-PORT,443/8000-9000)),PROXY",
-		"AND,((IP-CIDR,1.2.3.0/24),(NETWORK,TCP),(DST-PORT,443/8000-9000)),PROXY",
+		"AND,((IP-CIDR,1.2.3.0/24,no-resolve),(NETWORK,TCP),(DST-PORT,443/8000-9000)),PROXY",
+		"AND,((GEOIP,jp,no-resolve),(NETWORK,TCP),(DST-PORT,443/8000-9000)),PROXY",
 		"AND,((DOMAIN-SUFFIX,app.example.com),(NETWORK,UDP),(OR,((PROCESS-NAME,com.a),(PROCESS-NAME,com.b)))),AUTO",
 		"PROCESS-NAME,com.c,DIRECT",
 		"MATCH,DIRECT",
@@ -347,7 +362,8 @@ func TestCoreRoutingListCache(t *testing.T) {
 	}
 	old := time.Now().Add(-48 * time.Hour)
 	_ = os.Chtimes(path, old, old)
-	cache := &routingListCache{dir: dir, client: defaultRoutingLists().client, now: time.Now, loaded: map[string]*routingList{}}
+	cache := defaultRoutingLists()
+	cache.dir = dir
 	list, err := cache.load("http://127.0.0.1:1/list.txt")
 	if err != nil || !list.stale || list.match.suffix[0] != "cached.example.com" {
 		t.Fatalf("stale cache not used: %+v %v", list, err)

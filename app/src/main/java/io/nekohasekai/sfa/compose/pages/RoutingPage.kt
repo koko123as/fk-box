@@ -22,6 +22,7 @@ import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
@@ -34,11 +35,11 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bridge.CoreRouting
 import io.nekohasekai.sfa.compose.BoxController
 import io.nekohasekai.sfa.compose.Json
 import io.nekohasekai.sfa.compose.json
-import io.nekohasekai.sfa.compose.rows
 import io.nekohasekai.sfa.compose.theme.BoxTheme
 import io.nekohasekai.sfa.compose.theme.JetBrainsMono
 import io.nekohasekai.sfa.compose.ui.AppIcons
@@ -109,9 +110,6 @@ private fun ruleSummary(rule: CoreRouting.Rule): String {
     return (listOf(what) + extra).joinToString(" · ") + " → " + targetText(rule.target)
 }
 
-/** The proxy groups and nodes of the running profile, offered as node targets. */
-private fun liveTags(box: BoxController): List<String> =
-    box.groups.flatMap { group -> listOf(group["tag"].toString()) + rows(group["items"]).map { it["tag"].toString() } }.distinct().filter { it.isNotBlank() && it != "null" }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -149,7 +147,7 @@ fun RoutingRulesPage(box: BoxController) {
     }
     fun openRule(index: Int?) {
         val rule = index?.let { set.rules[it] } ?: CoreRouting.Rule()
-        navigator?.pushPage({ RoutingRuleEditor(box, rule, isNew = index == null) }) { result ->
+        navigator?.pushPage({ RoutingRuleEditor(box, rule, isNew = index == null, core = core) }) { result ->
             val current = draft.core(core)
             when (result) {
                 is CoreRouting.Rule -> update(
@@ -179,6 +177,7 @@ fun RoutingRulesPage(box: BoxController) {
         })
     }
     val dirty = draft != saved
+    val status by BoxService.routingStatus.collectAsState()
     BoxEditGuard(dirty = dirty, busy = saving) {
         CommonScaffold(
             title = tr("Traffic routing"),
@@ -215,6 +214,10 @@ fun RoutingRulesPage(box: BoxController) {
                             Text(error!!, Modifier.padding(top = 8.dp), style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error))
                         }
                     }
+                    status?.let { current ->
+                        Spacer(Modifier.height(8.dp))
+                        RoutingStatusRow(current) { navigator?.pushPage({ RoutingStatusPage(box) }, null) }
+                    }
                     Spacer(Modifier.height(12.dp))
                     ListItemOptions(tr("Merge mode"), CoreRouting.modes, set.mode, ItemPosition.Start, { modeText[it] ?: it }) {
                         update(set.copy(mode = it))
@@ -234,6 +237,9 @@ fun RoutingRulesPage(box: BoxController) {
                     ListFooter(
                         tr("Rules apply to the core that runs the selected profile and are added when the service starts; the profile file is not changed. Long-press or drag the handle to reorder; the first matching rule wins."),
                     )
+                    if (core == "xray") {
+                        ListFooter(tr("Xray: IP and geoip entries match connections to IP addresses; sniffed domains are matched by domain and geosite entries. Set domainStrategy in the profile to also resolve domains for IP rules."))
+                    }
                 }
                 Box(Modifier.weight(1f)) {
                     if (set.rules.isEmpty()) {
@@ -278,7 +284,7 @@ fun RoutingRulesPage(box: BoxController) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RoutingRuleEditor(box: BoxController, initial: CoreRouting.Rule, isNew: Boolean) {
+private fun RoutingRuleEditor(box: BoxController, initial: CoreRouting.Rule, isNew: Boolean, core: String) {
     val navigator = LocalBoxNavigator.current
     val dialogs = LocalDialogs.current
     val scope = rememberCoroutineScope()
@@ -286,7 +292,12 @@ private fun RoutingRuleEditor(box: BoxController, initial: CoreRouting.Rule, isN
     var values by remember { mutableStateOf(initial.values.joinToString("\n")) }
     var apps by remember { mutableStateOf(initial.apps.joinToString("\n")) }
     var error by remember { mutableStateOf<String?>(null) }
-    val tags = remember(box.groups) { liveTags(box) }
+    // Outbounds, groups and balancers of the selected profile when it runs on
+    // this core (mihomo proxy-provider nodes cannot be rule targets).
+    val tags by produceState(emptyList<String>(), core) {
+        value = runCatching { box.call { routingTargets(core) } }
+            .onFailure { if (it is CancellationException) throw it }.getOrDefault(emptyList())
+    }
     val contentText = translated(contentTitles)
     val targetText = translated(targetTitles)
     val networkText = translated(networkTitles)
@@ -343,7 +354,7 @@ private fun RoutingRuleEditor(box: BoxController, initial: CoreRouting.Rule, isN
                         textStyle = mono,
                         modifier = Modifier.fillMaxWidth().heightIn(min = 120.dp),
                     )
-                    ListFooter(tr("One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern, 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."))
+                    ListFooter(tr("One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern (the whole line), 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."))
                 }
                 "preset" -> Section(count = 1) { _, position ->
                     ListItemOptions(tr("Preset"), CoreRouting.presets.map { it.id }, rule.preset, position, { id -> presetText[id] ?: id }) { rule = rule.copy(preset = it) }
@@ -456,6 +467,89 @@ private fun RoutingPreviewPage(box: BoxController, draft: CoreRouting.Rules, tab
                         position = position,
                     )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RoutingStatusRow(status: BoxService.RoutingStatus, onClick: () -> Unit) {
+    val core = coreTitles[status.core] ?: status.core
+    val text = when {
+        status.error.isNotEmpty() -> tr("Not applied at the last start; the profile runs without the rules") + " (" + core + ")"
+        status.active -> tr("Applied at the last start") + ": " + core + " · " + status.applied + " " + tr("rules") +
+            if (status.warnings.isNotEmpty()) " · " + tr("Warnings") + " " + status.warnings.size else ""
+        else -> tr("No routing changes at the last start") + " (" + core + ")"
+    }
+    ListItem(
+        title = {
+            Text(
+                text,
+                maxLines = 2,
+                style = androidx.compose.material3.LocalTextStyle.current.copy(
+                    color = if (status.error.isNotEmpty()) BoxTheme.scheme.error else BoxTheme.scheme.onSurface,
+                ),
+            )
+        },
+        position = ItemPosition.StartAndEnd,
+        onClick = onClick,
+    )
+}
+
+@Composable
+private fun RoutingStatusPage(box: BoxController) {
+    val scope = rememberCoroutineScope()
+    val status by BoxService.routingStatus.collectAsState()
+    var retrying by remember { mutableStateOf(false) }
+    var failure by remember { mutableStateOf<String?>(null) }
+    BoxPage("Routing status") {
+        val current = status
+        if (current == null) {
+            EmptyState(tr("Not started yet"), tr("The status appears after the service starts."), icon = AppIcons.info)
+            return@BoxPage
+        }
+        val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(current.time))
+        val rowsList = listOf(
+            tr("Core") to (coreTitles[current.core] ?: current.core),
+            tr("Started") to time,
+            tr("Rules applied") to if (current.error.isNotEmpty()) "0" else current.applied.toString(),
+        )
+        Section(count = rowsList.size) { index, position ->
+            ListItem(title = { Text(rowsList[index].first) }, trailing = { Text(rowsList[index].second) }, position = position)
+        }
+        if (current.error.isNotEmpty()) {
+            Section(title = tr("Not applied"), count = 1) { _, position ->
+                ListItem(
+                    title = {
+                        SelectionContainer {
+                            Text(current.error, style = androidx.compose.material3.LocalTextStyle.current.copy(color = BoxTheme.scheme.error))
+                        }
+                    },
+                    position = position,
+                )
+            }
+            ListFooter(tr("The profile runs without the routing rules. Fix the rules or the network, then reload the service to apply them again."))
+            Spacer(Modifier.height(12.dp))
+            TonalButton(tr("Reload service"), if (retrying) null else ({
+                retrying = true
+                failure = null
+                scope.launch {
+                    try {
+                        box.call { reloadService() }
+                    } catch (error: CancellationException) {
+                        throw error
+                    } catch (error: Exception) {
+                        failure = BoxController.describe(error)
+                    } finally {
+                        retrying = false
+                    }
+                }
+            }), icon = AppIcons.refresh)
+            failure?.let { ListFooter(it) }
+        }
+        if (current.warnings.isNotEmpty()) {
+            Section(title = tr("Warnings"), count = current.warnings.size) { index, position ->
+                ListItem(title = { SelectionContainer { Text(current.warnings[index]) } }, position = position)
             }
         }
     }

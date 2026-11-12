@@ -20,6 +20,7 @@ package libbox
 
 import (
 	"bufio"
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -34,7 +35,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	xrayConf "github.com/xtls/xray-core/infra/conf"
 )
 
 const (
@@ -60,6 +64,10 @@ const (
 	routingListMaxEntries = 300000
 	routingListFresh      = 24 * time.Hour
 	routingListTimeout    = 15 * time.Second
+	// All lists of one start download together, a few at a time, within
+	// routingListTotalTimeout; a list that misses it keeps its cached copy.
+	routingListTotalTimeout = 20 * time.Second
+	routingListParallel     = 4
 )
 
 // CoreRoutingResult is the content a core starts with after the routing rules
@@ -71,6 +79,11 @@ type CoreRoutingResult struct {
 	Warnings string
 	// Active reports whether anything was changed (rules, final or override).
 	Active bool
+	// Error, set only by StartOrReloadCoreServiceWithRouting, is why the
+	// profile runs without its routing rules (they could not be compiled, or
+	// the core did not start with them); Fallback is set in the second case.
+	Error    string
+	Fallback bool
 }
 
 type routingTarget struct {
@@ -267,6 +280,17 @@ func routingRuleLabel(index int, rule routingRule) string {
 // compileRules expands presets and lists and validates every enabled rule.
 // A rule that cannot be used is skipped with a warning, not fatal.
 func compileRules(set *routingSet, lists routingListLoader, warn func(string)) []compiledRule {
+	if prefetcher, ok := lists.(routingListPrefetcher); ok {
+		var urls []string
+		for _, rule := range set.Rules {
+			if rule.Enabled && rule.Content == routingContentList {
+				urls = append(urls, rule.URL)
+			}
+		}
+		if len(urls) > 1 {
+			prefetcher.prefetch(urls)
+		}
+	}
 	var compiled []compiledRule
 	for index, rule := range set.Rules {
 		if !rule.Enabled {
@@ -436,6 +460,13 @@ func applyCoreRouting(core string, content string, rules string, lists routingLi
 		result.Content, applied, err = applySingBoxRouting(content, set, compiled, warn)
 	case CoreXray:
 		result.Content, applied, err = applyXrayRouting(content, set, compiled, warn)
+		if err == nil {
+			// Checks Xray makes only when its router starts.
+			var config *xrayConf.Config
+			if config, err = decodeXrayConfig(result.Content); err == nil && config.RouterConfig != nil {
+				err = checkXrayRuleTags(config.RouterConfig)
+			}
+		}
 	case CoreMihomo:
 		result.Content, applied, err = applyMihomoRouting(content, set, compiled, warn)
 	default:
@@ -469,11 +500,21 @@ type routingListLoader interface {
 	load(url string) (*routingList, error)
 }
 
+// routingListPrefetcher is a loader that can download several lists at once
+// before compileRules reads them one by one.
+type routingListPrefetcher interface {
+	prefetch(urls []string)
+}
+
 type routingListCache struct {
 	dir    string
 	client *http.Client
 	now    func() time.Time
+	// total bounds the downloads of one prefetch together.
+	total  time.Duration
+	access sync.Mutex
 	loaded map[string]*routingList
+	failed map[string]error
 }
 
 func defaultRoutingLists() *routingListCache {
@@ -485,8 +526,39 @@ func defaultRoutingLists() *routingListCache {
 		dir:    filepath.Join(base, "routing", "lists"),
 		client: &http.Client{Timeout: routingListTimeout},
 		now:    time.Now,
+		total:  routingListTotalTimeout,
 		loaded: map[string]*routingList{},
+		failed: map[string]error{},
 	}
+}
+
+// prefetch loads the lists in parallel (routingListParallel at a time, all of
+// them within c.total), so a start with several lists waits for the slowest
+// one instead of their sum. Results, failures included, are kept for load.
+func (c *routingListCache) prefetch(urls []string) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.total)
+	defer cancel()
+	seen := map[string]bool{}
+	slots := make(chan struct{}, routingListParallel)
+	var group sync.WaitGroup
+	for _, url := range urls {
+		url = strings.TrimSpace(url)
+		if seen[url] {
+			continue
+		}
+		seen[url] = true
+		group.Add(1)
+		go func() {
+			defer group.Done()
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+			case <-ctx.Done():
+			}
+			_, _ = c.loadContext(ctx, url)
+		}()
+	}
+	group.Wait()
 }
 
 func routingListHash(url string) string {
@@ -495,13 +567,38 @@ func routingListHash(url string) string {
 }
 
 func (c *routingListCache) load(url string) (*routingList, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), c.total)
+	defer cancel()
+	return c.loadContext(ctx, url)
+}
+
+func (c *routingListCache) loadContext(ctx context.Context, url string) (*routingList, error) {
 	url = strings.TrimSpace(url)
 	if !strings.HasPrefix(url, "https://") && !strings.HasPrefix(url, "http://") {
 		return nil, fmt.Errorf("only http(s) URLs are supported")
 	}
-	if list, ok := c.loaded[url]; ok {
+	c.access.Lock()
+	list, ok := c.loaded[url]
+	failure := c.failed[url]
+	c.access.Unlock()
+	if ok {
 		return list, nil
 	}
+	if failure != nil {
+		return nil, failure
+	}
+	list, err := c.read(ctx, url)
+	c.access.Lock()
+	defer c.access.Unlock()
+	if err != nil {
+		c.failed[url] = err
+		return nil, err
+	}
+	c.loaded[url] = list
+	return list, nil
+}
+
+func (c *routingListCache) read(ctx context.Context, url string) (*routingList, error) {
 	lower := strings.ToLower(strings.SplitN(url, "?", 2)[0])
 	if strings.HasSuffix(lower, ".srs") || strings.HasSuffix(lower, ".mrs") || strings.HasSuffix(lower, ".dat") || strings.HasSuffix(lower, ".mmdb") {
 		return nil, fmt.Errorf("binary rule-set formats are not supported; use a text list (AdBlock, hosts, domains/CIDR or Clash rules)")
@@ -519,7 +616,7 @@ func (c *routingListCache) load(url string) (*routingList, error) {
 		}
 	}
 	if body == nil {
-		downloaded, err := c.fetch(url)
+		downloaded, err := c.fetch(ctx, url)
 		if err == nil {
 			body, fetched = downloaded, c.now()
 			if mkErr := os.MkdirAll(c.dir, 0o755); mkErr == nil {
@@ -540,12 +637,11 @@ func (c *routingListCache) load(url string) (*routingList, error) {
 	}
 	list := &routingList{url: url, hash: hash, fetched: fetched, stale: stale}
 	parseRoutingListText(string(body), &list.match)
-	c.loaded[url] = list
 	return list, nil
 }
 
-func (c *routingListCache) fetch(url string) ([]byte, error) {
-	request, err := http.NewRequest(http.MethodGet, url, nil)
+func (c *routingListCache) fetch(ctx context.Context, url string) ([]byte, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -579,6 +675,8 @@ var routingHostsSkip = map[string]bool{"localhost": true, "localhost.localdomain
 //   - Clash classical: DOMAIN-SUFFIX,example.com / DOMAIN / DOMAIN-KEYWORD /
 //     DOMAIN-REGEX / IP-CIDR / IP-CIDR6 (also inside a YAML payload list)
 //   - Clash domain text: +.example.com, .example.com, example.com
+//   - v2fly domain lists: full:, domain:, keyword:, regexp: (attributes such
+//     as "@cn" ignored, include: skipped)
 //   - plain IP / CIDR lines
 func parseRoutingListText(text string, match *routingMatch) {
 	scanner := bufio.NewScanner(strings.NewReader(text))
@@ -640,6 +738,31 @@ func parseRoutingListText(text string, match *routingMatch) {
 		if strings.HasPrefix(line, "- ") {
 			line = strings.Trim(strings.TrimSpace(line[2:]), `'"`)
 		}
+		// v2fly attributes ("example.com @ads") qualify an entry; they do
+		// not change what it matches.
+		if index := strings.Index(line, " @"); index > 0 && !strings.Contains(line, ",") {
+			line = strings.TrimSpace(line[:index])
+		}
+		// v2fly domain-list-community: full: / domain: / keyword: / regexp:
+		// lines, attributes after " @" dropped; include: needs the other
+		// list files and is skipped.
+		if kind, value, ok := routingV2flyLine(line); ok {
+			switch kind {
+			case "full":
+				domain(value, true)
+			case "domain":
+				domain(value, false)
+			case "keyword":
+				if value != "" && !strings.ContainsAny(value, " ,()") {
+					add("keyword", strings.ToLower(value))
+				}
+			case "regexp":
+				if _, err := regexp.Compile(value); err == nil && value != "" {
+					add("regex", value)
+				}
+			}
+			continue
+		}
 		if strings.HasPrefix(line, "||") {
 			rest := line[2:]
 			if strings.Contains(rest, "$") {
@@ -663,8 +786,8 @@ func parseRoutingListText(text string, match *routingMatch) {
 			}
 			continue
 		}
-		if kind, payload, ok := strings.Cut(line, ","); ok {
-			payload = strings.TrimSpace(strings.SplitN(payload, ",", 2)[0])
+		if kind, rest, ok := strings.Cut(line, ","); ok {
+			payload := strings.TrimSpace(strings.SplitN(rest, ",", 2)[0])
 			switch strings.ToUpper(strings.TrimSpace(kind)) {
 			case "DOMAIN-SUFFIX", "HOST-SUFFIX":
 				domain(payload, false)
@@ -675,6 +798,9 @@ func parseRoutingListText(text string, match *routingMatch) {
 					add("keyword", strings.ToLower(payload))
 				}
 			case "DOMAIN-REGEX":
+				// The pattern may contain commas (a{1,3}); DOMAIN-REGEX takes
+				// no params, as in mihomo's ParseRulePayload.
+				payload = strings.TrimSpace(rest)
 				if _, err := regexp.Compile(payload); err == nil && payload != "" {
 					add("regex", payload)
 				}
@@ -710,4 +836,79 @@ func routingUniqueTag(used map[string]bool, base string) string {
 	}
 	used[tag] = true
 	return tag
+}
+
+// CoreRoutingTargets lists, one per line, the names a "node or group" rule of
+// this core can target in the profile: sing-box outbound and endpoint tags,
+// Xray outbound and balancer tags, mihomo proxies and proxy-groups (the nodes
+// of mihomo proxy-providers cannot be rule targets, so they are left out).
+func CoreRoutingTargets(core string, content string) (string, error) {
+	var names []string
+	switch core {
+	case CoreSingBox, "":
+		root, err := decodeOrderedJSON(content)
+		if err != nil {
+			return "", err
+		}
+		for _, key := range []string{"outbounds", "endpoints"} {
+			for _, item := range anyList(root[key]) {
+				outbound := anyMap(item)
+				switch anyString(outbound["type"]) {
+				case "dns", "block":
+					continue
+				}
+				names = append(names, anyString(outbound["tag"]))
+			}
+		}
+	case CoreXray:
+		root, err := decodeOrderedJSON(content)
+		if err != nil {
+			return "", err
+		}
+		for _, item := range anyList(anyMap(root["routing"])["balancers"]) {
+			names = append(names, anyString(anyMap(item)["tag"]))
+		}
+		for _, item := range anyList(root["outbounds"]) {
+			outbound := anyMap(item)
+			if anyString(outbound["protocol"]) == "dns" {
+				continue
+			}
+			names = append(names, anyString(outbound["tag"]))
+		}
+	case CoreMihomo:
+		var err error
+		if names, err = mihomoRoutingTargets(content); err != nil {
+			return "", err
+		}
+	default:
+		return "", fmt.Errorf("unknown core %s", core)
+	}
+	seen := map[string]bool{}
+	var unique []string
+	for _, name := range names {
+		if name != "" && !seen[name] {
+			seen[name] = true
+			unique = append(unique, name)
+		}
+	}
+	return strings.Join(unique, "\n"), nil
+}
+
+// routingV2flyLine splits a v2fly domain-list-community line ("full:a.com
+// @cn") into its type and value; ok is false for other lines.
+func routingV2flyLine(line string) (kind string, value string, ok bool) {
+	prefix, rest, found := strings.Cut(line, ":")
+	if !found {
+		return "", "", false
+	}
+	switch kind = strings.ToLower(strings.TrimSpace(prefix)); kind {
+	case "full", "domain", "keyword", "regexp", "include":
+	default:
+		return "", "", false
+	}
+	value = strings.TrimSpace(rest)
+	if index := strings.Index(value, " @"); index >= 0 {
+		value = strings.TrimSpace(value[:index])
+	}
+	return kind, value, true
 }

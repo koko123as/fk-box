@@ -18,7 +18,6 @@ import (
 	mihomoProcess "github.com/metacubex/mihomo/component/process"
 	mihomoConstant "github.com/metacubex/mihomo/constant"
 	"github.com/sagernet/sing-box/log"
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 func init() {
@@ -76,35 +75,68 @@ func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
 // StartOrReloadCoreServiceWithRouting applies the routing rules of the core
 // that runs (rules: that core's rule set as JSON, "" for none) to the content
 // handed to the core, then starts it like StartOrReloadCoreService. The
-// profile on disk is not touched. A routing problem that leaves the profile
-// unusable is reported as a warning and the profile starts without the rules.
-func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *OverrideOptions) error {
+// profile on disk is not touched.
+//
+// The routing rules never keep a profile from running: when they cannot be
+// compiled, or the core refuses to start with them (for example a remote
+// sing-box rule-set whose first download fails, which sing-box treats as a
+// start error in route/rule/rule_set_remote.go), the profile is started as it
+// is and the returned result carries the reason in Error (Fallback is set when
+// the core was started a second time without the rules). Only an error of the
+// profile itself is returned as an error. The app shows Error and Warnings on
+// the routing page and as a notice.
+func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *OverrideOptions) (*CoreRoutingResult, error) {
 	if core == "" {
 		core = CoreSingBox
 	}
-	result, routingErr := ApplyCoreRouting(core, configContent, rules)
-	content := configContent
-	if routingErr == nil {
-		content = result.Content
-	}
-	if err := s.StartOrReloadCoreService(core, content, options); err != nil {
-		if routingErr == nil && result.Active {
-			return E.Cause(err, "with routing rules")
-		}
-		return err
-	}
 	label := map[string]string{CoreSingBox: "sing-box", CoreXray: "Xray", CoreMihomo: "mihomo"}[core]
+	result, routingErr := ApplyCoreRouting(core, configContent, rules)
 	if routingErr != nil {
-		s.StartedService.WriteMessage(log.LevelError, "分流规则未应用："+routingErr.Error())
-		return nil
+		if err := s.StartOrReloadCoreService(core, configContent, options); err != nil {
+			return nil, err
+		}
+		failed := &CoreRoutingResult{Content: configContent, Error: routingErr.Error()}
+		s.StartedService.WriteMessage(log.LevelError, "分流规则未应用："+failed.Error)
+		return failed, nil
 	}
-	if result.Active {
-		s.StartedService.WriteMessage(log.LevelInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
+	if !result.Active {
+		if err := s.StartOrReloadCoreService(core, configContent, options); err != nil {
+			return nil, err
+		}
+		s.writeRoutingWarnings(result)
+		return result, nil
 	}
+	if startErr := s.StartOrReloadCoreService(core, result.Content, options); startErr != nil {
+		if err := s.StartOrReloadCoreService(core, configContent, options); err != nil {
+			// The profile does not start without the rules either: its own error.
+			return nil, err
+		}
+		reason := startErr.Error()
+		if routingIsRuleSetDownload(reason) {
+			reason = "a remote rule-set could not be downloaded (" + reason + "); the rules are applied again at the next start or reload"
+		} else {
+			reason = label + " did not start with the rules: " + reason
+		}
+		fallback := &CoreRoutingResult{Content: configContent, Warnings: result.Warnings, Error: reason, Fallback: true}
+		s.StartedService.WriteMessage(log.LevelError, "分流规则未应用，已按原配置启动："+reason)
+		s.writeRoutingWarnings(fallback)
+		return fallback, nil
+	}
+	s.StartedService.WriteMessage(log.LevelInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
+	s.writeRoutingWarnings(result)
+	return result, nil
+}
+
+// routingIsRuleSetDownload recognises sing-box's start error for a remote
+// rule-set whose initial download failed ("initial rule-set: <tag>: ...").
+func routingIsRuleSetDownload(message string) bool {
+	return strings.Contains(message, "initial rule-set")
+}
+
+func (s *CommandServer) writeRoutingWarnings(result *CoreRoutingResult) {
 	for _, warning := range strings.Split(result.Warnings, "\n") {
 		if warning != "" {
 			s.StartedService.WriteMessage(log.LevelWarn, "分流规则："+warning)
 		}
 	}
-	return nil
 }

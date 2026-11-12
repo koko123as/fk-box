@@ -152,8 +152,16 @@ internal object CoreRouting {
         require(portsValid(rule.ports)) { "Ports are 1–65535, as 443 or 8000-9000, separated by commas" }
     }
 
-    /** Splits what the user typed into entries: one per line, comma or space. */
-    fun splitValues(text: String): List<String> = text.split('\n', ',', ' ', '\t').map { it.trim() }.filter { it.isNotEmpty() }
+    /**
+     * Splits what the user typed into entries: one per line, or several on a
+     * line separated by commas or spaces. A `regexp:` line is one entry as it
+     * is, since a pattern may contain commas and spaces (`a{1,3}`).
+     */
+    fun splitValues(text: String): List<String> = text.lines().flatMap { line ->
+        val trimmed = line.trim()
+        if (trimmed.startsWith("regexp:", ignoreCase = true)) listOf(trimmed)
+        else trimmed.split(',', ' ', '\t')
+    }.map { it.trim() }.filter { it.isNotEmpty() }
 
     /** Copies another core's rules (new ids, so both can be edited independently). */
     fun copyFrom(rules: Rules, from: String, to: String): Rules {

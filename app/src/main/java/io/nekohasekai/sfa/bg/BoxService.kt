@@ -49,6 +49,22 @@ import java.io.File
 class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
     internal data class DashboardConfig(val server: CommandServer, val profileId: Long, val content: String)
 
+    /**
+     * What the routing rules did at the last start or reload (libbox
+     * CoreRoutingResult): shown on Settings › Traffic routing. [error] is
+     * why the profile runs without its rules; [fallback] is set when the
+     * core was started again without them.
+     */
+    internal data class RoutingStatus(
+        val core: String,
+        val applied: Int,
+        val active: Boolean,
+        val fallback: Boolean,
+        val error: String,
+        val warnings: List<String>,
+        val time: Long,
+    )
+
     companion object {
         @Volatile internal var dashboardServer: CommandServer? = null
             private set
@@ -62,6 +78,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
          */
         @Volatile internal var lastReloadFellBack = false
             private set
+
+        private val _routingStatus = MutableStateFlow<RoutingStatus?>(null)
+        internal val routingStatus = _routingStatus.asStateFlow()
 
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
@@ -296,10 +315,41 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             GeoResources.ensureBundledBlocking(service)
             DefaultNetworkMonitor.pushSystemDNS()
         }
+        var unreadable: String? = null
         val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
-            .onFailure { Log.w(TAG, "routing rules unreadable, starting without them", it) }.getOrDefault("")
-        commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+            .onFailure {
+                Log.w(TAG, "routing rules unreadable, starting without them", it)
+                unreadable = it.message ?: it.javaClass.simpleName
+            }.getOrDefault("")
+        // The rules never keep the profile from running: libbox starts it
+        // without them and reports why (CoreRoutingResult.error).
+        val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+        publishRoutingStatus(core, result, unreadable)
         rules
+    }
+
+    private fun publishRoutingStatus(core: String, result: io.nekohasekai.libbox.CoreRoutingResult?, unreadable: String?) {
+        val error = unreadable?.let { "Routing rules unreadable: $it" } ?: result?.error.orEmpty()
+        val previous = routingStatus.value
+        val status = RoutingStatus(
+            core = core,
+            applied = result?.applied ?: 0,
+            active = result?.active == true,
+            fallback = result?.fallback == true,
+            error = error,
+            warnings = result?.warnings.orEmpty().lines().filter { it.isNotBlank() },
+            time = System.currentTimeMillis(),
+        )
+        _routingStatus.value = status
+        if (error.isNotEmpty() && error != previous?.error) {
+            // A notice even when the app is closed: the service is running,
+            // but without the rules the user set.
+            val zh = java.util.Locale.getDefault().language == "zh"
+            val title = if (zh) "分流规则未生效，已按原配置运行" else "Routing rules not applied; the profile runs without them"
+            android.os.Handler(android.os.Looper.getMainLooper()).post {
+                android.widget.Toast.makeText(service, title + "\n" + error.take(160), android.widget.Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {

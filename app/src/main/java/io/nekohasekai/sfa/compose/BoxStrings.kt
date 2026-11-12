@@ -693,7 +693,6 @@ internal object BoxStrings {
         map["Add a rule, a preset, or copy the rules of another core from the menu."] = "添加规则或预设，或从菜单复制其他内核的规则。"
         map["Match"] = "匹配"
         map["Content"] = "内容"
-        map["One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern, 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."] = "每行一项：example.com（含子域名）、full:example.com、keyword:关键字、regexp:正则、1.2.3.0/24、geosite:cn、geoip:cn、geoip:private。"
         map["AdBlock (||example.com^), hosts, plain domain/CIDR lists and Clash rule lists. Downloaded when the service starts and refreshed daily; the last copy is used when a download fails."] = "支持 AdBlock（||example.com^）、hosts、纯域名/CIDR 列表和 Clash 规则列表。服务启动时下载并每天刷新，下载失败时使用上次的副本。"
         map["Target"] = "目标"
         map["Conditions"] = "条件"
@@ -726,5 +725,21 @@ internal object BoxStrings {
         map["Ports are 1–65535, as 443 or 8000-9000, separated by commas"] = "端口范围 1–65535，写作 443 或 8000-9000，用逗号分隔"
         map["Routing rules apply to the local service"] = "分流规则仅作用于本机服务"
         map["No profile selected"] = "未选择配置"
+        map["Xray: IP and geoip entries match connections to IP addresses; sniffed domains are matched by domain and geosite entries. Set domainStrategy in the profile to also resolve domains for IP rules."] =
+            "Xray：IP 和 geoip 条目匹配目标为 IP 地址的连接；嗅探到域名的连接按域名和 geosite 条目匹配。如需 IP 规则也匹配域名（会先解析域名），请在配置中设置 domainStrategy。"
+        map["Not applied at the last start; the profile runs without the rules"] = "上次启动未应用，当前按原配置运行"
+        map["Applied at the last start"] = "上次启动已应用"
+        map["rules"] = "条规则"
+        map["No routing changes at the last start"] = "上次启动未改动分流"
+        map["Routing status"] = "分流规则状态"
+        map["Not started yet"] = "尚未启动"
+        map["The status appears after the service starts."] = "服务启动后显示状态。"
+        map["Started"] = "启动时间"
+        map["Not applied"] = "未应用"
+        map["The profile runs without the routing rules. Fix the rules or the network, then reload the service to apply them again."] =
+            "当前按原配置运行，未带分流规则。修正规则或网络后，重载服务即可重新应用。"
+        map["Reload service"] = "重载服务"
+        map["One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern (the whole line), 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."] =
+            "每行一条：example.com（含子域名）、full:example.com、keyword:关键词、regexp:正则（整行为一条）、1.2.3.0/24、geosite:cn、geoip:cn、geoip:private。"
     }
 }

@@ -498,6 +498,23 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 
+    /**
+     * The names a "node or group" rule of [core] can target in the selected
+     * profile (libbox CoreRoutingTargets: mihomo proxy-provider nodes are
+     * left out); empty when the selected profile runs on another core.
+     */
+    suspend fun routingTargets(core: String): List<String> {
+        if (CommandTarget.isRemote) return emptyList()
+        return withContext(Dispatchers.IO) {
+            val id = Settings.selectedProfile
+            if (id == -1L) return@withContext emptyList()
+            val profile = ProfileManager.get(id) ?: return@withContext emptyList()
+            val content = java.io.File(profile.typed.path).readText()
+            if (ProfileContent.coreOf(profile, content) != core) return@withContext emptyList()
+            Libbox.coreRoutingTargets(core, content).lines().filter { it.isNotBlank() }
+        }
+    }
+
     private fun savedRouting(): CoreRouting.Rules = runCatching { CoreRouting.decode(Settings.routingRules) }.getOrDefault(CoreRouting.Rules())
 
     suspend fun updateSettings(values: Map<String, Any?>) = operations.withLock {

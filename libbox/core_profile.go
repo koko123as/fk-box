@@ -211,6 +211,42 @@ func checkXrayConfig(content string) error {
 		if _, err := config.RouterConfig.Build(); err != nil && !isMissingGeoFile(err) {
 			return fmt.Errorf("xray routing: %w", err)
 		}
+		if err := checkXrayRuleTags(config.RouterConfig); err != nil {
+			return fmt.Errorf("xray routing: %w", err)
+		}
+	}
+	return nil
+}
+
+// checkXrayRuleTags repeats the checks router.ReloadRules makes only when the
+// core starts (app/router/router.go): RouterConfig.Build accepts a repeated
+// ruleTag or balancer tag, which Xray then refuses to start with.
+func checkXrayRuleTags(config *xrayConf.RouterConfig) error {
+	balancers := map[string]bool{}
+	for _, balancer := range config.Balancers {
+		if balancer == nil {
+			continue
+		}
+		if balancers[balancer.Tag] {
+			return fmt.Errorf("duplicate balancer tag %s", balancer.Tag)
+		}
+		balancers[balancer.Tag] = true
+	}
+	ruleTags := map[string]bool{}
+	for index, raw := range config.RuleList {
+		var rule struct {
+			RuleTag string `json:"ruleTag"`
+		}
+		if err := json.Unmarshal(raw, &rule); err != nil {
+			return fmt.Errorf("rule %d: %w", index, err)
+		}
+		if rule.RuleTag == "" {
+			continue
+		}
+		if ruleTags[rule.RuleTag] {
+			return fmt.Errorf("duplicate ruleTag %s", rule.RuleTag)
+		}
+		ruleTags[rule.RuleTag] = true
 	}
 	return nil
 }
