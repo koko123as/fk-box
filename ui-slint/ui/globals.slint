@@ -1,0 +1,115 @@
+// Navigation, menus, dialogs and messages shared by every page
+// (compose/ui/Navigator.kt, Popup.kt, Dialog.kt and BoxApp's snackbar).
+// Rust (src/app.rs, src/nav.rs) owns the state; pages only call back.
+
+import { Glyph } from "icons.slint";
+
+// PopupMenuItem: a menu row; `section` starts a titled section, `divider` a plain one.
+export struct MenuItem {
+    label: string,
+    glyph: Glyph,
+    has-glyph: bool,
+    checked: bool,
+    enabled: bool,
+    danger: bool,
+    section: string,
+    divider: bool,
+    submenu: bool,
+}
+
+// IconAction: a bar button.
+export struct BarAction {
+    id: string,
+    glyph: Glyph,
+    tooltip: string,
+    enabled: bool,
+    selected: bool,
+    loading: bool,
+}
+
+// A route over the home page: a pushed page or a form (NavLevel).
+// `pane` is the destination whose content pane a page stays in outside the
+// phone layout (NestedNavigatorHost); -1 for the root navigator.
+export struct Route {
+    id: int,
+    kind: string,
+    arg: string,
+    form: bool,
+    pane: int,
+    // True for the first page of a form: its bar leads with close (LocalSheetRoot).
+    sheet-root: bool,
+}
+
+// ScaffoldKeyword: a chip under the bar.
+export struct Keyword {
+    key: string,
+    label: string,
+    removable: bool,
+    selected: bool,
+    section-start: bool,
+}
+
+export global Nav {
+    // The window, for the view mode (ui/Layout.kt: ≤600 phone, ≤840 laptop).
+    in-out property <length> width: 400px;
+    in-out property <length> height: 800px;
+    out property <bool> mobile: width <= 600px;
+    out property <int> view-mode: width <= 600px ? 0 : width <= 840px ? 1 : 2;
+    // cardSpacingOf
+    out property <length> gap: view-mode == 0 ? 8px : view-mode == 1 ? 12px : 16px;
+    // System bar insets (Window.safe-area-insets).
+    in-out property <length> inset-top;
+    in-out property <length> inset-bottom;
+    in-out property <length> inset-left;
+    in-out property <length> inset-right;
+    in-out property <length> keyboard-height;
+
+    in property <[Route]> routes;
+    // The selected home destination, by label (HomePage `current`).
+    in-out property <string> tab: "Dashboard";
+    in property <bool> ready;
+    in property <string> startup-error;
+
+    callback select-tab(string);
+    callback push(string, string);
+    callback form(string, string);
+    // maybePop: closes the innermost route, asking its guard.
+    callback pop();
+    // System back; false lets the activity handle it.
+    callback back() -> bool;
+    // Closes the form a scrim tap dismisses.
+    callback dismiss-form(int);
+    // Page actions, dispatched by name in Rust.
+    callback act(string, string);
+    // Two-argument variant for forms and lists.
+    callback act2(string, string, string);
+    callback retry-startup();
+
+    // The popup menu (CommonPopupBox / ContextMenuRegion).
+    callback open-menu(string, length, length);
+    in property <bool> menu-open;
+    in property <[MenuItem]> menu-items;
+    in property <length> menu-x;
+    in property <length> menu-y;
+    callback menu-pick(int);
+    callback menu-dismiss();
+
+    // The dialog (DialogHost: confirm, input and message dialogs).
+    in property <bool> dialog-open;
+    in property <string> dialog-title;
+    in property <string> dialog-message;
+    in property <string> dialog-ok;
+    in property <string> dialog-cancel;
+    in property <bool> dialog-danger;
+    in property <bool> dialog-input;
+    in property <bool> dialog-number;
+    in-out property <string> dialog-text;
+    in property <string> dialog-hint;
+    in property <string> dialog-suffix;
+    in property <string> dialog-error;
+    callback dialog-done(bool, string);
+
+    // The snackbar: errors stay longer; a new message replaces the current one.
+    in property <string> toast;
+    in property <bool> toast-error;
+}

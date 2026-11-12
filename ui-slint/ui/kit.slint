@@ -1,0 +1,834 @@
+// The shared components (compose/ui/Kit.kt, Card.kt, AppIcons.kt, Forms.kt,
+// Scaffold.kt, NullStatus.kt): flat Material 3 surfaces, 12 dp corners,
+// Material icons, no shadows, no transitions.
+
+import { Theme, TextRole } from "theme.slint";
+import { Icons, Glyph } from "icons.slint";
+import { Nav, BarAction, Keyword } from "globals.slint";
+import "fonts/MaterialIcons-Regular.ttf";
+import "fonts/MaterialIconsOutlined-Regular.otf";
+
+// AppIcon
+export component Icon inherits Text {
+    in property <Glyph> glyph;
+    in property <length> size: 24px;
+    text: glyph.code;
+    font-family: glyph.outlined ? "Material Icons Outlined" : "Material Icons";
+    font-size: size;
+    width: size;
+    height: size;
+    horizontal-alignment: center;
+    vertical-alignment: center;
+    color: Theme.s.on-surface;
+    accessible-role: none;
+}
+
+// Text in one of the AppTextStyle roles.
+export component T inherits Text {
+    in property <TextRole> role: TextRole.body;
+    in property <bool> emphasized;
+    font-size: Theme.size(role);
+    font-family: Theme.font-family;
+    font-weight: emphasized ? (role == TextRole.headline ? 600 : 500) : (role == TextRole.headline ? 500 : 400);
+    color: Theme.s.on-surface;
+    overflow: elide;
+    vertical-alignment: center;
+}
+
+// The Material 3 indeterminate progress ring (CommonCircleLoading).
+export component Spinner inherits Rectangle {
+    in property <length> size: 24px;
+    in property <color> color: Theme.s.primary;
+    width: size;
+    height: size;
+    Path {
+        width: root.size;
+        height: root.size;
+        viewbox-width: 100;
+        viewbox-height: 100;
+        stroke: root.color;
+        stroke-width: root.size < 20px ? 2px : 3px;
+        fill: transparent;
+        commands: "M 50 6 A 44 44 0 1 1 6 50";
+        transform-origin: { x: root.size / 2, y: root.size / 2 };
+        transform-rotation: mod(animation-tick() / 3ms, 360) * 1deg;
+    }
+}
+
+// The M3 linear progress indicator (indeterminate when value < 0).
+export component ProgressBar inherits Rectangle {
+    in property <float> value: -1;
+    in property <color> color: Theme.s.primary;
+    height: 4px;
+    background: Theme.s.surface-container-highest;
+    clip: true;
+    Rectangle {
+        x: root.value < 0 ? (mod(animation-tick() / 2ms, 1400) / 1000 - 0.4) * root.width : 0;
+        width: root.value < 0 ? root.width * 0.4 : root.width * clamp(root.value, 0, 1);
+        background: root.color;
+    }
+}
+
+// AppIconButton: a 40 dp round icon button; disabled when !enabled.
+export component IconButton inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <length> size: 40px;
+    in property <length> icon-size: 24px;
+    in property <color> color: Theme.s.on-surface-variant;
+    in property <bool> enabled: true;
+    in property <string> tooltip;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: touch.pressed && enabled ? color.with-alpha(0.12) : transparent;
+    accessible-role: button;
+    accessible-label: tooltip;
+    Icon {
+        glyph: root.glyph;
+        size: root.icon-size;
+        color: root.enabled ? root.color : root.color.with-alpha(0.38);
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// TonalIconButton: filled when selected, tonal alone, plain when grouped.
+export component TonalIconButton inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <length> size: 40px;
+    in property <length> icon-size: 24px;
+    in property <bool> enabled: true;
+    in property <bool> selected;
+    in property <bool> grouped;
+    in property <bool> loading;
+    in property <string> tooltip;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: selected ? Theme.s.primary : grouped ? (touch.pressed ? Theme.s.on-surface.with-alpha(0.1) : transparent)
+        : (enabled ? Theme.s.secondary-container : Theme.s.on-surface.with-alpha(0.12));
+    accessible-role: button;
+    accessible-label: tooltip;
+    if root.loading: Spinner { size: root.icon-size - 4px; }
+    if !root.loading: Icon {
+        glyph: root.glyph;
+        size: root.icon-size;
+        color: !root.enabled ? Theme.s.on-surface.with-alpha(0.38) : root.selected ? Theme.s.on-primary : root.grouped ? Theme.s.on-surface-variant : Theme.s.on-secondary-container;
+    }
+    touch := TouchArea {
+        enabled: root.enabled && !root.loading;
+        clicked => { root.clicked(); }
+    }
+}
+
+// TonalButton (FilledTonalButton), FilledPillButton (Button) and TextPillButton (TextButton).
+export component Button inherits Rectangle {
+    in property <string> label;
+    in property <Glyph> glyph;
+    in property <bool> has-glyph;
+    // 0 tonal, 1 filled, 2 text, 3 outlined
+    in property <int> kind;
+    in property <bool> enabled: true;
+    in property <length> button-height: 36px;
+    in property <color> text-color: kind == 1 ? Theme.s.on-primary : kind == 0 ? Theme.s.on-secondary-container : Theme.s.primary;
+    callback clicked();
+    height: max(button-height, label-text.preferred-height + 8px);
+    min-width: row.preferred-width;
+    border-radius: height / 2;
+    border-width: kind == 3 ? 1px : 0;
+    border-color: Theme.s.outline;
+    background: !enabled ? (kind >= 2 ? transparent : Theme.s.on-surface.with-alpha(0.12))
+        : kind == 1 ? Theme.s.primary : kind == 0 ? Theme.s.secondary-container : transparent;
+    accessible-role: button;
+    accessible-label: label;
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: touch.pressed ? root.text-color.with-alpha(0.12) : transparent;
+    }
+    row := HorizontalLayout {
+        padding-left: root.kind == 2 ? 12px : 16px;
+        padding-right: self.padding-left;
+        spacing: 8px;
+        alignment: center;
+        if root.has-glyph: Icon {
+            glyph: root.glyph;
+            size: 18px;
+            y: (parent.height - self.height) / 2;
+            color: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(0.38);
+        }
+        label-text := T {
+            text: root.label;
+            role: TextRole.subheadline;
+            emphasized: true;
+            color: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(0.38);
+        }
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// The Material 3 switch (52 × 32 track).
+export component Switch inherits Rectangle {
+    in property <bool> checked;
+    in property <bool> enabled: true;
+    callback toggled(bool);
+    width: 52px;
+    height: 32px;
+    border-radius: 16px;
+    opacity: enabled ? 1 : 0.38;
+    background: checked ? Theme.s.primary : Theme.s.surface-container-highest;
+    border-width: checked ? 0 : 2px;
+    border-color: Theme.s.outline;
+    accessible-role: switch;
+    accessible-checked: checked;
+    Rectangle {
+        width: root.checked ? 24px : 16px;
+        height: self.width;
+        border-radius: self.width / 2;
+        x: root.checked ? parent.width - self.width - 4px : 8px;
+        y: (parent.height - self.height) / 2;
+        background: root.checked ? Theme.s.on-primary : Theme.s.outline;
+        if root.checked: Icon {
+            glyph: Icons.check;
+            size: 16px;
+            color: Theme.s.primary;
+        }
+    }
+    TouchArea {
+        enabled: root.enabled;
+        clicked => { root.toggled(!root.checked); }
+    }
+}
+
+// The Material 3 radio button.
+export component Radio inherits Rectangle {
+    in property <bool> selected;
+    width: 20px;
+    height: 20px;
+    border-radius: 10px;
+    border-width: 2px;
+    border-color: selected ? Theme.s.primary : Theme.s.on-surface-variant;
+    Rectangle {
+        width: 10px;
+        height: 10px;
+        border-radius: 5px;
+        background: root.selected ? Theme.s.primary : transparent;
+    }
+}
+
+// A checkbox (ListItemCheckbox).
+export component CheckBox inherits Rectangle {
+    in property <bool> checked;
+    width: 18px;
+    height: 18px;
+    border-radius: 2px;
+    border-width: checked ? 0 : 2px;
+    border-color: Theme.s.on-surface-variant;
+    background: checked ? Theme.s.primary : transparent;
+    if root.checked: Icon { glyph: Icons.check; size: 16px; color: Theme.s.on-primary; }
+}
+
+// SelectionBadge: a check on a primary circle.
+export component SelectionBadge inherits Rectangle {
+    in property <length> size: 22px;
+    in property <bool> preferred;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: Theme.s.primary;
+    Icon {
+        glyph: root.preferred ? Icons.pin : Icons.check;
+        size: root.size - 6px;
+        color: Theme.s.on-primary;
+    }
+}
+
+// IconBadge: an icon on a filled circle.
+export component IconBadge inherits Rectangle {
+    in property <Glyph> glyph;
+    in property <length> size: 40px;
+    in property <color> container: Theme.level(2);
+    in property <color> color: Theme.s.on-surface-variant;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: container;
+    Icon {
+        glyph: root.glyph;
+        size: root.size * 0.5;
+        color: root.color;
+    }
+}
+
+// SkeletonPill
+export component Skeleton inherits Rectangle {
+    in property <length> pill-height: 16px;
+    height: pill-height;
+    border-radius: pill-height / 2;
+    background: Theme.s.surface-container-highest;
+}
+
+// DashboardChip: 0 idle, 1 ok, 2 warn.
+export component Chip inherits Rectangle {
+    in property <string> label;
+    in property <int> tone;
+    in property <bool> dot;
+    in property <bool> large;
+    property <color> fg: tone == 1 ? Theme.s.on-success-container : tone == 2 ? Theme.s.on-warning-container : Theme.s.on-surface-variant;
+    height: large ? 28px : 24px;
+    border-radius: self.height / 2;
+    background: tone == 1 ? Theme.s.success-container : tone == 2 ? Theme.s.warning-container : Theme.level(2);
+    min-width: lay.preferred-width;
+    horizontal-stretch: 0;
+    lay := HorizontalLayout {
+        padding-left: root.large ? 12px : 10px;
+        padding-right: self.padding-left;
+        spacing: 6px;
+        alignment: start;
+        if root.dot: Rectangle {
+            width: 6px;
+            height: 6px;
+            y: (parent.height - 6px) / 2;
+            border-radius: 3px;
+            background: root.fg;
+        }
+        T {
+            text: root.label;
+            role: TextRole.caption1;
+            emphasized: true;
+            color: root.fg;
+        }
+    }
+}
+
+// A small tonal pill (ProfileCoreChip, Pill, TonalChip).
+export component Pill inherits Rectangle {
+    in property <string> label;
+    in property <color> fg: Theme.s.secondary;
+    in property <color> bg: fg.with-alpha(0.15);
+    in property <bool> clickable;
+    callback clicked();
+    height: txt.preferred-height + 4px;
+    width: txt.preferred-width + 16px;
+    border-radius: self.height / 2;
+    background: bg;
+    txt := T {
+        text: root.label;
+        role: TextRole.caption1;
+        emphasized: true;
+        color: root.fg;
+        x: 8px;
+    }
+    if root.clickable: TouchArea { clicked => { root.clicked(); } }
+}
+
+// BoxPanel: a flat card for a dashboard panel.
+export component Panel inherits Rectangle {
+    in property <bool> clickable;
+    in property <length> pad: 16px;
+    callback clicked();
+    background: Theme.level(1);
+    border-radius: Theme.radius;
+    clip: true;
+    ta := TouchArea {
+        enabled: root.clickable;
+        clicked => { root.clicked(); }
+    }
+    Rectangle { background: ta.pressed && root.clickable ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
+    VerticalLayout {
+        padding: root.pad;
+        @children
+    }
+}
+
+// PanelTitle: an 18 dp icon, the title and trailing content.
+export component PanelTitle inherits HorizontalLayout {
+    in property <string> title;
+    in property <Glyph> glyph;
+    height: max(26px, Theme.sp(26));
+    spacing: 8px;
+    Icon {
+        glyph: root.glyph;
+        size: 18px;
+        y: (parent.height - 18px) / 2;
+        color: Theme.s.on-surface-variant;
+    }
+    T {
+        text: root.title;
+        role: TextRole.subheadline;
+        emphasized: true;
+        horizontal-stretch: 1;
+    }
+    @children
+}
+
+// CommonCard: a flat card one level up; selected cards take the primary container when `fills`.
+export component Card inherits Rectangle {
+    in property <bool> selected;
+    in property <bool> fills;
+    in property <bool> error;
+    in property <int> level: 1;
+    in property <bool> enabled: true;
+    in property <bool> long-press-menu;
+    callback clicked();
+    callback long-pressed(length, length);
+    border-radius: Theme.radius;
+    background: error ? Theme.s.error-container : (selected && fills) ? Theme.s.primary-container : Theme.level(level);
+    clip: true;
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                hold.running = root.long-press-menu;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+        moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
+    }
+    hold := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.long-pressed(root.absolute-position.x + touch.mouse-x, root.absolute-position.y + touch.mouse-y);
+        }
+    }
+    Rectangle { background: touch.pressed && root.enabled ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
+    @children
+}
+
+// Position of a row in a grouped list: 0 alone (no card), 1 start, 2 middle, 3 end, 4 start and end.
+// ListItem: grouped rows on a card one level up, with a divider between rows.
+export component ListItem inherits Rectangle {
+    in property <string> title;
+    in property <string> subtitle;
+    in property <Glyph> leading;
+    in property <bool> has-leading;
+    in property <string> trailing-text;
+    in property <bool> chevron;
+    in property <int> position: 4;
+    in property <bool> invalid;
+    in property <bool> clickable;
+    in property <bool> enabled: true;
+    in property <int> level: 1;
+    in property <int> title-lines: 2;
+    in property <color> title-color: Theme.s.on-surface;
+    callback clicked();
+    callback long-pressed(length, length);
+    property <bool> top: position == 1 || position == 4;
+    property <bool> bottom: position == 3 || position == 4;
+    min-height: max(56px, lay.preferred-height);
+    border-top-left-radius: top ? Theme.radius : 0;
+    border-top-right-radius: top ? Theme.radius : 0;
+    border-bottom-left-radius: bottom ? Theme.radius : 0;
+    border-bottom-right-radius: bottom ? Theme.radius : 0;
+    background: position == 0 ? transparent : invalid ? Theme.s.error-container : Theme.level(level + 1);
+    clip: true;
+    opacity: enabled ? 1 : 0.6;
+    if root.clickable: Rectangle { background: touch.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
+    touch := TouchArea {
+        enabled: root.clickable && root.enabled;
+        clicked => { root.clicked(); }
+    }
+    lay := HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 16px;
+        if root.has-leading: Icon {
+            glyph: root.leading;
+            color: Theme.s.on-surface-variant;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            T {
+                text: root.title;
+                color: root.title-color;
+                wrap: word-wrap;
+                max-height: root.title-lines * Theme.leading(TextRole.body);
+            }
+            if root.subtitle != "": T {
+                text: root.subtitle;
+                role: TextRole.subheadline;
+                color: Theme.s.on-surface-variant;
+                wrap: word-wrap;
+            }
+        }
+        if root.trailing-text != "": T {
+            text: root.trailing-text;
+            role: TextRole.subheadline;
+            color: Theme.s.on-surface-variant;
+            horizontal-alignment: right;
+            max-width: root.width * 0.45;
+        }
+        @children
+        if root.chevron: Icon {
+            glyph: Icons.chevron-forward;
+            color: Theme.s.on-surface-variant;
+            y: (parent.height - self.height) / 2;
+        }
+    }
+    if root.position != 0 && !root.bottom: Rectangle {
+        x: root.has-leading ? 56px : 16px;
+        y: parent.height - 1px;
+        width: parent.width - self.x - 16px;
+        height: 1px;
+        background: root.invalid ? Theme.s.error : Theme.s.outline-variant;
+    }
+}
+
+// The section header (Section's title) in primary, 24 dp above, 8 dp below.
+export component SectionTitle inherits T {
+    in property <bool> first;
+    role: TextRole.subheadline;
+    emphasized: true;
+    color: Theme.s.primary;
+    height: self.preferred-height + (first ? 8px : 32px);
+    vertical-alignment: bottom;
+    x: 16px;
+    width: parent.width - 32px;
+}
+
+// ListFooter
+export component Footer inherits T {
+    role: TextRole.footnote;
+    color: Theme.s.on-surface-variant;
+    wrap: word-wrap;
+    x: 16px;
+    width: parent.width - 32px;
+    height: self.preferred-height + 8px;
+    vertical-alignment: bottom;
+}
+
+// The 24 dp gap a Section without title leaves.
+export component SectionGap inherits Rectangle { height: 24px; }
+
+// EmptyState / NullStatus / ErrorState
+export component EmptyState inherits VerticalLayout {
+    in property <string> title;
+    in property <string> message;
+    in property <Glyph> glyph: Icons.info;
+    in property <string> action-label;
+    callback action();
+    padding-top: 64px;
+    padding-bottom: 64px;
+    padding-left: 24px;
+    padding-right: 24px;
+    spacing: 12px;
+    alignment: center;
+    Icon {
+        glyph: root.glyph;
+        size: 48px;
+        color: Theme.s.on-surface-variant;
+        x: (parent.width - self.width) / 2;
+    }
+    T {
+        text: root.title;
+        role: TextRole.title3;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    if root.message != "": T {
+        text: root.message;
+        role: TextRole.subheadline;
+        color: Theme.s.on-surface-variant;
+        horizontal-alignment: center;
+        wrap: word-wrap;
+    }
+    if root.action-label != "": HorizontalLayout {
+        alignment: center;
+        padding-top: 4px;
+        Button {
+            label: root.action-label;
+            kind: 0;
+            clicked => { root.action(); }
+        }
+    }
+}
+
+// A text field (OutlinedTextField / FormRowTextField) over the platform IME.
+export component Field inherits Rectangle {
+    in-out property <string> text;
+    in property <string> hint;
+    in property <string> label;
+    in property <bool> invalid;
+    in property <bool> outlined: true;
+    in property <bool> multiline;
+    in property <bool> mono;
+    in property <bool> enabled: true;
+    in property <InputType> input-type: InputType.text;
+    in property <TextHorizontalAlignment> align: TextHorizontalAlignment.left;
+    callback edited(string);
+    callback accepted(string);
+    public function focus() { input.focus(); }
+    min-height: outlined ? 56px : 24px;
+    height: multiline ? self.min-height : max(self.min-height, input.preferred-height + (outlined ? 24px : 0px));
+    border-radius: outlined ? 12px : 0;
+    border-width: outlined ? (input.has-focus ? 2px : 1px) : 0;
+    border-color: invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.outline;
+    if root.outlined && root.label != "": Rectangle {
+        x: 12px;
+        y: -lab.preferred-height / 2;
+        width: lab.preferred-width + 8px;
+        height: lab.preferred-height;
+        background: Theme.s.surface;
+        lab := T {
+            text: root.label;
+            role: TextRole.caption1;
+            color: root.invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.on-surface-variant;
+        }
+    }
+    flick := Flickable {
+        x: root.outlined ? 16px : 0;
+        y: root.outlined ? 12px : 0;
+        width: parent.width - 2 * self.x;
+        height: parent.height - 2 * self.y;
+        viewport-height: max(self.height, input.preferred-height);
+        input := TextInput {
+            text <=> root.text;
+            width: parent.width;
+            height: max(flick.height, self.preferred-height);
+            font-size: Theme.sp(16);
+            font-family: root.mono ? Theme.mono : Theme.font-family;
+            color: Theme.s.on-surface;
+            selection-background-color: Theme.s.primary.with-alpha(0.3);
+            selection-foreground-color: Theme.s.on-surface;
+            single-line: !root.multiline;
+            wrap: root.multiline ? word-wrap : no-wrap;
+            vertical-alignment: root.multiline ? top : center;
+            horizontal-alignment: root.align;
+            input-type: root.input-type;
+            enabled: root.enabled;
+            edited => { root.edited(self.text); }
+            accepted => { root.accepted(self.text); }
+        }
+    }
+    if root.text == "": T {
+        x: flick.x;
+        y: flick.y;
+        width: flick.width;
+        height: root.multiline ? self.preferred-height : flick.height;
+        vertical-alignment: root.multiline ? top : center;
+        horizontal-alignment: root.align;
+        text: root.hint;
+        color: Theme.s.on-surface-variant;
+    }
+}
+
+// The bar's search field (SearchField).
+export component SearchField inherits Rectangle {
+    in-out property <string> text;
+    in property <color> fill: Theme.s.surface-container-high;
+    callback edited(string);
+    public function focus() { f.focus(); }
+    height: 48px;
+    border-radius: 24px;
+    background: fill;
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 8px;
+        spacing: 8px;
+        Icon { glyph: Icons.search; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+        f := Field {
+            outlined: false;
+            text <=> root.text;
+            hint: @tr("Search");
+            horizontal-stretch: 1;
+            edited(t) => { root.edited(t); }
+        }
+        if root.text != "": IconButton {
+            glyph: Icons.clear-field;
+            size: 32px;
+            icon-size: 20px;
+            y: (parent.height - self.height) / 2;
+            clicked => { root.text = ""; root.edited(""); }
+        }
+    }
+}
+
+// The TopAppBar of CommonScaffold: the leading button, the title (or the
+// title menu, or the search field), at most three bar buttons and the
+// overflow menu. Rust folds actions into the overflow (foldBarActions).
+export component TopBar inherits Rectangle {
+    in property <string> title;
+    // 0 none, 1 back, 2 close
+    in property <int> leading;
+    in property <[BarAction]> actions;
+    // The overflow menu's key; empty for none.
+    in property <string> menu-key;
+    // The title menu's key (titleMenuItems).
+    in property <string> title-menu-key;
+    in property <bool> searchable;
+    in-out property <bool> searching;
+    in-out property <string> query;
+    in property <bool> loading;
+    in property <[Keyword]> keywords;
+    in property <color> bar-color: Theme.s.surface;
+    callback action(string);
+    callback search(string);
+    callback keyword(string, bool);
+    height: lay.preferred-height;
+    background: bar-color;
+    lay := VerticalLayout {
+        HorizontalLayout {
+            height: 64px;
+            padding-left: root.leading == 0 && !root.searching ? 16px : 4px;
+            padding-right: 4px;
+            spacing: 4px;
+            if root.searching: IconButton {
+                glyph: Icons.back;
+                tooltip: @tr("Cancel");
+                color: Theme.s.on-surface;
+                y: (parent.height - self.height) / 2;
+                clicked => {
+                    root.searching = false;
+                    root.query = "";
+                    root.search("");
+                }
+            }
+            if !root.searching && root.leading != 0: IconButton {
+                glyph: root.leading == 2 ? Icons.close : Icons.back;
+                tooltip: root.leading == 2 ? @tr("Close") : @tr("Back");
+                color: Theme.s.on-surface;
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.pop(); }
+            }
+            if root.searching: sf := SearchField {
+                horizontal-stretch: 1;
+                y: (parent.height - self.height) / 2;
+                text <=> root.query;
+                edited(t) => { root.search(t); }
+                init => { self.focus(); }
+            }
+            if !root.searching: Rectangle {
+                horizontal-stretch: 1;
+                HorizontalLayout {
+                    padding-left: root.leading == 0 ? 0px : 8px;
+                    alignment: start;
+                    spacing: 4px;
+                    title-text := T {
+                        text: root.title;
+                        role: TextRole.page-title;
+                        horizontal-stretch: 0;
+                        max-width: root.width - 220px;
+                    }
+                    if root.title-menu-key != "": Icon {
+                        glyph: Icons.caret-down;
+                        color: Theme.s.on-surface-variant;
+                        y: (parent.height - self.height) / 2;
+                    }
+                }
+                if root.title-menu-key != "": TouchArea {
+                    clicked => { Nav.open-menu(root.title-menu-key, self.absolute-position.x, self.absolute-position.y + self.height); }
+                }
+            }
+            if !root.searching && root.searchable: IconButton {
+                glyph: Icons.search;
+                tooltip: @tr("Search");
+                color: Theme.s.on-surface;
+                y: (parent.height - self.height) / 2;
+                clicked => { root.searching = true; }
+            }
+            if !root.searching: HorizontalLayout {
+                spacing: 4px;
+                for a in root.actions: Rectangle {
+                    width: 48px;
+                    if a.loading: Spinner { size: 24px; }
+                    if !a.loading: IconButton {
+                        glyph: a.glyph;
+                        tooltip: a.tooltip;
+                        enabled: a.enabled;
+                        color: a.selected ? Theme.s.primary : Theme.s.on-surface;
+                        clicked => { root.action(a.id); }
+                    }
+                }
+            }
+            if !root.searching && root.menu-key != "": IconButton {
+                glyph: Icons.more;
+                tooltip: @tr("More");
+                color: Theme.s.on-surface;
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.open-menu(root.menu-key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
+            }
+        }
+        if root.loading: ProgressBar { }
+        if root.keywords.length > 0: Flickable {
+            height: 44px;
+            viewport-width: kw.preferred-width;
+            kw := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-bottom: 8px;
+                spacing: 8px;
+                for k in root.keywords: Rectangle {
+                    height: 32px;
+                    width: kl.preferred-width;
+                    border-radius: 8px;
+                    border-width: k.selected ? 0 : 1px;
+                    border-color: Theme.s.outline;
+                    background: k.selected ? Theme.s.secondary-container : transparent;
+                    kl := HorizontalLayout {
+                        padding-left: 12px;
+                        padding-right: k.removable ? 8px : 12px;
+                        spacing: 6px;
+                        if k.selected && !k.removable: Icon { glyph: Icons.check; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-secondary-container; }
+                        T { text: k.label; role: TextRole.subheadline; emphasized: true; color: k.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; }
+                        if k.removable: Icon { glyph: Icons.close; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+                    }
+                    TouchArea { clicked => { root.keyword(k.key, k.removable); } }
+                }
+            }
+        }
+    }
+}
+
+// BoxPage: a scaffold whose body is a padded, scrolling column.
+export component ScrollPage inherits Rectangle {
+    in property <string> title;
+    in property <int> leading: 1;
+    in property <[BarAction]> actions;
+    in property <string> menu-key;
+    in property <bool> loading;
+    in property <length> side: 16px;
+    callback action(string);
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: root.title;
+        leading: root.leading;
+        actions: root.actions;
+        menu-key: root.menu-key;
+        loading: root.loading;
+        action(id) => { root.action(id); }
+    }
+    Flickable {
+        y: bar.height;
+        height: parent.height - bar.height;
+        viewport-height: body.preferred-height;
+        body := VerticalLayout {
+            padding-left: root.side;
+            padding-right: root.side;
+            padding-top: 8px;
+            padding-bottom: 24px + Nav.inset-bottom;
+            @children
+        }
+    }
+}
+
+// Opaque, input-absorbing background for a route.
+export component RouteSurface inherits Rectangle {
+    background: Theme.s.surface;
+    TouchArea { }
+    @children
+}

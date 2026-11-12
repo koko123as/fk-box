@@ -1,0 +1,105 @@
+// The app theme (compose/theme/Theme.kt, Color.kt, Shape.kt, Type.kt): the
+// seeded Material 3 scheme computed in Rust (src/theme.rs, Material Color
+// Utilities), surface levels, the 12 dp corner and the M3 type scale.
+
+import { Palette } from "std-widgets.slint";
+
+export struct Scheme {
+    primary: color,
+    on-primary: color,
+    primary-container: color,
+    on-primary-container: color,
+    secondary: color,
+    on-secondary: color,
+    secondary-container: color,
+    on-secondary-container: color,
+    tertiary: color,
+    on-tertiary: color,
+    error: color,
+    on-error: color,
+    error-container: color,
+    on-error-container: color,
+    outline: color,
+    outline-variant: color,
+    on-surface: color,
+    on-surface-variant: color,
+    inverse-surface: color,
+    on-inverse-surface: color,
+    inverse-primary: color,
+    scrim: color,
+    surface: color,
+    surface-container-low: color,
+    surface-container: color,
+    surface-container-high: color,
+    surface-container-highest: color,
+    success: color,
+    success-container: color,
+    on-success-container: color,
+    warning: color,
+    warning-container: color,
+    on-warning-container: color,
+}
+
+// AppTextStyle: size and line height in sp; the weight is chosen at the use site.
+export enum TextRole { display, large-title, title1, page-title, title2, title3, headline, body, callout, subheadline, footnote, caption1, caption2 }
+
+export global Theme {
+    // "system" | "light" | "dark" (the theme preference).
+    in property <string> mode: "system";
+    in property <Scheme> light-scheme;
+    in property <Scheme> dark-scheme;
+    out property <bool> dark: mode == "dark" || (mode != "light" && Palette.color-scheme == ColorScheme.dark);
+    out property <Scheme> s: dark ? dark-scheme : light-scheme;
+    // The custom or system text scale, kept within 0.8–1.4 (appTextScale).
+    in property <float> text-scale: 1.0;
+    // The appearance preference's font family; empty for the platform default.
+    in property <string> font-family;
+    out property <string> mono: "JetBrains Mono";
+    out property <length> radius: 12px;
+
+    public pure function sp(v: float) -> length {
+        return v * text-scale * 1px;
+    }
+
+    public pure function size(role: TextRole) -> length {
+        if (role == TextRole.display) { return sp(36); }
+        if (role == TextRole.large-title) { return sp(32); }
+        if (role == TextRole.title1) { return sp(28); }
+        if (role == TextRole.page-title) { return sp(22); }
+        if (role == TextRole.title2) { return sp(24); }
+        if (role == TextRole.title3) { return sp(22); }
+        if (role == TextRole.subheadline) { return sp(14); }
+        if (role == TextRole.footnote) { return sp(12); }
+        if (role == TextRole.caption1) { return sp(12); }
+        if (role == TextRole.caption2) { return sp(11); }
+        return sp(16);
+    }
+
+    public pure function leading(role: TextRole) -> length {
+        if (role == TextRole.display) { return sp(44); }
+        if (role == TextRole.large-title) { return sp(40); }
+        if (role == TextRole.title1) { return sp(36); }
+        if (role == TextRole.page-title) { return sp(28); }
+        if (role == TextRole.title2) { return sp(32); }
+        if (role == TextRole.title3) { return sp(28); }
+        if (role == TextRole.subheadline) { return sp(20); }
+        if (role == TextRole.footnote || role == TextRole.caption1 || role == TextRole.caption2) { return sp(16); }
+        return sp(24);
+    }
+
+    // SurfaceLevel: 0 page, 1 card, 2 block, 3 inset.
+    public pure function level(l: int) -> color {
+        if (l <= 0) { return s.surface; }
+        if (l == 1) { return s.surface-container; }
+        if (l == 2) { return s.surface-container-high; }
+        return s.surface-container-highest;
+    }
+
+    // delayColor
+    public pure function delay-color(tested: bool, delay: int) -> color {
+        if (!tested) { return s.on-surface-variant; }
+        if (delay <= 0) { return s.error; }
+        if (delay < 300) { return s.success; }
+        return s.warning;
+    }
+}
