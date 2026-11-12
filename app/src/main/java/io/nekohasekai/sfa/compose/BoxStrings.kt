@@ -8,6 +8,7 @@ internal object BoxStrings {
         part2(this)
         part3(this)
         part4(this)
+        part5(this)
     }
 
     private fun part0(map: HashMap<String, String>) {
@@ -662,5 +663,68 @@ internal object BoxStrings {
         map["Value must be at most %d characters"] = "值最多 %d 个字符"
         map["MITM hosts"] = "MITM 域名"
         map["MITM excluded hosts"] = "MITM 排除域名"
+    }
+
+    private fun part5(map: HashMap<String, String>) {
+        // Settings › Traffic routing
+        map["Traffic routing"] = "分流规则"
+        map["Before the profile's rules"] = "置于配置规则之前"
+        map["Replace the profile's rules"] = "替换配置规则"
+        map["Off (profile only)"] = "关闭（仅用配置）"
+        map["Profile's own"] = "沿用配置"
+        map["Block"] = "拦截"
+        map["Node or group"] = "指定节点或组"
+        map["All traffic"] = "全部流量"
+        map["Domains, IPs or geo"] = "域名、IP 或 geo"
+        map["Preset"] = "预设"
+        map["Rule list URL"] = "规则列表 URL"
+        map["TCP and UDP"] = "TCP 和 UDP"
+        map["Apps"] = "应用"
+        map["Copy from"] = "复制自"
+        map["Replace the rules of"] = "替换以下内核的规则："
+        map["Replace"] = "替换"
+        map["Add rule"] = "添加规则"
+        map["Edit rule"] = "编辑规则"
+        map["Preview"] = "预览"
+        map["Merge mode"] = "合并方式"
+        map["Fallback"] = "兜底"
+        map["Rules apply to the core that runs the selected profile and are added when the service starts; the profile file is not changed. Long-press or drag the handle to reorder; the first matching rule wins."] = "规则作用于运行当前配置的内核，在服务启动时加入，不修改配置文件。长按或拖动手柄调整顺序，按从上到下第一条匹配生效。"
+        map["No rules"] = "暂无规则"
+        map["Add a rule, a preset, or copy the rules of another core from the menu."] = "添加规则或预设，或从菜单复制其他内核的规则。"
+        map["Match"] = "匹配"
+        map["Content"] = "内容"
+        map["One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern, 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."] = "每行一项：example.com（含子域名）、full:example.com、keyword:关键字、regexp:正则、1.2.3.0/24、geosite:cn、geoip:cn、geoip:private。"
+        map["AdBlock (||example.com^), hosts, plain domain/CIDR lists and Clash rule lists. Downloaded when the service starts and refreshed daily; the last copy is used when a download fails."] = "支持 AdBlock（||example.com^）、hosts、纯域名/CIDR 列表和 Clash 规则列表。服务启动时下载并每天刷新，下载失败时使用上次的副本。"
+        map["Target"] = "目标"
+        map["Conditions"] = "条件"
+        map["Ports"] = "端口"
+        map["Apps (package names)"] = "应用（包名）"
+        map["One package name per line, such as com.android.chrome. Empty matches every app. Xray cannot match apps; such rules are skipped on Xray."] = "每行一个包名，例如 com.android.chrome。留空匹配所有应用。Xray 无法按应用匹配，此类规则在 Xray 上跳过。"
+        map["Delete rule"] = "删除规则"
+        map["Preview unavailable"] = "无法预览"
+        map["Rules applied"] = "已应用规则"
+        map["The selected profile runs on another core, so its rules are shown instead of this tab's."] = "当前配置运行在其他内核上，因此显示的是该内核的规则结果。"
+        map["No routing changes: the profile starts as it is."] = "没有分流改动：配置按原样启动。"
+        map["Warnings"] = "警告"
+        map["Content handed to the core"] = "交给内核的内容"
+        map["Bypass mainland China"] = "绕过大陆"
+        map["geosite:cn, geoip:cn and private addresses go direct"] = "geosite:cn、geoip:cn 和私有地址直连"
+        map["GFW list through proxy, the rest direct"] = "GFW 列表走代理，其余直连"
+        map["geosite:gfw through the proxy; all other traffic direct"] = "geosite:gfw 走代理，其他流量直连"
+        map["Block ads"] = "广告拦截"
+        map["geosite:category-ads-all is blocked"] = "拦截 geosite:category-ads-all"
+        map["LAN direct"] = "局域网直连"
+        map["Private and LAN addresses go direct"] = "私有地址和局域网直连"
+        map["GFW list"] = "GFW 列表"
+        map["Everything else"] = "其余流量"
+        map["Unsupported routing rules version %d"] = "不支持的分流规则版本 %d"
+        map["Choose the fallback node"] = "请选择兜底节点"
+        map["Choose a node or group"] = "请选择节点或组"
+        map["Add at least one domain, IP or geo entry"] = "请至少添加一个域名、IP 或 geo 条目"
+        map["Enter an http(s) rule list URL"] = "请输入 http(s) 规则列表地址"
+        map["Invalid package name"] = "包名无效"
+        map["Ports are 1–65535, as 443 or 8000-9000, separated by commas"] = "端口范围 1–65535，写作 443 或 8000-9000，用逗号分隔"
+        map["Routing rules apply to the local service"] = "分流规则仅作用于本机服务"
+        map["No profile selected"] = "未选择配置"
     }
 }

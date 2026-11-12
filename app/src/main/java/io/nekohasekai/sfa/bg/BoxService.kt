@@ -32,6 +32,7 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.bridge.CoreRouting
 import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -113,7 +114,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     // The configuration the core last started with, used to fall back when a
     // reload of the same profile fails (for example a remote rule set that cannot
     // be downloaded while the phone sleeps) instead of stopping the service.
-    private class StartedConfig(val profileId: Long, val content: String, val core: String)
+    // [routing] is the routing rule set the core was compiled with (CoreRouting.coreJson).
+    private class StartedConfig(val profileId: Long, val content: String, val core: String, val routing: String?)
     @Volatile private var lastStarted: StartedConfig? = null
     private var startupJob: Job? = null
     @Volatile private var stopRequested = false
@@ -146,8 +148,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             DefaultNetworkMonitor.start()
 
             try {
-                startOrReloadCore(content, profile.typed.core)
-                lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core)
+                val routing = startOrReloadCore(content, profile.typed.core)
+                lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
             } catch (e: Exception) {
                 stopAndAlert(Alert.CreateService, e.message)
                 return
@@ -218,12 +220,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         lastProfileName = profile.name
         lastReloadFellBack = false
         try {
-            startOrReloadCore(content, profile.typed.core)
-            lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core)
+            val routing = startOrReloadCore(content, profile.typed.core)
+            lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
         } catch (e: Exception) {
             val previous = lastStarted
-            if (previous != null && previous.profileId == selectedProfileId && previous.content != content) {
-                val fellBack = runCatching { startOrReloadCore(previous.content, previous.core) }
+            // Fall back when the profile or its routing rules changed since the last good start.
+            if (previous != null && previous.profileId == selectedProfileId &&
+                (previous.content != content || previous.routing != currentRouting(previous.core, previous.content))
+            ) {
+                val fellBack = runCatching { startOrReloadCore(previous.content, previous.core, previous.routing) }
                 if (fellBack.isSuccess) {
                     Log.w(TAG, "reload failed, kept the previous configuration", e)
                     lastReloadFellBack = true
@@ -253,7 +258,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    private fun startOrReloadCore(content: String, declaredCore: String) = synchronized(MitmCertificate.accessLock) {
+    /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */
+    private fun currentRouting(declaredCore: String, content: String): String? = runCatching {
+        CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), Libbox.resolveProfileCore(declaredCore, content))
+    }.getOrNull()
+
+    /**
+     * Starts or reloads the profile on its core with that core's routing rules
+     * applied to the content handed to the core (the file is not changed), and
+     * returns the rule set used. [routing] overrides the saved rules (fallback).
+     */
+    private fun startOrReloadCore(content: String, declaredCore: String, routing: String? = null): String? = synchronized(MitmCertificate.accessLock) {
         val core = Libbox.resolveProfileCore(declaredCore, content)
         Settings.requireCoreEnabled(core)
         val overrides = OverrideOptions().apply {
@@ -281,7 +296,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             GeoResources.ensureBundledBlocking(service)
             DefaultNetworkMonitor.pushSystemDNS()
         }
-        commandServer.startOrReloadCoreService(core, content, overrides)
+        val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
+            .onFailure { Log.w(TAG, "routing rules unreadable, starting without them", it) }.getOrDefault("")
+        commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+        rules
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {

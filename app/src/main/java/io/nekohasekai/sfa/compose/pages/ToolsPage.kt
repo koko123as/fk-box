@@ -135,12 +135,13 @@ fun ToolsPage(box: BoxController) {
                 else -> ListItemOpen(tr("Remote control"), position, leading = AppIcons.proxies) { RemotePage(box) }
             }
         }
-        // Theme, access, backup, general (fk-box follows the system language).
-        Section(title = tr("Settings"), count = 4) { index, position ->
+        // Theme, access, routing rules, backup, general (fk-box follows the system language).
+        Section(title = tr("Settings"), count = 5) { index, position ->
             when (index) {
                 0 -> ListItemOpen(tr("Appearance"), position, leading = AppIcons.paintbrush) { AppearancePage(box) }
                 1 -> ListItemOpen(tr("Access control"), position, leading = AppIcons.appsList) { AccessPage(box) }
-                2 -> ListItemOpen(tr("Backup and restore"), position, leading = AppIcons.cloudSync) { BackupPage(box) }
+                2 -> ListItemOpen(tr("Traffic routing"), position, leading = AppIcons.rules) { RoutingRulesPage(box) }
+                3 -> ListItemOpen(tr("Backup and restore"), position, leading = AppIcons.cloudSync) { BackupPage(box) }
                 else -> ListItemOpen(tr("General"), position, leading = AppIcons.settings) { GeneralSettingsPage(box) }
             }
         }

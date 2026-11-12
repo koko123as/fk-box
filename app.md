@@ -85,6 +85,16 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 托管应用模式仍在激活前完成扫描，安装/卸载广播沿用自动更新；列表查询完成后同步最新的已保存设置，包含后台更新的托管结果，打开页面不触发 APK/DEX 扫描。手动重新扫描通过既有桥接更新设置。查询策略继续持久化；Android 12 精确定位同时申请 fine/coarse 权限；远程配置卡不使用本地配置名。
 
+## 分流规则
+
+“工具 → 设置 → 分流规则”（[RoutingPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/RoutingPage.kt)）为 sing-box、Xray、mihomo 各维护一套独立规则，参照 [Lemonochka/keqdroid](https://github.com/Lemonochka/keqdroid)（AGPL-3.0）的 TrafficRoute / RoutingProfile 设计（只借鉴数据模型，不含其代码）。编译规则、字段映射与已知限制见 [libbox.md](libbox.md#分流规则)。
+
+- 数据：[CoreRouting.kt](app/src/main/java/io/nekohasekai/sfa/bridge/CoreRouting.kt)。每个内核一组 `{mode, final, rules}`：`mode` 为 `prepend`（默认，用户规则放在配置自身规则之前，配置规则保留）、`override`（替换配置规则，保留 sing-box 开头的 sniff/hijack-dns/resolve 规则和配置的兜底）或 `off`；`final` 为兜底：`config`（默认，沿用配置）、`proxy`、`direct`、`block` 或 `node`（指定节点/组的 tag）。每条规则含启用开关、名称、内容（`all` 全部流量；`match` 域名/IP/CIDR/`geosite:`/`geoip:`/`full:`/`keyword:`/`regexp:`；`preset` 预设；`list` 规则列表 URL）、目标（同上，无 `config`）、应用包名、网络（any/tcp/udp）、端口（`443,8000-9000`，最多 28 段）；列表顺序即匹配顺序。保存在设置键 `routing_rules`（JSON，版本 1），经 `settings()` 的 `routingRules` 随完整备份导出/恢复并由 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxSettings.kt) 校验（每核最多 500 条，每条最多 5000 项）；旧备份没有该键时不改动现有规则。
+- 预设（国内常用）：绕过大陆（`geosite:cn`、`geoip:cn`、`geosite:private`、`geoip:private` → 直连）、GFW 列表走代理其余直连（`geosite:gfw` → 代理，再加一条“全部流量 → 直连”）、广告拦截（`geosite:category-ads-all` → 拦截）、局域网直连（`geosite:private`、`geoip:private` → 直连）。预设只是插入普通规则，目标可改。
+- 界面：顶部三个内核分段按钮，合并方式与兜底两行，规则列表可点开编辑、开关、长按或拖动手柄排序；右上角添加规则，菜单中有四个预设、“复制自 <内核>”（替换当前内核规则前确认，复制后各自独立）和预览。规则在页面内编辑草稿，点保存才写入。预览调用 `routingPreview`，对当前选中配置按其实际内核编译草稿，显示内核、应用条数、警告和交给内核的完整内容。
+- 生效：[BoxService.kt](app/src/main/java/io/nekohasekai/sfa/bg/BoxService.kt) 在解析出实际内核后调用 `CommandServer.startOrReloadCoreServiceWithRouting(core, content, 该内核的规则 JSON, overrides)`，只改交给内核的内容，不写磁盘上的配置；链接转换的配置、Xray 合并数组、重载、切换配置/内核都走同一入口，所以切换后自动使用新内核的规则。成功后服务日志出现“已应用 <内核> 分流规则 N 条”，被跳过或调整的规则逐条以“分流规则：…”警告记录。保存时本地服务正在运行则重载（[ServiceSettingsChange](app/src/main/java/io/nekohasekai/sfa/bridge/ServiceSettingsChange.kt)），失败时恢复原规则并按原规则恢复服务；重载失败且规则或配置有变化时，沿用上次成功启动的配置与规则（`StartedConfig.routing`）。远程会话不使用本机规则。
+- 测试：[CoreRoutingTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/CoreRoutingTest.kt) 覆盖编码/解码、备份线格式往返、校验、复制、排序、预设；编译结果由 Go 的 `TestCoreRouting*` 用各内核自己的检查器验证（见 libbox.md）。
+
 ## 请求抓取与 MITM
 
 使用入口为“工具 → 请求”。先在“MITM 证书”中生成 CA，导出并通过 Android 设置或 Root 管理器安装，返回后刷新信任；随后在抓包设置中开启 HTTPS 并设置范围，启动本地服务和抓包，再重连目标应用。安装路径和目标应用的信任限制见下文；HTTP 抓取不需要 CA。

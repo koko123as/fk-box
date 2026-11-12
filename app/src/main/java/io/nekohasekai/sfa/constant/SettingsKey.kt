@@ -14,6 +14,9 @@ object SettingsKey {
     const val GEO_UPDATE_INTERVAL = "geo_update_interval"
     const val GEO_URLS = "geo_urls"
 
+    // Per-core routing rules (Tools › Settings › Routing rules), JSON
+    const val ROUTING_RULES = "routing_rules"
+
     const val AUTO_REDIRECT = "auto_redirect"
     const val PER_APP_PROXY_ENABLED = "per_app_proxy_enabled"
     const val PER_APP_PROXY_MODE = "per_app_proxy_mode"

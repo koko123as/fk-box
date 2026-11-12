@@ -78,7 +78,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - 默认日志级别（[core_loglevel.go](libbox/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。Xray 的访问日志（每个连接和 DNS 查询一行，同步写入服务日志）默认为 `access: "none"`，仅在配置自行设置 `access`（其 `"none"` 原样保留，文件路径仍写入服务日志）或 `loglevel` 为 info/debug 时输出。mihomo 无论级别都会发布全部日志事件，转发时按 `log.Level()` 丢弃低于运行级别的事件（与 mihomo 自身 `print()` 规则一致），避免格式化和阻塞日志通道。
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。启动/重载只解析一次 YAML：`parseCheckedMihomoConfig` 做导入时同样的检查并把原始配置交给启动流程；是否显式设置 `log-level` 以行扫描判断顶层键（JSON/flow 风格回退完整解析）。
 - 状态与分组轮询（[core_api.go](libbox/core_api.go)）：流量总量和连接数不再每秒构建完整连接快照（mihomo 用 `Total()` + `Range` 计数，Xray 在锁内累加）；分组列表只在内容变化（`proto.Equal`）时推送。
-- 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 规则在 cmfa 模式下取不到进程名；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
+- 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 现经连接归属查询得到包名（见 [分流规则](#分流规则)），需实机确认；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
 
 ### 地理数据
 
@@ -107,6 +107,39 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
    - `TestCoreInternals*`：Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
    - `core-module-bumps.txt`：被抬高的共用模块；`github.com/sagernet/sing` 不能变。
 3. 实机检查（CI 测不到）：三个内核分别启动、暂停、互相切换不闪退；切换后 7890 等端口已释放；连接页、流量、IP 检测、网络质量有数据；分流规则命中正常；日志中没有新的 Warn/Error。mihomo 的 TUN 由它自己关闭描述符，所以它拿到的是单独的 dup；升级后如果再次出现无崩溃记录的闪退，先查描述符是否被重复关闭。
+
+## 分流规则
+
+应用为每个内核保存一套规则（数据模型与界面见 [app.md](app.md#分流规则)），[core_routing.go](libbox/core_routing.go) 在启动时把实际运行内核的那一套编译成该内核自己的路由语法：
+
+| 接口 | 作用 |
+| --- | --- |
+| `ApplyCoreRouting(core, content, rules)` | 返回 `CoreRoutingResult{Content, Applied, Warnings, Active}`；`rules` 为空、`mode: off`，或没有启用的规则且兜底为 `config`、模式为 `prepend` 时原样返回内容 |
+| `CommandServer.StartOrReloadCoreServiceWithRouting(core, content, rules, options)` | 先编译再走 `StartOrReloadCoreService`；成功后写日志“已应用 <内核> 分流规则 N 条”和逐条警告。配置本身无法解析等导致整体编译失败时记一条错误日志，按原配置启动 |
+
+单条规则的问题（无效条目、找不到节点、Xray 不支持应用匹配、列表下载失败且无缓存）只跳过该条或该项并给出警告，不阻止启动。
+
+字段映射（“目标 proxy”= 配置的主出站：sing-box 为 `route.final`（若是代理类）、否则第一个 selector/urltest/代理出站；Xray 为配置最后一条兜底规则的 `balancerTag`/`outboundTag`、唯一的 balancer、默认（第一个）出站、第一个代理出站；mihomo 为 `MATCH` 的目标（非 DIRECT/REJECT）、否则第一个策略组或节点）：
+
+| 用户字段 | sing-box | Xray | mihomo |
+| --- | --- | --- | --- |
+| 位置 | `route.rules`，放在开头连续的 sniff/hijack-dns/resolve 动作之后；有域名条件而配置没有 sniff 时在最前加 `{"action":"sniff"}` | `routing.rules` 最前（启动时 libbox 再把 53 端口 DNS 规则放到所有规则之前） | `rules` 最前；配置的 rule-providers、sub-rules、策略组不动 |
+| 域名后缀 / 完整 / 关键字 / 正则 | `domain_suffix` / `domain` / `domain_keyword` / `domain_regex` | `domain:` / `full:` / `keyword:` / `regexp:` | `DOMAIN-SUFFIX` / `DOMAIN` / `DOMAIN-KEYWORD` / `DOMAIN-REGEX` |
+| IP / CIDR | `ip_cidr` | `ip` | `IP-CIDR,…,no-resolve` |
+| `geosite:x` | 远程 binary 规则集 `fk-geosite-x`：`https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/x.srs`，`http_client.detour` 为主代理出站，`update_interval: 1d`；新增规则集且配置未设 `experimental.cache_file` 时加 `{"enabled": true}`，首次下载后存入缓存文件。不使用 1.12 起已移除的旧 geosite 数据库 | `geosite:x`，读共享地理数据目录的 `geosite.dat` | `GEOSITE,x` |
+| `geoip:x` | 同上 `fk-geoip-x`（`…/geo/geoip/x.srs`）；`geoip:private` 用 `ip_is_private: true` | `geoip:x` | `GEOIP,x`；`geoip:private` 写作 mihomo 的 `GEOIP,lan` |
+| 应用包名 | `package_name` | 不支持（Xray 在 Android 无应用归属），跳过并警告 | `PROCESS-NAME,<包名>`，多个用 `OR`；见下 |
+| 网络 / 端口 | `network` / `port` + `port_range`（`8000:9000`） | `network` / `port`（`443,8000-9000`） | `NETWORK,TCP` / `DST-PORT,443/8000-9000` |
+| 组合 | 同一条规则内目的地条件为“或”，与应用/网络/端口为“与”（sing-box 默认规则语义） | 同一条规则内条件全部为“与”，所以域名和 IP 拆成两条规则 | 有网络/端口/应用条件时写成 `AND,((匹配),(条件)…),目标`；条目含 `,()` 时不能放进逻辑规则，跳过并警告 |
+| 全部流量 | 无匹配条件的规则 | `network: "tcp,udp"` | `MATCH,目标`（有条件时为条件本身或 `AND`） |
+| 代理 / 直连 / 拦截 / 指定 | `action: route` + 主出站 / 第一个 `direct` 出站（没有则新增 `fk-direct`）/ `action: reject` / 该 tag（出站或端点） | 主出站或 balancer / 第一个 `freedom`（没有则新增 `fk-direct`）/ 第一个 `blackhole`（没有则新增 `fk-block`）/ 该出站或 balancer | 主组 / `DIRECT` / `REJECT` / 该节点或组 |
+| 兜底 `final` | `route.final`；拦截时末尾加 `{"action":"reject"}` | 去掉配置的兜底规则（无匹配字段、网络含 tcp 与 udp），末尾加 `network: tcp,udp` 规则 | 去掉配置的 `MATCH`，末尾加 `MATCH,目标`。mihomo 无 MATCH 时未匹配流量默认直连 |
+| `override` | 只保留开头的 sniff/hijack-dns/resolve | 兜底为 `config` 时保留配置的兜底规则，balancers/observatory 保留 | 兜底为 `config` 时保留配置的 `MATCH` |
+
+- Xray 的 IP 规则：TUN 入站开启嗅探后目标变成域名，`AsIs` 下 IP 规则匹配不到。用户规则含 IP 条件且 `routing.domainStrategy` 未设置或为 `AsIs`（链接转换的配置即为 `AsIs`）时改为 `IPIfNonMatch`，并记一条警告；配置显式设置的其他策略保留。
+- mihomo 应用匹配：cmfa 构建下 mihomo 不读 `/proc`，而是调用 `process.DefaultPackageNameResolver`。[core_routing_owner.go](libbox/core_routing_owner.go) 参照 ClashMetaForAndroid，经 `PlatformInterface.FindConnectionOwner`（应用端 `getConnectionOwnerUid` + 包管理器，与 sing-box `package_name` 用的同一实现）返回包名，地址优先用 mihomo 改写前的 `RawSrcAddr`/`RawDstAddr`。因此此前“cmfa 模式下 PROCESS-NAME 取不到进程名”的限制对包名规则已解除；共享 UID 的应用返回第一个包名，fake-ip 下取不到原始目标地址的连接仍无法匹配，需实机确认。
+- 规则列表 URL：libbox 下载（15 秒超时，最大 16 MiB，最多 30 万项）到 `<工作目录>/routing/lists/<URL 哈希>.txt`，24 小时内直接用缓存，过期后尝试刷新，失败继续用旧副本并警告，从未下载成功则跳过该规则。解析 AdBlock（`||example.com^`；带 `$` 选项、例外 `@@`、元素隐藏规则忽略）、hosts（`0.0.0.0 host`，按完整域名）、Clash 经典规则（`DOMAIN-SUFFIX`/`DOMAIN`/`DOMAIN-KEYWORD`/`DOMAIN-REGEX`/`IP-CIDR(6)`，含 YAML `payload`）、Clash 域名文本（`+.example.com`）和纯 IP/CIDR/域名行。`.srs`/`.mrs`/`.dat`/`.mmdb` 等二进制格式不支持。sing-box 与 Xray 把条目内联进规则；mihomo 写成 mihomo 主目录 `fk-routing/` 下的本地 rule-provider 文件（`domain`、`ipcidr`、`classical` 三种 behavior，`format: text`），规则写作 `RULE-SET,fk-list-<哈希>-<behavior>,目标`，以使用 mihomo 自己的集合匹配。
+- 测试：[core_routing_test.go](libbox/core_routing_test.go) 的 `TestCoreRouting*`（newui.yml 多内核步骤）：列表解析、条目分类与端口、`off`/空规则不改内容；sing-box 对链接转换配置编译后 `CheckConfig` 通过并核对规则顺序、规则集、cache_file、兜底与 override；Xray 编译后 `CheckCoreConfig` 通过（缺 geo 文件时跳过路由构建，同导入检查）并核对拆分、balancer、兜底替换和 domainStrategy；mihomo 编译后 `CheckCoreConfig` 通过，非 GEO/RULE-SET 规则逐条交给 mihomo 自己的 `rules.ParseRule`，目标必须是已有节点/组，并检查 provider 文件。CI 测不到：实际下载规则集、GEO 规则命中、`PROCESS-NAME` 在真机上的归属查询。
 
 ## 新增接口与行为
 

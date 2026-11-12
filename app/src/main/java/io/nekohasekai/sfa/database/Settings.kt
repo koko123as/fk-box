@@ -80,6 +80,9 @@ object Settings {
     var geoUpdateInterval by dataStore.int(SettingsKey.GEO_UPDATE_INTERVAL) { 24 }
     var geoUrls by dataStore.string(SettingsKey.GEO_URLS) { "" }
 
+    // Per-core routing rules (bridge/CoreRouting.kt); "" means none.
+    var routingRules by dataStore.string(SettingsKey.ROUTING_RULES) { "" }
+
     const val PER_APP_PROXY_EXCLUDE = 1
     const val PER_APP_PROXY_INCLUDE = 2
 

@@ -457,6 +457,49 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         settings()
     }
 
+    /**
+     * Saves the routing rules; a running local service reloads with them and
+     * the previous rules come back if the reload fails.
+     */
+    suspend fun saveRouting(value: Map<String, Any?>) = operations.withLock {
+        val values = mapOf("routingRules" to CoreRouting.toWire(CoreRouting.fromWire(value)))
+        val previous = mapOf("routingRules" to CoreRouting.toWire(savedRouting()))
+        if (previous != values) {
+            if (CommandTarget.isRemote || activity.serviceStatus.value != Status.Started) {
+                patchSettings(values)
+            } else {
+                ServiceSettingsChange.apply(previous, values, ::patchSettings) { recover ->
+                    withContext(Dispatchers.Main) { activity.applyProfile(recover = recover) }
+                }
+            }
+        }
+        settings()
+    }
+
+    /**
+     * What the selected profile would start with under [draft] (unsaved rules):
+     * the core that runs it, the compiled content and the warnings.
+     */
+    suspend fun routingPreview(draft: Map<String, Any?>): Map<String, Any?> {
+        require(!CommandTarget.isRemote) { "Routing rules apply to the local service" }
+        val rules = CoreRouting.fromWire(draft)
+        return withContext(Dispatchers.IO) {
+            val id = Settings.selectedProfile
+            require(id != -1L) { "No profile selected" }
+            val profile = ProfileManager.get(id) ?: error("Profile no longer exists")
+            val content = java.io.File(profile.typed.path).readText()
+            val core = ProfileContent.coreOf(profile, content)
+            val result = Libbox.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
+            mapOf(
+                "profile" to profile.name, "core" to core, "content" to result.content,
+                "applied" to result.applied.toInt(), "active" to result.active,
+                "warnings" to result.warnings.lines().filter { it.isNotBlank() },
+            )
+        }
+    }
+
+    private fun savedRouting(): CoreRouting.Rules = runCatching { CoreRouting.decode(Settings.routingRules) }.getOrDefault(CoreRouting.Rules())
+
     suspend fun updateSettings(values: Map<String, Any?>) = operations.withLock {
         patchSettings(values)
         settings()
@@ -626,6 +669,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         "queryMode" to Settings.perAppProxyPackageQueryMode,
         "geoAutoUpdate" to Settings.geoAutoUpdate, "geoUpdateInterval" to Settings.geoUpdateInterval,
         "geoUrls" to GeoPolicy.decodeUrls(Settings.geoUrls),
+        "routingRules" to CoreRouting.toWire(savedRouting()),
         "batteryExempt" to (activity.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(activity.packageName) == true),
     )
 
@@ -703,6 +747,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             "powerReportEnabled" -> Settings.powerReportEnabled = args["value"] == true
             "geoAutoUpdate" -> Settings.geoAutoUpdate = args["value"] == true
             "geoUpdateInterval" -> Settings.geoUpdateInterval = (args["value"] as Number).toInt()
+            "routingRules" -> Settings.routingRules = CoreRouting.encode(CoreRouting.fromWire(args["value"]))
             "geoUrls" -> Settings.geoUrls = GeoPolicy.encodeUrls((args["value"] as Map<*, *>).entries.associate { it.key as String to it.value as String })
             "queryMode" -> {
                 val value = args["value"] as String

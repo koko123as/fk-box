@@ -25,6 +25,7 @@ internal object BoxSettings {
                 "oomMemoryLimitMB" -> value is Number && value.toDouble() == value.toInt().toDouble() && value.toInt() in 10..4096
                 "queryMode" -> value in listOf("ROOT", "SHIZUKU")
                 "geoUpdateInterval" -> value is Number && value.toDouble() == value.toInt().toDouble() && value.toInt() in 1..8760
+                "routingRules" -> value is Map<*, *> && CoreRouting.validWire(value)
                 "geoUrls" -> value is Map<*, *> && value.all { (name, url) ->
                     name in setOf("geoip", "geosite", "mmdb", "asn") && url is String && GeoPolicy.validUrl(url)
                 }
