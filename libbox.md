@@ -27,11 +27,11 @@
 | 内核 | 版本 | Go 模块版本 |
 | --- | --- | --- |
 | sing-box | `CORE_VERSION` | 上游标签 |
-| Xray | `XRAY_VERSION`（v26.10.31） | `XRAY_MODULE_VERSION`：xray-core 的 `v26.x` 标签不是该模块路径可用的语义版本，使用指向标签提交 `a4a3dff5` 的伪版本 |
-| libXray | `LIBXRAY_MODULE_VERSION`（v1.261031.0） | 同标签；其 `go.mod` 固定与上行相同的 xray-core 提交 |
+| Xray | `XRAY_VERSION`（v26.11.9） | `XRAY_MODULE_VERSION`：xray-core 的 `v26.x` 标签不是该模块路径可用的语义版本，使用指向标签提交 `676eaf66` 的伪版本 |
+| libXray | `LIBXRAY_MODULE_VERSION`（v1.261109.0，标签 v26.11.9） | 同标签；其 `go.mod` 固定与上行相同的 xray-core 提交 |
 | mihomo | `MIHOMO_VERSION`（v1.19.33） | 同标签 |
 
-Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/masque` 传输，`main/distro/all` 一并链接），并要求 Go 1.27；libXray v1.261031.0 要求 go 1.27.3。因此 `GO_VERSION` 为 `go1.27.3`，sing-box `v1.15.0-alpha.13` 与 mihomo v1.19.33 保持不变、同用该 Go 编译。只编译 arm64，不再构建 amd64。
+Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/masque` 传输，`main/distro/all` 一并链接），并要求 Go 1.27；libXray v1.261031.0 起要求 go 1.27.3（v1.261109.0 相同）。因此 `GO_VERSION` 为 `go1.27.3`，sing-box `v1.15.0-alpha.13` 与 mihomo v1.19.33 保持不变、同用该 Go 编译。只编译 arm64，不再构建 amd64。
 
 [setup-core](.github/actions/setup-core/action.yml) 在 sing-box 自身依赖整理完后再加入两个内核并 `go mod tidy`，把被抬高或新增的模块写入 `core-module-bumps.txt`，并断言 `github.com/sagernet/sing` 未被改变。[core_link.go](libbox/core_link.go) 以空导入把两个内核真正链接进 libbox。
 
@@ -43,7 +43,8 @@ Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/ma
 - mihomo 对 `google.golang.org/protobuf` 的 `replace`（metacubex/protobuf-go，仅为降到 go1.20 兼容旧系统）作为依赖时不生效，使用 sing-box 已有的 v1.36.11。
 - Xray 要求的 `sagernet/sing v0.5.1`、`sing-shadowsocks v0.2.7` 低于 sing-box 现用版本，最小版本选择保持 sing-box 版本，Xray 对应代码可编译。
 - 被抬高的共用模块：`metacubex/utls` v1.8.7→v1.8.8、`google.golang.org/grpc` v1.79.1→v1.82.1、`genproto/googleapis/rpc`、`pires/go-proxyproto` v0.8.1→v0.15.0（sing-box 未使用）、`go4.org/netipx`、`lukechampine.com/blake3` v1.3.0→v1.4.1、`klauspost/cpuid/v2`、`andybalholm/brotli`、`ajg/form`、`coreos/go-iptables`、`go-jose/v4`、`pierrec/lz4/v4`、`testify` 及 Windows 专用的 `wireguard/windows`。`golang.org/x/*` 未被抬高。暂无需 `replace`；实际结果以 Actions 中的 `core-module-bumps.txt` 为准，升级任一内核时重新核查。
-- 当前核查（Xray v26.10.31、libXray v1.261031.0、mihomo v1.19.33、Go 1.27.3，2026-11-06 Actions 的 `core-module-bumps.txt`）：新增 103 个模块，相对 sing-box `v1.15.0-alpha.13` 的 `go.mod` 抬高 29 个，`github.com/sagernet/sing` 不变。与上面相比新出现或更高的有：`golang.org/x/crypto` v0.54.0→v0.58.0、`x/net` v0.57.0→v0.62.0、`x/sys` v0.47.0→v0.49.0、`x/term`、`x/time`、`x/mod`、`x/exp`；`google.golang.org/grpc` v1.79.1→v1.85.0、`protobuf` v1.36.11→v1.36.12；`miekg/dns` v1.1.72→v1.1.73；`pires/go-proxyproto` →v0.16.0；`klauspost/compress` v1.19.1→v1.20.3；`pion/dtls/v3` v3.1.5→v3.1.15、`pion/transport/v4`；`koron/go-ssdp`、`libp2p/go-netroute`、`jackpal/go-nat-pmp`。仍无需 `replace`，Go 扩展测试通过；运行时影响需实机核对。libXray v1.261031.0 的 `share.ConvertShareLinksToXrayJson(links, ageKey)` 改为返回只含投影字段的 `{"outbounds": [...]}`，节点名放在 `tag`，[core_profile.go](libbox/core_profile.go) 已随之调整。
+- Xray v26.11.9 / libXray v1.261109.0（2026-11-12，`core-routing` 分支）：相对 v26.10.31 共 24 个提交，libbox 用到的 `proxy/tun`（仅 Windows 文件变化）、`features/routing`、libXray `share` 无改动；`infra/conf` 的 freedom `finalRules`（`blockDelay` 改名 `delay`）、tun 的 Windows WFP 选项与 geodata `.dat.gz` 下载有变化，Android 不受影响。uTLS 经过 XTLS/utls 分叉后又回到官方 `refraction-networking/utls` 的 20261108164504 提交，REALITY 为 20261108101329，以 Actions 的 `core-module-bumps.txt` 为准。
+- 上一次核查（Xray v26.10.31、libXray v1.261031.0、mihomo v1.19.33、Go 1.27.3，2026-11-06 Actions 的 `core-module-bumps.txt`）：新增 103 个模块，相对 sing-box `v1.15.0-alpha.13` 的 `go.mod` 抬高 29 个，`github.com/sagernet/sing` 不变。与上面相比新出现或更高的有：`golang.org/x/crypto` v0.54.0→v0.58.0、`x/net` v0.57.0→v0.62.0、`x/sys` v0.47.0→v0.49.0、`x/term`、`x/time`、`x/mod`、`x/exp`；`google.golang.org/grpc` v1.79.1→v1.85.0、`protobuf` v1.36.11→v1.36.12；`miekg/dns` v1.1.72→v1.1.73；`pires/go-proxyproto` →v0.16.0；`klauspost/compress` v1.19.1→v1.20.3；`pion/dtls/v3` v3.1.5→v3.1.15、`pion/transport/v4`；`koron/go-ssdp`、`libp2p/go-netroute`、`jackpal/go-nat-pmp`。仍无需 `replace`，Go 扩展测试通过；运行时影响需实机核对。libXray v1.261031.0 的 `share.ConvertShareLinksToXrayJson(links, ageKey)` 改为返回只含投影字段的 `{"outbounds": [...]}`，节点名放在 `tag`，[core_profile.go](libbox/core_profile.go) 已随之调整。
 - 各内核的 gVisor、quic-go 均为不同模块路径（`sagernet/gvisor`、`gvisor.dev/gvisor`、`metacubex/gvisor`；`sagernet/quic-go`、`apernet/quic-go`、`metacubex/quic-go`），互不覆盖，但会增加体积。
 
 ### 订阅识别与配置（第 1 阶段）
