@@ -1,0 +1,135 @@
+name: Slint UI Release APK (arm64-v8a)
+
+# Builds the slint-ui branch: the Rust + Slint UI (ui-slint/, libfkui.so) over
+# the Kotlin service layer and the patched core, signed with the release key
+# and uploaded as a workflow artifact only. This workflow never creates tags or
+# GitHub Releases.
+on:
+  push:
+    branches: [slint-ui]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: slint-ui-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout app
+        uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Source guards
+        run: python3 tools/verify_newui.py
+
+      - id: core
+        uses: ./.github/actions/build-libbox
+        with:
+          platform: android/arm64
+
+      - name: Set up Java for Gradle
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
+      - name: Set up Rust for the Slint UI
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup default stable
+          cargo install cargo-ndk --version 4.1.2 --locked
+          # Slint compiles its Java IME helper at build time.
+          echo "ANDROID_JAR=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
+          echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui-slint
+
+      - name: Rust UI unit tests (host)
+        working-directory: ui-slint
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libfontconfig1-dev
+          cargo test --lib
+
+      - name: Run JVM unit tests
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          ./gradlew :app:testOtherDebugUnitTest -Parm64Only=true \
+            --no-daemon --console=plain --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Upload unit test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: slint-ui-unit-tests
+          path: |
+            app/build/reports/tests/testOtherDebugUnitTest/
+            app/build/test-results/testOtherDebugUnitTest/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Prepare signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+        run: |
+          for name in KEYSTORE_BASE64 KEYSTORE_PASS ALIAS_NAME ALIAS_PASS; do
+            if [[ -z "${!name}" ]]; then
+              echo "::error::Missing repository secret: $name (see app.md)"
+              exit 1
+            fi
+          done
+          umask 077
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
+          test -s app/release.keystore
+
+      - name: Build signed Release APK
+        env:
+          KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
+          ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
+          ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          ./gradlew :app:assembleOtherRelease -Parm64Only=true \
+            --no-daemon --console=plain --max-workers=2 \
+            '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
+            -Pkotlin.compiler.execution.strategy=in-process
+
+      - name: Verify APK identity, architecture and signature
+        run: |
+          python3 tools/verify_release.py
+          unzip -l app/build/outputs/apk/other/release/*-arm64-v8a.apk | grep -E 'lib/arm64-v8a/lib(fkui|box)\.so'
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: FK-box-${{ steps.core.outputs.version }}-slint-ui-arm64-v8a-release
+          path: app/build/outputs/apk/other/release/*-arm64-v8a.apk
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 30
+
+      - name: Remove signing key
+        if: always()
+        run: rm -f app/release.keystore
