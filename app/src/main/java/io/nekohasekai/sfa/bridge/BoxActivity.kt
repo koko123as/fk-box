@@ -114,6 +114,27 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 SlintHost.nativeReply(id, true, SlintHost.wire(null))
                 return@launch
             }
+            // Calls the activity answers itself (the Compose UI used the context directly).
+            when (method) {
+                "locale" -> {
+                    val locale = resources.configuration.locales[0]
+                    val offset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
+                    SlintHost.nativeReply(id, true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset)))
+                    return@launch
+                }
+                "copyText" -> {
+                    val text = org.json.JSONObject(args).optString("text")
+                    getSystemService(android.content.ClipboardManager::class.java)
+                        ?.setPrimaryClip(android.content.ClipData.newPlainText(null, text))
+                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                    return@launch
+                }
+                "exit" -> {
+                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                    finish()
+                    return@launch
+                }
+            }
             try {
                 val result = facade.call { slintDispatch(method, org.json.JSONObject(args)) }
                 SlintHost.nativeReply(id, true, SlintHost.wire(result))

@@ -1,0 +1,375 @@
+// Proxies (pages/ProxiesPage.kt): the group tabs over a node grid, or the
+// groups as folding sections; node cards select on tap and open a menu on
+// long press. Sorting, filtering and folding state live in Rust.
+
+import { Theme, TextRole } from "../theme.slint";
+import { Icons, Glyph } from "../icons.slint";
+import { Nav, BarAction } from "../globals.slint";
+import { App, Proxies, GroupRow, NodeRow } from "../data.slint";
+import { Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem } from "../kit.slint";
+
+// ProxyCardMetrics
+global Metrics {
+    out property <length> name-height: Theme.leading(TextRole.subheadline) * (Proxies.compact ? 1 : 2);
+    out property <length> detail-height: Theme.leading(TextRole.footnote);
+    out property <length> delay-height: Theme.leading(TextRole.caption2);
+    out property <length> extent: 28px + name-height + detail-height + (Proxies.loose ? delay-height + 6px : 0px);
+    out property <length> row-extent: extent + 8px;
+
+    // proxyColumns
+    public pure function columns(width: length) -> int {
+        return clamp(clamp(ceil(width / 250px), 2, 8) + Proxies.density-adjust, 1, 8);
+    }
+}
+
+// ProxyNodeCard
+export component NodeCard inherits Card {
+    in property <GroupRow> group;
+    in property <NodeRow> node;
+    property <color> delay-color: !node.tested ? Theme.s.on-surface-variant : node.delay-ms <= 0 ? Theme.s.error : node.delay-ms < 300 ? Theme.s.success : Theme.s.warning;
+    selected: node.selected;
+    fills: false;
+    long-press-menu: true;
+    enabled: true;
+    clicked => {
+        if (group.selectable && App.running) {
+            Nav.act2("select-node", group.tag, node.tag);
+        }
+    }
+    long-pressed(x, y) => { Nav.open-menu("node:" + group.tag + "\n" + node.tag, x, y); }
+    VerticalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: center;
+        HorizontalLayout {
+            T {
+                text: root.node.tag;
+                role: TextRole.subheadline;
+                wrap: Proxies.compact ? no-wrap : word-wrap;
+                height: Metrics.name-height;
+                vertical-alignment: top;
+                horizontal-stretch: 1;
+            }
+            if root.node.selected: Rectangle {
+                width: 26px;
+                SelectionBadge { x: 4px; y: 0; }
+            }
+        }
+        Rectangle { height: 8px; }
+        if Proxies.loose: T {
+            text: root.node.kind;
+            role: TextRole.footnote;
+            color: Theme.s.on-surface.with-alpha(0.8);
+            height: Metrics.detail-height;
+        }
+        if Proxies.loose: Rectangle { height: 6px; }
+        HorizontalLayout {
+            height: Proxies.loose ? Metrics.delay-height : Metrics.detail-height;
+            spacing: 4px;
+            if !Proxies.loose: T {
+                text: root.node.kind;
+                role: TextRole.footnote;
+                color: Theme.s.on-surface.with-alpha(0.8);
+                horizontal-stretch: 1;
+            }
+            Rectangle {
+                horizontal-stretch: Proxies.loose ? 1 : 0;
+                min-width: delay-label.preferred-width;
+                width: Proxies.loose ? self.preferred-width : max(Metrics.delay-height, delay-label.preferred-width);
+                if root.node.testing: Spinner {
+                    size: Metrics.delay-height;
+                    x: Proxies.loose ? 0 : parent.width - self.width;
+                }
+                if !root.node.testing && !root.node.tested: Icon {
+                    glyph: Icons.bolt;
+                    size: Metrics.delay-height;
+                    color: Theme.s.on-surface-variant;
+                    x: Proxies.loose ? 0 : parent.width - self.width;
+                }
+                delay-label := T {
+                    visible: !root.node.testing && root.node.tested;
+                    text: root.node.delay;
+                    role: TextRole.caption2;
+                    emphasized: true;
+                    color: root.delay-color;
+                    horizontal-alignment: Proxies.loose ? left : right;
+                    width: parent.width;
+                }
+                TouchArea {
+                    enabled: App.running && !root.node.testing;
+                    clicked => { Nav.act("test-node", root.node.tag); }
+                }
+            }
+        }
+    }
+}
+
+// The node grid of one group (ProxyGrid / ProxyRow): absolute positions in
+// `columns` columns, 8 px apart.
+component NodeGrid inherits Rectangle {
+    in property <GroupRow> group;
+    in property <int> columns: 2;
+    in property <length> inset: 0px;
+    property <length> cell-width: (self.width - 2 * inset - (columns - 1) * 8px) / columns;
+    property <int> rows: ceil(group.items.length / columns);
+    height: rows * Metrics.row-extent;
+    for n[i] in root.group.items: NodeCard {
+        x: root.inset + mod(i, root.columns) * (root.cell-width + 8px);
+        y: floor(i / root.columns) * Metrics.row-extent;
+        width: root.cell-width;
+        height: Metrics.extent;
+        group: root.group;
+        node: n;
+    }
+}
+
+// GroupTabs
+component GroupTabs inherits Rectangle {
+    in property <[GroupRow]> groups;
+    in-out property <int> selected;
+    height: 40px;
+    flick := Flickable {
+        width: parent.width - (more.visible ? 64px : 0px);
+        x: 0;
+        viewport-width: strip.preferred-width;
+        strip := HorizontalLayout {
+            padding-left: 16px;
+            padding-right: more.visible ? 0px : 16px;
+            spacing: 8px;
+            for g[i] in root.groups: Rectangle {
+                property <bool> on: i == root.selected;
+                height: 40px;
+                min-width: 64px;
+                width: max(64px, tab-label.preferred-width + 32px);
+                border-radius: 20px;
+                background: on ? Theme.s.primary-container : Theme.level(1);
+                Rectangle {
+                    border-radius: parent.border-radius;
+                    background: tta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+                }
+                tab-label := T {
+                    text: g.tag;
+                    role: TextRole.subheadline;
+                    emphasized: true;
+                    color: on ? Theme.s.on-primary-container : Theme.s.on-surface-variant;
+                    horizontal-alignment: center;
+                }
+                tta := TouchArea { clicked => { root.selected = i; Nav.act("proxy-tab", i); } }
+            }
+        }
+    }
+    more := TonalIconButton {
+        visible: strip.preferred-width > root.width;
+        x: parent.width - 16px - self.width;
+        glyph: Icons.chevron-down;
+        tooltip: @tr("Proxy groups");
+        clicked => { Nav.open-menu("proxy-tabs", self.absolute-position.x, self.absolute-position.y + self.height); }
+    }
+}
+
+// GroupMonogram inside its tile (GroupIcon)
+component GroupIcon inherits Rectangle {
+    in property <string> mark;
+    width: Proxies.icon-style == "Hidden" ? 4px : self.height + (Proxies.icon-style == "Filled" ? 12px : 12px);
+    if Proxies.icon-style == "Filled": Rectangle {
+        x: 0;
+        width: root.height;
+        height: root.height;
+        border-radius: Theme.radius;
+        background: Theme.level(3);
+        T { text: root.mark; font-size: (root.height - 12px) * 0.62; font-weight: 600; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+    }
+    if Proxies.icon-style == "Plain": T {
+        x: 2px;
+        width: root.height;
+        text: root.mark;
+        font-size: root.height * 0.62;
+        font-weight: 600;
+        color: Theme.s.primary;
+        horizontal-alignment: center;
+    }
+}
+
+// ProxyGroupHeader
+component GroupHeader inherits Rectangle {
+    in property <GroupRow> group;
+    property <bool> expanded: group.expanded;
+    height: 20px + Theme.leading(TextRole.callout) + 2px + Theme.leading(TextRole.caption1) + 2px;
+    border-top-left-radius: Theme.radius;
+    border-top-right-radius: Theme.radius;
+    border-bottom-left-radius: expanded ? 0 : Theme.radius;
+    border-bottom-right-radius: expanded ? 0 : Theme.radius;
+    background: Theme.level(2);
+    Card {
+        x: 4px;
+        y: 4px;
+        width: parent.width - 8px;
+        height: parent.height - 8px;
+        level: 1;
+        background: transparent;
+        clicked => { Nav.act("toggle-group", root.group.tag); }
+        HorizontalLayout {
+            padding: 6px;
+            spacing: 0px;
+            GroupIcon { mark: root.group.monogram; }
+            VerticalLayout {
+                horizontal-stretch: 1;
+                alignment: center;
+                spacing: 2px;
+                T { text: root.group.tag; role: TextRole.callout; emphasized: true; }
+                T { text: root.group.selected; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface.with-alpha(0.8); }
+            }
+            if root.expanded: HorizontalLayout {
+                spacing: 0px;
+                TonalIconButton {
+                    glyph: Icons.locate;
+                    tooltip: @tr("Scroll to selected");
+                    grouped: true;
+                    size: 36px;
+                    icon-size: 19px;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Nav.act("locate-group", root.group.tag); }
+                }
+                TonalIconButton {
+                    glyph: Icons.bolt;
+                    tooltip: @tr("Test latency");
+                    grouped: true;
+                    size: 36px;
+                    icon-size: 20px;
+                    loading: root.group.testing;
+                    enabled: App.running;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Nav.act("test-group", root.group.tag); }
+                }
+            }
+            if !root.expanded: T {
+                text: root.group.kind;
+                role: TextRole.caption1;
+                emphasized: true;
+                color: Theme.s.on-surface.with-alpha(0.8);
+                horizontal-stretch: 0;
+            }
+            Rectangle { width: 6px; }
+            TonalIconButton {
+                glyph: root.expanded ? Icons.arrow-up : Icons.caret-down;
+                tooltip: root.expanded ? @tr("Show less") : @tr("Show more");
+                size: 36px;
+                icon-size: 20px;
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act("toggle-group", root.group.tag); }
+            }
+        }
+    }
+}
+
+export component ProxiesPage inherits Rectangle {
+    in property <bool> form;
+    property <GroupRow> current: Proxies.groups.length > 0 ? Proxies.groups[min(Proxies.tab, Proxies.groups.length - 1)] : { };
+    property <int> columns: Metrics.columns(self.width - 32px - (Proxies.list ? 20px : 0px));
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: @tr("Proxies");
+        leading: root.form ? 2 : 0;
+        searchable: true;
+        menu-key: "proxies";
+        actions: Proxies.list ? [] : [
+            { id: "proxies-test", glyph: Icons.bolt, tooltip: @tr("Test latency"), enabled: App.running && Proxies.groups.length > 0, loading: root.current.testing },
+            { id: "proxies-locate", glyph: Icons.locate, tooltip: @tr("Scroll to selected"), enabled: Proxies.groups.length > 0 },
+        ];
+        action(id) => {
+            if (id == "proxies-locate") {
+                if (root.current.selected-index >= 0) {
+                    grid-flick.viewport-y = -floor(root.current.selected-index / root.columns) * Metrics.row-extent;
+                }
+            } else {
+                Nav.act(id, root.current.tag);
+            }
+        }
+        search(q) => { Nav.act("proxies-search", q); }
+    }
+    if Proxies.groups.length == 0: EmptyState {
+        y: bar.height;
+        height: parent.height - bar.height;
+        width: parent.width;
+        glyph: Icons.proxies;
+        title: App.running ? @tr("No proxy groups in this configuration") : @tr("Start the service to view proxy groups");
+    }
+    if Proxies.groups.length > 0 && !Proxies.list: VerticalLayout {
+        y: bar.height;
+        height: parent.height - bar.height;
+        padding-top: 8px;
+        spacing: 0px;
+        Rectangle {
+            height: 56px;
+            GroupTabs {
+                y: 0;
+                groups: Proxies.groups;
+                selected <=> Proxies.tab;
+            }
+        }
+        if !root.current.selectable: T {
+            text: @tr("Automatic selection");
+            role: TextRole.caption1;
+            color: Theme.s.on-surface-variant;
+            horizontal-alignment: center;
+            height: self.preferred-height + 8px;
+        }
+        if root.current.items.length == 0: EmptyState { glyph: Icons.proxies; title: @tr("No results"); }
+        grid-flick := Flickable {
+            vertical-stretch: 1;
+            viewport-height: grid.height + 16px + Nav.inset-bottom;
+            grid := NodeGrid {
+                y: 0;
+                width: parent.width;
+                inset: 16px;
+                columns: root.columns;
+                group: root.current;
+            }
+        }
+    }
+    if Proxies.groups.length > 0 && Proxies.list: Flickable {
+        y: bar.height;
+        height: parent.height - bar.height;
+        viewport-height: list.preferred-height;
+        list := VerticalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 8px;
+            padding-bottom: 16px + Nav.inset-bottom;
+            spacing: 0px;
+            for g in Proxies.groups: VerticalLayout {
+                spacing: 0px;
+                GroupHeader { group: g; }
+                if g.expanded && g.items.length > 0: Rectangle {
+                    background: Theme.level(2);
+                    border-bottom-left-radius: Theme.radius;
+                    border-bottom-right-radius: Theme.radius;
+                    height: rows.height + 2px;
+                    rows := NodeGrid {
+                        y: 0;
+                        width: parent.width;
+                        inset: 10px;
+                        columns: root.columns;
+                        group: g;
+                    }
+                }
+                Rectangle { height: Nav.gap; }
+            }
+        }
+    }
+}
+
+// The node details form.
+export component NodeDetailsPage inherits ScrollPage {
+    title: @tr("Details");
+    leading: 2;
+    Rectangle { height: 8px; }
+    VerticalLayout {
+        for r[i] in Proxies.details: ListItem {
+            position: Proxies.details.length == 1 ? 4 : i == 0 ? 1 : i == Proxies.details.length - 1 ? 3 : 2;
+            title: r.key;
+            subtitle: r.value;
+        }
+    }
+}

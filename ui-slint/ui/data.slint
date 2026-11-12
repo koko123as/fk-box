@@ -1,0 +1,293 @@
+// Page state prepared in Rust (src/pages/*.rs) from BoxBridge events, one
+// global per page, so each page reads only what it shows (BoxController's
+// fields, compose/BoxController.kt).
+
+import { Glyph } from "icons.slint";
+
+// Values the whole app reads (BoxController.running, remote, transitioning, …).
+export global App {
+    in property <string> status: "Stopped";
+    in property <bool> running;
+    in property <bool> transitioning;
+    in property <bool> remote;
+    in property <string> remote-name;
+    in property <bool> has-selected-profile;
+    in property <int> profile-count;
+    in property <string> version;
+    in property <string> core-version;
+    in property <string> xray-version;
+    in property <string> mihomo-version;
+}
+
+// ---------------------------------------------------------------------------
+// Dashboard (pages/DashboardPage.kt, StatusPanel.kt)
+// ---------------------------------------------------------------------------
+
+export struct ModeItem { key: string, mode: string, label: string, glyph: Glyph }
+
+export struct Note { message: string, url: string }
+
+export struct KeyValue { key: string, value: string }
+
+export global Dash {
+    // The cards shown, in order ("Status", "Network speed", …).
+    in property <[string]> cards;
+    // Every card this device can show, for the editor.
+    in property <[string]> available;
+    in property <bool> editing;
+    // The editor's working list (DashboardEditorState).
+    in property <[KeyValue]> edit-shown;
+    in property <[KeyValue]> edit-hidden;
+    in property <bool> saving;
+    in property <bool> apply-required;
+    in property <[Note]> deprecated;
+
+    // Status panel
+    in property <string> status-label;
+    in property <bool> start-enabled;
+    in property <bool> start-busy;
+    in property <string> egress-ip;
+    in property <string> egress-country;
+    in property <bool> egress-loading;
+    in property <bool> egress-skeleton;
+    in property <bool> egress-failed;
+    in property <bool> egress-can-retry;
+    in property <string> egress-type;
+    in property <string> egress-quality;
+    in property <int> egress-quality-tone;
+    in property <string> organization;
+    in property <bool> organization-loading;
+    in property <string> runtime: "—";
+    in property <[KeyValue]> egress-rows;
+
+    // Network speed
+    in property <string> up-figure: "0";
+    in property <string> up-unit: "B";
+    in property <string> up-total: "0 B";
+    in property <string> up-line;
+    in property <string> up-area;
+    in property <string> down-figure: "0";
+    in property <string> down-unit: "B";
+    in property <string> down-total: "0 B";
+    in property <string> down-line;
+    in property <string> down-area;
+    in property <float> chart-width: 31;
+
+    // Outbound mode
+    in property <[ModeItem]> modes;
+    in property <string> mode;
+
+    // Current profile
+    in property <bool> has-profile;
+    in property <string> profile-name;
+    in property <string> profile-core;
+    in property <bool> profile-remote;
+    in property <bool> profile-updating;
+    in property <string> profile-updated;
+    in property <string> profile-days;
+    in property <int> profile-days-tone;
+    in property <string> profile-source;
+    in property <bool> profile-usage;
+    in property <string> usage-used;
+    in property <string> usage-total;
+    in property <float> usage-ratio;
+    in property <string> usage-percent;
+    in property <bool> stats-loading;
+    in property <string> stat-groups: "—";
+    in property <string> stat-outbounds: "—";
+    in property <string> stat-rules: "—";
+
+    // Proxy groups
+    in property <int> group-count;
+    in property <int> timeout-count;
+    in property <[string]> group-letters;
+    in property <int> group-rest;
+
+    // Memory
+    in property <bool> memory-empty: true;
+    in property <bool> memory-remote;
+    in property <bool> memory-running;
+    in property <string> memory-figure: "—";
+    in property <string> memory-unit;
+    in property <string> memory-app: "—";
+    in property <string> memory-core: "—";
+    in property <float> memory-app-weight;
+    in property <float> memory-core-weight;
+    in property <[KeyValue]> memory-app-rows;
+    in property <[KeyValue]> memory-core-rows;
+    in property <[string]> memory-core-percents;
+    in property <bool> releasing;
+
+    // Intranet IP
+    in property <bool> lan-loading: true;
+    in property <string> lan-address;
+    in property <bool> lan-enabled;
+    in property <bool> lan-can-toggle;
+    in property <string> lan-subtitle;
+    in property <bool> lan-can-copy;
+    in property <[string]> lan-addresses;
+    in property <string> lan-error;
+    in property <bool> lan-active;
+    in property <[KeyValue]> lan-listeners;
+    in property <bool> lan-changing;
+    in-out property <string> lan-port: "2080";
+    in property <bool> lan-port-invalid;
+
+    // System HTTP proxy
+    in property <bool> system-proxy;
+}
+
+// ---------------------------------------------------------------------------
+// Proxies (pages/ProxiesPage.kt)
+// ---------------------------------------------------------------------------
+
+export struct NodeRow {
+    tag: string,
+    kind: string,
+    delay: string,
+    tested: bool,
+    delay-ms: int,
+    selected: bool,
+    testing: bool,
+}
+
+export struct GroupRow {
+    tag: string,
+    kind: string,
+    selected: string,
+    monogram: string,
+    selectable: bool,
+    expanded: bool,
+    testing: bool,
+    // Index of the selected node in items, -1 when filtered out.
+    selected-index: int,
+    items: [NodeRow],
+}
+
+export global Proxies {
+    in property <[GroupRow]> groups;
+    // "Tabs" | "List" (proxyLayout)
+    in property <bool> list;
+    in-out property <int> tab;
+    // proxyDensity: -1 loose, 0 standard, 1 tight (added to the column count)
+    in property <int> density-adjust;
+    // proxyCardSize
+    in property <bool> compact;
+    in property <bool> loose;
+    // proxyIconStyle: "Filled" | "Plain" | "Hidden"
+    in property <string> icon-style: "Filled";
+    in property <string> query;
+    // The node shown in the details form.
+    in property <[KeyValue]> details;
+}
+
+// ---------------------------------------------------------------------------
+// Profiles (pages/ProfilesPage.kt, SubscriptionInfoView.kt)
+// ---------------------------------------------------------------------------
+
+export struct ProfileRow {
+    id: string,
+    name: string,
+    core: string,
+    remote: bool,
+    selected: bool,
+    updated: string,
+    source: string,
+    days: string,
+    days-tone: int,
+    has-usage: bool,
+    used: string,
+    total: string,
+    ratio: float,
+    percent: string,
+    updating: bool,
+    invalid: bool,
+}
+
+export global Profiles {
+    in property <[ProfileRow]> rows;
+    in property <bool> picker;
+    in property <bool> sorting;
+    // Profile details (ProfileDetailsPage)
+    in property <string> detail-id;
+    in property <string> detail-name;
+    in property <[KeyValue]> detail-rows;
+    in property <bool> detail-remote;
+    in property <bool> detail-sing-box;
+    // Add / edit form (ProfileEditor's subscription fields)
+    in-out property <string> form-name;
+    in-out property <string> form-url;
+    in-out property <string> form-interval: "60";
+    in-out property <bool> form-auto-update: true;
+    in-out property <string> form-core: "auto";
+    in property <string> form-error;
+    in property <bool> form-busy;
+    // Configuration viewer / editor
+    in-out property <string> config-text;
+    in property <bool> config-loading;
+    in property <bool> config-dirty;
+    in property <string> config-core;
+}
+
+// ---------------------------------------------------------------------------
+// Logs and requests (pages/RequestsPage.kt, ui/Records.kt)
+// ---------------------------------------------------------------------------
+
+export struct LogRow {
+    level: string,
+    time: string,
+    message: string,
+    tone: int,
+}
+
+export struct ConnectionRow {
+    id: string,
+    title: string,
+    subtitle: string,
+    detail: string,
+    upload: string,
+    download: string,
+    closed: bool,
+}
+
+export global Records {
+    in property <[LogRow]> logs;
+    in property <string> log-filter;
+    in property <string> log-level: "all";
+    in property <bool> log-paused;
+    in property <[ConnectionRow]> connections;
+    in property <bool> show-closed;
+    in property <string> connection-filter;
+    in property <[KeyValue]> connection-detail;
+    in property <string> connection-detail-id;
+}
+
+// ---------------------------------------------------------------------------
+// Tools and settings (pages/ToolsPage.kt, SettingsPages.kt, AppearancePage.kt, …)
+// ---------------------------------------------------------------------------
+
+export struct SettingRow {
+    // "switch" | "choice" | "link" | "text" | "info" | "action" | "header" | "footer"
+    kind: string,
+    key: string,
+    title: string,
+    subtitle: string,
+    value: string,
+    checked: bool,
+    enabled: bool,
+    glyph: Glyph,
+    has-glyph: bool,
+    danger: bool,
+    // 0 alone, 1 start, 2 middle, 3 end, 4 start and end
+    position: int,
+}
+
+export global Settings {
+    // The rows of the settings page on top, keyed by the route's kind.
+    in property <[SettingRow]> tools;
+    in property <[SettingRow]> page;
+    in property <string> page-title;
+    in property <bool> page-loading;
+    in property <string> page-footer;
+    in property <bool> apply-required;
+}

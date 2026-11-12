@@ -1,0 +1,950 @@
+// The dashboard and its panels (pages/DashboardPage.kt, StatusPanel.kt,
+// DashboardComponents.kt, DashboardEditor.kt; layout after FlClash, GPL-3.0).
+
+import { Theme, TextRole } from "../theme.slint";
+import { Icons, Glyph } from "../icons.slint";
+import { Nav, BarAction } from "../globals.slint";
+import { App, Dash, ModeItem, KeyValue } from "../data.slint";
+import { Icon, T, Spinner, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field } from "../kit.slint";
+
+// StartToggle: a round filled button showing start or stop.
+component StartToggle inherits Rectangle {
+    in property <length> size: 88px;
+    in property <bool> enabled: true;
+    in property <bool> running;
+    in property <bool> busy;
+    callback clicked();
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(0.12);
+    accessible-role: button;
+    accessible-label: running ? @tr("Stop") : @tr("Start");
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: ta.pressed ? Theme.s.on-primary.with-alpha(0.12) : transparent;
+    }
+    if root.busy: Spinner { size: root.size * 0.36; color: Theme.s.on-primary; }
+    if !root.busy: Icon {
+        glyph: root.running ? Icons.pause : Icons.start;
+        size: root.size * 0.4;
+        color: root.enabled ? Theme.s.on-primary : Theme.s.on-surface.with-alpha(0.38);
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+    }
+}
+
+// CountryBadge
+component CountryBadge inherits Rectangle {
+    in property <length> size: 48px;
+    in property <string> country;
+    in property <bool> active;
+    in property <bool> checking;
+    in property <bool> can-retry;
+    callback retry();
+    property <color> fg: active ? Theme.s.on-surface : Theme.s.on-surface-variant;
+    width: size;
+    height: size;
+    border-radius: size / 2;
+    background: Theme.level(3);
+    if root.checking: Spinner { size: root.size * 0.5; color: root.fg; }
+    if !root.checking && root.country != "": T {
+        text: root.country;
+        role: TextRole.footnote;
+        emphasized: true;
+        color: root.fg;
+        horizontal-alignment: center;
+    }
+    if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
+    TouchArea {
+        enabled: root.can-retry;
+        clicked => { root.retry(); }
+    }
+}
+
+component StatusCell inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <bool> loading;
+    spacing: 2px;
+    T { text: root.label; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+    if root.loading: Skeleton { width: 96px; pill-height: Theme.sp(14); }
+    if !root.loading: T { text: root.value; role: TextRole.subheadline; emphasized: true; }
+}
+
+export component StatusPanel inherits Rectangle {
+    background: Theme.level(1);
+    border-radius: Theme.radius;
+    height: lay.preferred-height;
+    lay := HorizontalLayout {
+        padding-left: 20px;
+        padding-top: 18px;
+        padding-bottom: 18px;
+        padding-right: 16px;
+        spacing: 10px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            spacing: 0px;
+            HorizontalLayout {
+                height: max(26px, Theme.sp(26));
+                spacing: 8px;
+                Icon { glyph: Icons.status; size: 18px; color: Theme.s.on-surface-variant; y: (parent.height - 18px) / 2; }
+                T { text: @tr("Status"); role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
+                Rectangle {
+                    horizontal-stretch: 1;
+                    Chip {
+                        x: 0;
+                        label: Dash.status-label;
+                        tone: App.running ? 1 : 0;
+                        dot: App.running;
+                    }
+                }
+            }
+            Rectangle { height: 12px; }
+            HorizontalLayout {
+                spacing: 12px;
+                CountryBadge {
+                    country: Dash.egress-country;
+                    active: App.running;
+                    checking: Dash.egress-loading;
+                    can-retry: Dash.egress-can-retry;
+                    y: (parent.height - self.height) / 2;
+                    retry => { Nav.act("egress-retry", ""); }
+                }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Rectangle {
+                        height: Theme.leading(TextRole.title1);
+                        if Dash.egress-ip != "": T {
+                            x: 0;
+                            width: parent.width;
+                            text: Dash.egress-ip;
+                            role: TextRole.title1;
+                            emphasized: true;
+                            font-size: self.text.character-count > 18 ? Theme.size(TextRole.title1) * 0.75 : Theme.size(TextRole.title1);
+                            color: App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
+                            TouchArea { clicked => { Nav.form("egress", ""); } }
+                        }
+                        if Dash.egress-ip == "" && Dash.egress-skeleton: Skeleton {
+                            x: 0;
+                            width: 140px;
+                            pill-height: Theme.sp(24);
+                        }
+                        if Dash.egress-ip == "" && !Dash.egress-skeleton: T {
+                            x: 0;
+                            width: parent.width;
+                            text: Dash.egress-failed ? @tr("Check failed") : "—";
+                            role: TextRole.title1;
+                            emphasized: true;
+                            color: Dash.egress-failed ? Theme.s.error : App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
+                        }
+                    }
+                    Rectangle {
+                        height: 28px;
+                        clip: true;
+                        if Dash.egress-failed && Dash.egress-ip == "": T {
+                            x: 0;
+                            text: @tr("Tap icon to retry");
+                            role: TextRole.caption1;
+                            color: Theme.s.on-surface-variant;
+                        }
+                        if !(Dash.egress-failed && Dash.egress-ip == ""): HorizontalLayout {
+                            alignment: start;
+                            spacing: 6px;
+                            if Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "": Skeleton { width: 48px; pill-height: 28px; }
+                            if Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "": Skeleton { width: 72px; pill-height: 28px; }
+                            if !(Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == ""): Chip { label: Dash.egress-type; large: true; }
+                            if !(Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "") && Dash.egress-quality != "": Chip {
+                                label: @tr("Quality") + " " + Dash.egress-quality;
+                                large: true;
+                                tone: Dash.egress-quality-tone;
+                            }
+                        }
+                    }
+                }
+            }
+            Rectangle { height: 16px; }
+            HorizontalLayout {
+                spacing: 24px;
+                alignment: start;
+                StatusCell { label: @tr("Run time"); value: Dash.runtime; }
+                StatusCell {
+                    label: @tr("Organization");
+                    value: Dash.organization == "" ? "—" : Dash.organization;
+                    loading: Dash.organization == "" && Dash.organization-loading;
+                }
+            }
+        }
+        Rectangle {
+            width: 88px;
+            if App.remote: Icon { glyph: Icons.proxies; size: 60px; }
+            if !App.remote: StartToggle {
+                size: 88px;
+                enabled: Dash.start-enabled;
+                running: App.running;
+                busy: Dash.start-busy;
+                clicked => { Nav.act("toggle-service", ""); }
+            }
+        }
+    }
+}
+
+// The line chart (ui/LineChart.kt): smoothed in Rust, drawn as a stroked
+// curve over a 14% fill; the paths are in a (capacity - 1) × 1000 box.
+component LineChart inherits Rectangle {
+    in property <string> line;
+    in property <string> area;
+    in property <color> color;
+    in property <float> span: 31;
+    clip: true;
+    if root.area != "": Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.span;
+        viewbox-height: 1000;
+        commands: root.area;
+        fill: root.color.with-alpha(0.14);
+        stroke-width: 0;
+    }
+    if root.line != "": Path {
+        width: root.width;
+        height: root.height;
+        viewbox-width: root.span;
+        viewbox-height: 1000;
+        commands: root.line;
+        fill: transparent;
+        stroke: root.color;
+        stroke-width: 2px;
+    }
+}
+
+component SpeedTile inherits Rectangle {
+    in property <bool> upload;
+    property <color> fg: upload ? Theme.s.on-surface-variant : Theme.s.primary;
+    property <length> text-height: 14px + 4px + Theme.leading(TextRole.footnote) + Theme.leading(TextRole.title1) + Theme.leading(TextRole.caption1);
+    property <length> chart-height: max(36px, self.width / 1.06 - text-height - 12px + 2px);
+    border-radius: Theme.radius;
+    background: Theme.level(2);
+    clip: true;
+    height: chart-height - 2px + 12px + text-height;
+    LineChart {
+        x: 0;
+        y: parent.height - self.height;
+        width: parent.width;
+        height: root.chart-height;
+        span: Dash.chart-width;
+        line: root.upload ? Dash.up-line : Dash.down-line;
+        area: root.upload ? Dash.up-area : Dash.down-area;
+        color: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
+    }
+    VerticalLayout {
+        x: 16px;
+        y: 14px;
+        width: parent.width - 32px;
+        height: root.text-height - 14px;
+        alignment: start;
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: start;
+            Icon { glyph: root.upload ? Icons.arrow-up : Icons.arrow-down; size: 16px; color: root.fg; y: (parent.height - 16px) / 2; }
+            T { text: root.upload ? @tr("Upload") : @tr("Download"); role: TextRole.footnote; emphasized: true; color: Theme.s.on-surface-variant; }
+        }
+        Rectangle { height: 4px; }
+        HorizontalLayout {
+            alignment: start;
+            spacing: 0px;
+            T {
+                text: root.upload ? Dash.up-figure : Dash.down-figure;
+                role: TextRole.title1;
+                emphasized: true;
+                letter-spacing: -0.02 * Theme.size(TextRole.title1);
+                overflow: clip;
+                vertical-alignment: bottom;
+            }
+            T {
+                text: " " + (root.upload ? Dash.up-unit : Dash.down-unit) + "/s";
+                role: TextRole.footnote;
+                emphasized: true;
+                color: Theme.s.on-surface-variant;
+                vertical-alignment: bottom;
+                height: Theme.leading(TextRole.title1) - 4px;
+            }
+        }
+        T {
+            text: @tr("Total") + " " + (root.upload ? Dash.up-total : Dash.down-total);
+            role: TextRole.caption1;
+            color: Theme.s.on-surface-variant;
+        }
+    }
+}
+
+export component SpeedPanel inherits Panel {
+    PanelTitle { title: @tr("Network speed"); glyph: Icons.speed; }
+    Rectangle { height: 12px; }
+    HorizontalLayout {
+        spacing: 10px;
+        SpeedTile { upload: true; horizontal-stretch: 1; }
+        SpeedTile { upload: false; horizontal-stretch: 1; }
+    }
+}
+
+export component ModePanel inherits Panel {
+    PanelTitle { title: @tr("Outbound mode"); glyph: Icons.split; }
+    Rectangle { height: 12px; }
+    HorizontalLayout {
+        spacing: 2px;
+        for m in Dash.modes: Rectangle {
+            property <bool> selected: m.key == Dash.mode;
+            horizontal-stretch: 1;
+            height: 52px;
+            border-radius: Theme.radius;
+            background: selected ? Theme.s.primary : Theme.level(2);
+            accessible-role: button;
+            accessible-label: m.label;
+            Rectangle {
+                border-radius: parent.border-radius;
+                background: mta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+            }
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+                Icon { glyph: m.glyph; size: 18px; color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant; x: (parent.width - 18px) / 2; }
+                T {
+                    text: m.label;
+                    role: TextRole.footnote;
+                    emphasized: true;
+                    horizontal-alignment: center;
+                    color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
+                }
+            }
+            mta := TouchArea { clicked => { if (!selected) { Nav.act("set-mode", m.mode); } } }
+        }
+    }
+}
+
+// SubscriptionUsageMeter
+export component UsageMeter inherits VerticalLayout {
+    in property <string> used;
+    in property <string> total;
+    in property <float> ratio;
+    in property <string> percent;
+    spacing: 6px;
+    HorizontalLayout {
+        T { text: root.used + " / " + root.total; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+        T { text: root.percent; role: TextRole.caption1; emphasized: true; color: root.ratio >= 0.9 ? Theme.s.error : Theme.s.on-surface-variant; }
+    }
+    Rectangle {
+        height: 8px;
+        border-radius: 4px;
+        background: Theme.level(3);
+        clip: true;
+        Rectangle {
+            x: 0;
+            width: parent.width * clamp(root.ratio, 0, 1);
+            border-radius: 4px;
+            background: root.ratio >= 0.9 ? Theme.s.error : root.ratio >= 0.7 ? Theme.s.warning : Theme.s.primary;
+        }
+    }
+}
+
+component StatFigure inherits VerticalLayout {
+    in property <string> value;
+    in property <string> label;
+    in property <bool> loading;
+    if root.loading: Skeleton { width: 34px; pill-height: Theme.sp(22); }
+    if !root.loading: T { text: root.value; role: TextRole.title3; emphasized: true; }
+    T { text: root.label; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+}
+
+export component ProfilePanel inherits Panel {
+    clickable: true;
+    clicked => { Nav.act("profile-panel", ""); }
+    PanelTitle {
+        title: @tr("Profile");
+        glyph: Icons.profiles;
+        if Dash.profile-remote: Rectangle {
+            width: 26px;
+            if Dash.profile-updating: Spinner { size: 18px; }
+            if !Dash.profile-updating: IconButton {
+                glyph: Icons.sync;
+                tooltip: @tr("Update");
+                size: 26px;
+                icon-size: 18px;
+                clicked => { Nav.act("update-selected-profile", ""); }
+            }
+        }
+        Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+    }
+    Rectangle { height: 12px; }
+    HorizontalLayout {
+        spacing: 8px;
+        alignment: start;
+        T {
+            text: App.remote ? @tr("Remote configuration") : Dash.has-profile ? Dash.profile-name : @tr("Add profile");
+            role: TextRole.headline;
+            emphasized: true;
+            horizontal-stretch: 0;
+        }
+        if Dash.has-profile && Dash.profile-core != "": Rectangle {
+            width: core-chip.preferred-width + 16px;
+            core-chip := T {
+                text: Dash.profile-core;
+                role: TextRole.caption1;
+                emphasized: true;
+                color: Theme.s.secondary;
+            }
+            height: core-chip.preferred-height + 4px;
+            y: (parent.height - self.height) / 2;
+            border-radius: self.height / 2;
+            background: Theme.s.secondary.with-alpha(0.15);
+        }
+        Rectangle { horizontal-stretch: 1; }
+        if !App.remote && App.profile-count > 1: IconButton {
+            glyph: Icons.swap;
+            tooltip: @tr("Switch profile");
+            size: 32px;
+            icon-size: 18px;
+            enabled: !App.transitioning;
+            y: (parent.height - self.height) / 2;
+            clicked => { Nav.form("profiles-picker", ""); }
+        }
+    }
+    if Dash.has-profile || App.remote: VerticalLayout {
+        HorizontalLayout {
+            spacing: 12px;
+            T { text: Dash.profile-updated; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+            T {
+                text: Dash.profile-days != "" ? Dash.profile-days : Dash.profile-source;
+                role: TextRole.caption1;
+                color: Dash.profile-days-tone == 2 ? Theme.s.error : Dash.profile-days-tone == 1 ? Theme.s.warning : Theme.s.on-surface-variant;
+                horizontal-stretch: 0;
+            }
+        }
+        Rectangle { height: 14px; }
+        if Dash.profile-usage: UsageMeter {
+            used: Dash.usage-used;
+            total: Dash.usage-total;
+            ratio: Dash.usage-ratio;
+            percent: Dash.usage-percent;
+        }
+        if !Dash.profile-usage: HorizontalLayout {
+            StatFigure { value: Dash.stat-groups; label: @tr("Proxy groups"); loading: Dash.stats-loading; }
+            Rectangle { horizontal-stretch: 1; }
+            StatFigure { value: Dash.stat-outbounds; label: @tr("Outbounds"); loading: Dash.stats-loading; }
+            Rectangle { horizontal-stretch: 1; }
+            StatFigure { value: Dash.stat-rules; label: @tr("Routing rules"); loading: Dash.stats-loading; }
+        }
+    }
+}
+
+// GroupIconStack
+component GroupIconStack inherits Rectangle {
+    in property <[string]> letters;
+    in property <int> rest;
+    property <length> size: 40px;
+    property <length> step: size - 8px;
+    property <int> count: letters.length + (rest > 0 ? 1 : 0);
+    width: count * size - (count - 1) * 8px;
+    height: size;
+    for l[i] in root.letters: Rectangle {
+        x: i * root.step - 3px;
+        y: -3px;
+        width: root.size + 6px;
+        height: root.size + 6px;
+        border-radius: Theme.radius + 3px;
+        background: Theme.level(1);
+        Rectangle {
+            x: 3px;
+            y: 3px;
+            width: root.size;
+            height: root.size;
+            border-radius: Theme.radius;
+            background: Theme.level(3);
+            T { text: l; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+        }
+    }
+    if root.rest > 0: Rectangle {
+        x: root.letters.length * root.step - 3px;
+        y: -3px;
+        width: root.size + 6px;
+        height: root.size + 6px;
+        border-radius: Theme.radius + 3px;
+        background: Theme.level(1);
+        Rectangle {
+            x: 3px;
+            y: 3px;
+            width: root.size;
+            height: root.size;
+            border-radius: Theme.radius;
+            background: Theme.level(2);
+            T { text: "+" + root.rest; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+        }
+    }
+}
+
+export component GroupsPanel inherits Panel {
+    clickable: Dash.group-count > 0;
+    clicked => { Nav.form("proxies", ""); }
+    PanelTitle {
+        title: @tr("Proxy groups");
+        glyph: Icons.layers;
+        HorizontalLayout {
+            spacing: 6px;
+            if Dash.timeout-count > 0: Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2; y: (parent.height - self.height) / 2; }
+            if Dash.group-count > 0: Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+        }
+    }
+    Rectangle { height: 12px; }
+    if Dash.group-count == 0: VerticalLayout {
+        padding-left: 24px;
+        padding-right: 24px;
+        padding-top: 12px;
+        padding-bottom: 24px;
+        spacing: 6px;
+        IconBadge { glyph: Icons.layers; size: 56px; x: (parent.width - 56px) / 2; }
+        T {
+            text: App.running ? @tr("No proxy groups in this configuration") : @tr("Start the service to view proxy groups");
+            role: TextRole.subheadline;
+            emphasized: true;
+            horizontal-alignment: center;
+            wrap: word-wrap;
+        }
+    }
+    if Dash.group-count > 0: HorizontalLayout {
+        spacing: 12px;
+        HorizontalLayout {
+            horizontal-stretch: 1;
+            alignment: start;
+            T { text: Dash.group-count; role: TextRole.display; emphasized: true; vertical-alignment: bottom; }
+            T { text: " " + @tr("Groups"); role: TextRole.subheadline; color: Theme.s.on-surface-variant; vertical-alignment: bottom; height: Theme.leading(TextRole.display) - 8px; }
+        }
+        GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest; y: (parent.height - self.height) / 2; }
+    }
+}
+
+// MemoryBar + legend (MemorySummary)
+export component MemorySummary inherits VerticalLayout {
+    T {
+        text: Dash.memory-figure + (Dash.memory-empty ? "" : " " + Dash.memory-unit);
+        role: TextRole.title1;
+        emphasized: true;
+    }
+    Rectangle { height: 14px; }
+    Rectangle {
+        height: 8px;
+        border-radius: 4px;
+        clip: true;
+        background: Theme.level(3);
+        property <float> sum: Dash.memory-app-weight + Dash.memory-core-weight;
+        if parent.sum > 0 && !Dash.memory-remote: Rectangle {
+            x: 0;
+            width: (parent.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 ? 2px : 0)) * Dash.memory-app-weight / parent.sum;
+            background: Theme.s.primary;
+        }
+        if parent.sum > 0: Rectangle {
+            width: (parent.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 && !Dash.memory-remote ? 2px : 0)) * Dash.memory-core-weight / parent.sum;
+            x: parent.width - self.width;
+            background: Theme.s.primary.mix(Theme.level(1), 0.45);
+        }
+    }
+    Rectangle { height: 10px; }
+    HorizontalLayout {
+        spacing: 16px;
+        alignment: start;
+        if !Dash.memory-remote: HorizontalLayout {
+            spacing: 6px;
+            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.s.primary; y: (parent.height - 8px) / 2; }
+            T { text: @tr("App"); role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+            T { text: Dash.memory-app; role: TextRole.footnote; emphasized: true; }
+        }
+        HorizontalLayout {
+            spacing: 6px;
+            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.s.primary.mix(Theme.level(1), 0.45); y: (parent.height - 8px) / 2; }
+            T { text: @tr("Core"); role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+            T { text: Dash.memory-core; role: TextRole.footnote; emphasized: true; }
+        }
+    }
+}
+
+export component MemoryPanel inherits Panel {
+    clickable: true;
+    clicked => { Nav.form("memory", ""); }
+    PanelTitle {
+        title: @tr("Memory");
+        glyph: Icons.memory;
+        Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+    }
+    Rectangle { height: 12px; }
+    MemorySummary { }
+}
+
+// LanProxyRow
+export component LanProxyRow inherits Rectangle {
+    in property <bool> value;
+    in property <string> subtitle;
+    in property <bool> enabled;
+    border-radius: Theme.radius;
+    background: Theme.level(2);
+    height: lay.preferred-height;
+    lta := TouchArea {
+        enabled: root.enabled;
+        clicked => { Nav.act("lan-toggle", root.value ? "0" : "1"); }
+    }
+    lay := HorizontalLayout {
+        padding-left: 10px;
+        padding-right: 12px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 12px;
+        IconBadge {
+            glyph: Icons.wifi;
+            size: 38px;
+            container: root.value ? Theme.s.primary : Theme.level(1);
+            color: root.value ? Theme.s.on-primary : Theme.s.on-surface-variant;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            T { text: @tr("LAN proxy"); role: TextRole.subheadline; emphasized: true; }
+            T { text: root.subtitle; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+        }
+        Switch {
+            checked: root.value;
+            enabled: root.enabled;
+            y: (parent.height - self.height) / 2;
+            toggled(v) => { Nav.act("lan-toggle", v ? "1" : "0"); }
+        }
+    }
+}
+
+export component IntranetPanel inherits Panel {
+    PanelTitle {
+        title: @tr("Intranet IP");
+        glyph: Icons.devices;
+        IconButton {
+            glyph: Icons.copy;
+            tooltip: @tr("Copy");
+            size: 32px;
+            icon-size: 18px;
+            enabled: Dash.lan-can-copy;
+            y: (parent.height - self.height) / 2;
+            clicked => { Nav.act("lan-copy", ""); }
+        }
+    }
+    Rectangle { height: 12px; }
+    Rectangle {
+        height: Theme.leading(TextRole.title1);
+        if Dash.lan-loading: Skeleton { x: 0; width: 120px; pill-height: Theme.sp(24); }
+        if !Dash.lan-loading: T {
+            x: 0;
+            width: parent.width;
+            text: Dash.lan-address == "" ? @tr("No network") : Dash.lan-address;
+            role: TextRole.title1;
+            emphasized: true;
+            color: Dash.lan-address == "" ? Theme.s.on-surface-variant : Theme.s.on-surface;
+            font-size: self.text.character-count > 18 ? Theme.size(TextRole.title1) * 0.7 : Theme.size(TextRole.title1);
+        }
+        TouchArea { clicked => { Nav.form("intranet", ""); } }
+    }
+    Rectangle { height: 14px; }
+    if App.remote: ListItem {
+        position: 4;
+        level: 1;
+        title: @tr("This device");
+        subtitle: @tr("Device network addresses");
+        has-leading: true;
+        leading: Icons.wifi;
+    }
+    if !App.remote: LanProxyRow {
+        value: Dash.lan-enabled;
+        subtitle: Dash.lan-subtitle;
+        enabled: Dash.lan-can-toggle;
+    }
+}
+
+export component SystemProxyPanel inherits Panel {
+    clickable: true;
+    pad: 0px;
+    clicked => { Nav.act("system-proxy", Dash.system-proxy ? "0" : "1"); }
+    HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        padding-top: 16px;
+        padding-bottom: 16px;
+        spacing: 14px;
+        IconBadge {
+            glyph: Icons.system-proxy;
+            size: 48px;
+            container: Dash.system-proxy ? Theme.s.primary : Theme.level(2);
+            color: Dash.system-proxy ? Theme.s.on-primary : Theme.s.on-surface-variant;
+            y: (parent.height - self.height) / 2;
+        }
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            T { text: @tr("System HTTP proxy"); role: TextRole.callout; emphasized: true; wrap: word-wrap; }
+            T { text: Dash.system-proxy ? @tr("Enabled") : @tr("Disabled"); role: TextRole.footnote; color: Theme.s.on-surface-variant; }
+        }
+        Switch {
+            checked: Dash.system-proxy;
+            y: (parent.height - self.height) / 2;
+            toggled(v) => { Nav.act("system-proxy", v ? "1" : "0"); }
+        }
+    }
+}
+
+// The remote, restart and deprecation rows (DashboardBanners).
+component Banners inherits VerticalLayout {
+    in property <bool> top: true;
+    spacing: Nav.gap;
+    if root.top && App.remote: ListItem {
+        title: App.remote-name;
+        subtitle: @tr("Remote control");
+        Button {
+            label: @tr("Disconnect");
+            kind: 2;
+            y: (parent.height - self.height) / 2;
+            clicked => { Nav.act("remote-disconnect", ""); }
+        }
+    }
+    if root.top && Dash.apply-required: ListItem {
+        title: @tr("Restart required");
+        Button {
+            label: @tr("Apply");
+            kind: 2;
+            y: (parent.height - self.height) / 2;
+            clicked => { Nav.act("apply-restart", ""); }
+        }
+    }
+    if !root.top: VerticalLayout {
+        spacing: Nav.gap;
+        for n in Dash.deprecated: ListItem {
+            title: n.message;
+            clickable: n.url != "";
+            clicked => { Nav.act("open-url", n.url); }
+        }
+    }
+}
+
+component DashboardCard inherits Rectangle {
+    in property <string> card;
+    height: lay.preferred-height;
+    lay := VerticalLayout {
+        if root.card == "Status": StatusPanel { }
+        if root.card == "Network speed": SpeedPanel { }
+        if root.card == "Outbound mode": ModePanel { }
+        if root.card == "Current profile": ProfilePanel { }
+        if root.card == "Proxy groups": GroupsPanel { }
+        if root.card == "Memory": MemoryPanel { }
+        if root.card == "Intranet IP": IntranetPanel { }
+        if root.card == "System HTTP proxy": SystemProxyPanel { }
+    }
+}
+
+// The dashboard editor (DashboardEditor.kt): the shown cards with move
+// and remove buttons, then the hidden ones with add buttons.
+component DashboardEditor inherits VerticalLayout {
+    spacing: 0px;
+    SectionTitle { text: @tr("Shown"); first: true; }
+    for c[i] in Dash.edit-shown: ListItem {
+        position: Dash.edit-shown.length == 1 ? 4 : i == 0 ? 1 : i == Dash.edit-shown.length - 1 ? 3 : 2;
+        title: c.value;
+        HorizontalLayout {
+            spacing: 0px;
+            IconButton {
+                glyph: Icons.arrow-up;
+                tooltip: @tr("Move up");
+                enabled: i > 0;
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act2("dash-move", c.key, "-1"); }
+            }
+            IconButton {
+                glyph: Icons.arrow-down;
+                tooltip: @tr("Move down");
+                enabled: i < Dash.edit-shown.length - 1;
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act2("dash-move", c.key, "1"); }
+            }
+            IconButton {
+                glyph: Icons.remove;
+                tooltip: @tr("Remove");
+                enabled: c.key != "Status";
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act2("dash-hide", c.key, ""); }
+            }
+        }
+    }
+    if Dash.edit-hidden.length > 0: SectionTitle { text: @tr("Hidden"); }
+    for c[i] in Dash.edit-hidden: ListItem {
+        position: Dash.edit-hidden.length == 1 ? 4 : i == 0 ? 1 : i == Dash.edit-hidden.length - 1 ? 3 : 2;
+        title: c.value;
+        IconButton {
+            glyph: Icons.add;
+            tooltip: @tr("Add");
+            y: (parent.height - self.height) / 2;
+            clicked => { Nav.act2("dash-show", c.key, ""); }
+        }
+    }
+}
+
+export component DashboardPage inherits Rectangle {
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: Dash.editing ? @tr("Edit dashboard") : @tr("Dashboard");
+        loading: Dash.saving;
+        actions: Dash.editing
+            ? [{ id: "dash-done", glyph: Icons.check, tooltip: @tr("Done"), enabled: !Dash.saving }]
+            : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
+        action(id) => { Nav.act(id, ""); }
+    }
+    Flickable {
+        y: bar.height;
+        height: parent.height - bar.height;
+        viewport-height: body.preferred-height;
+        body := VerticalLayout {
+            property <length> side: max(16px, (root.width - 560px) / 2);
+            padding-left: side;
+            padding-right: side;
+            padding-top: 8px;
+            padding-bottom: 16px;
+            spacing: Dash.editing ? 0px : Nav.gap;
+            if Dash.editing: DashboardEditor { }
+            if !Dash.editing && (App.remote || Dash.apply-required): Banners { top: true; }
+            if !Dash.editing: VerticalLayout {
+                spacing: Nav.gap;
+                for c in Dash.cards: DashboardCard { card: c; }
+            }
+            if !Dash.editing && Dash.deprecated.length > 0: Banners { top: false; }
+        }
+    }
+}
+
+// MemoryDetails
+export component MemoryPage inherits ScrollPage {
+    title: @tr("Memory");
+    loading: Dash.releasing;
+    actions: !Dash.memory-remote && Dash.memory-running
+        ? [{ id: "memory-release", glyph: Icons.broom, tooltip: @tr("Release memory"), enabled: !Dash.releasing }]
+        : [];
+    action(id) => { Nav.act(id, ""); }
+    Rectangle { height: 8px; }
+    T { text: @tr("Total"); role: TextRole.headline; }
+    Rectangle { height: 4px; }
+    MemorySummary { }
+    Rectangle { height: 12px; }
+    T {
+        text: Dash.memory-remote ? @tr("Memory reported by the remote core. Detailed accounting is unavailable.")
+            : @tr("App and core share one process. Core runtime memory is separated from process RSS, not added twice.");
+        role: TextRole.caption1;
+        color: Theme.s.on-surface-variant;
+        wrap: word-wrap;
+    }
+    if !Dash.memory-remote: SectionTitle { text: @tr("App"); }
+    if !Dash.memory-remote: VerticalLayout {
+        for r[i] in Dash.memory-app-rows: ListItem {
+            position: Dash.memory-app-rows.length == 1 ? 4 : i == 0 ? 1 : i == Dash.memory-app-rows.length - 1 ? 3 : 2;
+            title: r.key;
+            trailing-text: r.value;
+        }
+    }
+    SectionTitle { text: @tr("Core"); }
+    VerticalLayout {
+        for r[i] in Dash.memory-core-rows: ListItem {
+            position: Dash.memory-core-rows.length == 1 ? 4 : i == 0 ? 1 : i == Dash.memory-core-rows.length - 1 ? 3 : 2;
+            title: r.key;
+            subtitle: i < Dash.memory-core-percents.length && Dash.memory-core-percents[i] != "" ? r.value : "";
+            trailing-text: i < Dash.memory-core-percents.length && Dash.memory-core-percents[i] != "" ? Dash.memory-core-percents[i] : r.value;
+        }
+    }
+}
+
+// EgressDetails
+export component EgressPage inherits ScrollPage {
+    title: @tr("Outbound IP");
+    actions: [{ id: "egress-copy", glyph: Icons.copy, tooltip: @tr("Copy"), enabled: Dash.egress-ip != "" }];
+    action(id) => { Nav.act(id, ""); }
+    SectionTitle { text: ""; first: true; height: 8px; }
+    VerticalLayout {
+        for r[i] in Dash.egress-rows: ListItem {
+            position: Dash.egress-rows.length == 1 ? 4 : i == 0 ? 1 : i == Dash.egress-rows.length - 1 ? 3 : 2;
+            title: r.key;
+            subtitle: r.value == "" ? "—" : r.value;
+        }
+    }
+}
+
+// IntranetDetails
+export component IntranetPage inherits ScrollPage {
+    title: @tr("Intranet IP");
+    actions: [{ id: "lan-refresh", glyph: Icons.refresh, tooltip: @tr("Reload"), enabled: !Dash.lan-changing }];
+    action(id) => { Nav.act(id, ""); }
+    SectionTitle { text: @tr("This device"); first: true; }
+    if Dash.lan-addresses.length == 0: ListItem { title: @tr("No network"); }
+    VerticalLayout {
+        for a[i] in Dash.lan-addresses: ListItem {
+            position: Dash.lan-addresses.length == 1 ? 4 : i == 0 ? 1 : i == Dash.lan-addresses.length - 1 ? 3 : 2;
+            title: a;
+            IconButton {
+                glyph: Icons.copy;
+                tooltip: @tr("Copy");
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act("copy", a); }
+            }
+        }
+    }
+    if !App.remote: Rectangle { height: 24px; }
+    if !App.remote: LanProxyRow { value: Dash.lan-enabled; subtitle: Dash.lan-subtitle; enabled: Dash.lan-can-toggle; }
+    if !App.remote && Dash.lan-error != "": VerticalLayout {
+        padding-top: 16px;
+        spacing: 8px;
+        T { text: Dash.lan-error; role: TextRole.subheadline; color: Theme.s.error; wrap: word-wrap; horizontal-alignment: center; }
+        HorizontalLayout { alignment: center; Button { label: @tr("Retry"); kind: 0; clicked => { Nav.act("lan-refresh", ""); } } }
+    }
+    if !App.remote: SectionTitle { text: @tr("Local proxy listeners"); }
+    if !App.remote: VerticalLayout {
+        for r[i] in Dash.lan-listeners: ListItem {
+            position: Dash.lan-listeners.length == 1 ? 4 : i == 0 ? 1 : i == Dash.lan-listeners.length - 1 ? 3 : 2;
+            title: r.key;
+            subtitle: r.value == "copy" ? "" : r.value;
+            if r.value == "copy": IconButton {
+                glyph: Icons.copy;
+                tooltip: @tr("Copy");
+                y: (parent.height - self.height) / 2;
+                clicked => { Nav.act("copy", r.key); }
+            }
+        }
+    }
+    if !App.remote && Dash.has-profile: Rectangle { height: 24px; }
+    if !App.remote && Dash.has-profile: ListItem {
+        title: @tr("Open configuration");
+        has-leading: true;
+        leading: Icons.code;
+        chevron: true;
+        clickable: true;
+        clicked => { Nav.push("profile-config", "selected"); }
+    }
+}
+
+// NewLANProxy
+export component NewLanProxyPage inherits ScrollPage {
+    title: @tr("Add proxy listener");
+    loading: Dash.lan-changing;
+    actions: [{ id: "lan-add-save", glyph: Icons.check, tooltip: @tr("Save"), enabled: Dash.lan-can-toggle }];
+    action(id) => { Nav.act(id, Dash.lan-port); }
+    Rectangle { height: 8px; }
+    Field {
+        label: @tr("Port");
+        text <=> Dash.lan-port;
+        invalid: Dash.lan-port-invalid;
+        input-type: number;
+        edited => { Nav.act("lan-port-edited", ""); }
+    }
+    if Dash.lan-port-invalid: T { text: @tr("Invalid proxy port"); role: TextRole.caption1; color: Theme.s.error; x: 16px; }
+    Rectangle { height: 16px; }
+    T { text: @tr("Adds an HTTP and SOCKS proxy to the selected profile."); role: TextRole.caption1; color: Theme.s.on-surface-variant; wrap: word-wrap; }
+}
