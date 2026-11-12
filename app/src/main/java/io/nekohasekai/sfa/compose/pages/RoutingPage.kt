@@ -258,10 +258,10 @@ fun RoutingRulesPage(box: BoxController) {
                                 subtitle = { Text(ruleSummary(rule), maxLines = 2) },
                                 trailing = {
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        CommonSwitch(rule.enabled) { enabled ->
+                                        CommonSwitch(rule.enabled, onChanged = { enabled ->
                                             val current = draft.core(core)
                                             update(current.copy(rules = current.rules.map { if (it.id == rule.id) it.copy(enabled = enabled) else it }))
-                                        }
+                                        })
                                         SortHandle()
                                     }
                                 },
