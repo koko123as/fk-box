@@ -45,6 +45,21 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
+      - name: Set up Rust for the Slint UI
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup default stable
+          cargo install cargo-ndk --version 4.1.2 --locked
+          # Slint compiles its Java IME helper at build time.
+          echo "ANDROID_JAR=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
+          echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui-slint
+
       - name: Run unit tests
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
