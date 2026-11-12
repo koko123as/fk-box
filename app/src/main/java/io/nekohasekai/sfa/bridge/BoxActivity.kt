@@ -12,8 +12,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
@@ -21,8 +19,8 @@ import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
-import io.nekohasekai.sfa.compose.BoxApp
-import io.nekohasekai.sfa.compose.BoxController
+import com.google.androidgamesdk.GameActivity
+import kotlinx.coroutines.CancellationException
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -39,11 +37,10 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
 
-open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
+open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     val serviceStatus = MutableStateFlow(Status.Stopped)
     private val connection = ServiceConnection(this, this)
     private var bridge: BoxBridge? = null
-    private var controller: BoxController? = null
     private var notificationPermissionRequested = false
     private var localNetworkPermissionRequested = false
     private var startPending = false
@@ -98,19 +95,38 @@ open class BoxActivity : ComponentActivity(), ServiceConnection.Callback {
         documentRequest = null
     }
 
-    /** Hosts the Compose UI over the native bridge facade. */
+    /** The Rust + Slint UI (libfkui.so) draws on GameActivity's surface; it reaches BoxBridge through [slintCall]. */
     private fun attachUi() {
-        val facade = BoxBridge(this)
-        bridge = facade
-        val box = BoxController(facade)
-        controller = box
-        box.initialize()
-        setContent { BoxApp(box) }
+        bridge = BoxBridge(this)
+    }
+
+    /** Called by the Slint UI from its own thread; answers through [SlintHost.nativeReply]. */
+    @Suppress("unused")
+    fun slintCall(id: Long, method: String, args: String) {
+        lifecycleScope.launch(Dispatchers.Main) {
+            val facade = bridge
+            if (facade == null) {
+                SlintHost.nativeReply(id, false, SlintHost.wire("Bridge is not ready"))
+                return@launch
+            }
+            if (method == "attach") {
+                facade.listen { event -> SlintHost.nativeEvent(SlintHost.wire(event)) }
+                SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                return@launch
+            }
+            try {
+                val result = facade.call { slintDispatch(method, org.json.JSONObject(args)) }
+                SlintHost.nativeReply(id, true, SlintHost.wire(result))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                SlintHost.nativeReply(id, false, SlintHost.wire(e.message ?: e.toString()))
+            }
+        }
     }
 
     private fun detachUi() {
-        controller?.dispose()
-        controller = null
+        bridge?.cancel()
         bridge?.close()
         bridge = null
     }

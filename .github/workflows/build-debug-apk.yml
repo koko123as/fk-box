@@ -10,8 +10,8 @@ concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: false
 
-# FK-box builds the Kotlin + Jetpack Compose app; it no longer consumes the
-# Flutter AAR, so the debug APK only needs the patched core.
+# FK-box (ui/rust-slint): Rust + Slint UI over the unchanged Kotlin service
+# layer and patched core.
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -38,6 +38,24 @@ jobs:
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
+
+      # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
+      - name: Set up Rust for the Slint UI
+        run: |
+          rustup toolchain install stable --profile minimal --target aarch64-linux-android
+          rustup default stable
+          cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ui-slint
+
+      - name: Rust UI unit tests
+        working-directory: ui-slint
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq libfontconfig1-dev
+          cargo test --lib
 
       - name: Source guards
         run: python3 tools/verify_newui.py

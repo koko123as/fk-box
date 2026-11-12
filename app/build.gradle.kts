@@ -185,6 +185,9 @@ android {
         }
     }
 
+    // libfkui.so: the Rust + Slint UI built from ui-slint/ by cargo-ndk.
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+
     lint {
         fatal += "NewApi"
     }
@@ -325,6 +328,8 @@ dependencies {
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("com.google.android.material:material:1.14.0")
+    // Hosts the Slint UI (android-activity 0.6 pairs with GameActivity 4.4.0; no prefab).
+    implementation("androidx.games:games-activity:4.4.0")
     ksp("androidx.room:room-compiler:$roomVersion")
 
     // Shizuku (play and other flavors, API 24+ only)
@@ -409,3 +414,18 @@ spotless {
         googleJavaFormat()
     }
 }
+
+// Builds the Slint UI library for arm64-v8a with cargo-ndk (Rust stable, cargo-ndk,
+// ANDROID_NDK_HOME). Skip with -PskipRustUi=true when the library is already staged.
+val rustUiOut = layout.buildDirectory.dir("rustJniLibs")
+val buildRustUi = tasks.register<Exec>("buildRustUi") {
+    val crate = rootProject.file("ui-slint")
+    workingDir = crate
+    inputs.dir(crate.resolve("src"))
+    inputs.dir(crate.resolve("ui"))
+    inputs.files(crate.resolve("Cargo.toml"), crate.resolve("Cargo.lock"), crate.resolve("build.rs"))
+    outputs.dir(rustUiOut)
+    commandLine("cargo", "ndk", "-t", "arm64-v8a", "-P", "24", "-o", rustUiOut.get().asFile.absolutePath, "build", "--release")
+    onlyIf { !providers.gradleProperty("skipRustUi").orNull.toBoolean() }
+}
+tasks.named("preBuild") { dependsOn(buildRustUi) }

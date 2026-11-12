@@ -17,8 +17,8 @@ for name in ("MainActivity", "ShareActivity"):
     source = (compose / f"{name}.kt").read_text()
     if f"class {name} : BoxActivity()" not in source:
         errors.append(f"{name} must enter BoxActivity")
-if "setContent" not in (native / "bridge/BoxActivity.kt").read_text():
-    errors.append("BoxActivity must host the Compose UI")
+if "GameActivity()" not in (native / "bridge/BoxActivity.kt").read_text():
+    errors.append("BoxActivity must host the Slint UI (GameActivity)")
 
 # The plain UI: stock Material 3 components and Material icons, with no
 # custom-drawn icon set, glass, shaders, blur, shadows or expressive motion.
