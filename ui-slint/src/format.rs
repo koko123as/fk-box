@@ -151,6 +151,80 @@ pub fn monogram(name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// "1.5 KB/s".
+pub fn rate(value: f64) -> String {
+    format!("{}/s", bytes(value.max(0.0)))
+}
+
+/// "3 小时 12 分" style duration from milliseconds.
+pub fn duration(ms: i64) -> String {
+    if ms <= 0 {
+        return String::new();
+    }
+    let total = ms / 1000;
+    let (d, h, m, s) = (total / 86400, total % 86400 / 3600, total % 3600 / 60, total % 60);
+    if d > 0 {
+        format!("{d} 天 {h} 小时")
+    } else if h > 0 {
+        format!("{h} 小时 {m} 分")
+    } else if m > 0 {
+        format!("{m} 分 {s} 秒")
+    } else {
+        format!("{s} 秒")
+    }
+}
+
+/// How long ago `then_ms` was updated, relative to `now_ms`.
+pub fn ago(then_ms: i64, now_ms: i64) -> String {
+    if then_ms <= 0 {
+        return "从未更新".into();
+    }
+    let minutes = (now_ms - then_ms).max(0) / 60_000;
+    if minutes < 1 {
+        "刚刚更新".into()
+    } else if minutes < 60 {
+        format!("{minutes} 分钟前更新")
+    } else if minutes < 60 * 24 {
+        format!("{} 小时前更新", minutes / 60)
+    } else {
+        format!("{} 天前更新", minutes / 60 / 24)
+    }
+}
+
+pub fn core_label(core: &str) -> &str {
+    match core {
+        "sing-box" | "singbox" => "sing-box",
+        "xray" => "Xray",
+        "mihomo" => "mihomo",
+        "auto" | "" => "自动",
+        other => other,
+    }
+}
+
+pub fn status_text(status: &str) -> &'static str {
+    match status {
+        "Started" => "已连接",
+        "Starting" => "正在启动",
+        "Stopping" => "正在停止",
+        _ => "未连接",
+    }
+}
+
+/// Delay text and colour level (0 untested, 1 fast, 2 slow, 3 failed).
+pub fn delay(ms: i64) -> (String, i32) {
+    if ms <= 0 {
+        (String::new(), 0)
+    } else if ms >= 65_535 {
+        ("超时".into(), 3)
+    } else if ms < 300 {
+        (format!("{ms} ms"), 1)
+    } else if ms < 800 {
+        (format!("{ms} ms"), 2)
+    } else {
+        (format!("{ms} ms"), 3)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

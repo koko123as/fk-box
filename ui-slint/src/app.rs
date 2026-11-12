@@ -205,7 +205,7 @@ fn refresh_profiles() {
                     if !usage.is_empty() {
                         usage.push_str(" · ");
                     }
-                    usage.push_str(&format!("到期 {}", format::date(expire)));
+                    usage.push_str(&format!("到期 {}", format::date(expire * 1000)));
                 }
                 ProfileRow {
                     id: id.to_string().into(),
