@@ -186,7 +186,7 @@ android {
     }
 
     // libfkui.so: the Rust + Slint UI built from ui-slint/ by cargo-ndk.
-    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs"))
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs").get().asFile)
 
     lint {
         fatal += "NewApi"
