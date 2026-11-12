@@ -14,7 +14,7 @@ FK-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 | [giturass/B-box](https://github.com/giturass/B-box)（及其分叉 [koko123as/B-box](https://github.com/koko123as/B-box)） | GPL-3.0（沿用上游） | 直接前身：libbox 扩展绑定、HTTP/HTTPS 请求调试与 MITM、配置改写、多内核接入、界面适配、备份格式 `bbox-1` 等，见 [libbox.md](libbox.md) |
 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | GPL-3.0-or-later | 主代理内核（libbox，含 Tailscale 等协议），版本见 [version.properties](version.properties) |
 | [XTLS/Xray-core](https://github.com/XTLS/Xray-core) | MPL-2.0 | 第二内核，编入同一 `libbox.aar` |
-| [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | GPL-3.0（所用 v1.19.33） | 第三内核（Clash YAML），编入同一 `libbox.aar` |
+| [MetaCubeX/mihomo](https://github.com/MetaCubeX/mihomo) | GPL-3.0（所用 v1.19.34） | 第三内核（Clash YAML），编入同一 `libbox.aar` |
 | [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e) | GPL-3.0 | 页面布局参考（控件、图标、动效不再取用）；另参考 FlClash `dev` [`63aa150`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6) 的 MITM 证书模块和 IP 质量查询。对应清单见 [flclash-manifest.json](flclash-manifest.json) 与 [flclash.md](flclash.md) |
 | [shadowsocks/shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) | GPL-3.0 | `DefaultNetworkListener.kt`（经 sing-box-for-android 沿用） |
 | [Android Open Source Project](https://source.android.com/) / [androidx](https://github.com/androidx/androidx) | Apache-2.0 | `ParceledListSlice.java` |
