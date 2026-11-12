@@ -63,6 +63,10 @@ jobs:
       - name: Build debug APK
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          # Slint compiles its Java IME helper at build time.
+          export ANDROID_JAR="$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)"
+          export ANDROID_D8_JAR="$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)"
+          echo "ANDROID_JAR=$ANDROID_JAR ANDROID_D8_JAR=$ANDROID_D8_JAR"
           ./gradlew :app:assembleOtherDebug -Parm64Only=true \
             --no-daemon --console=plain --max-workers=2 \
             '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' \
