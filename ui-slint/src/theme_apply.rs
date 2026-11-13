@@ -103,8 +103,12 @@ pub fn apply() {
         theme.set_dark_scheme(to_slint(&seeded_color_scheme(seed, true, style).to_pure_black(pure_black)));
     }
     theme.set_mode(mode.into());
-    // A system family by its fonts.xml name; the bundled JetBrains Mono by its own.
-    theme.set_font_family(if font == "JetBrainsMono" { "JetBrains Mono".into() } else { font.as_str().into() });
+    // The system monospace face (src/fonts.rs) stands in for JetBrains Mono, which is no longer bundled.
+    let mono = crate::fonts::mono_family();
+    if !mono.is_empty() {
+        theme.set_mono(mono.as_str().into());
+    }
+    theme.set_font_family(if font == "JetBrainsMono" { theme.get_mono() } else { font.as_str().into() });
     theme.set_text_scale(text_scale(SYSTEM_FONT_SCALE.with(|s| s.get())));
 }
 

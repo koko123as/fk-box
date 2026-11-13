@@ -220,8 +220,16 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 }
             }
         }
+        // Before the native UI starts: it reads the system font files from here.
+        SystemFonts.write(this)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        // The UI draws its own navigation bar surface under the gesture inset, as
+        // Compose's NavigationBar did; no translucent system scrim over it.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+            window.isStatusBarContrastEnforced = false
+        }
         attachUi()
         lifecycleScope.launch {
             Settings.dataStore.initialize()

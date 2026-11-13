@@ -12,12 +12,26 @@ path = "src/lib.rs"
 
 [dependencies]
 # No default backends: on Android the platform is the GameActivity backend below.
-slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
+slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-011"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # QrCodeView (ui/QrCode.kt), ZXing Encoder at level L.
 qrcodegen = "1.8"
 # Material Color Utilities (spec 2021, as com.google.android.material.color.utilities).
 material-colors = "=0.5.0"
+# System font files are mapped, not read into the heap (src/fonts.rs).
+memmap2 = "0.9"
+png = { version = "0.18", optional = true }
+# The harness loads fontconfig at run time (no headers needed to build it).
+i-slint-common = { version = "=1.18.1", optional = true, features = ["fontconfig-dlopen"] }
+
+[features]
+# Host-only screenshot harness (src/shot.rs, examples/shot.rs): the software renderer
+# draws the pages at phone size from fixture data, for visual checks without a device.
+shot = ["slint/renderer-software", "dep:png", "dep:i-slint-common"]
+
+[[example]]
+name = "shot"
+required-features = ["shot"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 i-slint-backend-android-activity = { version = "=1.18.1", features = ["aa-06", "game-activity"] }
@@ -25,11 +39,11 @@ jni = "0.21"
 log = "0.4"
 android_logger = "0.15"
 # PNG decoding for app icons (PackageIcon) rendered by the native side.
-i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders"] }
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "shared-parley"] }
 
 # Host builds (unit tests) need the same image support the Android backend enables.
 [target.'cfg(not(target_os = "android"))'.dependencies]
-i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "svg"] }
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "svg", "shared-parley"] }
 
 [build-dependencies]
 slint-build = "=1.18.1"
@@ -40,3 +54,12 @@ lto = true
 codegen-units = 1
 strip = true
 panic = "unwind"
+
+# FK-box patches to Slint's Skia renderer (the Android renderer), see
+# vendor/i-slint-renderer-skia/FKBOX-PATCH.md: font data shared and mapped
+# instead of copied per face and weight, and a 32 MB GPU resource budget.
+[workspace]
+exclude = ["vendor/i-slint-renderer-skia"]
+
+[patch.crates-io]
+i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }

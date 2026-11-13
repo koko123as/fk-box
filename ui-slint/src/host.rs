@@ -76,7 +76,14 @@ mod android {
 pub use android::{init, invoke};
 
 /// Off Android there is no Kotlin host; calls fail and the window shows the error.
-#[cfg(not(target_os = "android"))]
+#[cfg(all(not(target_os = "android"), not(feature = "shot")))]
 pub fn invoke(_id: i64, _method: &str, _args: &str) -> Result<(), String> {
     Err("No Android host".into())
+}
+
+/// The screenshot harness answers the calls itself (src/shot.rs).
+#[cfg(all(not(target_os = "android"), feature = "shot"))]
+pub fn invoke(id: i64, method: &str, args: &str) -> Result<(), String> {
+    crate::shot::queue(id, method, args);
+    Ok(())
 }

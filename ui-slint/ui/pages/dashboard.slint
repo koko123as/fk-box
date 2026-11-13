@@ -116,15 +116,24 @@ export component StatusPanel inherits Rectangle {
                 VerticalLayout {
                     horizontal-stretch: 1;
                     spacing: 4px;
-                    Rectangle {
-                        height: Theme.leading(TextRole.title1);
+                    // Title2 on a phone (DashboardDensity.Mobile), Title1 wider; the IP
+                    // shrinks to fit down to 75% (TextAutoSize.StepBased), then elides.
+                    ip-box := Rectangle {
+                        property <TextRole> ip-role: Nav.mobile ? TextRole.title2 : TextRole.title1;
+                        height: Theme.leading(self.ip-role);
+                        ip-measure := T {
+                            visible: false;
+                            text: Dash.egress-ip;
+                            role: parent.ip-role;
+                            emphasized: true;
+                        }
                         if Dash.egress-ip != "": T {
                             x: 0;
                             width: parent.width;
                             text: Dash.egress-ip;
-                            role: TextRole.title1;
+                            role: parent.ip-role;
                             emphasized: true;
-                            font-size: self.text.character-count > 18 ? Theme.size(TextRole.title1) * 0.75 : Theme.size(TextRole.title1);
+                            font-size: clamp(Theme.size(parent.ip-role) * parent.width / max(1px, ip-measure.preferred-width), Theme.size(parent.ip-role) * 0.75, Theme.size(parent.ip-role));
                             color: App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
                             TouchArea { clicked => { Nav.form("egress", ""); } }
                         }
@@ -137,7 +146,7 @@ export component StatusPanel inherits Rectangle {
                             x: 0;
                             width: parent.width;
                             text: Dash.egress-failed ? @tr("Check failed") : "—";
-                            role: TextRole.title1;
+                            role: parent.ip-role;
                             emphasized: true;
                             color: Dash.egress-failed ? Theme.s.error : App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
                         }
@@ -192,32 +201,46 @@ export component StatusPanel inherits Rectangle {
     }
 }
 
-// The line chart (ui/LineChart.kt): smoothed in Rust, drawn as a stroked
-// curve over a 14% fill; the paths are in a (capacity - 1) × 1000 box.
+// The line chart (ui/LineChart.kt): smoothed and scaled in Rust (src/pages/
+// dashboard.rs chart()) in this element's own logical px, so the viewbox is
+// the element size; a 2 dp round stroke over a 14% fill.
 component LineChart inherits Rectangle {
     in property <string> line;
     in property <string> area;
     in property <color> tint;
-    in property <float> span: 31;
+    in property <bool> reports-size;
     clip: true;
+    init => { if (root.reports-size) { Dash.chart-w = root.width; Dash.chart-h = root.height; Dash.chart-resized(); } }
+    changed width => { if (root.reports-size) { Dash.chart-w = root.width; Dash.chart-resized(); } }
+    changed height => { if (root.reports-size) { Dash.chart-h = root.height; Dash.chart-resized(); } }
     if root.area != "": Path {
+        x: 0;
+        y: 0;
         width: root.width;
         height: root.height;
-        viewbox-width: root.span;
-        viewbox-height: 1000;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
         commands: root.area;
         fill: root.tint.with-alpha(0.14);
         stroke-width: 0;
     }
     if root.line != "": Path {
+        x: 0;
+        y: 0;
         width: root.width;
         height: root.height;
-        viewbox-width: root.span;
-        viewbox-height: 1000;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
         commands: root.line;
         fill: transparent;
         stroke: root.tint;
         stroke-width: 2px;
+        stroke-line-cap: round;
+        stroke-line-join: round;
     }
 }
 
@@ -235,7 +258,7 @@ component SpeedTile inherits Rectangle {
         y: parent.height - self.height;
         width: parent.width;
         height: root.chart-height;
-        span: Dash.chart-width;
+        reports-size: root.upload;
         line: root.upload ? Dash.up-line : Dash.down-line;
         area: root.upload ? Dash.up-area : Dash.down-area;
         tint: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
@@ -308,17 +331,26 @@ export component ModePanel inherits Panel {
                 border-radius: parent.border-radius;
                 background: mta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
             }
-            VerticalLayout {
-                alignment: center;
-                spacing: 2px;
-                Icon { glyph: m.glyph; size: 18px; color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant; x: (parent.width - 18px) / 2; }
-                T {
-                    text: m.label;
-                    role: TextRole.footnote;
-                    emphasized: true;
-                    horizontal-alignment: center;
-                    color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
-                }
+            // The icon over the label, centred as one block (not a layout, so the
+            // fixed-size icon does not cap the button's width).
+            property <length> block: 18px + 2px + mlabel.preferred-height;
+            Icon {
+                glyph: m.glyph;
+                size: 18px;
+                x: (parent.width - self.width) / 2;
+                y: (parent.height - parent.block) / 2;
+                color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
+            }
+            mlabel := T {
+                x: 4px;
+                width: parent.width - 8px;
+                y: (parent.height - parent.block) / 2 + 20px;
+                height: self.preferred-height;
+                text: m.label;
+                role: TextRole.footnote;
+                emphasized: true;
+                horizontal-alignment: center;
+                color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
             }
             mta := TouchArea { clicked => { if (!selected) { Nav.act("set-mode", m.mode); } } }
         }

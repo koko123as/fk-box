@@ -239,8 +239,8 @@ fn set_pick(c: u32, hsv: Option<(f32, f32, f32)>, from_text: bool) {
 
 fn open_fonts() {
     let st: Rc<RefCell<(Option<Vec<String>>, String)>> = Rc::new(RefCell::new((None, String::new())));
-    // The families /system/etc/fonts.xml names, and the bundled JetBrains Mono.
-    let mut found: Vec<String> = vec!["JetBrainsMono".into()];
+    // The families /system/etc/fonts.xml names.
+    let mut found: Vec<String> = Vec::new();
     match std::fs::read_to_string("/system/etc/fonts.xml") {
         Ok(xml) => {
             for part in xml.split("<family").skip(1) {

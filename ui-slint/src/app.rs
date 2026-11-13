@@ -5,7 +5,6 @@
 
 use std::cell::RefCell;
 use std::collections::{HashMap, VecDeque};
-use std::rc::Rc;
 
 use serde_json::{json, Map, Value};
 use slint::{ComponentHandle, SharedString};
@@ -635,7 +634,8 @@ fn initialize() {
     });
 }
 
-pub fn run() -> Result<(), slint::PlatformError> {
+/// Creates the window and starts the bridge handshake; the caller runs it.
+pub fn start() -> Result<(AppWindow, slint::Timer), slint::PlatformError> {
     let window = AppWindow::new()?;
     WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
     crate::theme_apply::apply();
@@ -657,6 +657,10 @@ pub fn run() -> Result<(), slint::PlatformError> {
 
     let clock = slint::Timer::default();
     clock.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), || pages::mark(Mark::CLOCK));
-    let _keep = Rc::new(clock);
+    Ok((window, clock))
+}
+
+pub fn run() -> Result<(), slint::PlatformError> {
+    let (window, _clock) = start()?;
     window.run()
 }

@@ -7,7 +7,6 @@ import { Icons, Glyph } from "icons.slint";
 import { Nav, BarAction, Keyword } from "globals.slint";
 import "fonts/MaterialIcons-Regular.ttf";
 import "fonts/MaterialIconsOutlined-Regular.otf";
-import "fonts/JetBrainsMono-Regular.ttf";
 
 // AppIcon
 export component Icon inherits Text {
@@ -285,7 +284,8 @@ export component Chip inherits Rectangle {
     height: large ? 28px : 24px;
     border-radius: self.height / 2;
     background: tone == 1 ? Theme.s.success-container : tone == 2 ? Theme.s.warning-container : Theme.level(2);
-    min-width: lay.preferred-width;
+    // Its content's width also outside a layout (a positioned chip would otherwise fill its parent).
+    width: lay.preferred-width;
     horizontal-stretch: 0;
     lay := HorizontalLayout {
         padding-left: root.large ? 12px : 10px;

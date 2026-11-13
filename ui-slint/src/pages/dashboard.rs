@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 
 use serde_json::{json, Value};
-use slint::{ComponentHandle, ModelRc, SharedString, VecModel};
+use slint::{ComponentHandle, SharedString};
 
 use crate::app::{self, data, long, num, rows, ss, strings, text, truthy};
 use crate::format;
@@ -124,29 +124,92 @@ fn kv(key: impl AsRef<str>, value: impl AsRef<str>) -> KeyValue {
     KeyValue { key: ss(key), value: ss(value) }
 }
 
-fn model<T: Clone + 'static>(v: Vec<T>) -> ModelRc<T> {
-    ModelRc::new(VecModel::from(v))
+/// Sets a model property in place (rows::update): rows that did not change keep
+/// their item instances, so a projection every second rebuilds nothing.
+macro_rules! sync {
+    ($dash:expr, $get:ident, $set:ident, $value:expr $(,)?) => {{
+        let next: Vec<_> = $value;
+        if let Some(model) = crate::rows::update($dash.$get(), next) {
+            $dash.$set(model);
+        }
+    }};
 }
 
-/// LineChart: the last 30 rates, smoothed, in a (capacity - 1) × 1000 box.
-fn chart(values: &[f64]) -> (String, String) {
+/// LineChart (ui/LineChart.kt): the last `CAPACITY` samples right-aligned in a
+/// zero-padded window, Gaussian smoothed (sigma 1.5), drawn as monotone cubic
+/// segments one step apart, the height scaled to the larger of the peak and
+/// 8 KiB with the baseline at the bottom; in the chart's own logical px.
+fn chart(values: &[f64], width: f64, height: f64) -> (String, String) {
     const CAPACITY: usize = 30;
     const MIN_SCALE: f64 = 8.0 * 1024.0;
-    if values.len() < 2 {
+    const SIGMA: f64 = 1.5;
+    const STROKE: f64 = 2.0;
+    if width <= 1.0 || height <= 1.0 {
         return (String::new(), String::new());
     }
-    let max = values.iter().cloned().fold(MIN_SCALE, f64::max);
-    let offset = (CAPACITY - values.len()) as f64;
-    let points: Vec<(f64, f64)> = values.iter().enumerate().map(|(i, v)| (offset + i as f64, 1000.0 - (v / max).clamp(0.0, 1.0) * 940.0)).collect();
-    let mut line = format!("M {:.2} {:.1}", points[0].0, points[0].1);
-    for w in points.windows(2) {
-        let (x0, y0) = w[0];
-        let (x1, y1) = w[1];
-        let mx = (x0 + x1) / 2.0;
-        line.push_str(&format!(" C {:.2} {:.1} {:.2} {:.1} {:.2} {:.1}", mx, y0, mx, y1, x1, y1));
+    let radius = (SIGMA * 2.5).ceil() as usize;
+    let kernel: Vec<f64> = (0..=radius).map(|d| (-((d * d) as f64) / (2.0 * SIGMA * SIGMA)).exp()).collect();
+    let length = CAPACITY + radius + 1;
+    let mut series = vec![0.0; length];
+    let count = values.len().min(length);
+    series[length - count..].copy_from_slice(&values[values.len() - count..]);
+    let heights: Vec<f64> = (0..length)
+        .map(|i| {
+            let (mut sum, mut weight) = (0.0, 0.0);
+            for j in i.saturating_sub(radius)..=(i + radius).min(length - 1) {
+                let w = kernel[i.abs_diff(j)];
+                sum += w * series[j];
+                weight += w;
+            }
+            sum / weight
+        })
+        .collect();
+    let last = length - 1;
+    let slope: Vec<f64> = (0..length)
+        .map(|i| if i == 0 || i == last { 0.0 } else { ((heights[i + 1] - heights[i - 1]) / 2.0).clamp(-3.0 * heights[i], 3.0 * heights[i]) })
+        .collect();
+    let step = width / (CAPACITY - 1) as f64;
+    let first_x = width - last as f64 * step;
+    // The curve's highest point, control points included (Path.getBounds()).
+    let mut peak = heights.iter().cloned().fold(0.0, f64::max);
+    for i in 1..length {
+        peak = peak.max(heights[i - 1] + slope[i - 1] / 3.0).max(heights[i] - slope[i] / 3.0);
     }
-    let area = format!("{} L {:.2} 1000 L {:.2} 1000 Z", line, points.last().unwrap().0, points[0].0);
+    let top = peak.max(MIN_SCALE);
+    let scale = (height - STROKE) / top;
+    let y = |v: f64| height - v * scale;
+    let mut line = format!("M {:.2} {:.2}", first_x, y(heights[0]));
+    let mut x = first_x;
+    for i in 1..length {
+        let next = x + step;
+        line.push_str(&format!(
+            " C {:.2} {:.2} {:.2} {:.2} {:.2} {:.2}",
+            x + step / 3.0,
+            y(heights[i - 1] + slope[i - 1] / 3.0),
+            next - step / 3.0,
+            y(heights[i] - slope[i] / 3.0),
+            next,
+            y(heights[i])
+        ));
+        x = next;
+    }
+    let area = format!("{line} L {:.2} {:.2} L {:.2} {:.2} Z", x, height, first_x, height);
     (line, area)
+}
+
+/// Re-draws both charts at the current size.
+fn project_charts(dash: &Dash) {
+    let (w, h) = (dash.get_chart_w() as f64, dash.get_chart_h() as f64);
+    data(|d| {
+        let up: Vec<f64> = d.upload_history.iter().cloned().collect();
+        let down: Vec<f64> = d.download_history.iter().cloned().collect();
+        let (ul, ua) = chart(&up, w, h);
+        let (dl, da) = chart(&down, w, h);
+        dash.set_up_line(ul.into());
+        dash.set_up_area(ua.into());
+        dash.set_down_line(dl.into());
+        dash.set_down_area(da.into());
+    });
 }
 
 pub struct SubInfo {
@@ -315,16 +378,8 @@ pub fn project(w: &AppWindow, m: Mark) {
             dash.set_down_unit(du.into());
             dash.set_up_total(d.rates.get("uploadTotal").map(text).filter(|s| !s.is_empty()).unwrap_or_else(|| "0 B".into()).into());
             dash.set_down_total(d.rates.get("downloadTotal").map(text).filter(|s| !s.is_empty()).unwrap_or_else(|| "0 B".into()).into());
-            let up: Vec<f64> = d.upload_history.iter().cloned().collect();
-            let down: Vec<f64> = d.download_history.iter().cloned().collect();
-            let (ul, ua) = chart(&up);
-            let (dl, da) = chart(&down);
-            dash.set_up_line(ul.into());
-            dash.set_up_area(ua.into());
-            dash.set_down_line(dl.into());
-            dash.set_down_area(da.into());
-            dash.set_chart_width(29.0);
         });
+        project_charts(&dash);
     }
     if m.has(Mark::DASH) || m.has(Mark::PROXIES) || m.has(Mark::PROFILES) || m == Mark::ALL {
         egress::sync();
@@ -401,7 +456,7 @@ pub fn project(w: &AppWindow, m: Mark) {
                 rows_out.push(kv(format!("{} · {}", tr("IP quality unavailable"), text(&f["source"])), tr(label)));
             }
         }
-        dash.set_egress_rows(model(rows_out));
+        sync!(dash, get_egress_rows, set_egress_rows, rows_out);
     }
     if m.has(Mark::RATES) && m.0 == Mark::RATES.0 {
         return;
@@ -409,25 +464,25 @@ pub fn project(w: &AppWindow, m: Mark) {
 
     let (editing, saving, updating, releasing) = local(|l| (l.editing.clone(), l.saving, l.updating, l.releasing));
     let available_cards = available();
-    dash.set_cards(model(shown_cards().iter().map(ss).collect()));
-    dash.set_available(model(available_cards.iter().map(ss).collect()));
+    sync!(dash, get_cards, set_cards, shown_cards().iter().map(ss).collect());
+    sync!(dash, get_available, set_available, available_cards.iter().map(ss).collect());
     dash.set_editing(editing.is_some());
     dash.set_saving(saving);
     if let Some(shown) = &editing {
-        dash.set_edit_shown(model(shown.iter().map(|c| kv(c, card_label(c))).collect()));
-        dash.set_edit_hidden(model(available_cards.iter().filter(|c| !shown.contains(c)).map(|c| kv(c, card_label(c))).collect()));
+        sync!(dash, get_edit_shown, set_edit_shown, shown.iter().map(|c| kv(c, card_label(c))).collect());
+        sync!(dash, get_edit_hidden, set_edit_hidden, available_cards.iter().filter(|c| !shown.contains(c)).map(|c| kv(c, card_label(c))).collect());
     }
     data(|d| {
         dash.set_apply_required(d.apply_required.is_some());
-        dash.set_deprecated(model(
+        sync!(dash, get_deprecated, set_deprecated, 
             d.dashboard
                 .get("deprecated")
                 .map(rows)
                 .unwrap_or_default()
                 .iter()
                 .map(|n| Note { message: ss(text(&n["message"])), url: ss(text(&n["url"])) })
-                .collect(),
-        ));
+                .collect()
+        );
 
         // Outbound mode
         let modes: Vec<ModeItem> = d
@@ -447,7 +502,7 @@ pub fn project(w: &AppWindow, m: Mark) {
                 ModeItem { key: ss(&key), mode: ss(mode), label: ss(tr(label)), glyph: glyph(icon) }
             })
             .collect();
-        dash.set_modes(model(modes));
+        sync!(dash, get_modes, set_modes, modes);
         dash.set_mode(d.dashboard.get("mode").map(text).unwrap_or_default().to_lowercase().into());
 
         // Current profile
@@ -526,7 +581,7 @@ pub fn project(w: &AppWindow, m: Mark) {
         };
         dash.set_group_count(groups.len() as i32);
         dash.set_timeout_count(timeout as i32);
-        dash.set_group_letters(model(groups.iter().take(4).map(|g| ss(format::letters(&text(&g["tag"])))).collect()));
+        sync!(dash, get_group_letters, set_group_letters, groups.iter().take(4).map(|g| ss(format::letters(&text(&g["tag"])))).collect());
         dash.set_group_rest(groups.len().saturating_sub(4) as i32);
 
         // Memory
@@ -546,10 +601,10 @@ pub fn project(w: &AppWindow, m: Mark) {
         let weight = |v: f64| if total <= 0.0 || v <= 0.0 { 0.0 } else { ((v * 100.0 / total).round() * 100.0).max(1.0) as f32 };
         dash.set_memory_app_weight(if remote { 0.0 } else { weight(app_bytes) });
         dash.set_memory_core_weight(weight(core_bytes));
-        dash.set_memory_app_rows(model(vec![
+        sync!(dash, get_memory_app_rows, set_memory_app_rows, vec![
             kv(tr("Process RSS"), format::bytes(mem.get("rss").map(num).unwrap_or(0.0))),
             kv(tr("App and shared memory"), format::bytes(app_bytes)),
-        ]));
+        ]);
         let mut core_rows = Vec::new();
         let mut percents = Vec::new();
         if !mem.get("running").map(truthy).unwrap_or(false) && !remote {
@@ -566,15 +621,15 @@ pub fn project(w: &AppWindow, m: Mark) {
             core_rows.push(kv(tr("Goroutines"), text(g)));
             percents.push(SharedString::new());
         }
-        dash.set_memory_core_rows(model(core_rows));
-        dash.set_memory_core_percents(model(percents));
+        sync!(dash, get_memory_core_rows, set_memory_core_rows, core_rows);
+        sync!(dash, get_memory_core_percents, set_memory_core_percents, percents);
         dash.set_releasing(releasing);
 
         // Intranet
         let addresses = d.lan_addresses();
         dash.set_lan_loading(!d.lan.get("addresses").map(|a| a.is_array()).unwrap_or(false));
         dash.set_lan_address(addresses.first().cloned().unwrap_or_default().into());
-        dash.set_lan_addresses(model(addresses.iter().map(ss).collect()));
+        sync!(dash, get_lan_addresses, set_lan_addresses, addresses.iter().map(ss).collect());
         dash.set_lan_enabled(d.lan.get("enabled").map(truthy).unwrap_or(false));
         dash.set_lan_can_toggle(d.can_set_lan_proxy());
         dash.set_lan_can_copy(d.lan_copy_text().is_some());
@@ -604,7 +659,7 @@ pub fn project(w: &AppWindow, m: Mark) {
         if bindings.is_empty() {
             listeners.push(kv(tr("No local proxy listener"), ""));
         }
-        dash.set_lan_listeners(model(listeners));
+        sync!(dash, get_lan_listeners, set_lan_listeners, listeners);
 
         dash.set_system_proxy(d.dashboard.get("systemProxy").map(truthy).unwrap_or(false));
     });
@@ -763,4 +818,11 @@ pub fn menu(_key: &str) -> Vec<MenuEntry> {
     Vec::new()
 }
 
-pub fn install(_w: &AppWindow) {}
+pub fn install(w: &AppWindow) {
+    let weak = w.as_weak();
+    w.global::<Dash>().on_chart_resized(move || {
+        if let Some(w) = weak.upgrade() {
+            project_charts(&w.global::<Dash>());
+        }
+    });
+}

@@ -54,7 +54,8 @@ export global Theme {
     in property <float> text-scale: 1.0;
     // The appearance preference's font family; empty for the platform default.
     in property <string> font-family;
-    out property <string> mono: "JetBrains Mono";
+    // The system monospace family (src/fonts.rs); "monospace" until it is known.
+    in property <string> mono: "monospace";
     out property <length> radius: 12px;
 
     public pure function sp(v: float) -> length {

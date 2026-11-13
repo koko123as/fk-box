@@ -33,7 +33,9 @@ global Destinations {
     }
 }
 
-// NavigationBarItem / NavigationRailItem: the indicator pill behind the icon.
+// NavigationBarItem / NavigationRailItem: a 64 × 32 indicator pill (56 × 32 on
+// the rail) behind a 24 dp icon, the label 4 dp below; the pair is centred in
+// the item. Positioned without layouts so an item takes its full share of the bar.
 component DestinationItem inherits Rectangle {
     in property <string> key;
     in property <bool> selected;
@@ -41,27 +43,30 @@ component DestinationItem inherits Rectangle {
     callback clicked();
     accessible-role: tab;
     accessible-label: Destinations.label(key);
-    VerticalLayout {
-        alignment: center;
-        spacing: 4px;
-        Rectangle {
-            width: 56px;
-            height: 32px;
-            x: (parent.width - self.width) / 2;
-            border-radius: 16px;
-            background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
-            Icon {
-                glyph: Destinations.glyph(root.key);
-                color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
-            }
+    property <length> pill-width: rail ? 56px : 64px;
+    property <length> block: 32px + 4px + label.preferred-height;
+    pill := Rectangle {
+        width: root.pill-width;
+        height: 32px;
+        x: (root.width - self.width) / 2;
+        y: (root.height - root.block) / 2;
+        border-radius: 16px;
+        background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+        Icon {
+            glyph: Destinations.glyph(root.key);
+            color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
         }
-        T {
-            text: Destinations.label(root.key);
-            role: TextRole.caption1;
-            emphasized: root.selected;
-            color: root.selected ? Theme.s.on-surface : Theme.s.on-surface-variant;
-            horizontal-alignment: center;
-        }
+    }
+    label := T {
+        x: 2px;
+        width: root.width - 4px;
+        y: pill.y + 32px + 4px;
+        height: self.preferred-height;
+        text: Destinations.label(root.key);
+        role: TextRole.caption1;
+        emphasized: true;
+        color: root.selected ? Theme.s.on-surface : Theme.s.on-surface-variant;
+        horizontal-alignment: center;
     }
     ta := TouchArea { clicked => { root.clicked(); } }
 }
@@ -81,14 +86,17 @@ export component HomePage inherits Rectangle {
     background: Theme.s.surface;
     if Nav.mobile: VerticalLayout {
         Pages { vertical-stretch: 1; }
-        // NavigationBar: 80 dp over the system navigation bar.
+        // NavigationBar: 80 dp of equal items 8 dp apart, its surface continuing
+        // under the system navigation bar (the gesture inset).
         Rectangle {
             height: 80px + Nav.inset-bottom;
             background: Theme.s.surface-container;
             HorizontalLayout {
                 padding-bottom: Nav.inset-bottom;
+                spacing: 8px;
                 for d in Nav.destinations: DestinationItem {
                     key: d;
+                    horizontal-stretch: 1;
                     selected: d == Nav.tab;
                     clicked => { Nav.select-tab(d); }
                 }

@@ -72,7 +72,11 @@ export global Dash {
     in property <string> down-total: "0 B";
     in property <string> down-line;
     in property <string> down-area;
-    in property <float> chart-width: 31;
+    // The tiles' chart area in logical px (both tiles are the same size); the
+    // paths are drawn in it, so Rust needs it (chart-resized).
+    in-out property <length> chart-w;
+    in-out property <length> chart-h;
+    callback chart-resized();
 
     // Outbound mode
     in property <[ModeItem]> modes;

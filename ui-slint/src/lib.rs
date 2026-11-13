@@ -8,6 +8,7 @@ slint::include_modules!();
 
 mod app;
 mod forms;
+mod fonts;
 mod format;
 mod host;
 mod i18n;
@@ -17,6 +18,8 @@ mod records;
 mod rows;
 mod theme;
 mod theme_apply;
+#[cfg(all(not(target_os = "android"), feature = "shot"))]
+pub mod shot;
 
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -26,11 +29,13 @@ fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
         log::error!("host init failed: {error}");
         return;
     }
+    let files_dir = android.internal_data_path();
     let platform = i_slint_backend_android_activity::AndroidPlatform::new(android);
     if let Err(error) = slint::platform::set_platform(Box::new(platform)) {
         log::error!("set_platform failed: {error}");
         return;
     }
+    fonts::install(files_dir);
     if let Err(error) = app::run() {
         log::error!("UI stopped: {error}");
     }

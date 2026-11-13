@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 use serde_json::{json, Map, Value};
-use slint::{ComponentHandle, ModelRc, VecModel};
+use slint::{ComponentHandle, Model, ModelRc, VecModel};
 
 use crate::app::{self, data, long, rows, ss, strings, text, truthy};
 use crate::format;
@@ -98,6 +98,19 @@ pub fn project(w: &AppWindow) {
     p.set_loose(size.as_deref() == Some("Loose"));
     p.set_icon_style(icon.into());
     p.set_query(query.as_str().into());
+    // A group's node model is updated in place when the group is still there,
+    // so a delay update does not rebuild every node card.
+    let current = p.get_groups();
+    let reuse = |tag: &str, items: Vec<NodeRow>| -> ModelRc<NodeRow> {
+        let existing = (0..current.row_count()).filter_map(|i| current.row_data(i)).find(|g| g.tag == tag).map(|g| g.items);
+        match existing {
+            Some(model) => match crate::rows::update(model.clone(), items) {
+                None => model,
+                Some(fresh) => fresh,
+            },
+            None => ModelRc::new(VecModel::from(items)),
+        }
+    };
     let groups: Vec<GroupRow> = data(|d| {
         d.groups
             .iter()
@@ -130,19 +143,23 @@ pub fn project(w: &AppWindow) {
                     expanded: open.contains(&tag),
                     testing: testing.contains(&tag),
                     selected_index,
-                    items: ModelRc::new(VecModel::from(items)),
+                    items: reuse(&tag, items),
                     tag: ss(&tag),
                 }
             })
             .collect()
     });
     let count = groups.len() as i32;
-    p.set_groups(ModelRc::new(VecModel::from(groups)));
+    if let Some(m) = crate::rows::update(p.get_groups(), groups) {
+        p.set_groups(m);
+    }
     if p.get_tab() >= count {
         p.set_tab((count - 1).max(0));
     }
     let details = local(|l| l.details.clone());
-    p.set_details(ModelRc::new(VecModel::from(details.into_iter().map(|(k, v)| KeyValue { key: k.into(), value: v.into() }).collect::<Vec<_>>())));
+    if let Some(m) = crate::rows::update(p.get_details(), details.into_iter().map(|(k, v)| KeyValue { key: k.into(), value: v.into() }).collect::<Vec<_>>()) {
+        p.set_details(m);
+    }
 }
 
 /// test(tag): a URL test of a group or a node.
