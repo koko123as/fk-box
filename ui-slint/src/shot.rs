@@ -10,7 +10,8 @@
 //! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS),
 //! `bg` / `fg` (the host's lifecycle event), `wait:N` (N real seconds),
 //! `insets:T,B,L,R` (the host's insets, physical px), `nav` (print the insets
-//! the UI uses and the scale factor).
+//! the UI uses and the scale factor), `fling:COUNT,DY` (COUNT fast drags of DY
+//! px with icons arriving on reused rows and a frame drawn every 16 ms).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -27,10 +28,32 @@ use crate::{AppWindow, Nav, Theme};
 
 thread_local! {
     static QUEUE: RefCell<VecDeque<(i64, String, String)>> = const { RefCell::new(VecDeque::new()) };
+    /// While a fling runs, icon answers wait here and arrive a few per frame,
+    /// out of order, as the host's IO thread answers them on a phone.
+    static ICONS_LATER: RefCell<Option<VecDeque<(i64, String, String)>>> = const { RefCell::new(None) };
 }
 
 pub fn queue(id: i64, method: &str, args: &str) {
-    QUEUE.with(|q| q.borrow_mut().push_back((id, method.to_string(), args.to_string())));
+    let deferred = method == "appIcon"
+        && ICONS_LATER.with(|l| match l.borrow_mut().as_mut() {
+            Some(later) => {
+                later.push_back((id, method.to_string(), args.to_string()));
+                true
+            }
+            None => false,
+        });
+    if !deferred {
+        QUEUE.with(|q| q.borrow_mut().push_back((id, method.to_string(), args.to_string())));
+    }
+}
+
+fn answer_call(id: i64, method: &str, args: &str) {
+    let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let (ok, value) = match answer(method, &args) {
+        Ok(v) => (true, v),
+        Err(e) => (false, Value::String(e)),
+    };
+    crate::app::on_reply(id, ok, &json!({ "v": value }).to_string());
 }
 
 struct ShotPlatform {
@@ -79,7 +102,18 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         // 48 dp PNG at 3x like the host renders (BoxActivity appIcon).
         "listApps" => Value::Array(
             (0..400)
-                .map(|i| json!({ "package": format!("com.example.app{i:03}"), "name": format!("App {i:03}"), "system": false, "internet": true, "updatedAt": now - i as i64 * 60_000 }))
+                .map(|i| {
+                    // Names and packages of every length (some wrap, as on a
+                    // phone), so rows measure different heights.
+                    let package = match i % 7 {
+                        0 => format!("com.example.app{i:03}"),
+                        3 => format!("com.example.verylongvendorname.subsidiary.product.flavor.internal.app{i:03}"),
+                        5 => format!("cn.example.a{i:03}"),
+                        _ => format!("org.example.tools.app{i:03}"),
+                    };
+                    let name = if i % 11 == 4 { format!("应用 {i:03} 一个名字很长很长的应用程序用来测试换行和省略") } else { format!("App {i:03}") };
+                    json!({ "package": package, "name": name, "system": false, "internet": true, "updatedAt": now - i as i64 * 60_000 })
+                })
                 .collect(),
         ),
         // Service status probes: GitHub answers after a real 160 ms, Google
@@ -113,7 +147,15 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
             };
             json!({ "name": args["name"], "status": status, "region": region, "delay": delay, "checkedAt": now })
         }
-        "appIcon" => Value::String(icon_png(args["package"].as_str().unwrap_or("app"))),
+        // Some apps have no icon to give (the host answers null).
+        "appIcon" => {
+            let pkg = args["package"].as_str().unwrap_or("app");
+            if pkg.ends_with('6') {
+                Value::Null
+            } else {
+                Value::String(icon_png(pkg))
+            }
+        }
         "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
         // Setters and visibility switches: nothing to answer.
         _ => Value::Null,
@@ -157,7 +199,7 @@ fn dashboard(now: i64) -> Value {
 
 fn profiles(now: i64) -> Value {
     json!([
-        { "id": 1, "name": "机场订阅 Premium", "remote": true, "url": "https://example.com/sub", "updatedAt": now - 3_600_000, "autoUpdate": true, "interval": 1440, "core": "auto", "resolvedCore": "sing-box",
+        { "id": 1, "name": "机场订阅 Premium", "remote": true, "url": "https://edge-node.fbjfbj001.de5.net/custom_config?token=8f3a2c91d7e64b0aa1c5&flag=clash.meta&target=singbox", "updatedAt": now - 3_600_000, "autoUpdate": true, "interval": 1440, "core": "auto", "resolvedCore": "sing-box",
           "upload": 3_221_225_472_i64, "download": 48_318_382_080_i64, "total": 214_748_364_800_i64, "expire": now / 1000 + 86_400 * 23, "intervalUserSet": false },
         { "id": 2, "name": "Local mihomo", "remote": false, "url": "", "updatedAt": 0, "autoUpdate": false, "interval": 1440, "core": "mihomo", "resolvedCore": "mihomo", "intervalUserSet": false },
         { "id": 3, "name": "Xray backup", "remote": false, "url": "", "updatedAt": 0, "autoUpdate": false, "interval": 1440, "core": "xray", "resolvedCore": "xray", "intervalUserSet": false },
@@ -197,14 +239,7 @@ impl Harness {
             slint::platform::update_timers_and_animations();
             let next = QUEUE.with(|q| q.borrow_mut().pop_front());
             match next {
-                Some((id, method, args)) => {
-                    let args: Value = serde_json::from_str(&args).unwrap_or(Value::Null);
-                    let (ok, value) = match answer(&method, &args) {
-                        Ok(v) => (true, v),
-                        Err(e) => (false, Value::String(e)),
-                    };
-                    crate::app::on_reply(id, ok, &json!({ "v": value }).to_string());
-                }
+                Some((id, method, args)) => answer_call(id, &method, &args),
                 None => {
                     if !self.window.has_active_animations() {
                         // One more turn for zero-delay timers scheduled by the replies.
@@ -268,6 +303,97 @@ impl Harness {
         eprintln!("wrote {path}");
     }
 
+    /// Draws a frame the way the device does each vsync (layout, the rows'
+    /// repeaters and images are all evaluated), into a scratch buffer.
+    fn frame(&self, buffer: &mut Vec<Rgb8Pixel>) {
+        let (w, h) = (self.width as usize, self.height as usize);
+        if buffer.len() != w * h {
+            *buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
+        }
+        self.window.request_redraw();
+        self.window.draw_if_needed(|renderer| {
+            renderer.render(buffer, w);
+        });
+    }
+
+    /// One 16 ms frame of a fling: timers and animations advance, up to
+    /// `icons` icon answers arrive (newest and oldest alternately), the
+    /// replies they cause run and a frame is drawn.
+    fn fling_frame(&self, icons: usize, serial: &mut u64, buffer: &mut Vec<Rgb8Pixel>) {
+        self.advance(Duration::from_millis(16));
+        for _ in 0..icons {
+            *serial += 1;
+            let next = ICONS_LATER.with(|l| {
+                let mut l = l.borrow_mut();
+                let later = l.as_mut()?;
+                if *serial % 2 == 0 { later.pop_back() } else { later.pop_front() }
+            });
+            if let Some((id, method, args)) = next {
+                answer_call(id, &method, &args);
+            }
+        }
+        while let Some((id, method, args)) = QUEUE.with(|q| q.borrow_mut().pop_front()) {
+            answer_call(id, &method, &args);
+        }
+        slint::platform::update_timers_and_animations();
+        self.frame(buffer);
+    }
+
+    /// `fling:COUNT,DY`: COUNT fast drags of DY logical px each (negative
+    /// scrolls down), each released with speed so the list keeps flinging,
+    /// with wheel bursts in between, icons arriving all the while and a
+    /// frame drawn every 16 ms. Returns the frames drawn.
+    fn fling(&self, count: u32, dy: f32) -> u32 {
+        ICONS_LATER.with(|l| {
+            let mut l = l.borrow_mut();
+            if l.is_none() {
+                *l = Some(VecDeque::new());
+            }
+        });
+        let mut buffer = Vec::new();
+        let mut serial = 0u64;
+        let mut frames = 0u32;
+        let x = 200.0;
+        for n in 0..count {
+            // A drag: down, 6 moves of dy/6 over 48 ms, up, then the fling runs.
+            let start = if dy < 0.0 { 760.0 } else { 160.0 };
+            let mut y = start;
+            self.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(x, y) });
+            self.window.window().dispatch_event(WindowEvent::PointerPressed { position: LogicalPosition::new(x, y), button: slint::platform::PointerEventButton::Left });
+            for _ in 0..6 {
+                y += dy.clamp(-600.0, 600.0) / 6.0;
+                self.advance(Duration::from_millis(8));
+                self.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(x, y) });
+                self.fling_frame(1, &mut serial, &mut buffer);
+                frames += 1;
+            }
+            self.window.window().dispatch_event(WindowEvent::PointerReleased { position: LogicalPosition::new(x, y), button: slint::platform::PointerEventButton::Left });
+            self.window.window().dispatch_event(WindowEvent::PointerExited);
+            // The kinetic scroll, with icons landing on the reused rows.
+            for _ in 0..12 {
+                self.fling_frame(2, &mut serial, &mut buffer);
+                frames += 1;
+            }
+            // Every third drag, a burst of wheel steps as well.
+            if n % 3 == 2 {
+                let pos = LogicalPosition::new(x, 450.0);
+                for _ in 0..4 {
+                    self.window.window().dispatch_event(WindowEvent::PointerScrolled { position: pos, delta_x: 0.0, delta_y: dy / 2.0 });
+                    self.fling_frame(3, &mut serial, &mut buffer);
+                    frames += 1;
+                }
+            }
+        }
+        // The rest of the answers, then back to answering at once.
+        let rest = ICONS_LATER.with(|l| l.borrow_mut().take()).unwrap_or_default();
+        for (id, method, args) in rest {
+            answer_call(id, &method, &args);
+        }
+        self.settle();
+        self.frame(&mut buffer);
+        frames
+    }
+
     fn pointer(&self, event: WindowEvent) {
         self.window.window().dispatch_event(event);
         self.pump();
@@ -282,7 +408,11 @@ pub fn rss_kb() -> u64 {
 }
 
 pub fn main() {
-    let args: Vec<String> = std::env::args().skip(1).collect();
+    run(std::env::args().skip(1).collect());
+}
+
+/// Runs the steps in `args` (the first is the output directory).
+pub fn run(args: Vec<String>) {
     let out = args.first().cloned().unwrap_or_else(|| ".".into());
     std::fs::create_dir_all(&out).ok();
     let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
@@ -406,6 +536,12 @@ pub fn main() {
                     nav.get_inset_right()
                 );
             }
+            "fling" => {
+                let (count, dy) = rest.split_once(',').unwrap_or((rest, "-500"));
+                let frames = h.fling(count.parse().unwrap_or(40), dy.parse().unwrap_or(-500.0));
+                let (loaded, pending) = crate::pages::settings::icon_stats();
+                eprintln!("fling {rest}: {frames} frames, icons {loaded} loaded, {pending} pending");
+            }
             "access" => {
                 crate::pages::settings::open_access();
                 h.settle();
@@ -425,5 +561,22 @@ pub fn main() {
             }
             other => eprintln!("unknown step {other}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    /// Access control with a long list of apps: thousands of px of fast drags
+    /// and flings down and back up, icon answers landing on rows the list
+    /// reuses, a frame drawn every 16 ms; then closed (the memory release
+    /// runs) and opened again. A panic anywhere here closes the activity on a
+    /// phone (android-activity finishes it when android_main unwinds).
+    #[test]
+    fn access_control_survives_rapid_scrolling() {
+        let out = std::env::temp_dir().join("fkui-shot-test");
+        let steps = ["access", "fling:40,-520", "fling:25,600", "fling:30,-600", "pop", "wait:1", "access", "fling:10,-500", "pop"];
+        let mut args = vec![out.to_string_lossy().into_owned()];
+        args.extend(steps.iter().map(|s| s.to_string()));
+        super::run(args);
     }
 }

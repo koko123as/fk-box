@@ -17,22 +17,26 @@ export component RowView inherits Rectangle {
     in property <length> view-top: -1000000px;
     in property <length> view-bottom: 1000000px;
     property <string> key: page + ":" + entry.key;
-    property <bool> wants-image: root.entry.image-key != "" && root.realized && root.y + root.height > root.view-top - 600px && root.y < root.view-bottom + 600px;
     // A lazy row (an installed app with its icon) is only built while it is
-    // within a screen of the viewport; elsewhere it is an empty box of the
-    // height such rows measure, so a list of hundreds of apps holds the
-    // texts and images of a few dozen. Its place comes from its index (the
-    // rows before it are lazy too), never from the layout it sizes.
+    // within 600 px of the viewport; elsewhere it is an empty box. Every lazy
+    // row is exactly lazy-height tall, built or not (one line of name, one of
+    // package, the 48 dp icon slot), and its place comes from its index (the
+    // rows before it are lazy too). Nothing here reads the position the list's
+    // layout gives the row: whether a row is built, how tall it is and
+    // whether it wants its icon depend only on its index and the scroll
+    // offset, so building rows while the layout is being computed never
+    // reads that layout back (a cycle Slint aborts with "Recursion detected",
+    // which closed the app on a fast scroll).
     in property <int> index;
     in property <length> top-pad;
-    in-out property <length> lazy-height: 68px;
+    in property <length> lazy-height: 68px;
     property <length> estimated-y: root.top-pad + root.index * root.lazy-height;
-    property <bool> realized: !root.entry.lazy || (root.estimated-y + root.lazy-height > root.view-top - 600px && root.estimated-y < root.view-bottom + 600px);
-    property <length> built-height: lay.preferred-height;
-    changed built-height => { if (root.entry.lazy && root.realized && root.built-height > 0) { root.lazy-height = root.built-height; } }
+    property <bool> near: root.estimated-y + root.lazy-height > root.view-top - 600px && root.estimated-y < root.view-bottom + 600px;
+    property <bool> realized: !root.entry.lazy || root.near;
+    property <bool> wants-image: root.entry.image-key != "" && root.entry.lazy && root.near;
     // The icon is asked for once each time the row comes near the viewport,
     // keyed on the app: a row the list reuses for another app (search, sort,
-    // reload) asks again, which init and a change of wants-image alone missed.
+    // reload) asks again.
     property <string> asked-key;
     changed wants-image => { if (!root.wants-image) { root.asked-key = ""; } }
     Timer {
@@ -43,7 +47,7 @@ export component RowView inherits Rectangle {
             Nav.act2("row-image", root.entry.image-key, "");
         }
     }
-    height: root.realized ? lay.preferred-height : root.lazy-height;
+    height: root.entry.lazy ? root.lazy-height : lay.preferred-height;
     lay := VerticalLayout {
         if root.realized: VerticalLayout {
             if entry.kind == "section": SectionTitle { text: root.entry.title; first: root.entry.checked; }
@@ -72,7 +76,8 @@ export component RowView inherits Rectangle {
                 clickable: root.entry.clickable;
                 enabled: root.entry.enabled;
                 invalid: root.entry.invalid;
-                title-lines: root.entry.lines > 0 ? root.entry.lines : 2;
+                title-lines: root.entry.lazy ? 1 : root.entry.lines > 0 ? root.entry.lines : 2;
+                subtitle-lines: root.entry.lazy ? 1 : root.entry.subtitle-lines;
                 title-color: root.entry.danger ? Theme.s.error : Theme.s.on-surface;
                 long-press-menu: root.entry.menu;
                 long-pressed(x, y) => { Nav.open-menu("row:" + root.key, x, y); }
@@ -526,8 +531,10 @@ export component RowView inherits Rectangle {
 // The body: rows in a scrolling column, 16 px in from each side.
 export component RowsBody inherits Rectangle {
     in property <PageData> d;
-    // The measured height of a lazy row (RowView), shared by all of them.
-    property <length> lazy-height: 68px;
+    // The height of every lazy row (RowView): ListItem's 10 px padding above
+    // and below around the taller of the 48 dp icon and a line of name over
+    // a line of package (font scale included).
+    property <length> lazy-height: 20px + max(48px, Theme.leading(TextRole.body) + Theme.leading(TextRole.subheadline));
     in property <length> side: Nav.side(self.width);
     in property <length> top-pad: 8px;
     // The room under the last row: the gesture inset, or the floating bar on home pages.
@@ -547,7 +554,7 @@ export component RowsBody inherits Rectangle {
                 entry: r;
                 index: i;
                 top-pad: root.top-pad;
-                lazy-height <=> root.lazy-height;
+                lazy-height: root.lazy-height;
                 page: root.d.id;
                 view-top: -flick.content-y;
                 view-bottom: -flick.content-y + flick.height;
