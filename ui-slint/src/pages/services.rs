@@ -7,19 +7,17 @@
 //! the running core's routing, or the device network while it is stopped).
 //!
 //! The card shows the first four enabled services (FlClash: at most what the
-//! core checks at once) and keeps them fresh while it is on screen and the
-//! app is in the foreground: once when it appears, after a route change has
-//! settled and every two minutes. Nothing runs in the background; coming back
-//! checks once what went stale. The service status page lists every enabled
-//! service; it checks the ones never checked when it opens, a row checks its
-//! service again and the bar checks all. Checks run at most four at a time.
+//! core checks at once). Every enabled service is checked once per process,
+//! the first time the card or the page is on screen in the foreground (once
+//! the service is not starting or stopping); after that only a tap checks: a
+//! row on the page checks its service, the bar and the card's button check
+//! all. Nothing runs on a timer, on a route change, on returning to the
+//! foreground or in the background. Checks run at most four at a time.
 
 use std::cell::RefCell;
 use std::collections::VecDeque;
-use std::time::Duration;
 
-use serde_json::{json, Value};
-use slint::{Timer, TimerMode};
+use serde_json::json;
 
 use crate::app::{call, data, long, text};
 use crate::i18n::tr;
@@ -50,12 +48,6 @@ pub const CARD_COUNT: usize = 4;
 const PARALLEL: usize = 4;
 /// Each request's timeout; a check gets six times that (libbox).
 const TIMEOUT_MILLIS: i64 = 8000;
-/// probeSettleDuration: a route change is checked once it has settled.
-const SETTLE_MILLIS: u64 = 1500;
-/// probeThrottleDuration: an automatic check waits this long after the last.
-const THROTTLE_MILLIS: i64 = 5000;
-/// While the card is shown, answers older than this are checked again.
-const INTERVAL_SECS: u64 = 120;
 
 /// FlClash ServiceProbeStatus.
 #[derive(Clone, Copy, PartialEq, Debug)]
@@ -142,15 +134,14 @@ struct Entry {
 #[derive(Default)]
 struct Model {
     entries: Vec<Entry>,
-    stamp: Option<String>,
     generation: u64,
     serial: u64,
     card_shown: bool,
     page_shown: bool,
     queue: VecDeque<usize>,
     running: usize,
-    settle: Option<Timer>,
-    ticker: Option<Timer>,
+    /// The one automatic check of the process has run.
+    started: bool,
 }
 
 thread_local! {
@@ -211,7 +202,9 @@ fn card_targets() -> Vec<usize> {
 
 /// Turns a service on or off; the last enabled one stays on (FlClash locks it).
 pub fn toggle(id: &str) {
-    let Some(index) = index_of(id) else { return };
+    if index_of(id).is_none() {
+        return;
+    }
     let mut off = disabled();
     if let Some(pos) = off.iter().position(|d| d == id) {
         off.remove(pos);
@@ -221,12 +214,8 @@ pub fn toggle(id: &str) {
         }
         off.push(id.to_string());
     }
-    crate::app::set_preferences(json!({ "disabledServices": off }), move |ok| {
-        if ok {
-            // A service that just came on and is on screen gets its answer.
-            check_with(index, Check::Auto);
-        }
-    });
+    // A service that comes on keeps what it had; it is checked on a tap.
+    crate::app::set_preferences(json!({ "disabledServices": off }), |_| mark(Mark::DASH));
 }
 
 /// Moves a service one place up or down in the order (FlClash reorders by drag).
@@ -240,13 +229,7 @@ pub fn move_by(id: &str, delta: i32) {
     }
     order.swap(pos, next as usize);
     let ids: Vec<&str> = order.iter().map(|i| TARGETS[*i].0).collect();
-    crate::app::set_preferences(json!({ "serviceOrder": ids }), |ok| {
-        if ok {
-            for index in card_targets() {
-                check_with(index, Check::Auto);
-            }
-        }
-    });
+    crate::app::set_preferences(json!({ "serviceOrder": ids }), |_| mark(Mark::DASH));
 }
 
 // ---------------------------------------------------------------------------
@@ -351,139 +334,78 @@ pub fn checking_any() -> bool {
 // When to check
 // ---------------------------------------------------------------------------
 
-/// What a check depends on: the service state, the profile, mode and selections.
-fn route_stamp() -> String {
-    data(|d| {
-        let mut selections: Vec<String> = d.groups.iter().map(|g| format!("{}:{}", text(&g["tag"]), text(&g["selected"]))).collect();
-        selections.sort();
-        format!(
-            "{}:{}:{}:{}:{}:{}",
-            d.status(),
-            d.remote(),
-            text(d.dashboard.get("startedAt").unwrap_or(&Value::Null)),
-            d.selected_profile_id(),
-            text(d.dashboard.get("mode").unwrap_or(&Value::Null)).to_lowercase(),
-            selections.join(",")
-        )
-    })
-}
-
-/// Called on dashboard projections: a new route drops the answers and checks
-/// the shown services again once it settles.
+/// Called on dashboard projections: the one automatic check of the process
+/// waits for a service that was starting or stopping to settle.
 pub fn sync() {
-    let stamp = route_stamp();
-    let changed = model(|m| {
-        if m.stamp.as_deref() == Some(stamp.as_str()) {
-            return false;
-        }
-        m.stamp = Some(stamp);
-        m.generation += 1;
-        m.queue.clear();
-        for e in m.entries.iter_mut() {
-            *e = Entry { checking: e.checking, ..Entry::default() };
-        }
-        true
-    });
-    if changed {
-        let timer = Timer::default();
-        timer.start(TimerMode::SingleShot, Duration::from_millis(SETTLE_MILLIS), || check_shown(Check::Auto));
-        model(|m| m.settle = Some(timer));
-        mark(Mark::DASH);
+    startup_check();
+}
+
+/// The one automatic check: every enabled service, the first time the card
+/// or the page is on screen in the foreground after the process started
+/// (and the service is not starting or stopping). Afterwards only a tap
+/// checks (a row, the bar, the card's button); nothing runs on a timer, on a
+/// route change or on returning to the foreground.
+fn startup_check() {
+    let (done, card, page) = model(|m| (m.started, m.card_shown, m.page_shown));
+    if done || !(card || page) {
+        return;
+    }
+    let (ready, transitioning, remote) = data(|d| (d.ready, d.transitioning(), d.remote()));
+    if !ready || transitioning || remote || !crate::pages::foreground() {
+        return;
+    }
+    model(|m| m.started = true);
+    for index in enabled() {
+        check_with(index, Check::Startup);
     }
 }
 
-/// Every service that is on screen: the card's, and the page's while it is open.
-fn check_shown(kind: Check) {
-    let (card, page) = model(|m| (m.card_shown, m.page_shown));
-    let targets = if page { enabled() } else if card { card_targets() } else { Vec::new() };
-    for index in targets {
-        // The page checks on request; automatically only what has no answer.
-        if page && !card_targets().contains(&index) && kind == Check::Auto && model(|m| m.entries[index].status.is_some()) {
-            continue;
-        }
-        check_with(index, kind);
-    }
-}
-
-/// The card came into view or left it: its checks run only while it is shown
-/// and the app is in the foreground. `resumed`: the app just came back, so
-/// answers older than the throttle are checked again once.
-pub fn set_shown(shown: bool, resumed: bool) {
+/// The card came into view or left it (or the app left / came back).
+pub fn set_shown(shown: bool) {
     let was = model(|m| std::mem::replace(&mut m.card_shown, shown));
     if was == shown {
         return;
     }
     if shown {
-        let ticker = Timer::default();
-        ticker.start(TimerMode::Repeated, Duration::from_secs(INTERVAL_SECS), || {
-            for index in card_targets() {
-                check_with(index, Check::Auto);
-            }
-        });
-        model(|m| m.ticker = Some(ticker));
-        for index in card_targets() {
-            check_with(index, if resumed { Check::Resume } else { Check::Auto });
-        }
+        startup_check();
     } else {
-        // Leaving (or going to the background) also drops a pending
-        // route-change check and the queue: the next showing checks for itself.
-        model(|m| {
-            m.ticker = None;
-            m.settle = None;
-        });
         drop_queue();
     }
 }
 
 /// The service status page opened or closed (or the app left / came back
-/// while it is open). It checks what has no answer yet; coming back, what
-/// went stale.
-pub fn set_page_shown(shown: bool, resumed: bool) {
+/// while it is open).
+pub fn set_page_shown(shown: bool) {
     let was = model(|m| std::mem::replace(&mut m.page_shown, shown));
     if was == shown {
         return;
     }
     if shown {
-        for index in enabled() {
-            let unanswered = model(|m| m.entries[index].status.is_none());
-            if resumed {
-                check_with(index, Check::Resume);
-            } else if unanswered {
-                check_with(index, Check::Auto);
-            }
-        }
+        startup_check();
     } else {
         drop_queue();
     }
 }
 
+/// Nothing waits while nothing that shows the answers is on screen (or the
+/// app is in the background); a check already running finishes.
 fn drop_queue() {
     let (card, page) = model(|m| (m.card_shown, m.page_shown));
     if card || page {
-        // Still on screen elsewhere: keep only what that shows.
-        let keep = if page { enabled() } else { card_targets() };
-        model(|m| {
-            let dropped: Vec<usize> = m.queue.iter().copied().filter(|i| !keep.contains(i)).collect();
-            m.queue.retain(|i| keep.contains(i));
-            for i in dropped {
-                m.entries[i].queued = false;
-            }
-        });
-    } else {
-        model(|m| {
-            for i in m.queue.drain(..).collect::<Vec<_>>() {
-                m.entries[i].queued = false;
-            }
-        });
+        return;
     }
+    model(|m| {
+        for i in m.queue.drain(..).collect::<Vec<_>>() {
+            m.entries[i].queued = false;
+        }
+    });
     mark(Mark::DASH);
 }
 
-/// Checks every enabled service at once (the page's bar, the card's button).
-pub fn check_all(manual: bool) {
-    let targets = if model(|m| m.page_shown) || manual { enabled() } else { card_targets() };
-    for index in targets {
-        check_with(index, if manual { Check::Manual } else { Check::Auto });
+/// Checks every enabled service (the page's bar, the card's button).
+pub fn check_all(_manual: bool) {
+    for index in enabled() {
+        check_with(index, Check::Manual);
     }
 }
 
@@ -496,29 +418,20 @@ pub fn check_id(id: &str) {
 
 #[derive(Clone, Copy, PartialEq)]
 enum Check {
-    /// The ticker, a route change or the card coming into view: answers
-    /// younger than the interval are kept.
-    Auto,
-    /// The app came back to the foreground: anything past the throttle.
-    Resume,
+    /// The one check when the UI first shows the services.
+    Startup,
     /// A tap.
     Manual,
 }
 
 fn check_with(index: usize, kind: Check) {
     let (transitioning, remote) = data(|d| (d.transitioning(), d.remote()));
-    if transitioning || remote || !crate::pages::foreground() {
+    if transitioning || remote || !crate::pages::foreground() || index >= TARGETS.len() {
         return;
     }
-    let now = crate::format::now_ms();
     let queued = model(|m| {
-        let on_screen = m.card_shown || m.page_shown;
         let e = &mut m.entries[index];
-        if e.checking || e.queued || !on_screen && kind != Check::Manual {
-            return false;
-        }
-        let fresh = e.status.is_some() && now - e.checked_at < INTERVAL_SECS as i64 * 1000 - 1000;
-        if kind == Check::Auto && fresh || kind != Check::Manual && e.checked_at > 0 && now - e.checked_at < THROTTLE_MILLIS {
+        if e.checking || e.queued || kind == Check::Startup && e.status.is_some() {
             return false;
         }
         e.queued = true;
@@ -576,24 +489,22 @@ fn run(index: usize, generation: u64, probe: String) {
 
 fn finish(index: usize, generation: u64, probe: &str, answer: Result<(Status, String, i64), Status>) {
     call("closeProbe", json!({ "id": probe }), |_| {});
-    let stale = model(|m| {
+    model(|m| {
         m.running = m.running.saturating_sub(1);
+        if index >= m.entries.len() {
+            return;
+        }
         m.entries[index].checking = false;
         if m.generation != generation {
-            return true;
+            return;
         }
         let (status, region, delay) = match answer {
             Ok(a) => a,
             Err(s) => (s, String::new(), 0),
         };
         m.entries[index] = Entry { status: Some(status), region, delay: if status == Status::Available { delay } else { 0 }, checked_at: crate::format::now_ms(), checking: false, queued: false };
-        false
     });
     mark(Mark::DASH);
-    if stale {
-        // The route moved while this ran: check the new one if it is shown.
-        check_with(index, Check::Auto);
-    }
     pump();
 }
 

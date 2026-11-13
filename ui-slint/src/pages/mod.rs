@@ -64,7 +64,6 @@ thread_local! {
     static SCHEDULED: Cell<bool> = const { Cell::new(false) };
     static VISIBLE: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
     static FOREGROUND: Cell<bool> = const { Cell::new(true) };
-    static RESUMED: Cell<bool> = const { Cell::new(false) };
     static PAUSABLE: RefCell<Vec<(Weak<slint::Timer>, Option<Rc<dyn Fn()>>)>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -91,7 +90,8 @@ pub fn pausable(timer: &Rc<slint::Timer>, on_resume: Option<Rc<dyn Fn()>>) {
 /// projections (data still lands in [crate::app::Data]), no repeating timers,
 /// every native sampling subscription off and no network checks; only the
 /// core service keeps running. Back in the foreground everything is projected
-/// once, the subscriptions resume and the service status checks once.
+/// once and the subscriptions resume; the service status is not checked
+/// again (pages/services.rs checks once per process and then on a tap).
 pub fn set_foreground(active: bool) {
     if FOREGROUND.with(|f| f.replace(active)) == active {
         return;
@@ -115,7 +115,6 @@ pub fn set_foreground(active: bool) {
         f();
     }
     if active {
-        RESUMED.with(|r| r.set(true));
         egress::resume();
         mark(Mark::ALL);
     } else {
@@ -196,7 +195,6 @@ pub fn sync_visibility(force: bool) {
         return;
     }
     let active = foreground();
-    let resumed = RESUMED.with(|r| r.replace(false));
     let nav = w.global::<Nav>();
     let tab = nav.get_tab().to_string();
     let routes: Vec<String> = nav.get_routes().iter().map(|r| r.kind.to_string()).collect();
@@ -208,8 +206,8 @@ pub fn sync_visibility(force: bool) {
     let logs = (!covered && tab == "Logs") || routes.iter().any(|r| r == "logs");
     let connections = (!covered && tab == "Requests") || routes.iter().any(|r| r == "requests" || r == "connection");
     let connection_stats = dash_shown && cards.iter().any(|c| c == "Connection stats");
-    services::set_shown(active && dash_shown && cards.iter().any(|c| c == "Service status"), resumed);
-    services::set_page_shown(active && routes.iter().any(|r| r == "services" || r == "services-manage"), resumed);
+    services::set_shown(active && dash_shown && cards.iter().any(|c| c == "Service status"));
+    services::set_page_shown(active && routes.iter().any(|r| r == "services" || r == "services-manage"));
     let next = [memory, lan, logs, connections, connection_stats].map(|shown| active && shown);
     let previous = VISIBLE.with(|v| v.replace(next));
     let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible"];
