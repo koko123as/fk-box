@@ -522,6 +522,9 @@ export component ListItem inherits Rectangle {
                     role: TextRole.subheadline;
                     color: Theme.s.on-surface-variant;
                     wrap: root.subtitle-lines == 1 ? no-wrap : word-wrap;
+                    // With no line limit the box is the text's full height: clip, since elide
+                    // on wrapped lines drew them over each other.
+                    overflow: root.subtitle-lines == 0 ? clip : elide;
                 }
             }
         }
@@ -699,6 +702,8 @@ export component Field inherits Rectangle {
         vertical-alignment: root.multiline ? top : center;
         horizontal-alignment: root.align;
         wrap: root.multiline ? word-wrap : no-wrap;
+        // Elide on wrapped lines drew them over each other; the box is the hint's full height.
+        overflow: root.multiline ? clip : elide;
         text: root.hint;
         color: Theme.s.on-surface-variant;
     }
