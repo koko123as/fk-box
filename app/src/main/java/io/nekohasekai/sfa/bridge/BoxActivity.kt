@@ -432,6 +432,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         if (!startPending) return
         startPending = false
         serviceStatus.value = Status.Starting
+        watchTransition()
         runCatching {
             ContextCompat.startForegroundService(this, Intent(this, Settings.serviceClass()))
             Settings.startedByUser = true
@@ -511,6 +512,64 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     override fun onServiceStatusChanged(status: Status) {
         serviceStatus.value = status
         if (status == Status.Started) startResult.started()
+        watchTransition()
+    }
+
+    private var transitionWatch: kotlinx.coroutines.Job? = null
+
+    /**
+     * The UI learns the service's status only through the bound connection.
+     * A start that changes the service mode (a sing-box profile without a TUN
+     * inbound to a mihomo or Xray profile, which always run in the VPN
+     * service) rebinds to the other service class while the activity already
+     * shows its own Starting; when that rebinding raced the start or was
+     * missed, the dashboard kept showing Starting (no core memory, no
+     * connections) whatever the service did. While the status stays Starting
+     * or Stopping, this checks every few seconds that the connection is to
+     * the class the mode selects (rebinding otherwise) and takes the status
+     * that service reports once two checks agree. A start that the service
+     * reports as stopped fails, so the caller shows its error.
+     */
+    private fun watchTransition() {
+        val transitional = serviceStatus.value == Status.Starting || serviceStatus.value == Status.Stopping
+        if (!transitional) {
+            transitionWatch?.cancel()
+            transitionWatch = null
+            return
+        }
+        if (transitionWatch?.isActive == true) return
+        transitionWatch = lifecycleScope.launch {
+            var disagreed: Status? = null
+            while (true) {
+                kotlinx.coroutines.delay(4000)
+                val shown = serviceStatus.value
+                if (shown != Status.Starting && shown != Status.Stopping) break
+                if (launching || startPending) continue
+                if (connection.boundClass != Settings.serviceClass()) {
+                    android.util.Log.w("BoxActivity", "service connection is to ${connection.boundClass?.simpleName}, mode wants ${Settings.serviceClass().simpleName}; rebinding")
+                    connection.reconnect()
+                    disagreed = null
+                    continue
+                }
+                if (!connection.connected) continue
+                val actual = runCatching { connection.status }.getOrNull() ?: continue
+                if (actual == shown) {
+                    disagreed = null
+                    continue
+                }
+                if (disagreed != actual) {
+                    disagreed = actual
+                    continue
+                }
+                android.util.Log.w("BoxActivity", "UI showed $shown but the service is $actual; following the service")
+                if (shown == Status.Starting && actual == Status.Stopped) {
+                    startResult.failed(IllegalStateException(getString(R.string.error_start_service)))
+                }
+                serviceStatus.value = actual
+                if (actual == Status.Started) startResult.started()
+                break
+            }
+        }
     }
 
     override fun onServiceAlert(type: Alert, message: String?) {

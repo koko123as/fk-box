@@ -36,12 +36,21 @@ class ServiceConnection(private val context: Context, callback: Callback, privat
 
     val status get() = service?.status?.let { Status.values()[it] } ?: Status.Stopped
 
+    /** The service class the last [connect] bound (null while disconnected). */
+    var boundClass: Class<*>? = null
+        private set
+
+    /** Whether a service is connected; [status] is only its answer then. */
+    val connected get() = service != null
+
     fun connect() {
         connectJob?.cancel()
         connectJob = scope.launch {
             Settings.dataStore.initialize()
             Settings.dataStore.registerChangeListener(this@ServiceConnection)
-            val intent = Intent(context, Settings.serviceClass()).setAction(Action.SERVICE)
+            val type = Settings.serviceClass()
+            boundClass = type
+            val intent = Intent(context, type).setAction(Action.SERVICE)
             context.bindService(intent, this@ServiceConnection, Context.BIND_AUTO_CREATE)
             Log.d(TAG, "request connect")
         }
@@ -56,6 +65,7 @@ class ServiceConnection(private val context: Context, callback: Callback, privat
         } catch (_: RemoteException) {
         }
         service = null
+        boundClass = null
         try {
             context.unbindService(this)
         } catch (_: IllegalArgumentException) {

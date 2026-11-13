@@ -80,7 +80,11 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         val rss = File("/proc/self/status").useLines { lines -> lines.firstOrNull { it.startsWith("VmRSS:") }
             ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024) ?: 0L }
         val running = activity.serviceStatus.value == Status.Started
-        val core = if (running) Libbox.readUIRuntimeMemory() else null
+        // The cores run in this process: whatever the status says (a core
+        // still starting, or running while the UI lost track of it), the Go
+        // runtime's memory is the core's, never the app's. FlClash splits
+        // the process RSS the same way (app = RSS - core runtime).
+        val core = runCatching { Libbox.readUIRuntimeMemory() }.getOrNull()
         // What the kernel keeps resident for Go's own mappings can exceed Go's
         // accounting (huge pages refilling released memory); count that as
         // core rather than letting it inflate the app share. The excess is
