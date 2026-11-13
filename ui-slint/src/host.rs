@@ -48,6 +48,22 @@ mod android {
         Ok(())
     }
 
+    /// Runs one host event or reply. A panic in its handler is logged instead
+    /// of unwinding into the event loop, where android-activity would close
+    /// the activity. Only the handler is skipped: the page state it touches is
+    /// held in RefCells that are released on unwind, and the next event or
+    /// refresh rebuilds what the handler would have shown.
+    fn guarded(kind: &str, handler: impl FnOnce()) {
+        if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(handler)) {
+            let message = panic
+                .downcast_ref::<&str>()
+                .map(|s| s.to_string())
+                .or_else(|| panic.downcast_ref::<String>().cloned())
+                .unwrap_or_else(|| "unknown panic".into());
+            log::error!("host {kind} handler panicked: {message}");
+        }
+    }
+
     fn read(env: &mut JNIEnv, value: &JString) -> String {
         env.get_string(value).map(Into::into).unwrap_or_default()
     }
@@ -55,7 +71,7 @@ mod android {
     #[no_mangle]
     pub extern "system" fn Java_io_nekohasekai_sfa_bridge_SlintHost_nativeEvent(mut env: JNIEnv, _class: JClass, payload: JString) {
         let payload = read(&mut env, &payload);
-        let _ = slint::invoke_from_event_loop(move || crate::app::on_event(&payload));
+        let _ = slint::invoke_from_event_loop(move || guarded("event", || crate::app::on_event(&payload)));
     }
 
     #[no_mangle]
@@ -68,7 +84,7 @@ mod android {
     ) {
         let payload = read(&mut env, &payload);
         let ok = ok == JNI_TRUE;
-        let _ = slint::invoke_from_event_loop(move || crate::app::on_reply(id, ok, &payload));
+        let _ = slint::invoke_from_event_loop(move || guarded("reply", || crate::app::on_reply(id, ok, &payload)));
     }
 }
 
