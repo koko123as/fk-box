@@ -30,8 +30,19 @@ export component RowView inherits Rectangle {
     property <bool> realized: !root.entry.lazy || (root.estimated-y + root.lazy-height > root.view-top - 600px && root.estimated-y < root.view-bottom + 600px);
     property <length> built-height: lay.preferred-height;
     changed built-height => { if (root.entry.lazy && root.realized && root.built-height > 0) { root.lazy-height = root.built-height; } }
-    init => { if (root.wants-image) { Nav.act2("row-image", root.entry.image-key, ""); } }
-    changed wants-image => { if (root.wants-image) { Nav.act2("row-image", root.entry.image-key, ""); } }
+    // The icon is asked for once each time the row comes near the viewport,
+    // keyed on the app: a row the list reuses for another app (search, sort,
+    // reload) asks again, which init and a change of wants-image alone missed.
+    property <string> asked-key;
+    changed wants-image => { if (!root.wants-image) { root.asked-key = ""; } }
+    Timer {
+        interval: 1ms;
+        running: root.wants-image && root.asked-key != root.entry.image-key;
+        triggered => {
+            root.asked-key = root.entry.image-key;
+            Nav.act2("row-image", root.entry.image-key, "");
+        }
+    }
     height: root.realized ? lay.preferred-height : root.lazy-height;
     lay := VerticalLayout {
         if root.realized: VerticalLayout {
