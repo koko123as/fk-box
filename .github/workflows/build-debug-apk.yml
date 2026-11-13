@@ -10,7 +10,7 @@ concurrency:
   group: debug-${{ github.ref }}
   cancel-in-progress: false
 
-# FK-box (ui/rust-slint): Rust + Slint UI over the unchanged Kotlin service
+# FK-box: Rust + Slint UI over the unchanged Kotlin service
 # layer and patched core.
 jobs:
   build:
