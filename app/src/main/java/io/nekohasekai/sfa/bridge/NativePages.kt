@@ -63,8 +63,8 @@ internal abstract class NativePage : ComponentActivity() {
     protected lateinit var content: FrameLayout
     protected val density: Float get() = resources.displayMetrics.density
     protected val dark: Boolean get() = intent.getBooleanExtra("dark", (resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES)
-    protected val foreground: Int get() = if (dark) Color.WHITE else Color.BLACK
-    protected val background: Int get() = if (dark) Color.BLACK else Color.WHITE
+    protected val fgColor: Int get() = if (dark) Color.WHITE else Color.BLACK
+    protected val bgColor: Int get() = if (dark) Color.BLACK else Color.WHITE
 
     protected fun reply(ok: Boolean, value: Any?) {
         if (replied) return
@@ -79,7 +79,7 @@ internal abstract class NativePage : ComponentActivity() {
         call = intent.getLongExtra(NativePages.EXTRA_CALL, 0L)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setBackgroundColor(background)
+            setBackgroundColor(bgColor)
         }
         bar = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -89,14 +89,14 @@ internal abstract class NativePage : ComponentActivity() {
         bar.addView(Button(this, null, android.R.attr.borderlessButtonStyle).apply {
             text = "←"
             textSize = 22f
-            setTextColor(foreground)
+            setTextColor(fgColor)
             contentDescription = getString(android.R.string.cancel)
             setOnClickListener { finish() }
         }, LinearLayout.LayoutParams(dp(56), dp(48)))
         bar.addView(TextView(this).apply {
             text = intent.getStringExtra("title") ?: ""
             textSize = 20f
-            setTextColor(foreground)
+            setTextColor(fgColor)
             setPadding(dp(8), 0, 0, 0)
             maxLines = 1
         }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
@@ -113,14 +113,14 @@ internal abstract class NativePage : ComponentActivity() {
 
     protected fun barAction(label: String, onClick: () -> Unit): Button = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
         text = label
-        setTextColor(foreground)
+        setTextColor(fgColor)
         setOnClickListener { onClick() }
         bar.addView(this, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, dp(48)))
     }
 
     protected fun message(text: String): TextView = TextView(this).apply {
         this.text = text
-        setTextColor(foreground)
+        setTextColor(fgColor)
         gravity = Gravity.CENTER
         setPadding(dp(24), dp(24), dp(24), dp(24))
     }
@@ -158,7 +158,7 @@ internal class ScanActivity : NativePage() {
             setPadding(dp(16), dp(8), dp(16), dp(16))
         }
         progress = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply { visibility = View.GONE; max = 100 }
-        status = TextView(this).apply { setTextColor(foreground) }
+        status = TextView(this).apply { setTextColor(fgColor) }
         footer.addView(progress)
         footer.addView(status)
         (content.parent as LinearLayout).addView(footer)
@@ -282,7 +282,7 @@ internal class TerminalActivity : NativePage() {
         for (key in listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "↓", "←", "→", "Home", "End", "PgUp", "PgDn", "Paste", "Keyboard")) {
             val button = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
                 text = labels?.getString(key) ?: key
-                setTextColor(foreground)
+                setTextColor(fgColor)
                 isAllCaps = false
                 alpha = if (key == "Ctrl" || key == "Alt") 0.7f else 1f
                 setOnClickListener {
