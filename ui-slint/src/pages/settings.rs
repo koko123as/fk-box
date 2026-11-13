@@ -1278,10 +1278,13 @@ pub fn app_icon(pkg: &str) -> Option<slint::Image> {
     APP_ICONS.with(|i| i.borrow().loaded.get(pkg).cloned())
 }
 
-/// An app list closed: its icons and the host's package snapshot go.
+/// An app list closed: its icons and the host's package snapshot go, and the
+/// memory they held is handed back at once (crate::memory) rather than only
+/// when the app next goes to the background.
 fn release_app_list() {
     release_icons();
-    app::act("releaseApps", json!({}));
+    app::call("releaseApps", json!({}), |_| crate::memory::trim());
+    crate::memory::release();
 }
 
 /// Drops every icon (an app list closed or reloaded).

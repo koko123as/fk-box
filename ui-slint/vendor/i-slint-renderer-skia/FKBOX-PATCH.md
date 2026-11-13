@@ -1,7 +1,7 @@
 # i-slint-renderer-skia 1.18.1, patched for FK-box
 
 Unmodified crates.io source of `i-slint-renderer-skia` 1.18.1 (GPL-3.0-only OR
-the Slint licenses, see LICENSES/) with two changes, used through
+the Slint licenses, see LICENSES/) with three changes, used through
 `[patch.crates-io]` in ui-slint/Cargo.toml:
 
 1. `font_cache.rs`: `load_typeface_internal` created every Skia typeface from
@@ -14,5 +14,11 @@ the Slint licenses, see LICENSES/) with two changes, used through
 2. `opengl_surface.rs`: `set_resource_cache_limit(32 MB)` on the GrDirectContext
    (Skia's default budget is 256 MB).
 
-To update Slint: re-copy the new crate version and re-apply both hunks
+To update Slint: re-copy the new crate version and re-apply the three hunks
 (search for "FK-box patch").
+3. `lib.rs`: `fkbox_request_purge()` (thread-local flag). The next frame's
+   `render_components_to_canvas` first clears the renderer's image, layer,
+   path, box-shadow and text-layout caches, calls `free_gpu_resources()` on the
+   GrDirectContext and `skia_safe::graphics::purge_all_caches()`. The UI calls
+   it when a page with many images closes (the app lists), so memory returns
+   without the app going to the background.

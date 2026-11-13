@@ -175,12 +175,19 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                             val file = java.io.File(dir, "$pkg.png")
                             if (!file.exists()) {
                                 val drawable = packageManager.getApplicationIcon(pkg)
-                                val size = (48 * resources.displayMetrics.density).toInt().coerceAtLeast(48)
+                                // The row shows it at 48 dp: rendered at that size (at most
+                                // 144 px), never at the drawable's own, and the bitmap's
+                                // native pixels freed at once rather than at the next GC.
+                                val size = (48 * resources.displayMetrics.density).toInt().coerceIn(48, 144)
                                 val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-                                val canvas = android.graphics.Canvas(bitmap)
-                                drawable.setBounds(0, 0, size, size)
-                                drawable.draw(canvas)
-                                file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                                try {
+                                    val canvas = android.graphics.Canvas(bitmap)
+                                    drawable.setBounds(0, 0, size, size)
+                                    drawable.draw(canvas)
+                                    file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                                } finally {
+                                    bitmap.recycle()
+                                }
                             }
                             file.absolutePath
                         }.getOrNull()

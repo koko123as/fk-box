@@ -40,6 +40,9 @@ i-slint-backend-android-activity = { version = "=1.18.1", features = ["aa-06", "
 jni = "0.21"
 log = "0.4"
 android_logger = "0.15"
+# The Skia renderer the backend draws with (vendored, see [patch.crates-io]):
+# its FK-box purge hook releases caches when an image-heavy page closes.
+i-slint-renderer-skia = { version = "=1.18.1", default-features = false }
 # PNG decoding for app icons (PackageIcon) rendered by the native side.
 i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "shared-parley"] }
 

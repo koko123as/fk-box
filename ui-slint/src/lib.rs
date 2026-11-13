@@ -12,6 +12,7 @@ mod fonts;
 mod format;
 mod host;
 mod i18n;
+mod memory;
 mod nav;
 mod pages;
 mod records;

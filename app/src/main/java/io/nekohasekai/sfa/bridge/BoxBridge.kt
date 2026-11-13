@@ -575,7 +575,23 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return result
     }
 
-    suspend fun releaseApps() { apps.clear() }
+    /**
+     * An app list closed. The package snapshot goes, then the runtime is asked
+     * to collect what the list loaded: each label and icon opened the app's
+     * Resources (its APK's resource table mapped into this process) and icon
+     * bitmaps keep native pixel memory until their Java objects are collected.
+     * Going to the background frees these through the system's own GC and
+     * trim; this does the same as soon as the list closes.
+     */
+    @Suppress("DEPRECATION")
+    suspend fun releaseApps() {
+        apps.clear()
+        withContext(Dispatchers.Default) {
+            Runtime.getRuntime().gc()
+            System.runFinalization()
+            Runtime.getRuntime().gc()
+        }
+    }
 
     fun requestAppsPermission() { PackageQueryManager.requestShizukuPermission() }
 

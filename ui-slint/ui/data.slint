@@ -289,6 +289,9 @@ export struct SettingRow {
     // The package whose icon the row still waits for: asked for (row-image)
     // only once the row scrolls near the viewport.
     image-key: string,
+    // Built only near the viewport (rows.slint RowView); every row before it
+    // in the list is lazy too. The app lists set it.
+    lazy: bool,
     // The segments of a SegmentedButton row (kind "segments"), the selected one in lines.
     options: [string],
     // A record (RecordListItem): the outbound chain under its rule (detail).

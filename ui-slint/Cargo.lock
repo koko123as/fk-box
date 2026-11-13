@@ -1028,6 +1028,7 @@ dependencies = [
  "i-slint-backend-android-activity",
  "i-slint-common",
  "i-slint-core",
+ "i-slint-renderer-skia",
  "jni 0.21.1",
  "log",
  "material-colors",

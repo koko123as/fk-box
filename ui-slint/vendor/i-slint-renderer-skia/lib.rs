@@ -741,6 +741,19 @@ impl SkiaRenderer {
         let window_inner = WindowInner::from_pub(window);
         let window_adapter = window_inner.window_adapter();
 
+        // FK-box patch: a page that held many images and texts closed (the app
+        // lists); drop what the caches and the GPU context kept for it before
+        // drawing what is shown now, as destroying the surface in the
+        // background does.
+        if FKBOX_PURGE.with(|p| p.replace(false)) {
+            self.clear_graphics_caches();
+            if let Some(context) = gr_context.as_mut() {
+                context.flush_and_submit();
+                context.free_gpu_resources();
+            }
+            skia_safe::graphics::purge_all_caches();
+        }
+
         self.image_cache.clear_cache_if_scale_factor_changed(window);
         self.path_cache.clear_cache_if_scale_factor_changed(window);
         self.box_shadow_cache.clear_cache_if_scale_factor_changed(window);
@@ -1033,6 +1046,19 @@ impl Drop for SkiaRenderer {
     fn drop(&mut self) {
         self.clear_surface()
     }
+}
+
+std::thread_local! {
+    // FK-box patch: set by fkbox_request_purge, taken by the next frame.
+    static FKBOX_PURGE: core::cell::Cell<bool> = const { core::cell::Cell::new(false) };
+}
+
+/// FK-box patch: the next frame drawn on this thread first releases every
+/// cached image, path and text layout, frees the GPU context's resources
+/// (textures, glyph atlases) and purges Skia's font and resource caches. The
+/// caller requests a redraw.
+pub fn fkbox_request_purge() {
+    FKBOX_PURGE.with(|p| p.set(true));
 }
 
 /// This trait represents the interface between the Skia renderer and the underlying rendering surface, such as a window

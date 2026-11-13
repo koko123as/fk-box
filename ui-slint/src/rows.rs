@@ -351,12 +351,18 @@ impl Row {
     /// An installed app's icon: shown once loaded; until then the row asks
     /// for it when it scrolls near the viewport (settings::request_icon).
     pub fn app_icon(mut self, package: &str) -> Row {
+        self.data.lazy = true;
         match crate::pages::settings::app_icon(package) {
             Some(i) => {
                 self.data.image = i;
                 self.data.has_image = true;
             }
-            None => self.data.image_key = package.into(),
+            None => {
+                // An empty 48 dp slot until it loads, so a row has the same
+                // height with or without its icon (lazy rows share one height).
+                self.data.has_image = true;
+                self.data.image_key = package.into();
+            }
         }
         self
     }
