@@ -484,7 +484,8 @@ export component ListItem inherits Rectangle {
             color: Theme.s.on-surface-variant;
             
         } }
-        VerticalLayout {
+        // Custom rows (usage, fields) leave the title empty and take the width themselves.
+        if root.title != "" || root.subtitle != "": VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
             T {

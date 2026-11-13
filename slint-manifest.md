@@ -74,6 +74,31 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 9. Terminal font size: number field plus an "Increase font size" row instead of the −/+ stepper.
 10. Terminal surface, QR scanner and OpenConnect sign-in browser are separate native Activities over the Slint window instead of inline Compose views.
 
+## Fonts and rendering (slint-ui only)
+
+- Text uses the device's own fonts like Compose did: `bridge/SystemFonts.kt` asks Android's text
+  stack (TextRunShaper, API 31+) which files it draws sans-serif, Chinese and monospace with and
+  writes `files/fkui-fonts.json`; `src/fonts.rs` registers them memory-mapped as Slint's
+  sans-serif / system-ui / monospace families. Below API 31 fontique's /system/fonts defaults apply.
+- JetBrains Mono is no longer bundled (neither in `ui-slint/ui/fonts` nor `res/font`); code and
+  terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
+  `FontFamily.Monospace`.
+- `ui-slint/vendor/i-slint-renderer-skia` (1.18.1 + FKBOX-PATCH.md): font data shared without
+  copies and a 32 MB GPU resource cache.
+- Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
+  fixture data; never part of the Android build). Its software renderer measures wrapped Chinese
+  text with one font, so wrapped CJK footers show one line there; the Skia renderer on Android
+  measures with the same font fallback it draws with.
+
+## Layout checks (screenshot harness, 2026-11-13)
+
+Checked at 411×914 dp: dashboard (light/dark), proxies, profiles, profile details, add profile,
+tools, requests, resources, logs, terminal, remote control, appearance, access control, routing,
+backup, general, service. Fixed: icons/switches/radios/chevrons that sat at the top of their rows
+(a layout ignores a child's own `y`, now wrapped in kit `Mid`), empty-state icon and splash logo
+not centred, custom ListItem rows (usage meter) squeezed to half width by the empty title
+column, segmented buttons (equal widths, rounded ends), dashboard profile row spacing.
+
 ## Not verified
 
 Everything above is compiled (host `cargo check` + CI Android build) but has not been run on a device.
