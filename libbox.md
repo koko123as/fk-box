@@ -15,7 +15,8 @@
 | 运行时内存绑定 | [ui_dashboard.go](libbox/ui_dashboard.go) | 读取 Go 运行时内存和 goroutine 数，提供释放内存操作 |
 | HTTP/WebDAV 绑定 | [ui_http.go](libbox/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
 | 订阅获取绑定 | [ui_subscription.go](libbox/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |
-| 出口探测绑定 | [ui_egress.go](libbox/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询与质量请求传输 |
+| 出口探测绑定 | [ui_egress.go](libbox/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询、质量请求传输与只读响应头的可达性探测 |
+| DNS 查询计数 | [patch_dns_count.py](tools/patch_dns_count.py)、[dns/](libbox/dns/)、[ui_dns.go](libbox/ui_dns.go) | 仪表盘 DNS 查询数，见[仪表盘 DNS 查询计数](#仪表盘-dns-查询计数) |
 | 局域网代理配置绑定 | [ui_lan.go](libbox/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
 | HTTP/HTTPS 请求抓取 | [httpdebug.patch](libbox/httpdebug.patch)、[httpdebug/](libbox/httpdebug/)、[route/](libbox/route/)、[ui_capture.go](libbox/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
 | JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](libbox/http_rewrite.patch)、[rewrite_config.go](libbox/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](libbox/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
@@ -177,9 +178,14 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 - `LookupOutboundIP`：对八个来源错峰竞速，总时限 6 秒、间隔 800 毫秒、最多并发 3 个请求、响应上限 4096 字节；每个 HTTP 200 响应先按对应来源解析并校验公网 IP 与国家字段，首个完整解析成功的结果才取消其余请求。解析失败立即继续其他来源，国家字段允许空字符串表示未知。返回 IP、地理信息、来源与查询时间。
 - `Get`：供 Compose 仪表盘的 IP 质量查询使用，保留 HTTP 状态，响应上限 128 KiB，调用方可指定 1～8000 毫秒超时。
+- `Reach`：服务状态卡用的可达性探测。一次 GET，读到响应头即关闭连接（不读正文；探测关闭了 keep-alive），不跟随重定向，返回首个响应的状态码与到响应头的毫秒延迟（含拨号与 TLS），因此可直接探测任意大小的首页，超时 1～8000 毫秒。
 - `Close`：取消本次探测的请求和等待中的连接。每个请求独立持有连接与截止时间，不将 IP 竞速连接复用于后续质量查询。
 
 两种探测共用 libbox TLS 证书库；运行中的路由查询失败不能回退到设备网络。远程会话不提供本机出口探测。FlClash 来源、分批质量查询、缓存和界面刷新规则见 [flclash.md](flclash.md)；其中质量解析与缓存主要在 Dart/Android 层，不能将它们误记为 Go 核心补丁。
+
+### 仪表盘 DNS 查询计数
+
+[patch_dns_count.py](tools/patch_dns_count.py)（setup-core 在 multicore 补丁后执行）把 [dns/ui_query_count.go](libbox/dns/ui_query_count.go) 放进核心的 `dns` 包，并在 `dns.Router` 的 `Exchange`、`ExchangeAsync` 开头计数：sing-box 为客户端应答的每条 DNS 消息（hijack-dns、DNS 出站、DNS 入站，含缓存命中）都经过这两处，路由为出站拨号做的 `Lookup` 不计。Xray 在 TUN 连接跟踪（[core_xray_track.go](libbox/core_xray_track.go)）里按目标 53 端口计数（UDP 按数据报，一条查询一个；TCP 每条连接计一次），mihomo 在 `ApplyConfig` 之后把 `resolver.DefaultService`（TUN dns-hijack 经 `resolver.ServeMsg` 使用它）包一层计数（[core_service.go](libbox/core_service.go)）。[ui_dns.go](libbox/ui_dns.go) 的 `ReadUIDNSQueryCount` 返回自 `StartOrReloadCoreService` 上次调用（启动或重载）以来的总数；只反映本进程内的本机内核。
 
 ### 局域网代理
 

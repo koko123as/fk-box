@@ -14,6 +14,7 @@ package libbox
 //     cmfa build tag.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/netip"
@@ -26,10 +27,12 @@ import (
 	"time"
 
 	mihomoDialer "github.com/metacubex/mihomo/component/dialer"
+	mihomoResolver "github.com/metacubex/mihomo/component/resolver"
 	mihomoConfig "github.com/metacubex/mihomo/config"
 	mihomoConstant "github.com/metacubex/mihomo/constant"
 	mihomoExecutor "github.com/metacubex/mihomo/hub/executor"
 	mihomoLog "github.com/metacubex/mihomo/log"
+	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
@@ -141,6 +144,7 @@ func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
 // core ran before. sing-box goes through StartOrReloadService unchanged.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
+	resetUIDNSQueryCount()
 	if core == CoreSingBox || core == "" {
 		s.stopOtherCore()
 		return s.StartOrReloadService(withDefaultSingBoxLogLevel(dropUnbuiltTunStack(configContent)), options)
@@ -473,6 +477,24 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string, raw
 	}
 	config.General.Tun.FileDescriptor = mihomoFd
 	mihomoExecutor.ApplyConfig(config, true)
+	countMihomoDNS()
 	return nil
+}
+
+// countingMihomoDNS counts the queries mihomo's dns-hijack answers: the TUN
+// relays them through resolver.ServeMsg, i.e. resolver.DefaultService, which
+// ApplyConfig has just replaced (or cleared when DNS is disabled).
+type countingMihomoDNS struct{ mihomoResolver.Service }
+
+func (c countingMihomoDNS) ServeMsg(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
+	uiOtherDNSQueries.Add(1)
+	return c.Service.ServeMsg(ctx, msg)
+}
+
+func countMihomoDNS() {
+	service := mihomoResolver.DefaultService
+	if _, counted := service.(countingMihomoDNS); service != nil && !counted {
+		mihomoResolver.DefaultService = countingMihomoDNS{service}
+	}
 }
 

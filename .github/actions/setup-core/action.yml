@@ -40,6 +40,7 @@ runs:
         python3 tools/patch_sing_tun.py .core
         python3 tools/patch_httpdebug.py .core
         python3 tools/patch_multicore.py .core
+        python3 tools/patch_dns_count.py .core
         cp libbox/ui_*.go .core/experimental/libbox/
     - name: Resolve the pinned HTTP rewrite runtime
       shell: bash

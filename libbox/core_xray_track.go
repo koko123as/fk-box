@@ -162,8 +162,18 @@ func (d *trackingDispatcher) DispatchLink(ctx context.Context, destination xrayN
 	if inbound := xraySession.InboundFromContext(ctx); inbound != nil {
 		conn.source = inbound.Source
 	}
+	// DNS for the dashboard count (ui_dns.go): Xray answers port 53 through
+	// its dns outbound, one datagram per UDP query; a TCP flow counts once.
+	var datagrams *atomic.Int64
+	if destination.Port == 53 {
+		if destination.Network == xrayNet.Network_UDP {
+			datagrams = &uiOtherDNSQueries
+		} else {
+			uiOtherDNSQueries.Add(1)
+		}
+	}
 	link = &transport.Link{
-		Reader: &countingReader{TimeoutReader: asTimeoutReader(link.Reader), counter: &conn.up},
+		Reader: &countingReader{TimeoutReader: asTimeoutReader(link.Reader), counter: &conn.up, datagrams: datagrams},
 		Writer: &countingWriter{Writer: link.Writer, counter: &conn.down},
 	}
 	conn.link = link
@@ -183,17 +193,26 @@ func (d *trackingDispatcher) DispatchLink(ctx context.Context, destination xrayN
 type countingReader struct {
 	buf.TimeoutReader
 	counter *atomic.Int64
+	// datagrams, when set, counts the UDP packets read (DNS queries).
+	datagrams *atomic.Int64
+}
+
+func (r *countingReader) count(mb buf.MultiBuffer) {
+	r.counter.Add(int64(mb.Len()))
+	if r.datagrams != nil && len(mb) > 0 {
+		r.datagrams.Add(int64(len(mb)))
+	}
 }
 
 func (r *countingReader) ReadMultiBuffer() (buf.MultiBuffer, error) {
 	mb, err := r.TimeoutReader.ReadMultiBuffer()
-	r.counter.Add(int64(mb.Len()))
+	r.count(mb)
 	return mb, err
 }
 
 func (r *countingReader) ReadMultiBufferTimeout(timeout time.Duration) (buf.MultiBuffer, error) {
 	mb, err := r.TimeoutReader.ReadMultiBufferTimeout(timeout)
-	r.counter.Add(int64(mb.Len()))
+	r.count(mb)
 	return mb, err
 }
 

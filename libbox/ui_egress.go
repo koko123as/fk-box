@@ -141,7 +141,44 @@ func (p *UIEgressProbe) Get(link string, timeoutMillis int64) (*UIHTTPResponse, 
 	return p.get(ctx, link, uiQualityBodyLimit)
 }
 
-func (p *UIEgressProbe) get(ctx context.Context, link string, limit int64) (*UIHTTPResponse, error) {
+// UIReachResult is a reachability answer: the first response's status and
+// the time until its headers arrived.
+type UIReachResult struct {
+	Status        int32
+	LatencyMillis int64
+}
+
+// Reach sends one GET and stops at the response headers: the body is never
+// read (keep-alive is off, so closing it drops the connection) and redirects
+// are not followed, so a home page of any size can be probed. The latency
+// covers dialing, TLS and the server's first response.
+func (p *UIEgressProbe) Reach(link string, timeoutMillis int64) (*UIReachResult, error) {
+	if timeoutMillis < 1 || timeoutMillis > 8000 {
+		return nil, fmt.Errorf("invalid probe timeout")
+	}
+	ctx, cancel := context.WithTimeout(p.ctx, time.Duration(timeoutMillis)*time.Millisecond)
+	defer cancel()
+	request, err := p.newRequest(ctx, link)
+	if err != nil {
+		return nil, err
+	}
+	started := time.Now()
+	response, err := p.client.Transport.RoundTrip(request)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		return nil, err
+	}
+	latency := time.Since(started)
+	response.Body.Close()
+	if !p.current() {
+		return nil, fmt.Errorf("service changed during egress check")
+	}
+	return &UIReachResult{Status: int32(response.StatusCode), LatencyMillis: max(latency.Milliseconds(), 1)}, nil
+}
+
+func (p *UIEgressProbe) newRequest(ctx context.Context, link string) (*http.Request, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -161,6 +198,14 @@ func (p *UIEgressProbe) get(ctx context.Context, link string, limit int64) (*UIH
 		return nil, err
 	}
 	request.Header.Set("User-Agent", uiProbeUserAgent)
+	return request, nil
+}
+
+func (p *UIEgressProbe) get(ctx context.Context, link string, limit int64) (*UIHTTPResponse, error) {
+	request, err := p.newRequest(ctx, link)
+	if err != nil {
+		return nil, err
+	}
 	response, err := p.client.Do(request)
 	if err != nil {
 		if ctx.Err() != nil {
