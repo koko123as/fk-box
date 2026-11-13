@@ -4,11 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
-import io.nekohasekai.sfa.R
 
 /**
  * The text styles the pages name, mapped onto the stock Material 3 type scale
@@ -66,8 +64,8 @@ val TextStyle.tabular: TextStyle get() = copy(fontFeatureSettings = "tnum")
 /** The monospaced variant of a style. */
 val TextStyle.jetBrainsMono: TextStyle get() = copy(fontFamily = JetBrainsMono)
 
-/** The bundled JetBrains Mono, for code and terminal text. */
-val JetBrainsMono = FontFamily(Font(R.font.jetbrains_mono_regular))
+/** The system monospace face, for code and terminal text (JetBrains Mono is no longer bundled). */
+val JetBrainsMono: FontFamily = FontFamily.Monospace
 
 /** The appearance preference's font family, or the platform default. */
 val LocalAppFontFamily = staticCompositionLocalOf<FontFamily?> { null }

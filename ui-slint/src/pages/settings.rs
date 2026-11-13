@@ -188,7 +188,7 @@ fn update_dialog(result: Value) {
 }
 
 /// showLicensePage: the projects FK-box ships or borrows from.
-const LICENSES: [(&str, &str, &str, &str); 19] = [
+const LICENSES: [(&str, &str, &str, &str); 18] = [
     ("FK-box", "GPL-3.0", "This app", "https://github.com/koko123as/fk-box"),
     ("sing-box-for-android", "GPL-3.0", "Base Android app and backend", "https://github.com/SagerNet/sing-box-for-android"),
     ("B-box", "GPL-3.0", "Direct predecessor: core extensions, MITM, multi-core", "https://github.com/giturass/B-box"),
@@ -207,7 +207,6 @@ const LICENSES: [(&str, &str, &str, &str); 19] = [
     ("libsu", "Apache-2.0", "Root shell and service", "https://github.com/topjohnwu/libsu"),
     ("smali / dexlib2", "BSD-3-Clause", "Per-app proxy scanning", "https://github.com/google/smali"),
     ("Goja", "MIT", "JavaScript for HTTP rewrite scripts", "https://github.com/dop251/goja"),
-    ("JetBrains Mono", "OFL-1.1", "Monospace font", "https://github.com/JetBrains/JetBrainsMono"),
 ];
 
 fn open_licenses() {

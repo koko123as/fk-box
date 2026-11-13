@@ -347,7 +347,6 @@ private val licenses = listOf(
     Credit("libsu", "Apache-2.0", "Root shell and service", "https://github.com/topjohnwu/libsu"),
     Credit("smali / dexlib2", "BSD-3-Clause", "Per-app proxy scanning", "https://github.com/google/smali"),
     Credit("Goja", "MIT", "JavaScript for HTTP rewrite scripts", "https://github.com/dop251/goja"),
-    Credit("JetBrains Mono", "OFL-1.1", "Monospace font", "https://github.com/JetBrains/JetBrainsMono"),
 )
 
 @Composable
