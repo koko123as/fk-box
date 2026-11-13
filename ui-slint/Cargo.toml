@@ -20,14 +20,16 @@ qrcodegen = "1.8"
 material-colors = "=0.5.0"
 # System font files are mapped, not read into the heap (src/fonts.rs).
 memmap2 = "0.9"
-png = { version = "0.18", optional = true }
+# App icons are decoded here, not through slint::Image::load_from_path, whose
+# process-wide path cache kept up to 5 MB of icons after the app list closed.
+png = "0.18"
 # The harness loads fontconfig at run time (no headers needed to build it).
 i-slint-common = { version = "=1.18.1", optional = true, features = ["fontconfig-dlopen"] }
 
 [features]
 # Host-only screenshot harness (src/shot.rs, examples/shot.rs): the software renderer
 # draws the pages at phone size from fixture data, for visual checks without a device.
-shot = ["slint/renderer-software", "dep:png", "dep:i-slint-common"]
+shot = ["slint/renderer-software", "dep:i-slint-common"]
 
 [[example]]
 name = "shot"

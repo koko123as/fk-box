@@ -1327,7 +1327,7 @@ fn pump_icons() {
         let Some((pkg, generation)) = next else { return };
         app::call("appIcon", json!({ "package": pkg }), move |r| {
             let image = match r {
-                Ok(Value::String(path)) => slint::Image::load_from_path(std::path::Path::new(&path)).ok(),
+                Ok(Value::String(path)) => decode_icon(std::path::Path::new(&path)),
                 _ => None,
             };
             let changed = APP_ICONS.with(|i| {
@@ -1360,6 +1360,46 @@ fn pump_icons() {
             pump_icons();
         });
     }
+}
+
+/// An icon PNG decoded into an image only this cache owns: once evicted or
+/// released it is freed (Image::load_from_path would keep it in Slint's
+/// process-wide path cache).
+fn decode_icon(path: &std::path::Path) -> Option<slint::Image> {
+    let file = std::io::BufReader::new(std::fs::File::open(path).ok()?);
+    let mut decoder = png::Decoder::new(file);
+    decoder.set_transformations(png::Transformations::normalize_to_color8());
+    let mut reader = decoder.read_info().ok()?;
+    let mut data = vec![0; reader.output_buffer_size()?];
+    let info = reader.next_frame(&mut data).ok()?;
+    let (w, h) = (info.width, info.height);
+    let pixels = (w as usize) * (h as usize);
+    let mut buffer = slint::SharedPixelBuffer::<slint::Rgba8Pixel>::new(w, h);
+    let out = buffer.make_mut_bytes();
+    let line = info.line_size;
+    let channels = match info.color_type {
+        png::ColorType::Rgba => 4,
+        png::ColorType::Rgb => 3,
+        png::ColorType::GrayscaleAlpha => 2,
+        png::ColorType::Grayscale => 1,
+        png::ColorType::Indexed => return None,
+    };
+    if out.len() != pixels * 4 || data.len() < line * h as usize {
+        return None;
+    }
+    for y in 0..h as usize {
+        let row = &data[y * line..y * line + w as usize * channels];
+        for (x, px) in row.chunks_exact(channels).enumerate() {
+            let rgba = match channels {
+                4 => [px[0], px[1], px[2], px[3]],
+                3 => [px[0], px[1], px[2], 255],
+                2 => [px[0], px[0], px[0], px[1]],
+                _ => [px[0], px[0], px[0], 255],
+            };
+            out[(y * w as usize + x) * 4..][..4].copy_from_slice(&rgba);
+        }
+    }
+    Some(slint::Image::from_rgba8(buffer))
 }
 
 // ---------------------------------------------------------------------------

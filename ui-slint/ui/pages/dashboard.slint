@@ -1087,7 +1087,10 @@ component DashboardCard inherits Rectangle {
         if root.card == "Status": StatusPanel { }
         if root.card == "Network speed": SpeedPanel { }
         if root.card == "Outbound mode": ModePanel { }
+        if root.card == "VPN": VpnPanel { }
         if root.card == "Current profile": ProfilePanel { }
+        if root.card == "Service status": ServicePanel { }
+        if root.card == "Connection stats": ConnStatsPanel { }
         if root.card == "Proxy groups": GroupsPanel { }
         if root.card == "Memory": MemoryPanel { }
         if root.card == "Intranet IP": IntranetPanel { }
