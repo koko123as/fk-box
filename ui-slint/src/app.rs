@@ -577,6 +577,15 @@ pub fn on_event(payload: &str) {
             slint::Timer::single_shot(std::time::Duration::ZERO, move || report(&message));
             Mark::NONE
         }
+        // The host's own view of the window's system bar insets, in physical
+        // pixels. Android sends it because Slint reads screen-level insets,
+        // which are wrong in floating and split-screen windows; a platform
+        // that sends none keeps Window.safe-area-insets.
+        "insets" => {
+            let value = value.clone();
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || apply_insets(&value));
+            Mark::NONE
+        }
         "intentAvailable" => {
             slint::Timer::single_shot(std::time::Duration::ZERO, || {
                 call("takeIntent", json!({}), |result| match result {
@@ -593,6 +602,19 @@ pub fn on_event(payload: &str) {
         _ => Mark::NONE,
     });
     pages::mark(mark);
+}
+
+fn apply_insets(value: &Value) {
+    with_window(|w| {
+        let scale = w.window().scale_factor().max(0.1);
+        let side = |key: &str| (num(&value[key]) as f32 / scale).max(0.0);
+        let nav = w.global::<crate::Nav>();
+        nav.set_host_insets(true);
+        nav.set_inset_top(side("top"));
+        nav.set_inset_bottom(side("bottom"));
+        nav.set_inset_left(side("left"));
+        nav.set_inset_right(side("right"));
+    });
 }
 
 // ---------------------------------------------------------------------------

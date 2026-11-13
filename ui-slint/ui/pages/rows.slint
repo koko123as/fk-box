@@ -494,7 +494,7 @@ export component RowView inherits Rectangle {
 // The body: rows in a scrolling column, 16 px in from each side.
 export component RowsBody inherits Rectangle {
     in property <PageData> d;
-    in property <length> side: 16px;
+    in property <length> side: Nav.side(self.width);
     in property <length> top-pad: 8px;
     // The room under the last row: the gesture inset, or the floating bar on home pages.
     in property <length> bottom: Nav.inset-bottom;

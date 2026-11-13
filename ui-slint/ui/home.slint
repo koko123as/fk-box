@@ -6,7 +6,7 @@
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav } from "globals.slint";
-import { Icon, T } from "kit.slint";
+import { Icon, IconButton, T } from "kit.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { ProxiesPage } from "pages/proxies.slint";
 import { ProfilesPage } from "pages/profiles.slint";
@@ -71,6 +71,98 @@ component DestinationItem inherits Rectangle {
     ta := TouchArea { clicked => { root.clicked(); } }
 }
 
+// An extended rail item: the icon and the label in one 56 dp pill.
+component ExtendedItem inherits Rectangle {
+    in property <string> key;
+    in property <bool> selected;
+    callback clicked();
+    accessible-role: tab;
+    accessible-label: Destinations.label(key);
+    height: 52px;
+    border-radius: self.height / 2;
+    background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        spacing: 12px;
+        Icon {
+            glyph: Destinations.glyph(root.key);
+            color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            y: (parent.height - self.height) / 2;
+        }
+        T {
+            text: Destinations.label(root.key);
+            role: TextRole.subheadline;
+            emphasized: root.selected;
+            color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            vertical-alignment: center;
+            horizontal-stretch: 1;
+            overflow: elide;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+// The navigation rail (FlClash's tablet and desktop layout): the app icon,
+// the destinations, and at the foot a button that shows or hides the labels.
+// A tinted surface separates it from the pages instead of a divider.
+component Rail inherits Rectangle {
+    width: Nav.rail-width;
+    background: Theme.s.surface-container-low;
+    animate width { duration: 180ms; easing: ease-out; }
+    clip: true;
+    VerticalLayout {
+        padding-top: 12px;
+        padding-bottom: 12px + Nav.inset-bottom;
+        padding-left: Nav.rail-extended ? 12px : 0px;
+        padding-right: Nav.rail-extended ? 12px : 0px;
+        spacing: 8px;
+        HorizontalLayout {
+            height: 56px;
+            alignment: Nav.rail-extended ? start : center;
+            padding-left: Nav.rail-extended ? 8px : 0px;
+            spacing: 12px;
+            Image {
+                source: @image-url("box_icon.png");
+                width: 40px;
+                height: 40px;
+                y: (parent.height - self.height) / 2;
+            }
+            if Nav.rail-extended: T {
+                text: "FK-box";
+                role: TextRole.headline;
+                emphasized: true;
+                vertical-alignment: center;
+            }
+        }
+        Rectangle { height: 8px; }
+        for d in Nav.destinations: Rectangle {
+            height: Nav.rail-extended ? 52px : 64px;
+            if !Nav.rail-extended: DestinationItem {
+                key: d;
+                rail: true;
+                selected: d == Nav.tab;
+                clicked => { Nav.select-tab(d); }
+            }
+            if Nav.rail-extended: ExtendedItem {
+                key: d;
+                selected: d == Nav.tab;
+                clicked => { Nav.select-tab(d); }
+            }
+        }
+        Rectangle { vertical-stretch: 1; }
+        HorizontalLayout {
+            alignment: Nav.rail-extended ? start : center;
+            padding-left: Nav.rail-extended ? 4px : 0px;
+            IconButton {
+                glyph: Nav.rail-extended ? Icons.back : Icons.chevron-forward;
+                tooltip: Nav.rail-extended ? @tr("Hide labels") : @tr("Show labels");
+                clicked => { Nav.act("rail-extended", Nav.rail-extended ? "0" : "1"); }
+            }
+        }
+    }
+}
+
 component Pages inherits Rectangle {
     property <string> current: Nav.tab;
     clip: true;
@@ -113,24 +205,7 @@ export component HomePage inherits Rectangle {
         }
     }
     if !Nav.mobile: HorizontalLayout {
-        // NavigationRail, then a VerticalDivider.
-        Rectangle {
-            width: 80px;
-            background: Theme.s.surface;
-            VerticalLayout {
-                padding-top: 8px;
-                alignment: start;
-                spacing: 12px;
-                for d in Nav.destinations: DestinationItem {
-                    key: d;
-                    rail: true;
-                    height: 56px;
-                    selected: d == Nav.tab;
-                    clicked => { Nav.select-tab(d); }
-                }
-            }
-        }
-        Rectangle { width: 1px; background: Theme.s.outline-variant; }
+        Rail { }
         Pages { horizontal-stretch: 1; }
     }
 }

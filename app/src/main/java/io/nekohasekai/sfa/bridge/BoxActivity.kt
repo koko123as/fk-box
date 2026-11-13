@@ -113,6 +113,9 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             if (method == "attach") {
                 facade.listen { event -> SlintHost.nativeEvent(SlintHost.wire(event)) }
                 SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                uiAttached = true
+                lastInsets = null
+                pushInsets()
                 return@launch
             }
             // Calls the activity answers itself (the Compose UI used the context directly).
@@ -208,6 +211,43 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         bridge = null
     }
 
+    private var uiAttached = false
+    private var lastInsets: List<Int>? = null
+    private val insetsLayout = android.view.ViewTreeObserver.OnGlobalLayoutListener { pushInsets() }
+
+    /**
+     * Sends the window's own system bar insets to the UI. Slint reads them from
+     * WindowMetrics, which reports the screen's bars, so a floating or
+     * split-screen window placed its bottom bar outside the visible area. The
+     * decor view's root insets are the window's; when no keyboard is up, the
+     * part of the window the system keeps hidden at the bottom counts too.
+     */
+    private fun pushInsets() {
+        if (!uiAttached) return
+        val decor = window.decorView
+        val root = androidx.core.view.ViewCompat.getRootWindowInsets(decor) ?: return
+        val types = androidx.core.view.WindowInsetsCompat.Type.systemBars() or androidx.core.view.WindowInsetsCompat.Type.displayCutout()
+        val bars = root.getInsets(types)
+        var bottom = bars.bottom
+        if (!root.isVisible(androidx.core.view.WindowInsetsCompat.Type.ime()) && decor.height > 0) {
+            val visible = android.graphics.Rect()
+            decor.getWindowVisibleDisplayFrame(visible)
+            val origin = IntArray(2)
+            decor.getLocationOnScreen(origin)
+            val hidden = origin[1] + decor.height - visible.bottom
+            if (hidden in 1 until decor.height / 3) bottom = maxOf(bottom, hidden)
+        }
+        val next = listOf(bars.top, bottom, bars.left, bars.right)
+        if (next == lastInsets) return
+        lastInsets = next
+        SlintHost.nativeEvent(SlintHost.wire(mapOf("type" to "insets", "value" to mapOf("top" to next[0], "bottom" to next[1], "left" to next[2], "right" to next[3]))))
+    }
+
+    override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
+        super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
+        window.decorView.post { pushInsets() }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         savedInstanceState?.let { state ->
             notificationPermissionRequested = state.getBoolean("box.notificationPermission")
@@ -231,6 +271,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             window.isStatusBarContrastEnforced = false
         }
         attachUi()
+        window.decorView.viewTreeObserver.addOnGlobalLayoutListener(insetsLayout)
         lifecycleScope.launch {
             Settings.dataStore.initialize()
             connection.reconnect()
@@ -256,6 +297,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         bridge?.refreshSystemAppearance()
+        window.decorView.post { pushInsets() }
     }
 
     private fun handleIntent(intent: Intent?) {
@@ -475,6 +517,8 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         documentRequest?.cancel()
         startResult.failed(IllegalStateException("Activity closed during service start"))
         connection.disconnect()
+        uiAttached = false
+        window.decorView.viewTreeObserver.removeOnGlobalLayoutListener(insetsLayout)
         detachUi()
         super.onDestroy()
     }

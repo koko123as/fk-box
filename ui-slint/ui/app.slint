@@ -7,7 +7,7 @@
 import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword } from "globals.slint";
-import { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow } from "data.slint";
+import { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow } from "data.slint";
 import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, RouteSurface } from "kit.slint";
 import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
@@ -15,7 +15,7 @@ import { Look, Swatch } from "pages/appearance.slint";
 
 export { Theme, Scheme, TextRole, Nav, MenuItem, BarAction, Route, Keyword, Glyph, Icons }
 export { Look, Swatch }
-export { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow }
+export { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow }
 
 // SplashScreen
 component Splash inherits Rectangle {
@@ -210,10 +210,10 @@ export component AppWindow inherits Window {
     property <length> left-inset: self.safe-area-insets.left;
     property <length> right-inset: self.safe-area-insets.right;
     property <length> keyboard: self.virtual-keyboard-size.height > 0 ? max(0px, self.height - self.virtual-keyboard-position.y) : 0px;
-    changed top-inset => { Nav.inset-top = self.top-inset; }
-    changed bottom-inset => { Nav.inset-bottom = self.bottom-inset; }
-    changed left-inset => { Nav.inset-left = self.left-inset; }
-    changed right-inset => { Nav.inset-right = self.right-inset; }
+    changed top-inset => { if (!Nav.host-insets) { Nav.inset-top = self.top-inset; } }
+    changed bottom-inset => { if (!Nav.host-insets) { Nav.inset-bottom = self.bottom-inset; } }
+    changed left-inset => { if (!Nav.host-insets) { Nav.inset-left = self.left-inset; } }
+    changed right-inset => { if (!Nav.host-insets) { Nav.inset-right = self.right-inset; } }
     changed keyboard => { Nav.keyboard-height = self.keyboard; }
     property <int> focus-tick: Nav.focus-tick;
     changed focus-tick => { fs.focus(); }

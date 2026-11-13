@@ -115,6 +115,7 @@ fn flush() {
 fn project_app(w: &AppWindow) {
     let app = w.global::<crate::App>();
     data(|d| {
+        w.global::<crate::Nav>().set_rail_extended(d.preferences.get("railExtended").and_then(|v| v.as_bool()).unwrap_or(false));
         app.set_status(d.status().into());
         app.set_running(d.running());
         app.set_transitioning(d.transitioning());
@@ -188,6 +189,11 @@ fn act(id: &str, arg: &str) {
             crate::app::message("Copied");
         }
         "open-url" => crate::app::act("openUrl", serde_json::json!({ "url": arg })),
+        "rail-extended" => {
+            let extended = arg == "1";
+            crate::app::with_window(|w| w.global::<crate::Nav>().set_rail_extended(extended));
+            crate::app::set_preferences(serde_json::json!({ "railExtended": extended }), |_| {});
+        }
         _ => {
             let _ = appearance::act(id, arg)
                 || dashboard::act(id, arg)

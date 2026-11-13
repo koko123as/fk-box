@@ -48,11 +48,13 @@ fn now_ms() -> i64 {
 }
 
 /// BoxBridge's answers, enough for every page to show content.
-fn answer(method: &str, _args: &Value) -> Result<Value, String> {
+fn answer(method: &str, args: &Value) -> Result<Value, String> {
     let now = now_ms();
     Ok(match method {
         "locale" => json!({ "language": std::env::var("SHOT_LANG").unwrap_or("zh".into()), "utcOffsetMinutes": 480, "fontScale": 1.0 }),
         "attach" => Value::Null,
+        // The saved preferences are the values just set.
+        "setPreferences" => args["values"].clone(),
         "ready" => json!({
             "version": "1.15.6", "coreVersion": "1.13.0", "xrayVersion": "25.10.15", "mihomoVersion": "1.19.15",
             "systemAccentColor": 0xff007aff_u32,

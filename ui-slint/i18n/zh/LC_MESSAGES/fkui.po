@@ -2031,3 +2031,9 @@ msgstr "Rust + Slint 三内核客户端"
 
 msgid "All apps"
 msgstr "全部应用"
+
+msgid "Hide labels"
+msgstr "收起标签"
+
+msgid "Show labels"
+msgstr "展开标签"

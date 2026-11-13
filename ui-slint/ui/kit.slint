@@ -352,6 +352,8 @@ export component Panel inherits Rectangle {
     Rectangle { background: ta.pressed && root.clickable ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
     VerticalLayout {
         padding: root.pad;
+        // Taller than its content in a dashboard grid row: the rest stays below.
+        alignment: start;
         @children
     }
 }
@@ -848,7 +850,7 @@ export component ScrollPage inherits Rectangle {
     in property <[BarAction]> actions;
     in property <string> menu-key;
     in property <bool> loading;
-    in property <length> side: 16px;
+    in property <length> side: Nav.side(self.width);
     callback action(string);
     background: Theme.s.surface;
     bar := TopBar {

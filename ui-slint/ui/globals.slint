@@ -57,7 +57,10 @@ export global Nav {
     out property <int> view-mode: width <= 600px ? 0 : width <= 840px ? 1 : 2;
     // cardSpacingOf
     out property <length> gap: view-mode == 0 ? 8px : view-mode == 1 ? 12px : 16px;
-    // System bar insets (Window.safe-area-insets).
+    // System bar insets: Window.safe-area-insets, unless the host reports its
+    // own (host-insets; Android does, since Slint reads screen-level insets
+    // that are wrong in floating and split-screen windows).
+    in-out property <bool> host-insets;
     in-out property <length> inset-top;
     in-out property <length> inset-bottom;
     in-out property <length> inset-left;
@@ -68,6 +71,16 @@ export global Nav {
     out property <length> bar-height: 64px;
     out property <length> bar-margin: 12px;
     out property <length> home-bottom: mobile ? inset-bottom + bar-height + 2 * bar-margin : inset-bottom;
+    // The navigation rail on wider windows; extended, it shows its labels
+    // beside the icons (saved as the railExtended preference).
+    in-out property <bool> rail-extended;
+    out property <length> rail-width: mobile ? 0px : rail-extended ? 220px : 88px;
+    // The side padding that keeps a reading column (lists, settings, forms)
+    // at most 760 dp wide in a window of `width`. Only the window's width
+    // decides the layout, so every platform shares it.
+    public pure function side(width: length) -> length {
+        return max(16px, (width - 760px) / 2);
+    }
 
     in property <[Route]> routes;
     // The selected home destination, by label (HomePage `current`).

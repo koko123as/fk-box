@@ -77,7 +77,8 @@ component StatusCell inherits VerticalLayout {
 export component StatusPanel inherits Rectangle {
     background: Theme.level(1);
     border-radius: Theme.radius;
-    height: lay.preferred-height;
+    min-height: lay.min-height;
+    preferred-height: lay.preferred-height;
     lay := HorizontalLayout {
         padding-left: 20px;
         padding-top: 18px;
@@ -87,6 +88,7 @@ export component StatusPanel inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             spacing: 0px;
+            alignment: start;
             HorizontalLayout {
                 height: max(26px, Theme.sp(26));
                 spacing: 8px;
@@ -187,7 +189,8 @@ export component StatusPanel inherits Rectangle {
                 }
             }
         }
-        Rectangle {
+        // Wider windows start and stop from the page's floating button.
+        if Nav.mobile: Rectangle {
             width: 88px;
             if App.remote: Icon { glyph: Icons.proxies; size: 60px; }
             if !App.remote: StartToggle {
@@ -248,7 +251,9 @@ component SpeedTile inherits Rectangle {
     in property <bool> upload;
     property <color> fg: upload ? Theme.s.on-surface-variant : Theme.s.primary;
     property <length> text-height: 14px + 4px + Theme.leading(TextRole.footnote) + Theme.leading(TextRole.title1) + Theme.leading(TextRole.caption1);
-    property <length> chart-height: max(36px, self.width / 1.06 - text-height - 12px + 2px);
+    // Square-ish on a phone; capped on wider windows, where the card spans
+    // two grid columns.
+    property <length> chart-height: Nav.mobile ? max(36px, self.width / 1.06 - text-height - 12px + 2px) : clamp(self.width / 1.06 - text-height - 12px + 2px, 36px, 84px);
     border-radius: Theme.radius;
     background: Theme.level(2);
     clip: true;
@@ -763,6 +768,67 @@ component Banners inherits VerticalLayout {
     }
 }
 
+// A card in a grid row: as tall as the row, its panel filling it.
+component GridCard inherits Rectangle {
+    in property <string> card;
+    min-height: lay.min-height;
+    preferred-height: lay.preferred-height;
+    lay := VerticalLayout {
+        if root.card == "Status": StatusPanel { }
+        if root.card == "Network speed": SpeedPanel { }
+        if root.card == "Outbound mode": ModePanel { }
+        if root.card == "Current profile": ProfilePanel { }
+        if root.card == "Proxy groups": GroupsPanel { }
+        if root.card == "Memory": MemoryPanel { }
+        if root.card == "Intranet IP": IntranetPanel { }
+        if root.card == "System HTTP proxy": SystemProxyPanel { }
+    }
+}
+
+// The start/stop button on wider windows (FlClash's floating action button):
+// the icon, and the run time while the service runs.
+component StartFab inherits Rectangle {
+    property <bool> enabled: Dash.start-enabled;
+    height: 64px;
+    width: lay.preferred-width;
+    border-radius: 20px;
+    background: enabled ? Theme.s.primary-container : Theme.s.on-surface.with-alpha(0.12);
+    drop-shadow-blur: 8px;
+    drop-shadow-offset-y: 3px;
+    drop-shadow-color: #00000038;
+    accessible-role: button;
+    accessible-label: App.running ? @tr("Stop") : @tr("Start");
+    Rectangle {
+        border-radius: parent.border-radius;
+        background: ta.pressed ? Theme.s.on-primary-container.with-alpha(0.12) : transparent;
+    }
+    lay := HorizontalLayout {
+        padding-left: 20px;
+        padding-right: 20px;
+        spacing: 12px;
+        Rectangle {
+            width: 24px;
+            if Dash.start-busy: Spinner { size: 22px; tint: Theme.s.on-primary-container; }
+            if !Dash.start-busy: Icon {
+                glyph: App.running ? Icons.pause : Icons.start;
+                size: 24px;
+                color: root.enabled ? Theme.s.on-primary-container : Theme.s.on-surface.with-alpha(0.38);
+            }
+        }
+        T {
+            text: App.running && Dash.runtime != "—" ? Dash.runtime : App.running ? @tr("Stop") : @tr("Start");
+            role: TextRole.headline;
+            emphasized: true;
+            color: root.enabled ? Theme.s.on-primary-container : Theme.s.on-surface.with-alpha(0.38);
+            vertical-alignment: center;
+        }
+    }
+    ta := TouchArea {
+        enabled: root.enabled;
+        clicked => { Nav.act("toggle-service", ""); }
+    }
+}
+
 component DashboardCard inherits Rectangle {
     in property <string> card;
     height: lay.preferred-height;
@@ -835,25 +901,48 @@ export component DashboardPage inherits Rectangle {
             : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
         action(id) => { Nav.act(id, ""); }
     }
+    // Phones: one column. Wider windows: a grid of 2 to 4 columns at least
+    // 260 dp wide (FlClash's dashboard grid), the cards packed into rows by
+    // dashboard.rs pack(). The editor keeps a reading width.
+    property <length> grid-side: Nav.mobile ? 16px : 24px;
+    property <length> grid-width: root.width - 2 * grid-side;
+    property <int> columns: Nav.mobile ? 1 : clamp(floor((grid-width + Nav.gap) / (260px + Nav.gap)), 2, 4);
+    property <length> unit: (grid-width - (columns - 1) * Nav.gap) / columns;
     Flickable {
         y: bar.height;
         height: parent.height - bar.height;
         content-height: body.preferred-height;
         body := VerticalLayout {
-            property <length> side: max(16px, (root.width - 560px) / 2);
+            property <length> side: Dash.editing || Nav.mobile ? Nav.side(root.width) : root.grid-side;
             padding-left: side;
             padding-right: side;
             padding-top: 8px;
-            padding-bottom: 16px + Nav.home-bottom;
+            // Wider windows leave room for the floating start button.
+            padding-bottom: 16px + Nav.home-bottom + (Nav.mobile || App.remote ? 0px : 80px);
             spacing: Dash.editing ? 0px : Nav.gap;
             if Dash.editing: DashboardEditor { }
             if !Dash.editing && (App.remote || Dash.apply-required): Banners { top: true; }
-            if !Dash.editing: VerticalLayout {
+            if !Dash.editing && Nav.mobile: VerticalLayout {
                 spacing: Nav.gap;
                 for c in Dash.cards: DashboardCard { card: c; }
             }
+            if !Dash.editing && !Nav.mobile: VerticalLayout {
+                spacing: Nav.gap;
+                for row in root.columns >= 4 ? Dash.grid4 : root.columns == 3 ? Dash.grid3 : Dash.grid2: HorizontalLayout {
+                    spacing: Nav.gap;
+                    alignment: start;
+                    for cell in row.cells: GridCard {
+                        card: cell.card;
+                        width: root.unit * cell.span + (cell.span - 1) * Nav.gap;
+                    }
+                }
+            }
             if !Dash.editing && Dash.deprecated.length > 0: Banners { top: false; }
         }
+    }
+    if !Nav.mobile && !App.remote && !Dash.editing: StartFab {
+        x: parent.width - self.width - 24px;
+        y: parent.height - self.height - 24px - Nav.inset-bottom;
     }
 }
 

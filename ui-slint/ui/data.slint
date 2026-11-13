@@ -30,9 +30,18 @@ export struct Note { message: string, url: string }
 
 export struct KeyValue { key: string, value: string }
 
+// A dashboard grid row on wider windows: each card and the columns it takes.
+export struct DashCell { card: string, span: int }
+export struct DashRow { cells: [DashCell] }
+
 export global Dash {
     // The cards shown, in order ("Status", "Network speed", …).
     in property <[string]> cards;
+    // Wider windows: the cards packed into rows of 2, 3 and 4 grid columns
+    // (dashboard.rs pack()); the page shows the one its width fits.
+    in property <[DashRow]> grid2;
+    in property <[DashRow]> grid3;
+    in property <[DashRow]> grid4;
     // Every card this device can show, for the editor.
     in property <[string]> available;
     in property <bool> editing;

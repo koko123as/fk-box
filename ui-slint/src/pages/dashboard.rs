@@ -12,7 +12,7 @@ use crate::format;
 use crate::i18n::tr;
 use crate::nav::{self, glyph};
 use crate::pages::{egress, mark, Mark};
-use crate::{AppWindow, Dash, KeyValue, ModeItem, Note};
+use crate::{AppWindow, Dash, DashCell, DashRow, KeyValue, ModeItem, Note};
 
 pub const CARDS: [&str; 8] = ["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"];
 const DEFAULT_CARDS: [&str; 5] = ["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups"];
@@ -27,6 +27,7 @@ struct Local {
     lan_port: String,
     lan_port_invalid: bool,
     lan_target: Option<(i64, String)>,
+    grid: Option<Vec<String>>,
 }
 
 thread_local! {
@@ -76,6 +77,53 @@ pub fn shown_cards() -> Vec<String> {
     let available = available();
     let hidden = hidden();
     order().into_iter().filter(|c| available.contains(c) && (c == "Status" || !hidden.contains(c))).collect()
+}
+
+/// The grid columns a card takes on wider windows (FlClash's dashboard grid):
+/// the status, the speed charts and the groups take two, the rest one.
+fn span(card: &str) -> usize {
+    match card {
+        "Status" | "Network speed" | "Proxy groups" => 2,
+        _ => 1,
+    }
+}
+
+/// Packs the cards into rows of `columns` grid columns, in order. When the
+/// next card does not fit the room left in a row, the first later card that
+/// does fills it; a row nothing fills gives its last card the columns left,
+/// so every row spans the full width.
+pub fn pack(cards: &[String], columns: usize) -> Vec<Vec<(String, usize)>> {
+    let mut left: Vec<(String, usize)> = cards.iter().map(|c| (c.clone(), span(c).min(columns))).collect();
+    let mut rows = Vec::new();
+    while !left.is_empty() {
+        let mut row: Vec<(String, usize)> = Vec::new();
+        let mut used = 0;
+        while let Some(index) = left.iter().position(|c| used + c.1 <= columns) {
+            let card = left.remove(index);
+            used += card.1;
+            row.push(card);
+            if used == columns {
+                break;
+            }
+        }
+        if let Some(last) = row.last_mut() {
+            last.1 += columns - used;
+        }
+        rows.push(row);
+    }
+    rows
+}
+
+fn grid_model(cards: &[String], columns: usize) -> slint::ModelRc<DashRow> {
+    let rows: Vec<DashRow> = pack(cards, columns)
+        .into_iter()
+        .map(|row| DashRow {
+            cells: slint::ModelRc::new(slint::VecModel::from(
+                row.into_iter().map(|(card, span)| DashCell { card: card.into(), span: span as i32 }).collect::<Vec<_>>(),
+            )),
+        })
+        .collect();
+    slint::ModelRc::new(slint::VecModel::from(rows))
 }
 
 fn card_label(card: &str) -> String {
@@ -464,7 +512,16 @@ pub fn project(w: &AppWindow, m: Mark) {
 
     let (editing, saving, updating, releasing) = local(|l| (l.editing.clone(), l.saving, l.updating, l.releasing));
     let available_cards = available();
-    sync!(dash, get_cards, set_cards, shown_cards().iter().map(ss).collect());
+    let shown_now = shown_cards();
+    sync!(dash, get_cards, set_cards, shown_now.iter().map(ss).collect());
+    // The grid for each column count wider windows use; the page picks one
+    // by its width. Rebuilt when the shown cards change.
+    if local(|l| l.grid.as_ref() != Some(&shown_now)) {
+        dash.set_grid2(grid_model(&shown_now, 2));
+        dash.set_grid3(grid_model(&shown_now, 3));
+        dash.set_grid4(grid_model(&shown_now, 4));
+        local(|l| l.grid = Some(shown_now.clone()));
+    }
     sync!(dash, get_available, set_available, available_cards.iter().map(ss).collect());
     dash.set_editing(editing.is_some());
     dash.set_saving(saving);
@@ -821,4 +878,30 @@ pub fn install(w: &AppWindow) {
             project_charts(&w.global::<Dash>());
         }
     });
+}
+
+#[cfg(test)]
+mod grid_tests {
+    use super::pack;
+
+    fn cards(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[test]
+    fn rows_fill_the_width() {
+        let all = cards(&["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"]);
+        for columns in 1..=4 {
+            for row in pack(&all, columns) {
+                assert_eq!(row.iter().map(|c| c.1).sum::<usize>(), columns);
+            }
+        }
+        let four = pack(&all, 4);
+        assert_eq!(four[0], vec![("Status".to_string(), 2), ("Network speed".to_string(), 2)]);
+        assert_eq!(four[1].len(), 3);
+        let three = pack(&all, 3);
+        assert_eq!(three[0], vec![("Status".to_string(), 2), ("Outbound mode".to_string(), 1)]);
+        assert_eq!(three[1], vec![("Network speed".to_string(), 2), ("Current profile".to_string(), 1)]);
+        assert!(pack(&[], 3).is_empty());
+    }
 }
