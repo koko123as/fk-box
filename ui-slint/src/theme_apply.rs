@@ -103,6 +103,7 @@ pub fn apply() {
         theme.set_dark_scheme(to_slint(&seeded_color_scheme(seed, true, style).to_pure_black(pure_black)));
     }
     theme.set_mode(mode.into());
-    theme.set_font_family(if font == "JetBrainsMono" { "JetBrains Mono".into() } else { Default::default() });
+    // A system family by its fonts.xml name; the bundled JetBrains Mono by its own.
+    theme.set_font_family(if font == "JetBrainsMono" { "JetBrains Mono".into() } else { font.as_str().into() });
     theme.set_text_scale(text_scale(SYSTEM_FONT_SCALE.with(|s| s.get())));
 }

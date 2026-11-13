@@ -93,6 +93,10 @@ fn rgb(argb: u32) -> Rgb {
     Rgb { red: (argb >> 16) as u8, green: (argb >> 8) as u8, blue: argb as u8 }
 }
 
+pub fn hct_color(hue: f64, chroma: f64, tone: f64) -> u32 {
+    hct_argb(Hct::from(hue, chroma, tone))
+}
+
 fn hct_argb(hct: Hct) -> u32 {
     argb(Rgb::from(hct))
 }

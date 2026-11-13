@@ -105,6 +105,9 @@ fn flush() {
     if m.has(Mark::RECORDS) || m.has(Mark::SETTINGS) {
         requests::project(&w, m);
     }
+    if m.has(Mark::THEME) || m.has(Mark::SETTINGS) || m == Mark::ALL {
+        appearance::project(&w);
+    }
     crate::rows::project(&w);
     sync_visibility(false);
 }
@@ -166,6 +169,7 @@ pub fn closed(kind: &str, arg: &str, id: i32) {
     if kind == "rows" {
         crate::rows::closed(id);
     }
+    appearance::closed(kind);
     profiles::closed(kind, arg, id);
     tools::closed(kind, arg, id);
     settings::closed(kind, arg, id);
@@ -185,7 +189,8 @@ fn act(id: &str, arg: &str) {
         }
         "open-url" => crate::app::act("openUrl", serde_json::json!({ "url": arg })),
         _ => {
-            let _ = dashboard::act(id, arg)
+            let _ = appearance::act(id, arg)
+                || dashboard::act(id, arg)
                 || proxies::act(id, arg)
                 || profiles::act(id, arg)
                 || tools::act(id, arg)
@@ -197,6 +202,7 @@ fn act(id: &str, arg: &str) {
 
 fn act2(id: &str, a: &str, b: &str) {
     let _ = crate::rows::act2(id, a, b)
+        || appearance::act2(id, a, b)
         || dashboard::act2(id, a, b)
         || proxies::act2(id, a, b)
         || profiles::act2(id, a, b)
@@ -208,6 +214,9 @@ fn act2(id: &str, a: &str, b: &str) {
 /// The menu for a key: the page that owns it builds the entries.
 pub fn menu(key: &str) -> Vec<MenuEntry> {
     let mut entries = crate::rows::menu(key);
+    if entries.is_empty() {
+        entries = appearance::menu(key);
+    }
     if entries.is_empty() {
         entries = proxies::menu(key);
     }

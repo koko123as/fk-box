@@ -1,0 +1,455 @@
+// Appearance (pages/AppearancePage.kt): theme, pure black, the accent colour
+// swatches and style, the font family and the text scale; the custom colour
+// page with its grid, spectrum and HSV sliders. Data in the Look global,
+// actions through Nav.act("look-…").
+
+import { Theme, TextRole } from "../theme.slint";
+import { Icons, Glyph } from "../icons.slint";
+import { Nav } from "../globals.slint";
+import { Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field } from "../kit.slint";
+
+export struct Swatch {
+    fill: color,
+    selected: bool,
+    system: bool,
+    light-check: bool,
+    value: string,
+}
+
+export global Look {
+    in property <string> theme: "system";
+    in property <bool> pure-black;
+    in property <[Swatch]> swatches;
+    in property <bool> can-add: true;
+    in property <string> style-label;
+    in property <string> font-label;
+    in property <bool> custom-scale;
+    in property <float> scale: 1;
+    in property <string> scale-text: "100%";
+    // The custom colour page.
+    in property <color> pick;
+    in property <string> hex;
+    in property <int> hex-tick;
+    in property <float> hue;
+    in property <float> sat;
+    in property <float> val;
+    in property <bool> pick-dark-text;
+    in property <color> light-primary;
+    in property <color> light-container;
+    in property <color> dark-primary;
+    in property <color> dark-container;
+    in-out property <string> mode: "grid";
+    in property <[color]> grid;
+    in property <int> grid-columns: 12;
+    in property <int> grid-rows: 10;
+    in property <int> grid-selected: -1;
+    in property <float> spectrum-x;
+    in property <float> spectrum-y;
+}
+
+// InfoHeader: an icon and a label in primary, with trailing actions.
+component InfoHeader inherits HorizontalLayout {
+    in property <string> label;
+    in property <Glyph> glyph;
+    padding-left: 16px;
+    padding-right: 4px;
+    padding-top: 8px;
+    height: 56px;
+    spacing: 8px;
+    Icon { glyph: root.glyph; size: 20px; color: Theme.s.primary; y: (parent.height - self.height) / 2; }
+    T { text: root.label; role: TextRole.subheadline; emphasized: true; color: Theme.s.primary; horizontal-stretch: 1; vertical-alignment: center; }
+    @children
+}
+
+// SegmentedButton row.
+component Segmented inherits Rectangle {
+    in property <[string]> labels;
+    in property <int> selected;
+    callback picked(int);
+    height: 40px;
+    border-radius: 20px;
+    border-width: 1px;
+    border-color: Theme.s.outline;
+    clip: true;
+    HorizontalLayout {
+        for l[i] in root.labels: Rectangle {
+            background: i == root.selected ? Theme.s.secondary-container : transparent;
+            border-width: 0;
+            if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 6px;
+                if i == root.selected: Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; y: (parent.height - self.height) / 2; }
+                T { text: l; role: TextRole.subheadline; emphasized: true; vertical-alignment: center; horizontal-stretch: 0;
+                    color: i == root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface; }
+            }
+            TouchArea { clicked => { root.picked(i); } }
+        }
+    }
+}
+
+// The swatch: a 32 px dot in a 44 px cell, a ring and a check when selected.
+component SwatchView inherits Rectangle {
+    in property <Swatch> s;
+    width: 44px;
+    height: 44px;
+    if s.selected: Rectangle { border-radius: 22px; border-width: 2.5px; border-color: s.fill; }
+    Rectangle { width: 32px; height: 32px; border-radius: 16px; background: s.fill; }
+    if s.system: Rectangle {
+        x: parent.width - 20px;
+        y: parent.height - 20px;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        background: Theme.level(1);
+        Rectangle {
+            width: 16px;
+            height: 16px;
+            border-radius: 8px;
+            background: Theme.level(2);
+            Icon { glyph: Icons.eyedropper; size: 12px; }
+        }
+    }
+    if s.selected: Icon { glyph: Icons.check; size: 18px; color: s.light-check ? white : black; }
+    touch := TouchArea {
+        clicked => { Nav.act("look-select", root.s.value); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                hold.running = !root.s.system;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+    }
+    hold := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Nav.open-menu("look-swatch:" + root.s.value, root.absolute-position.x + touch.mouse-x, root.absolute-position.y + touch.mouse-y);
+        }
+    }
+}
+
+export component AppearancePage inherits ScrollPage {
+    title: @tr("Appearance");
+    // Theme
+    InfoHeader { label: @tr("Theme"); glyph: Icons.sun; }
+    for c[i] in [{ v: "system", l: @tr("System") }, { v: "light", l: @tr("Light") }, { v: "dark", l: @tr("Dark") }]: ListItem {
+        position: i == 0 ? 1 : i == 2 ? 3 : 2;
+        title: c.l;
+        clickable: true;
+        clicked => { Nav.act("look-theme", c.v); }
+        Radio { selected: Look.theme == c.v; y: (parent.height - self.height) / 2; }
+    }
+    Rectangle { height: 16px; }
+    ListItem {
+        title: @tr("Pure black mode");
+        clickable: true;
+        clicked => { Nav.act("look-pure-black", Look.pure-black ? "0" : "1"); }
+        Switch { checked: Look.pure-black; y: (parent.height - self.height) / 2; toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } }
+    }
+    Rectangle { height: 16px; }
+    // Accent colour
+    InfoHeader {
+        label: @tr("Accent color");
+        glyph: Icons.palette;
+        IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); y: (parent.height - self.height) / 2; clicked => { Nav.act("look-reset-colors", ""); } }
+    }
+    swatches := Rectangle {
+        property <length> inner: self.width - 2 * 10px;
+        property <int> columns: max(1, floor((inner + 6px) / 50px));
+        property <length> gap: columns > 1 ? floor((inner - columns * 44px) / (columns - 1) / 1px) * 1px : 0px;
+        property <int> count: Look.swatches.length + (Look.can-add ? 1 : 0);
+        height: ceil(count / columns) * (44px + gap) - gap + 20px;
+        border-radius: Theme.radius;
+        background: Theme.level(2);
+        for s[i] in Look.swatches: SwatchView {
+            x: 10px + mod(i, swatches.columns) * (44px + swatches.gap);
+            y: 10px + floor(i / swatches.columns) * (44px + swatches.gap);
+            s: s;
+        }
+        if Look.can-add: Rectangle {
+            x: 10px + mod(Look.swatches.length, swatches.columns) * (44px + swatches.gap);
+            y: 10px + floor(Look.swatches.length / swatches.columns) * (44px + swatches.gap);
+            width: 44px;
+            height: 44px;
+            Rectangle {
+                width: 32px;
+                height: 32px;
+                border-radius: 16px;
+                background: Theme.level(3);
+                Icon { glyph: Icons.add; size: 20px; color: Theme.s.on-surface-variant; }
+            }
+            TouchArea { clicked => { Nav.act("look-add", ""); } }
+        }
+    }
+    Rectangle { height: 8px; }
+    ListItem {
+        title: @tr("Color style");
+        trailing-text: Look.style-label;
+        clickable: true;
+        clicked => { Nav.act("look-style", ""); }
+    }
+    Rectangle { height: 16px; }
+    // Font family
+    InfoHeader { label: @tr("Font family"); glyph: Icons.font; }
+    ListItem {
+        title: Look.font-label;
+        chevron: true;
+        clickable: true;
+        clicked => { Nav.act("look-font", ""); }
+    }
+    Rectangle { height: 16px; }
+    // Font scale
+    InfoHeader {
+        label: @tr("Font scale");
+        glyph: Icons.text-size;
+        if Look.custom-scale && Look.scale != 1: IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); y: (parent.height - self.height) / 2; clicked => { Nav.act("look-scale", "1"); } }
+    }
+    Segmented {
+        labels: [@tr("Follow system"), @tr("Custom")];
+        selected: Look.custom-scale ? 1 : 0;
+        picked(i) => { Nav.act("look-custom-scale", i == 1 ? "1" : "0"); }
+    }
+    Rectangle { height: 8px; }
+    scalebox := Rectangle {
+        border-radius: Theme.radius;
+        background: Theme.level(2);
+        height: sc.preferred-height;
+        // The value while dragging, set imperatively (no binding through the layout).
+        property <float> draft: -1;
+        property <float> shown: draft >= 0 ? draft : Look.scale;
+        sc := VerticalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 16px;
+            padding-bottom: 8px;
+            spacing: 8px;
+            HorizontalLayout {
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    spacing: 4px;
+                    Text { text: "Aa"; font-size: Theme.size(TextRole.title3) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; }
+                    Text { text: @tr("Text size preview"); font-size: Theme.size(TextRole.subheadline) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; wrap: word-wrap; }
+                }
+                T { text: round(scalebox.shown * 100) + "%"; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+            }
+            HorizontalLayout {
+                spacing: 12px;
+                T { text: "A"; role: TextRole.footnote; horizontal-stretch: 0; vertical-alignment: center; }
+                track := Rectangle {
+                    height: 40px;
+                    horizontal-stretch: 1;
+                    opacity: Look.custom-scale ? 1 : 0.38;
+                    property <float> f: (scalebox.shown - 0.8) / 0.6;
+                    Rectangle { y: 18px; height: 4px; border-radius: 2px; background: Theme.s.secondary-container; }
+                    Rectangle { y: 18px; height: 4px; width: 14px + (parent.width - 28px) * track.f; border-radius: 2px; background: Theme.s.primary; }
+                    for t[i] in 13: Rectangle { x: 14px + (parent.width - 28px) * i / 12 - 2px; y: 18px; width: 4px; height: 4px; border-radius: 2px; background: Theme.s.on-surface-variant.with-alpha(0.38); }
+                    Rectangle { x: 14px + (parent.width - 28px) * track.f - 2px; y: 8px; width: 4px; height: 24px; border-radius: 2px; background: Theme.s.primary; }
+                    knob := TouchArea {
+                        enabled: Look.custom-scale;
+                        moved => {
+                            if (self.pressed) {
+                                scalebox.draft = clamp(0.8 + round((self.mouse-x - 14px) / max(1px, track.width - 28px) * 12) / 20, 0.8, 1.4);
+                            }
+                        }
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) {
+                                scalebox.draft = clamp(0.8 + round((self.mouse-x - 14px) / max(1px, track.width - 28px) * 12) / 20, 0.8, 1.4);
+                            } else if (e.kind == PointerEventKind.up) {
+                                Nav.act("look-scale", scalebox.draft);
+                                scalebox.draft = -1;
+                            }
+                        }
+                    }
+                }
+                T { text: "A"; role: TextRole.title2; horizontal-stretch: 0; vertical-alignment: center; }
+            }
+        }
+    }
+}
+
+// The colour thumb: white ring, the colour inside, a faint shadow.
+component Thumb inherits Rectangle {
+    in property <color> fill;
+    width: 28px;
+    height: 28px;
+    Rectangle { y: 1px; border-radius: 15px; width: 30px; height: 30px; background: #00000033; }
+    Rectangle { border-radius: 14px; background: white; }
+    Rectangle { width: 22px; height: 22px; border-radius: 11px; background: root.fill; }
+}
+
+component LabeledSlider inherits VerticalLayout {
+    in property <string> label;
+    in property <string> value;
+    in property <float> fraction;
+    in property <color> thumb;
+    in property <brush> track;
+    callback changed(float);
+    spacing: 10px;
+    HorizontalLayout {
+        T { text: root.label; role: TextRole.subheadline; emphasized: true; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+        T { text: root.value; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+    }
+    area := Rectangle {
+        height: 28px;
+        Rectangle { y: 4px; height: 20px; border-radius: 10px; background: root.track; border-width: 1px; border-color: Theme.s.outline-variant; }
+        Thumb { x: (parent.width - 28px) * root.fraction; y: 0; fill: root.thumb; }
+        TouchArea {
+            moved => { if (self.pressed) { root.changed(clamp((self.mouse-x - 14px) / max(1px, area.width - 28px), 0, 1)); } }
+            pointer-event(e) => { if (e.kind == PointerEventKind.down) { root.changed(clamp((self.mouse-x - 14px) / max(1px, area.width - 28px), 0, 1)); } }
+        }
+    }
+}
+
+export component CustomColorPage inherits ScrollPage {
+    title: @tr("Custom color");
+    actions: [{ id: "save", glyph: Icons.check, tooltip: @tr("Save"), enabled: true }];
+    action(id) => { Nav.act("look-custom-save", ""); }
+    Rectangle {
+        height: 72px;
+        border-radius: Theme.radius;
+        background: Theme.level(2);
+        HorizontalLayout {
+            padding: 12px;
+            spacing: 12px;
+            for p in [{ c: Look.light-container, d: Look.light-primary }, { c: Look.dark-container, d: Look.dark-primary }]: Rectangle {
+                width: 48px;
+                height: 48px;
+                border-radius: Theme.radius;
+                background: p.c;
+                Rectangle { width: 24px; height: 24px; border-radius: 12px; background: p.d; }
+            }
+            Rectangle {
+                horizontal-stretch: 1;
+                border-radius: Theme.radius;
+                background: Theme.s.surface;
+                HorizontalLayout {
+                    padding-left: 12px;
+                    padding-right: 12px;
+                    spacing: 4px;
+                    T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
+                    hex := TextInput {
+                        horizontal-stretch: 1;
+                        vertical-alignment: center;
+                        font-size: Theme.size(TextRole.body);
+                        color: Theme.s.on-surface;
+                        single-line: true;
+                        property <int> tick: Look.hex-tick;
+                        changed tick => { if (self.text != Look.hex) { self.text = Look.hex; } }
+                        init => { self.text = Look.hex; }
+                        edited => { Nav.act("look-hex", self.text); }
+                    }
+                    Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick; y: (parent.height - self.height) / 2; }
+                }
+            }
+        }
+    }
+    Rectangle { height: 16px; }
+    Segmented {
+        labels: [@tr("Grid"), @tr("Spectrum"), @tr("Sliders")];
+        selected: Look.mode == "grid" ? 0 : Look.mode == "spectrum" ? 1 : 2;
+        picked(i) => { Look.mode = i == 0 ? "grid" : i == 1 ? "spectrum" : "sliders"; }
+    }
+    Rectangle { height: 16px; }
+    if Look.mode == "grid": grid := Rectangle {
+        height: self.width * Look.grid-rows / Look.grid-columns;
+        border-radius: Theme.radius;
+        clip: true;
+        property <length> cw: self.width / Look.grid-columns;
+        property <length> ch: self.height / Look.grid-rows;
+        for c[i] in Look.grid: Rectangle {
+            x: mod(i, Look.grid-columns) * grid.cw;
+            y: floor(i / Look.grid-columns) * grid.ch;
+            width: grid.cw + 0.5px;
+            height: grid.ch + 0.5px;
+            background: c;
+        }
+        if Look.grid-selected >= 0: Rectangle {
+            x: mod(Look.grid-selected, Look.grid-columns) * grid.cw + 1.5px;
+            y: floor(Look.grid-selected / Look.grid-columns) * grid.ch + 1.5px;
+            width: grid.cw - 3px;
+            height: grid.ch - 3px;
+            border-radius: 4px;
+            border-width: 3px;
+            border-color: Look.pick-dark-text ? black : white;
+        }
+        TouchArea {
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    Nav.act("look-grid", clamp(floor(self.mouse-y / grid.ch), 0, Look.grid-rows - 1) * Look.grid-columns + clamp(floor(self.mouse-x / grid.cw), 0, Look.grid-columns - 1));
+                }
+            }
+            moved => {
+                if (self.pressed) {
+                    Nav.act("look-grid", clamp(floor(self.mouse-y / grid.ch), 0, Look.grid-rows - 1) * Look.grid-columns + clamp(floor(self.mouse-x / grid.cw), 0, Look.grid-columns - 1));
+                }
+            }
+        }
+    }
+    if Look.mode == "spectrum": spec := Rectangle {
+        height: self.width * 5 / 6;
+        border-radius: Theme.radius;
+        clip: true;
+        background: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%);
+        Rectangle { background: @linear-gradient(180deg, #ffffff 0%, #ffffff00 50%, #00000000 50%, #000000 100%); }
+        Thumb { x: spec.width * Look.spectrum-x - 14px; y: spec.height * Look.spectrum-y - 14px; fill: Look.pick; }
+        TouchArea {
+            pointer-event(e) => {
+                if (e.kind == PointerEventKind.down) {
+                    Nav.act2("look-spectrum", clamp(self.mouse-x / spec.width, 0, 1), clamp(self.mouse-y / spec.height, 0, 1));
+                }
+            }
+            moved => {
+                if (self.pressed) {
+                    Nav.act2("look-spectrum", clamp(self.mouse-x / spec.width, 0, 1), clamp(self.mouse-y / spec.height, 0, 1));
+                }
+            }
+        }
+    }
+    if Look.mode == "sliders": Rectangle {
+        border-radius: Theme.radius;
+        background: Theme.level(2);
+        height: sl.preferred-height;
+        sl := VerticalLayout {
+            padding-left: 16px;
+            padding-right: 16px;
+            padding-top: 16px;
+            padding-bottom: 20px;
+            spacing: 20px;
+            LabeledSlider {
+                label: @tr("Hue");
+                value: round(Look.hue) + "°";
+                fraction: Look.hue / 360;
+                thumb: hsv(Look.hue, 1, 1);
+                track: @linear-gradient(90deg, #ff0000 0%, #ffff00 16.67%, #00ff00 33.33%, #00ffff 50%, #0000ff 66.67%, #ff00ff 83.33%, #ff0000 100%);
+                changed(f) => { Nav.act2("look-hsv", "h", f * 360); }
+            }
+            LabeledSlider {
+                label: @tr("Saturation");
+                value: round(Look.sat * 100) + "%";
+                fraction: Look.sat;
+                thumb: Look.pick;
+                track: @linear-gradient(90deg, hsv(Look.hue, 0, Look.val) 0%, hsv(Look.hue, 1, Look.val) 100%);
+                changed(f) => { Nav.act2("look-hsv", "s", f); }
+            }
+            LabeledSlider {
+                label: @tr("Brightness");
+                value: round(Look.val * 100) + "%";
+                fraction: Look.val;
+                thumb: Look.pick;
+                track: @linear-gradient(90deg, hsv(Look.hue, Look.sat, 0) 0%, hsv(Look.hue, Look.sat, 1) 100%);
+                changed(f) => { Nav.act2("look-hsv", "v", f); }
+            }
+        }
+    }
+}
+
+export component AppearanceRoutes inherits Rectangle {
+    in property <string> kind;
+    in property <int> leading;
+    out property <bool> handles: kind == "appearance" || kind == "custom-color";
+    if root.kind == "appearance": AppearancePage { leading: root.leading; }
+    if root.kind == "custom-color": CustomColorPage { leading: root.leading; }
+}
