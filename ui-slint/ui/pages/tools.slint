@@ -1,12 +1,11 @@
-// Placeholder until the page is ported.
-import { Theme } from "../theme.slint";
-import { Icons } from "../icons.slint";
-import { TopBar, EmptyState } from "../kit.slint";
+// The Tools tab (pages/ToolsPage.kt ToolsPage): Rust-built rows (src/pages/tools.rs).
+import { Pages } from "../data.slint";
+import { RowsPage } from "rows.slint";
+
 export component ToolsPage inherits Rectangle {
-    background: Theme.s.surface;
-    bar := TopBar { y: 0; title: @tr("Tools"); }
-    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Tools"); }
+    RowsPage { d: Pages.tools; leading: 0; }
 }
+
 export component ToolRoutes inherits Rectangle {
     in property <string> kind;
     in property <string> arg;

@@ -17,3 +17,4 @@ pub fn menu(_key: &str) -> Vec<MenuEntry> {
     Vec::new()
 }
 pub fn install(_w: &AppWindow) {}
+pub fn open_mitm_certificate() {}

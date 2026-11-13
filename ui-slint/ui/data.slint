@@ -295,6 +295,8 @@ export struct SettingRow {
     progress: float,
     lines: int,
     menu: bool,
+    // A password field (LabeledField secret = true).
+    secret: bool,
     // 0 alone, 1 start, 2 middle, 3 end, 4 start and end
     position: int,
 }

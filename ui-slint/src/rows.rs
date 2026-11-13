@@ -301,6 +301,11 @@ impl Row {
         self
     }
 
+    pub fn secret(mut self, secret: bool) -> Row {
+        self.data.secret = secret;
+        self
+    }
+
     pub fn number(mut self) -> Row {
         self.data.number = true;
         self

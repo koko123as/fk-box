@@ -19,6 +19,10 @@ pub mod proxies;
 pub mod requests;
 pub mod settings;
 pub mod tools;
+pub mod resources;
+pub mod terminal;
+pub mod appearance;
+pub mod routing;
 
 /// What changed, so only the affected pages are projected again.
 #[derive(Clone, Copy, PartialEq, Eq)]

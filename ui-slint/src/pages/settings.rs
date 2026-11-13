@@ -17,3 +17,7 @@ pub fn menu(_key: &str) -> Vec<MenuEntry> {
     Vec::new()
 }
 pub fn install(_w: &AppWindow) {}
+pub fn open_access() {}
+pub fn open_backup() {}
+pub fn open_general() {}
+pub fn open_about() {}

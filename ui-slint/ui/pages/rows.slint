@@ -185,7 +185,7 @@ export component RowView inherits Rectangle {
                     mono: root.entry.mono;
                     enabled: root.entry.enabled;
                     align: TextHorizontalAlignment.right;
-                    input-type: root.entry.number ? InputType.number : InputType.text;
+                    input-type: root.entry.secret ? InputType.password : root.entry.number ? InputType.number : InputType.text;
                     y: (parent.height - self.height) / 2;
                     edited(t) => { Nav.act2("row-edit", root.key, t); }
                     accepted(t) => { Nav.act2("row-done", root.key, t); }
@@ -228,7 +228,7 @@ export component RowView inherits Rectangle {
                 mono: root.entry.mono;
                 enabled: root.entry.enabled;
                 invalid: root.entry.invalid;
-                input-type: root.entry.number ? InputType.number : InputType.text;
+                input-type: root.entry.secret ? InputType.password : root.entry.number ? InputType.number : InputType.text;
                 edited(t) => { Nav.act2("row-edit", root.key, t); }
                 accepted(t) => { Nav.act2("row-done", root.key, t); }
             }
