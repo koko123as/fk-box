@@ -24,6 +24,8 @@ i-slint-backend-android-activity = { version = "=1.18.1", features = ["aa-06", "
 jni = "0.21"
 log = "0.4"
 android_logger = "0.15"
+# PNG decoding for app icons (PackageIcon) rendered by the native side.
+i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders"] }
 
 # Host builds (unit tests) need the same image support the Android backend enables.
 [target.'cfg(not(target_os = "android"))'.dependencies]

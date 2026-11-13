@@ -135,6 +135,28 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     SlintHost.nativeReply(id, true, SlintHost.wire(text))
                     return@launch
                 }
+                "appIcon" -> {
+                    // PackageIcon: the app's icon as a PNG in the cache, read by the Slint UI.
+                    val pkg = org.json.JSONObject(args).optString("package")
+                    val path = withContext(Dispatchers.IO) {
+                        runCatching {
+                            val dir = java.io.File(cacheDir, "slint-icons").apply { mkdirs() }
+                            val file = java.io.File(dir, "$pkg.png")
+                            if (!file.exists()) {
+                                val drawable = packageManager.getApplicationIcon(pkg)
+                                val size = (48 * resources.displayMetrics.density).toInt().coerceAtLeast(48)
+                                val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
+                                val canvas = android.graphics.Canvas(bitmap)
+                                drawable.setBounds(0, 0, size, size)
+                                drawable.draw(canvas)
+                                file.outputStream().use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+                            }
+                            file.absolutePath
+                        }.getOrNull()
+                    }
+                    SlintHost.nativeReply(id, true, SlintHost.wire(path))
+                    return@launch
+                }
                 "exit" -> {
                     SlintHost.nativeReply(id, true, SlintHost.wire(null))
                     finish()

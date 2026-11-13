@@ -34,6 +34,8 @@ export component RowView inherits Rectangle {
             subtitle: root.entry.subtitle;
             has-leading: root.entry.has-glyph && root.entry.kind != "radio";
             leading: root.entry.glyph;
+            has-leading-image: root.entry.has-image;
+            leading-image: root.entry.image;
             trailing-text: root.entry.kind == "item" ? root.entry.value : "";
             chevron: root.entry.chevron;
             clickable: root.entry.clickable;
@@ -125,6 +127,48 @@ export component RowView inherits Rectangle {
                 }
                 if root.entry.checked: ProgressBar { value: root.entry.progress; tint: u.tone; background: u.tone.with-alpha(0.15); }
             }
+        }
+        // AboutPage's hero: the icon on a raised card, the name, the version and license pills, the blurb.
+        if entry.kind == "hero": VerticalLayout {
+            padding-left: 24px;
+            padding-right: 24px;
+            padding-top: 16px;
+            spacing: 0px;
+            alignment: start;
+            HorizontalLayout {
+                alignment: center;
+                Rectangle {
+                    width: 96px;
+                    height: 96px;
+                    border-radius: Theme.radius;
+                    background: Theme.level(2);
+                    Image { source: @image-url("../box_icon.png"); width: 68px; height: 68px; }
+                }
+            }
+            Rectangle { height: 20px; }
+            T { text: root.entry.title; role: TextRole.title2; emphasized: true; horizontal-alignment: center; }
+            Rectangle { height: 10px; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                Rectangle {
+                    height: v.preferred-height + 8px;
+                    width: v.preferred-width + 24px;
+                    border-radius: self.height / 2;
+                    background: Theme.s.primary;
+                    v := T { text: root.entry.value; role: TextRole.caption1; emphasized: true; color: Theme.s.on-primary; }
+                }
+                Rectangle {
+                    height: l.preferred-height + 8px;
+                    width: l.preferred-width + 24px;
+                    border-radius: self.height / 2;
+                    background: Theme.level(2);
+                    l := T { text: root.entry.hint; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface-variant; }
+                }
+            }
+            Rectangle { height: 16px; }
+            T { text: root.entry.subtitle; role: TextRole.subheadline; color: Theme.s.on-surface-variant; wrap: word-wrap; horizontal-alignment: center; }
+            Rectangle { height: 12px; }
         }
         if entry.kind == "card": Card {
             height: card-lay.preferred-height;
@@ -341,5 +385,36 @@ export component RowsPage inherits Rectangle {
         y: bar.height;
         height: parent.height - bar.height;
         d: root.d;
+    }
+    if root.d.foot-text != "": Rectangle {
+        x: 16px;
+        width: parent.width - 32px;
+        height: foot.preferred-height;
+        y: parent.height - self.height - 12px - max(Nav.keyboard-height, Nav.inset-bottom);
+        border-radius: self.height / 2;
+        background: Theme.level(2);
+        foot := HorizontalLayout {
+            padding-left: 16px;
+            padding-right: root.d.foot-button != "" ? 8px : 16px;
+            padding-top: 6px;
+            padding-bottom: 6px;
+            spacing: 12px;
+            Icon { glyph: root.d.foot-glyph; size: 20px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+            T { text: root.d.foot-text; role: TextRole.footnote; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+            if root.d.foot-chip != "": Rectangle {
+                y: (parent.height - self.height) / 2;
+                height: chip.preferred-height + 8px;
+                width: chip.preferred-width + 24px;
+                border-radius: self.height / 2;
+                background: Theme.s.primary.with-alpha(0.15);
+                chip := T { text: root.d.foot-chip; role: TextRole.footnote; emphasized: true; color: Theme.s.primary; horizontal-stretch: 0; }
+            }
+            if root.d.foot-button != "": Button {
+                label: root.d.foot-button;
+                kind: 0;
+                button-height: 32px;
+                clicked => { Nav.act2("foot", root.d.id, ""); }
+            }
+        }
     }
 }

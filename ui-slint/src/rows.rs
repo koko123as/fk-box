@@ -301,6 +301,14 @@ impl Row {
         self
     }
 
+    pub fn image(mut self, image: Option<slint::Image>) -> Row {
+        if let Some(i) = image {
+            self.data.image = i;
+            self.data.has_image = true;
+        }
+        self
+    }
+
     pub fn secret(mut self, secret: bool) -> Row {
         self.data.secret = secret;
         self
@@ -352,6 +360,9 @@ pub struct Page {
     pub empty: Option<(String, String, &'static str, String)>,
     pub empty_action: Option<Rc<dyn Fn()>>,
     pub special: String,
+    /// FloatingFootBar: text, icon, chip label, button label.
+    pub foot: Option<(String, &'static str, String, String)>,
+    pub foot_action: Option<Rc<dyn Fn()>>,
 }
 
 impl Page {
@@ -391,6 +402,12 @@ impl Page {
 
     pub fn empty(mut self, title: &str, message: &str, icon: &'static str) -> Page {
         self.empty = Some((title.into(), message.into(), icon, String::new()));
+        self
+    }
+
+    pub fn foot(mut self, text: &str, icon: &'static str, chip: &str, button: &str, f: impl Fn() + 'static) -> Page {
+        self.foot = Some((text.into(), icon, chip.into(), button.into()));
+        self.foot_action = Some(Rc::new(f));
         self
     }
 
@@ -577,6 +594,10 @@ fn build(id: i32) -> Option<PageData> {
         empty_glyph: page.empty.as_ref().map(|e| glyph(e.2)).unwrap_or_default(),
         empty_action: page.empty.as_ref().map(|e| ss(&e.3)).unwrap_or_default(),
         special: ss(&page.special),
+        foot_text: page.foot.as_ref().map(|f| ss(&f.0)).unwrap_or_default(),
+        foot_glyph: page.foot.as_ref().map(|f| glyph(f.1)).unwrap_or_default(),
+        foot_chip: page.foot.as_ref().map(|f| ss(&f.2)).unwrap_or_default(),
+        foot_button: page.foot.as_ref().map(|f| ss(&f.3)).unwrap_or_default(),
     };
     ENTRIES.with(|e| {
         if let Some(en) = e.borrow_mut().get_mut(&id) {
@@ -663,6 +684,14 @@ pub fn act2(id: &str, a: &str, b: &str) -> bool {
             if let Some(f) = f {
                 f(b.to_string());
                 crate::pages::mark(crate::pages::Mark::ROWS);
+            }
+            true
+        }
+        "foot" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.foot_action.clone()));
+            if let Some(f) = f {
+                f();
             }
             true
         }

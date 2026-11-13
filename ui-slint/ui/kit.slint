@@ -413,6 +413,9 @@ export component ListItem inherits Rectangle {
     in property <string> subtitle;
     in property <Glyph> leading;
     in property <bool> has-leading;
+    // PackageIcon: an app's icon in place of the leading glyph.
+    in property <image> leading-image;
+    in property <bool> has-leading-image;
     in property <string> trailing-text;
     in property <bool> chevron;
     in property <int> position: 4;
@@ -445,7 +448,13 @@ export component ListItem inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
-        if root.has-leading: Icon {
+        if root.has-leading-image: Image {
+            source: root.leading-image;
+            width: 48px;
+            height: 48px;
+            y: (parent.height - self.height) / 2;
+        }
+        if root.has-leading && !root.has-leading-image: Icon {
             glyph: root.leading;
             color: Theme.s.on-surface-variant;
             y: (parent.height - self.height) / 2;

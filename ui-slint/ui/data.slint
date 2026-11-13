@@ -297,6 +297,9 @@ export struct SettingRow {
     menu: bool,
     // A password field (LabeledField secret = true).
     secret: bool,
+    // An app icon (PackageIcon) in place of the glyph.
+    image: image,
+    has-image: bool,
     // 0 alone, 1 start, 2 middle, 3 end, 4 start and end
     position: int,
 }
@@ -317,6 +320,11 @@ export struct PageData {
     empty-action: string,
     // Extra content kinds the page shows above or instead of its rows.
     special: string,
+    // FloatingFootBar: a status line over the list's foot with a chip or a button.
+    foot-text: string,
+    foot-glyph: Glyph,
+    foot-chip: string,
+    foot-button: string,
 }
 
 export global Pages {
