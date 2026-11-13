@@ -74,7 +74,6 @@ export component NodeCard inherits Card {
             }
             Rectangle {
                 horizontal-stretch: Proxies.loose ? 1 : 0;
-                min-width: delay-label.preferred-width;
                 width: Proxies.loose ? self.preferred-width : max(Metrics.delay-height, delay-label.preferred-width);
                 if root.node.testing: Spinner {
                     size: Metrics.delay-height;
@@ -131,15 +130,14 @@ component GroupTabs inherits Rectangle {
     flick := Flickable {
         width: parent.width - (more.visible ? 64px : 0px);
         x: 0;
-        viewport-width: strip.preferred-width;
+        content-width: strip.preferred-width;
         strip := HorizontalLayout {
             padding-left: 16px;
-            padding-right: more.visible ? 0px : 16px;
+            padding-right: 16px;
             spacing: 8px;
             for g[i] in root.groups: Rectangle {
                 property <bool> on: i == root.selected;
                 height: 40px;
-                min-width: 64px;
                 width: max(64px, tab-label.preferred-width + 32px);
                 border-radius: 20px;
                 background: on ? Theme.s.primary-container : Theme.level(1);
@@ -159,7 +157,7 @@ component GroupTabs inherits Rectangle {
         }
     }
     more := TonalIconButton {
-        visible: strip.preferred-width > root.width;
+        visible: strip.preferred-width - 16px > root.width;
         x: parent.width - 16px - self.width;
         glyph: Icons.chevron-down;
         tooltip: @tr("Proxy groups");
@@ -266,6 +264,8 @@ export component ProxiesPage inherits Rectangle {
     in property <bool> form;
     property <GroupRow> current: Proxies.groups.length > 0 ? Proxies.groups[min(Proxies.tab, Proxies.groups.length - 1)] : { };
     property <int> columns: Metrics.columns(self.width - 32px - (Proxies.list ? 20px : 0px));
+    property <length> scroll-target;
+    property <int> scroll-tick;
     background: Theme.s.surface;
     bar := TopBar {
         y: 0;
@@ -280,7 +280,8 @@ export component ProxiesPage inherits Rectangle {
         action(id) => {
             if (id == "proxies-locate") {
                 if (root.current.selected-index >= 0) {
-                    grid-flick.viewport-y = -floor(root.current.selected-index / root.columns) * Metrics.row-extent;
+                    root.scroll-target = -floor(root.current.selected-index / root.columns) * Metrics.row-extent;
+                    root.scroll-tick += 1;
                 }
             } else {
                 Nav.act(id, root.current.tag);
@@ -317,8 +318,10 @@ export component ProxiesPage inherits Rectangle {
         }
         if root.current.items.length == 0: EmptyState { glyph: Icons.proxies; title: @tr("No results"); }
         grid-flick := Flickable {
+            property <int> tick: root.scroll-tick;
+            changed tick => { self.content-y = max(root.scroll-target, self.height - self.content-height); }
             vertical-stretch: 1;
-            viewport-height: grid.height + 16px + Nav.inset-bottom;
+            content-height: grid.height + 16px + Nav.inset-bottom;
             grid := NodeGrid {
                 y: 0;
                 width: parent.width;
@@ -331,7 +334,7 @@ export component ProxiesPage inherits Rectangle {
     if Proxies.groups.length > 0 && Proxies.list: Flickable {
         y: bar.height;
         height: parent.height - bar.height;
-        viewport-height: list.preferred-height;
+        content-height: list.preferred-height;
         list := VerticalLayout {
             padding-left: 16px;
             padding-right: 16px;

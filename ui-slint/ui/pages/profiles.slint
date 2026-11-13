@@ -1,0 +1,15 @@
+// Placeholder until the page is ported.
+import { Theme } from "../theme.slint";
+import { Icons } from "../icons.slint";
+import { TopBar, EmptyState } from "../kit.slint";
+export component ProfilesPage inherits Rectangle {
+    background: Theme.s.surface;
+    bar := TopBar { y: 0; title: @tr("Profiles"); }
+    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Profiles"); }
+}
+export component ProfileRoutes inherits Rectangle {
+    in property <string> kind;
+    in property <string> arg;
+    in property <int> leading;
+    out property <bool> handles: false;
+}

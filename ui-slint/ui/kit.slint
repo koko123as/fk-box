@@ -7,6 +7,7 @@ import { Icons, Glyph } from "icons.slint";
 import { Nav, BarAction, Keyword } from "globals.slint";
 import "fonts/MaterialIcons-Regular.ttf";
 import "fonts/MaterialIconsOutlined-Regular.otf";
+import "fonts/JetBrainsMono-Regular.ttf";
 
 // AppIcon
 export component Icon inherits Text {
@@ -38,7 +39,7 @@ export component T inherits Text {
 // The Material 3 indeterminate progress ring (CommonCircleLoading).
 export component Spinner inherits Rectangle {
     in property <length> size: 24px;
-    in property <color> color: Theme.s.primary;
+    in property <color> tint: Theme.s.primary;
     width: size;
     height: size;
     Path {
@@ -46,7 +47,7 @@ export component Spinner inherits Rectangle {
         height: root.size;
         viewbox-width: 100;
         viewbox-height: 100;
-        stroke: root.color;
+        stroke: root.tint;
         stroke-width: root.size < 20px ? 2px : 3px;
         fill: transparent;
         commands: "M 50 6 A 44 44 0 1 1 6 50";
@@ -58,14 +59,14 @@ export component Spinner inherits Rectangle {
 // The M3 linear progress indicator (indeterminate when value < 0).
 export component ProgressBar inherits Rectangle {
     in property <float> value: -1;
-    in property <color> color: Theme.s.primary;
+    in property <color> tint: Theme.s.primary;
     height: 4px;
     background: Theme.s.surface-container-highest;
     clip: true;
     Rectangle {
         x: root.value < 0 ? (mod(animation-tick() / 2ms, 1400) / 1000 - 0.4) * root.width : 0;
         width: root.value < 0 ? root.width * 0.4 : root.width * clamp(root.value, 0, 1);
-        background: root.color;
+        background: root.tint;
     }
 }
 
@@ -74,20 +75,20 @@ export component IconButton inherits Rectangle {
     in property <Glyph> glyph;
     in property <length> size: 40px;
     in property <length> icon-size: 24px;
-    in property <color> color: Theme.s.on-surface-variant;
+    in property <color> tint: Theme.s.on-surface-variant;
     in property <bool> enabled: true;
     in property <string> tooltip;
     callback clicked();
     width: size;
     height: size;
     border-radius: size / 2;
-    background: touch.pressed && enabled ? color.with-alpha(0.12) : transparent;
+    background: touch.pressed && enabled ? tint.with-alpha(0.12) : transparent;
     accessible-role: button;
     accessible-label: tooltip;
     Icon {
         glyph: root.glyph;
         size: root.icon-size;
-        color: root.enabled ? root.color : root.color.with-alpha(0.38);
+        color: root.enabled ? root.tint : root.tint.with-alpha(0.38);
     }
     touch := TouchArea {
         enabled: root.enabled;
@@ -138,7 +139,7 @@ export component Button inherits Rectangle {
     callback clicked();
     height: max(button-height, label-text.preferred-height + 8px);
     min-width: row.preferred-width;
-    border-radius: height / 2;
+    border-radius: self.height / 2;
     border-width: kind == 3 ? 1px : 0;
     border-color: Theme.s.outline;
     background: !enabled ? (kind >= 2 ? transparent : Theme.s.on-surface.with-alpha(0.12))
@@ -254,7 +255,7 @@ export component IconBadge inherits Rectangle {
     in property <Glyph> glyph;
     in property <length> size: 40px;
     in property <color> container: Theme.level(2);
-    in property <color> color: Theme.s.on-surface-variant;
+    in property <color> tint: Theme.s.on-surface-variant;
     width: size;
     height: size;
     border-radius: size / 2;
@@ -262,7 +263,7 @@ export component IconBadge inherits Rectangle {
     Icon {
         glyph: root.glyph;
         size: root.size * 0.5;
-        color: root.color;
+        color: root.tint;
     }
 }
 
@@ -470,7 +471,7 @@ export component ListItem inherits Rectangle {
             role: TextRole.subheadline;
             color: Theme.s.on-surface-variant;
             horizontal-alignment: right;
-            max-width: root.width * 0.45;
+            min-width: 24px;
         }
         @children
         if root.chevron: Icon {
@@ -489,26 +490,36 @@ export component ListItem inherits Rectangle {
 }
 
 // The section header (Section's title) in primary, 24 dp above, 8 dp below.
-export component SectionTitle inherits T {
+export component SectionTitle inherits Rectangle {
+    in property <string> text;
     in property <bool> first;
-    role: TextRole.subheadline;
-    emphasized: true;
-    color: Theme.s.primary;
-    height: self.preferred-height + (first ? 8px : 32px);
-    vertical-alignment: bottom;
-    x: 16px;
-    width: parent.width - 32px;
+    height: text == "" ? (first ? 8px : 24px) : t.preferred-height + (first ? 8px : 32px) + 8px;
+    t := T {
+        x: 16px;
+        y: parent.height - self.height - 8px;
+        width: parent.width - 32px;
+        height: self.preferred-height;
+        text: root.text;
+        role: TextRole.subheadline;
+        emphasized: true;
+        color: Theme.s.primary;
+    }
 }
 
 // ListFooter
-export component Footer inherits T {
-    role: TextRole.footnote;
-    color: Theme.s.on-surface-variant;
-    wrap: word-wrap;
-    x: 16px;
-    width: parent.width - 32px;
-    height: self.preferred-height + 8px;
-    vertical-alignment: bottom;
+export component Footer inherits Rectangle {
+    in property <string> text;
+    height: t.preferred-height + 8px;
+    t := T {
+        x: 16px;
+        y: 8px;
+        width: parent.width - 32px;
+        height: self.preferred-height;
+        text: root.text;
+        role: TextRole.footnote;
+        color: Theme.s.on-surface-variant;
+        wrap: word-wrap;
+    }
 }
 
 // The 24 dp gap a Section without title leaves.
@@ -571,9 +582,9 @@ export component Field inherits Rectangle {
     in property <TextHorizontalAlignment> align: TextHorizontalAlignment.left;
     callback edited(string);
     callback accepted(string);
-    public function focus() { input.focus(); }
-    min-height: outlined ? 56px : 24px;
-    height: multiline ? self.min-height : max(self.min-height, input.preferred-height + (outlined ? 24px : 0px));
+    public function focus-input() { input.focus(); }
+    in property <length> field-min: outlined ? 56px : 24px;
+    height: multiline ? field-min : max(field-min, input.preferred-height + (outlined ? 24px : 0px));
     border-radius: outlined ? 12px : 0;
     border-width: outlined ? (input.has-focus ? 2px : 1px) : 0;
     border-color: invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.outline;
@@ -594,7 +605,7 @@ export component Field inherits Rectangle {
         y: root.outlined ? 12px : 0;
         width: parent.width - 2 * self.x;
         height: parent.height - 2 * self.y;
-        viewport-height: max(self.height, input.preferred-height);
+        content-height: max(self.height, input.preferred-height);
         input := TextInput {
             text <=> root.text;
             width: parent.width;
@@ -631,7 +642,7 @@ export component SearchField inherits Rectangle {
     in-out property <string> text;
     in property <color> fill: Theme.s.surface-container-high;
     callback edited(string);
-    public function focus() { f.focus(); }
+    public function focus-input() { f.focus-input(); }
     height: 48px;
     border-radius: 24px;
     background: fill;
@@ -689,7 +700,7 @@ export component TopBar inherits Rectangle {
             if root.searching: IconButton {
                 glyph: Icons.back;
                 tooltip: @tr("Cancel");
-                color: Theme.s.on-surface;
+                tint: Theme.s.on-surface;
                 y: (parent.height - self.height) / 2;
                 clicked => {
                     root.searching = false;
@@ -700,7 +711,7 @@ export component TopBar inherits Rectangle {
             if !root.searching && root.leading != 0: IconButton {
                 glyph: root.leading == 2 ? Icons.close : Icons.back;
                 tooltip: root.leading == 2 ? @tr("Close") : @tr("Back");
-                color: Theme.s.on-surface;
+                tint: Theme.s.on-surface;
                 y: (parent.height - self.height) / 2;
                 clicked => { Nav.pop(); }
             }
@@ -709,7 +720,7 @@ export component TopBar inherits Rectangle {
                 y: (parent.height - self.height) / 2;
                 text <=> root.query;
                 edited(t) => { root.search(t); }
-                init => { self.focus(); }
+                init => { self.focus-input(); }
             }
             if !root.searching: Rectangle {
                 horizontal-stretch: 1;
@@ -736,7 +747,7 @@ export component TopBar inherits Rectangle {
             if !root.searching && root.searchable: IconButton {
                 glyph: Icons.search;
                 tooltip: @tr("Search");
-                color: Theme.s.on-surface;
+                tint: Theme.s.on-surface;
                 y: (parent.height - self.height) / 2;
                 clicked => { root.searching = true; }
             }
@@ -749,7 +760,7 @@ export component TopBar inherits Rectangle {
                         glyph: a.glyph;
                         tooltip: a.tooltip;
                         enabled: a.enabled;
-                        color: a.selected ? Theme.s.primary : Theme.s.on-surface;
+                        tint: a.selected ? Theme.s.primary : Theme.s.on-surface;
                         clicked => { root.action(a.id); }
                     }
                 }
@@ -757,7 +768,7 @@ export component TopBar inherits Rectangle {
             if !root.searching && root.menu-key != "": IconButton {
                 glyph: Icons.more;
                 tooltip: @tr("More");
-                color: Theme.s.on-surface;
+                tint: Theme.s.on-surface;
                 y: (parent.height - self.height) / 2;
                 clicked => { Nav.open-menu(root.menu-key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
             }
@@ -765,7 +776,7 @@ export component TopBar inherits Rectangle {
         if root.loading: ProgressBar { }
         if root.keywords.length > 0: Flickable {
             height: 44px;
-            viewport-width: kw.preferred-width;
+            content-width: kw.preferred-width;
             kw := HorizontalLayout {
                 padding-left: 16px;
                 padding-right: 16px;
@@ -815,7 +826,7 @@ export component ScrollPage inherits Rectangle {
     Flickable {
         y: bar.height;
         height: parent.height - bar.height;
-        viewport-height: body.preferred-height;
+        content-height: body.preferred-height;
         body := VerticalLayout {
             padding-left: root.side;
             padding-right: root.side;

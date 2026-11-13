@@ -119,7 +119,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 "locale" -> {
                     val locale = resources.configuration.locales[0]
                     val offset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
-                    SlintHost.nativeReply(id, true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset)))
+                    SlintHost.nativeReply(id, true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset, "fontScale" to resources.configuration.fontScale)))
                     return@launch
                 }
                 "copyText" -> {

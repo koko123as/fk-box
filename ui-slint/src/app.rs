@@ -1,54 +1,115 @@
-//! Window state: turns BoxBridge events into page rows and page actions into
-//! bridge calls. Everything here runs on the Slint event-loop thread.
+//! App state (compose/BoxController.kt): the BoxBridge snapshot fed by
+//! events, the bridge calls, messages and the start-up handshake. Pages read
+//! [Data] and project it onto their Slint globals (src/pages/*.rs). Everything
+//! here runs on the Slint event-loop thread.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use serde_json::{json, Value};
-use slint::{ComponentHandle, ModelRc, SharedString, Timer, TimerMode, VecModel};
+use serde_json::{json, Map, Value};
+use slint::{ComponentHandle, SharedString};
 
 use crate::format;
 use crate::host;
-use crate::{AppWindow, GroupRow, LogRow, NodeRow, ProfileRow};
+use crate::i18n::tr;
+use crate::pages::{self, Mark};
+use crate::{AppWindow, Nav};
 
-const MAX_LOGS: usize = 500;
+pub type Json = Map<String, Value>;
 
 type Reply = Box<dyn FnOnce(Result<Value, String>)>;
 
+/// BoxController's fields.
 #[derive(Default)]
-struct State {
-    window: slint::Weak<AppWindow>,
-    next_call: i64,
+pub struct Data {
+    pub dashboard: Json,
+    pub settings: Json,
+    pub preferences: Json,
+    pub rates: Json,
+    pub tool_state: Json,
+    pub stun: Json,
+    pub quality: Json,
+    pub inbox: Json,
+    pub ping: Json,
+    pub terminal: Json,
+    pub memory: Json,
+    pub lan: Json,
+    pub transfers: Vec<Value>,
+    pub usb_devices: Vec<Value>,
+    pub outbounds: Vec<Value>,
+    pub profiles: Vec<Value>,
+    pub groups: Vec<Value>,
+    pub connections: Vec<Value>,
+    pub logs: Vec<Value>,
+    pub default_log_level: Option<String>,
+    pub upload_history: VecDeque<f64>,
+    pub download_history: VecDeque<f64>,
+    pub version: String,
+    pub core_version: String,
+    pub xray_version: String,
+    pub mihomo_version: String,
+    pub system_accent: u32,
+    pub profiles_revision: u64,
+    pub ready: bool,
+    pub lan_changing: bool,
+    pub service_settings_changing: bool,
+    pub apply_required: Option<String>,
+    pub pending_intents: VecDeque<String>,
+    pub profile_stats: HashMap<i64, Option<Json>>,
+}
+
+#[derive(Default)]
+struct Calls {
+    next: i64,
     pending: HashMap<i64, Reply>,
-    dashboard: Value,
-    profiles: Vec<Value>,
-    groups: Vec<Value>,
-    expanded: HashMap<String, bool>,
-    testing: HashSet<String>,
-    logs: VecDeque<LogRow>,
-    logs_model: Option<Rc<VecModel<LogRow>>>,
-    started_at: i64,
 }
 
 thread_local! {
-    static STATE: RefCell<State> = RefCell::new(State::default());
+    static DATA: RefCell<Data> = RefCell::new(Data { system_accent: 0xff007aff, ..Default::default() });
+    static CALLS: RefCell<Calls> = RefCell::new(Calls::default());
+    static WINDOW: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
 }
 
-fn now_ms() -> i64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+pub fn data<R>(f: impl FnOnce(&Data) -> R) -> R {
+    DATA.with(|d| f(&d.borrow()))
 }
 
-fn num(value: &Value) -> f64 {
+pub fn data_mut<R>(f: impl FnOnce(&mut Data) -> R) -> R {
+    DATA.with(|d| f(&mut d.borrow_mut()))
+}
+
+pub fn window() -> Option<AppWindow> {
+    WINDOW.with(|w| w.borrow().as_ref().and_then(|w| w.upgrade()))
+}
+
+pub fn with_window(f: impl FnOnce(&AppWindow)) {
+    if let Some(w) = window() {
+        f(&w)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// JSON helpers (BoxController.json / rows / asLong)
+// ---------------------------------------------------------------------------
+
+pub fn obj(value: &Value) -> Json {
+    value.as_object().cloned().unwrap_or_default()
+}
+
+pub fn rows(value: &Value) -> Vec<Value> {
+    value.as_array().cloned().unwrap_or_default()
+}
+
+pub fn long(value: &Value) -> Option<i64> {
+    value.as_i64().or_else(|| value.as_f64().map(|v| v as i64))
+}
+
+pub fn num(value: &Value) -> f64 {
     value.as_f64().unwrap_or(0.0)
 }
 
-fn int(value: &Value) -> i64 {
-    value.as_i64().or_else(|| value.as_f64().map(|v| v as i64)).unwrap_or(0)
-}
-
-fn text(value: &Value) -> String {
+pub fn text(value: &Value) -> String {
     match value {
         Value::String(s) => s.clone(),
         Value::Null => String::new(),
@@ -56,20 +117,127 @@ fn text(value: &Value) -> String {
     }
 }
 
-fn with_window(f: impl FnOnce(&AppWindow)) {
-    let window = STATE.with(|s| s.borrow().window.upgrade());
-    if let Some(window) = window {
-        f(&window);
+pub fn opt_text(value: &Value) -> Option<String> {
+    match value {
+        Value::String(s) if !s.is_empty() => Some(s.clone()),
+        _ => None,
     }
 }
 
-/// Calls a BoxBridge method; `reply` runs on the UI thread with its result.
+pub fn truthy(value: &Value) -> bool {
+    value.as_bool() == Some(true)
+}
+
+pub fn strings(value: &Value) -> Vec<String> {
+    value.as_array().map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default()
+}
+
+pub fn ss(value: impl AsRef<str>) -> SharedString {
+    SharedString::from(value.as_ref())
+}
+
+// ---------------------------------------------------------------------------
+// Derived values (BoxController's getters)
+// ---------------------------------------------------------------------------
+
+impl Data {
+    pub fn remote(&self) -> bool {
+        self.dashboard.get("remote").map(|v| !v.is_null()).unwrap_or(false)
+    }
+
+    pub fn running(&self) -> bool {
+        if self.remote() {
+            truthy(&self.dashboard.get("remoteConnected").cloned().unwrap_or_default())
+        } else {
+            self.status() == "Started"
+        }
+    }
+
+    pub fn status(&self) -> String {
+        self.dashboard.get("status").map(text).unwrap_or_default()
+    }
+
+    pub fn transitioning(&self) -> bool {
+        matches!(self.status().as_str(), "Starting" | "Stopping")
+    }
+
+    pub fn selected_profile_id(&self) -> i64 {
+        self.dashboard.get("selectedProfileId").and_then(long).unwrap_or(-1)
+    }
+
+    pub fn selected_profile(&self) -> Option<Json> {
+        let id = self.selected_profile_id();
+        self.profiles.iter().find(|p| long(&p["id"]) == Some(id)).map(obj)
+    }
+
+    pub fn profile(&self, id: i64) -> Option<Json> {
+        self.profiles.iter().find(|p| long(&p["id"]) == Some(id)).map(obj)
+    }
+
+    pub fn pref(&self, key: &str) -> Value {
+        self.preferences.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    pub fn pref_str(&self, key: &str, fallback: &str) -> String {
+        self.preferences.get(key).and_then(|v| v.as_str()).unwrap_or(fallback).to_string()
+    }
+
+    pub fn setting(&self, key: &str) -> Value {
+        self.settings.get(key).cloned().unwrap_or(Value::Null)
+    }
+
+    pub fn lan_addresses(&self) -> Vec<String> {
+        self.lan.get("addresses").map(strings).unwrap_or_default()
+    }
+
+    pub fn can_set_lan_proxy(&self) -> bool {
+        !self.remote()
+            && !self.transitioning()
+            && !self.lan_changing
+            && self.lan.get("canToggle").map(truthy).unwrap_or(false)
+            && self.lan.get("profileId").and_then(long) == Some(self.selected_profile_id())
+    }
+
+    pub fn lan_proxy_endpoints(&self) -> Vec<String> {
+        if self.remote() || !self.running() || !self.lan.get("running").map(truthy).unwrap_or(false) {
+            return Vec::new();
+        }
+        let mut out: Vec<String> = Vec::new();
+        for binding in self.lan.get("activeBindings").map(rows).unwrap_or_default() {
+            for endpoint in strings(&binding["endpoints"]) {
+                if !out.contains(&endpoint) {
+                    out.push(endpoint);
+                }
+            }
+        }
+        out
+    }
+
+    pub fn lan_copy_text(&self) -> Option<String> {
+        let addresses = self.lan_addresses();
+        let endpoints = self.lan_proxy_endpoints();
+        for address in &addresses {
+            for endpoint in &endpoints {
+                if endpoint.starts_with(&format!("{address}:")) || endpoint.starts_with(&format!("[{address}]:")) {
+                    return Some(endpoint.clone());
+                }
+            }
+        }
+        endpoints.first().cloned().or_else(|| addresses.first().cloned())
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Calls
+// ---------------------------------------------------------------------------
+
+/// Runs one bridge command; `reply` runs on the UI thread with its result.
 pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>) + 'static) {
-    let id = STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.next_call += 1;
-        let id = s.next_call;
-        s.pending.insert(id, Box::new(reply));
+    let id = CALLS.with(|c| {
+        let mut c = c.borrow_mut();
+        c.next += 1;
+        let id = c.next;
+        c.pending.insert(id, Box::new(reply));
         id
     });
     if let Err(error) = host::invoke(id, method, &args.to_string()) {
@@ -77,30 +245,50 @@ pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>)
     }
 }
 
-/// Fire-and-forget call: failures are shown as a toast.
-fn act(method: &str, args: Value) {
+/// act(): runs a command and reports its failure.
+pub fn act(method: &str, args: Value) {
     call(method, args, |result| {
         if let Err(error) = result {
-            toast(&error);
+            report(&error);
         }
     });
 }
 
-fn toast(message: &str) {
-    let message = message.trim().to_string();
-    with_window(|w| w.set_toast(message.clone().into()));
-    Timer::single_shot(Duration::from_secs(4), move || {
-        with_window(|w| {
-            if w.get_toast().as_str() == message {
-                w.set_toast(SharedString::new());
-            }
-        })
+/// launchAct(then): `then` gets whether the command succeeded.
+pub fn act_then(method: &str, args: Value, then: impl FnOnce(bool) + 'static) {
+    call(method, args, move |result| match result {
+        Ok(_) => then(true),
+        Err(error) => {
+            report(&error);
+            then(false)
+        }
     });
+}
+
+/// A call whose value the caller needs; failures are reported.
+pub fn fetch(method: &str, args: Value, then: impl FnOnce(Value) + 'static) {
+    call(method, args, move |result| match result {
+        Ok(value) => then(value),
+        Err(error) => report(&error),
+    });
+}
+
+pub fn report(error: &str) {
+    crate::nav::toast(&format::clean_error(error), true);
+}
+
+/// box.message(): a translated line in the snackbar.
+pub fn message(text: &str) {
+    crate::nav::toast(&tr(text), false);
+}
+
+pub fn copy_text(value: &str) {
+    call("copyText", json!({ "text": value }), |_| {});
 }
 
 /// A reply from Kotlin: `{"v": value}`, with `ok` false carrying the error text.
 pub fn on_reply(id: i64, ok: bool, payload: &str) {
-    let reply = STATE.with(|s| s.borrow_mut().pending.remove(&id));
+    let reply = CALLS.with(|c| c.borrow_mut().pending.remove(&id));
     let Some(reply) = reply else { return };
     let value = serde_json::from_str::<Value>(payload)
         .ok()
@@ -110,9 +298,165 @@ pub fn on_reply(id: i64, ok: bool, payload: &str) {
         reply(Ok(value))
     } else {
         let message = text(&value);
-        reply(Err(if message.is_empty() { "操作失败".into() } else { message }))
+        reply(Err(if message.is_empty() { "Operation failed".into() } else { message }))
     }
 }
+
+// ---------------------------------------------------------------------------
+// Settings and preferences (BoxController.setPreferences / setSetting / setSettings)
+// ---------------------------------------------------------------------------
+
+pub fn set_preferences(values: Value, then: impl FnOnce(bool) + 'static) {
+    call("setPreferences", json!({ "values": values }), move |result| match result {
+        Ok(value) => {
+            data_mut(|d| d.preferences = obj(&value));
+            pages::mark(Mark::ALL);
+            then(true)
+        }
+        Err(error) => {
+            report(&error);
+            then(false)
+        }
+    });
+}
+
+pub fn set_preference(key: &str, value: Value) {
+    set_preferences(json!({ key: value }), |_| {});
+}
+
+/// An auto-restart setting restarts a running local service itself.
+pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
+    let (busy, running, remote, transitioning) =
+        data(|d| (d.service_settings_changing, d.running(), d.remote(), d.transitioning()));
+    if busy || (auto_restart && transitioning && !remote) {
+        return;
+    }
+    let restart_service = auto_restart && running && !remote;
+    if auto_restart {
+        data_mut(|d| d.service_settings_changing = true);
+        pages::mark(Mark::SETTINGS);
+    }
+    call(
+        "setSetting",
+        json!({ "key": key, "value": value, "restart": restart_service }),
+        move |result| {
+            if auto_restart {
+                data_mut(|d| d.service_settings_changing = false);
+            }
+            match result {
+                Ok(saved) => data_mut(|d| {
+                    d.settings = obj(&saved);
+                    if restart_service {
+                        d.apply_required = None;
+                    } else if restart && !auto_restart && d.running() && !d.remote() {
+                        d.apply_required = Some("Restart".into());
+                    }
+                }),
+                Err(error) => report(&error),
+            }
+            pages::mark(Mark::ALL);
+        },
+    );
+}
+
+pub fn set_settings(values: Value, restart: bool, then: impl FnOnce(bool) + 'static) {
+    call("updateSettings", json!({ "values": values }), move |result| match result {
+        Ok(saved) => {
+            data_mut(|d| {
+                d.settings = obj(&saved);
+                if restart && d.running() && !d.remote() {
+                    d.apply_required = Some("Restart".into());
+                }
+            });
+            pages::mark(Mark::ALL);
+            then(true)
+        }
+        Err(error) => {
+            report(&error);
+            then(false)
+        }
+    });
+}
+
+pub fn clear_apply_required() {
+    data_mut(|d| d.apply_required = None);
+    pages::mark(Mark::DASH | Mark::SETTINGS);
+}
+
+/// profileStats(id), cached until the profiles change.
+pub fn profile_stats(id: i64, then: impl FnOnce() + 'static) {
+    let known = data(|d| d.profile_stats.contains_key(&id));
+    if known {
+        return;
+    }
+    data_mut(|d| d.profile_stats.insert(id, None));
+    let revision = data(|d| d.profiles_revision);
+    call("profileStats", json!({ "id": id }), move |result| {
+        if data(|d| d.profiles_revision) != revision {
+            return;
+        }
+        let stats = result.ok().map(|v| obj(&v)).unwrap_or_default();
+        data_mut(|d| d.profile_stats.insert(id, Some(stats)));
+        then();
+    });
+}
+
+pub fn refresh_lan() {
+    call("refreshLan", json!({}), |result| match result {
+        Ok(value) if value.is_object() => {
+            data_mut(|d| d.lan = obj(&value));
+            pages::mark(Mark::DASH);
+        }
+        Ok(_) => {}
+        Err(error) => report(&error),
+    });
+}
+
+/// setLanProxy: false when the switch could not be changed.
+pub fn set_lan_proxy(enabled: bool, port: Option<i64>, profile_id: Option<i64>, revision: Option<String>, then: impl FnOnce(bool) + 'static) {
+    let (can, selected, current_revision) = data(|d| (d.can_set_lan_proxy(), d.selected_profile_id(), d.lan.get("revision").map(text)));
+    if !can {
+        then(false);
+        return;
+    }
+    let target = profile_id.unwrap_or(selected);
+    if target != selected {
+        report("Selected profile changed; reload it before saving");
+        then(false);
+        return;
+    }
+    data_mut(|d| d.lan_changing = true);
+    pages::mark(Mark::DASH);
+    let revision = revision.or(current_revision);
+    call(
+        "setLanProxy",
+        json!({ "profileId": target, "revision": revision, "enabled": enabled, "port": port }),
+        move |result| {
+            data_mut(|d| d.lan_changing = false);
+            match result {
+                Ok(value) => {
+                    data_mut(|d| {
+                        if !d.remote() && d.selected_profile_id() == target {
+                            d.lan = obj(&value);
+                        }
+                    });
+                    pages::mark(Mark::DASH);
+                    then(true)
+                }
+                Err(error) => {
+                    report(&error);
+                    refresh_lan();
+                    pages::mark(Mark::DASH);
+                    then(false)
+                }
+            }
+        },
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Events
+// ---------------------------------------------------------------------------
 
 /// A BoxBridge event: `{"v": {"type": ..., "value": ...}}`.
 pub fn on_event(payload: &str) {
@@ -120,333 +464,199 @@ pub fn on_event(payload: &str) {
     let mut event = root.get_mut("v").map(Value::take).unwrap_or(Value::Null);
     let kind = text(&event["type"]);
     let value = event.get_mut("value").map(Value::take).unwrap_or(Value::Null);
-    match kind.as_str() {
-        "dashboard" => set_dashboard(value),
-        "profiles" => set_profiles(value),
-        "groups" => set_groups(value),
-        "rates" => set_rates(&value),
-        "logs" => add_logs(&value),
-        "error" => toast(&text(&value)),
-        _ => {}
-    }
-}
-
-fn set_dashboard(value: Value) {
-    if !value.is_object() {
-        return;
-    }
-    let status = text(&value["status"]);
-    let started = int(&value["startedAt"]);
-    let modes: Vec<SharedString> = value["modes"]
-        .as_array()
-        .map(|m| m.iter().map(|x| text(x).into()).collect())
-        .unwrap_or_default();
-    let mode = text(&value["mode"]);
-    STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.dashboard = value;
-        s.started_at = started;
-    });
-    with_window(|w| {
-        w.set_status(status.clone().into());
-        w.set_status_text(format::status_text(&status).into());
-        w.set_busy(status == "Starting" || status == "Stopping");
-        w.set_modes(ModelRc::new(VecModel::from(modes)));
-        w.set_mode(mode.into());
-        if status != "Started" {
-            w.set_uptime(SharedString::new());
-            w.set_groups(ModelRc::new(VecModel::<GroupRow>::default()));
+    let mark = data_mut(|d| match kind.as_str() {
+        "tools" => {
+            d.tool_state = obj(&value);
+            Mark::TOOLS
         }
-    });
-    refresh_profiles();
-    tick();
-}
-
-fn set_profiles(value: Value) {
-    let list = match value {
-        Value::Array(list) => list,
-        _ => return,
-    };
-    STATE.with(|s| s.borrow_mut().profiles = list);
-    refresh_profiles();
-}
-
-fn refresh_profiles() {
-    let now = now_ms();
-    let (rows, current) = STATE.with(|s| {
-        let s = s.borrow();
-        let selected = int(&s.dashboard["selectedProfileId"]);
-        let mut current = String::new();
-        let rows: Vec<ProfileRow> = s
-            .profiles
-            .iter()
-            .map(|p| {
-                let id = int(&p["id"]);
-                let name = text(&p["name"]);
-                let remote = p["remote"].as_bool().unwrap_or(false);
-                if id == selected {
-                    current = name.clone();
+        "outbounds" => {
+            d.outbounds = rows(&value);
+            Mark::TOOLS
+        }
+        "stun" => {
+            d.stun = obj(&value);
+            Mark::TOOLS
+        }
+        "quality" => {
+            d.quality = obj(&value);
+            Mark::TOOLS
+        }
+        "inbox" => {
+            d.inbox = obj(&value);
+            Mark::TOOLS
+        }
+        "ping" => {
+            d.ping = obj(&value);
+            Mark::TOOLS
+        }
+        "transfers" => {
+            d.transfers = rows(&value);
+            Mark::TOOLS
+        }
+        "usbDevices" => {
+            d.usb_devices = rows(&value);
+            Mark::TOOLS
+        }
+        "terminal" => {
+            d.terminal = obj(&value);
+            Mark::TOOLS
+        }
+        "memory" => {
+            d.memory = obj(&value);
+            Mark::DASH
+        }
+        "lan" => {
+            d.lan = obj(&value);
+            Mark::DASH
+        }
+        "browserComplete" => {
+            crate::pages::tools::browser_complete(&value);
+            Mark::TOOLS
+        }
+        "dashboard" => {
+            d.dashboard = obj(&value);
+            Mark::ALL
+        }
+        "profiles" => {
+            d.profiles_revision += 1;
+            d.profile_stats.clear();
+            d.profiles = rows(&value);
+            Mark::DASH | Mark::PROFILES | Mark::SETTINGS
+        }
+        "groups" => {
+            d.groups = rows(&value);
+            Mark::DASH | Mark::PROXIES
+        }
+        "connections" => {
+            d.connections = rows(&value);
+            Mark::RECORDS
+        }
+        "logs" => {
+            let entries = rows(&value["entries"]);
+            if value["reset"] == Value::Bool(false) {
+                let first = long(&value["firstId"]);
+                let last = d.logs.last().and_then(|l| long(&l["id"])).unwrap_or(-1);
+                match first {
+                    Some(first) => d.logs.retain(|l| long(&l["id"]).unwrap_or(0) >= first),
+                    None => d.logs.clear(),
                 }
-                let core = text(&p["resolvedCore"]);
-                let core = if core.is_empty() { text(&p["core"]) } else { core };
-                let mut detail = format!("{} · {}", if remote { "订阅" } else { "本地" }, format::core_label(&core));
-                if remote {
-                    detail.push_str(" · ");
-                    detail.push_str(&format::ago(int(&p["updatedAt"]), now));
-                }
-                let total = num(&p["total"]);
-                let used = num(&p["upload"]) + num(&p["download"]);
-                let expire = int(&p["expire"]);
-                let mut usage = String::new();
-                if total > 0.0 {
-                    usage = format!("已用 {} / {}", format::bytes(used), format::bytes(total));
-                }
-                if expire > 0 {
-                    if !usage.is_empty() {
-                        usage.push_str(" · ");
+                d.logs.extend(entries.into_iter().filter(|e| long(&e["id"]).unwrap_or(0) > last));
+            } else {
+                d.logs = entries;
+            }
+            d.default_log_level = value["defaultLogLevel"].as_str().map(str::to_string);
+            Mark::RECORDS
+        }
+        "settings" => {
+            d.settings = obj(&value);
+            Mark::ALL
+        }
+        "preferences" => {
+            d.preferences = obj(&value);
+            Mark::ALL
+        }
+        "systemAccent" => {
+            if let Some(v) = long(&value) {
+                d.system_accent = v as u32;
+            }
+            Mark::THEME
+        }
+        "rates" => {
+            d.rates = obj(&value);
+            d.upload_history.push_back(num(&value["upload"]));
+            d.download_history.push_back(num(&value["download"]));
+            while d.upload_history.len() > 30 {
+                d.upload_history.pop_front();
+            }
+            while d.download_history.len() > 30 {
+                d.download_history.pop_front();
+            }
+            Mark::RATES
+        }
+        "error" => {
+            let message = text(&value);
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || report(&message));
+            Mark::NONE
+        }
+        "intentAvailable" => {
+            slint::Timer::single_shot(std::time::Duration::ZERO, || {
+                call("takeIntent", json!({}), |result| match result {
+                    Ok(Value::String(uri)) => {
+                        data_mut(|d| d.pending_intents.push_back(uri));
+                        pages::profiles::drain_intents();
                     }
-                    usage.push_str(&format!("到期 {}", format::date(expire * 1000)));
-                }
-                ProfileRow {
-                    id: id.to_string().into(),
-                    name: name.into(),
-                    detail: detail.into(),
-                    usage: usage.into(),
-                    usage_ratio: if total > 0.0 { (used / total) as f32 } else { 0.0 },
-                    remote,
-                    selected: id == selected,
-                }
-            })
-            .collect();
-        (rows, current)
-    });
-    with_window(|w| {
-        w.set_profiles(ModelRc::new(VecModel::from(rows)));
-        w.set_profile_name(current.into());
-    });
-}
-
-fn set_groups(value: Value) {
-    let list = match value {
-        Value::Array(list) => list,
-        _ => return,
-    };
-    STATE.with(|s| s.borrow_mut().groups = list);
-    refresh_groups();
-}
-
-fn refresh_groups() {
-    let rows: Vec<GroupRow> = STATE.with(|s| {
-        let s = s.borrow();
-        s.groups
-            .iter()
-            .map(|g| {
-                let tag = text(&g["tag"]);
-                let selected = text(&g["selected"]);
-                let expanded = s.expanded.get(&tag).copied().unwrap_or_else(|| g["expanded"].as_bool().unwrap_or(false));
-                let items: Vec<NodeRow> = g["items"]
-                    .as_array()
-                    .map(|items| {
-                        items
-                            .iter()
-                            .map(|n| {
-                                let node = text(&n["tag"]);
-                                let (delay, level) = format::delay(int(&n["delay"]));
-                                NodeRow {
-                                    selected: node == selected,
-                                    tag: node.into(),
-                                    kind: text(&n["type"]).into(),
-                                    delay: delay.into(),
-                                    level,
-                                }
-                            })
-                            .collect()
-                    })
-                    .unwrap_or_default();
-                let testing = s.testing.contains(&tag);
-                GroupRow {
-                    kind: if testing { "测速中".into() } else { text(&g["type"]).into() },
-                    selected: selected.into(),
-                    selectable: g["selectable"].as_bool().unwrap_or(false),
-                    expanded,
-                    items: ModelRc::new(VecModel::from(items)),
-                    tag: tag.into(),
-                }
-            })
-            .collect()
-    });
-    with_window(|w| w.set_groups(ModelRc::new(VecModel::from(rows))));
-}
-
-fn set_rates(value: &Value) {
-    let upload = format::rate(num(&value["upload"]));
-    let download = format::rate(num(&value["download"]));
-    let memory = value.get("memoryBytes").map(num);
-    with_window(|w| {
-        w.set_upload(upload.into());
-        w.set_download(download.into());
-        if let Some(memory) = memory {
-            w.set_memory(if memory > 0.0 { format::bytes(memory).into() } else { "-".into() });
+                    Ok(_) => {}
+                    Err(error) => report(&error),
+                })
+            });
+            Mark::NONE
         }
+        _ => Mark::NONE,
     });
+    pages::mark(mark);
 }
 
-fn add_logs(value: &Value) {
-    let reset = value["reset"].as_bool().unwrap_or(false);
-    let entries: Vec<LogRow> = value["entries"]
-        .as_array()
-        .map(|list| {
-            list.iter()
-                .map(|e| LogRow { level: text(&e["level"]).to_uppercase().into(), message: text(&e["message"]).into() })
-                .collect()
-        })
-        .unwrap_or_default();
-    STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        if reset {
-            s.logs.clear();
-        }
-        s.logs.extend(entries);
-        while s.logs.len() > MAX_LOGS {
-            s.logs.pop_front();
-        }
-        if let Some(model) = &s.logs_model {
-            model.set_vec(s.logs.iter().cloned().collect::<Vec<_>>());
-        }
-    });
-}
+// ---------------------------------------------------------------------------
+// Start-up
+// ---------------------------------------------------------------------------
 
-fn tick() {
-    let (status, started) = STATE.with(|s| {
-        let s = s.borrow();
-        (text(&s.dashboard["status"]), s.started_at)
-    });
-    let uptime = if status == "Started" && started > 0 { format::duration(now_ms() - started) } else { String::new() };
-    with_window(|w| w.set_uptime(uptime.into()));
-}
-
-fn load(window: &AppWindow) {
-    window.set_startup_error(SharedString::new());
+fn initialize() {
+    with_window(|w| w.global::<Nav>().set_startup_error(SharedString::new()));
     call("attach", json!({}), |_| {});
     call("ready", json!({}), |result| match result {
-        Ok(value) => {
-            let versions = format!(
-                "FK-box {} · sing-box {} · Xray {} · mihomo {}",
-                text(&value["version"]),
-                text(&value["coreVersion"]),
-                text(&value["xrayVersion"]),
-                text(&value["mihomoVersion"])
-            );
-            with_window(|w| w.set_versions(versions.into()));
-            let mut value = value;
-            set_profiles(value.get_mut("profiles").map(Value::take).unwrap_or(Value::Null));
-            set_dashboard(value.get_mut("dashboard").map(Value::take).unwrap_or(Value::Null));
-            with_window(|w| w.set_ready(true));
+        Ok(result) => {
+            data_mut(|d| {
+                d.version = text(&result["version"]);
+                d.core_version = text(&result["coreVersion"]);
+                d.xray_version = text(&result["xrayVersion"]);
+                d.mihomo_version = text(&result["mihomoVersion"]);
+                d.system_accent = long(&result["systemAccentColor"]).map(|v| v as u32).unwrap_or(0xff007aff);
+                d.dashboard = obj(&result["dashboard"]);
+                d.profiles = rows(&result["profiles"]);
+                d.settings = obj(&result["settings"]);
+                d.preferences = obj(&result["preferences"]);
+                if result["lan"].is_object() {
+                    d.lan = obj(&result["lan"]);
+                }
+                d.tool_state = obj(&result["tools"]);
+                d.stun = obj(&result["diagnostics"]["stun"]);
+                d.quality = obj(&result["diagnostics"]["quality"]);
+                if let Some(intent) = result["intent"].as_str() {
+                    d.pending_intents.push_back(intent.to_string());
+                }
+                d.ready = true;
+            });
+            with_window(|w| w.global::<Nav>().set_ready(true));
+            pages::mark(Mark::ALL);
+            pages::sync_visibility(true);
+            pages::profiles::drain_intents();
         }
-        Err(error) => with_window(|w| w.set_startup_error(error.into())),
+        Err(error) => with_window(|w| w.global::<Nav>().set_startup_error(format::clean_error(&error).into())),
     });
 }
 
 pub fn run() -> Result<(), slint::PlatformError> {
     let window = AppWindow::new()?;
-    let logs_model = Rc::new(VecModel::<LogRow>::default());
-    window.set_logs(ModelRc::from(logs_model.clone()));
-    STATE.with(|s| {
-        let mut s = s.borrow_mut();
-        s.window = window.as_weak();
-        s.logs_model = Some(logs_model);
-    });
+    WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
+    crate::theme_apply::apply();
+    crate::nav::install(&window);
+    pages::install(&window);
 
-    window.on_retry(|| with_window(load));
-    window.on_dismiss_toast(|| with_window(|w| w.set_toast(SharedString::new())));
-    window.on_tab_changed(|tab| act("setLogsVisible", json!({ "visible": tab == 3 })));
-    window.on_toggle_service(|| {
-        let status = STATE.with(|s| text(&s.borrow().dashboard["status"]));
-        match status.as_str() {
-            "Started" => act("stopService", json!({})),
-            "Stopped" | "" => act("startService", json!({})),
-            _ => {}
+    // The system language and time zone, then the bridge.
+    call("locale", json!({}), |result| {
+        if let Ok(value) = result {
+            crate::i18n::set_language(&text(&value["language"]));
+            format::set_utc_offset_minutes(long(&value["utcOffsetMinutes"]).unwrap_or(0));
+            let scale = value["fontScale"].as_f64().unwrap_or(1.0) as f32;
+            crate::theme_apply::SYSTEM_FONT_SCALE.with(|s| s.set(scale));
         }
+        pages::mark(Mark::ALL);
+        initialize();
     });
-    window.on_set_mode(|mode| act("setMode", json!({ "mode": mode.as_str() })));
-    window.on_select_profile(|id| {
-        if let Ok(id) = id.parse::<i64>() {
-            act("selectProfile", json!({ "id": id }));
-        }
-    });
-    window.on_update_profile(|id| {
-        if let Ok(id) = id.parse::<i64>() {
-            toast("正在更新订阅…");
-            call("updateProfile", json!({ "id": id }), |result| match result {
-                Ok(_) => toast("订阅已更新"),
-                Err(error) => toast(&error),
-            });
-        }
-    });
-    window.on_delete_profile(|id| {
-        if let Ok(id) = id.parse::<i64>() {
-            act("deleteProfile", json!({ "id": id }));
-        }
-    });
-    window.on_add_profile(|name, url| {
-        let url = url.trim().to_string();
-        if !(url.starts_with("http://") || url.starts_with("https://")) {
-            toast("请输入 http(s) 订阅链接");
-            return;
-        }
-        let name = name.trim().to_string();
-        let name = if name.is_empty() { "订阅".to_string() } else { name };
-        let profile = json!({ "name": name, "url": url, "autoUpdate": true, "interval": 60, "core": "auto" });
-        call("saveProfile", json!({ "profile": profile }), |result| match result {
-            Ok(_) => {
-                with_window(|w| w.set_adding(false));
-                toast("订阅已添加");
-            }
-            Err(error) => toast(&error),
-        });
-    });
-    window.on_toggle_group(|tag| {
-        let tag = tag.to_string();
-        STATE.with(|s| {
-            let mut s = s.borrow_mut();
-            let current = s
-                .expanded
-                .get(&tag)
-                .copied()
-                .or_else(|| s.groups.iter().find(|g| text(&g["tag"]) == tag).and_then(|g| g["expanded"].as_bool()))
-                .unwrap_or(false);
-            s.expanded.insert(tag, !current);
-        });
-        refresh_groups();
-    });
-    window.on_test_group(|tag| {
-        let tag = tag.to_string();
-        STATE.with(|s| s.borrow_mut().testing.insert(tag.clone()));
-        refresh_groups();
-        let done = tag.clone();
-        call("urlTest", json!({ "tag": tag }), move |result| {
-            STATE.with(|s| s.borrow_mut().testing.remove(&done));
-            refresh_groups();
-            if let Err(error) = result {
-                toast(&error);
-            }
-        });
-    });
-    window.on_select_node(|group, node| act("selectOutbound", json!({ "group": group.as_str(), "tag": node.as_str() })));
-    window.on_clear_logs(|| {
-        STATE.with(|s| {
-            let mut s = s.borrow_mut();
-            s.logs.clear();
-            if let Some(model) = &s.logs_model {
-                model.set_vec(Vec::new());
-            }
-        });
-        act("clearLogs", json!({}));
-    });
+    window.global::<Nav>().on_retry_startup(initialize);
 
-    let clock = Timer::default();
-    clock.start(TimerMode::Repeated, Duration::from_secs(1), tick);
-
-    load(&window);
+    let clock = slint::Timer::default();
+    clock.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), || pages::mark(Mark::CLOCK));
+    let _keep = Rc::new(clock);
     window.run()
 }

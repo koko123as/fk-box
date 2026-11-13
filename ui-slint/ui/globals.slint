@@ -69,6 +69,10 @@ export global Nav {
     in-out property <string> tab: "Dashboard";
     in property <bool> ready;
     in property <string> startup-error;
+    // Bumped by Rust after a route or dialog closes: the window takes key focus back for Back.
+    in property <int> focus-tick;
+    // The destinations the layout shows (HomePage destinationsOf).
+    out property <[string]> destinations: mobile ? ["Dashboard", "Proxies", "Profiles", "Tools"] : ["Dashboard", "Proxies", "Profiles", "Requests", "Logs", "Tools"];
 
     callback select-tab(string);
     callback push(string, string);
@@ -94,22 +98,31 @@ export global Nav {
     callback menu-pick(int);
     callback menu-dismiss();
 
-    // The dialog (DialogHost: confirm, input and message dialogs).
+    // The dialog (DialogHost: confirm, choice and input dialogs). The last
+    // action is the confirm button; `dialog-danger` paints it in the error colour.
     in property <bool> dialog-open;
     in property <string> dialog-title;
     in property <string> dialog-message;
-    in property <string> dialog-ok;
-    in property <string> dialog-cancel;
+    in property <bool> dialog-mono;
+    in property <[string]> dialog-actions;
     in property <bool> dialog-danger;
     in property <bool> dialog-input;
+    in property <bool> dialog-multiline;
     in property <bool> dialog-number;
     in-out property <string> dialog-text;
     in property <string> dialog-hint;
     in property <string> dialog-suffix;
     in property <string> dialog-error;
-    callback dialog-done(bool, string);
+    // A list of choices (radio rows) above the actions; -1 for none.
+    in property <[string]> dialog-options;
+    in property <int> dialog-option: -1;
+    callback dialog-action(int, string);
+    callback dialog-edited(string);
+    callback dialog-pick(int);
+    callback dialog-dismiss();
 
     // The snackbar: errors stay longer; a new message replaces the current one.
     in property <string> toast;
     in property <bool> toast-error;
+    callback dismiss-toast();
 }

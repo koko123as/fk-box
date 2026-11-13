@@ -1,0 +1,19 @@
+// Placeholder until the page is ported.
+import { Theme } from "../theme.slint";
+import { Icons } from "../icons.slint";
+import { TopBar, EmptyState } from "../kit.slint";
+export component RequestsPage inherits Rectangle {
+    background: Theme.s.surface;
+    bar := TopBar { y: 0; title: @tr("Requests"); }
+    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Requests"); }
+}
+export component LogsPage inherits Rectangle {
+    background: Theme.s.surface;
+    bar := TopBar { y: 0; title: @tr("Logs"); }
+}
+export component RequestRoutes inherits Rectangle {
+    in property <string> kind;
+    in property <string> arg;
+    in property <int> leading;
+    out property <bool> handles: false;
+}

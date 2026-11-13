@@ -1,11 +1,19 @@
 //! FK-box UI in Rust + Slint. The Go cores (libbox) and the Kotlin service and
-//! bridge layer are unchanged; this library only draws the pages.
+//! bridge layer are unchanged; this library draws the pages (a code-level port
+//! of the Jetpack Compose UI, compose/*) and drives them from BoxBridge events.
+
+#![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
 slint::include_modules!();
 
 mod app;
 mod format;
 mod host;
+mod i18n;
+mod nav;
+mod pages;
+mod theme;
+mod theme_apply;
 
 #[cfg(target_os = "android")]
 #[no_mangle]
@@ -25,8 +33,7 @@ fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
     }
 }
 
-/// Desktop preview for development: `cargo run --example preview` is not wired;
-/// the host build only type-checks the UI and runs the formatting tests.
+/// Desktop type-check entry; the host build has no Kotlin bridge.
 #[cfg(not(target_os = "android"))]
 pub fn run_without_host() -> Result<(), slint::PlatformError> {
     app::run()

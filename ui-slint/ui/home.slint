@@ -1,0 +1,119 @@
+// The home page (pages/HomePage.kt): Dashboard, Proxies, Profiles and Tools
+// on a Material 3 navigation bar on phones; on wider windows a navigation
+// rail that adds Requests and Logs. A destination change is instant; the core
+// pages stay instantiated behind the shown one, Requests and Logs only while shown.
+
+import { Theme, TextRole } from "theme.slint";
+import { Icons, Glyph } from "icons.slint";
+import { Nav } from "globals.slint";
+import { Icon, T } from "kit.slint";
+import { DashboardPage } from "pages/dashboard.slint";
+import { ProxiesPage } from "pages/proxies.slint";
+import { ProfilesPage } from "pages/profiles.slint";
+import { ToolsPage } from "pages/tools.slint";
+import { RequestsPage, LogsPage } from "pages/requests.slint";
+
+global Destinations {
+    public pure function glyph(label: string) -> Glyph {
+        if (label == "Dashboard") { return Icons.dashboard; }
+        if (label == "Proxies") { return Icons.proxies; }
+        if (label == "Profiles") { return Icons.profiles; }
+        if (label == "Requests") { return Icons.requests; }
+        if (label == "Logs") { return Icons.logs; }
+        return Icons.tools;
+    }
+
+    public pure function label(label: string) -> string {
+        if (label == "Dashboard") { return @tr("Dashboard"); }
+        if (label == "Proxies") { return @tr("Proxies"); }
+        if (label == "Profiles") { return @tr("Profiles"); }
+        if (label == "Requests") { return @tr("Requests"); }
+        if (label == "Logs") { return @tr("Logs"); }
+        return @tr("Tools");
+    }
+}
+
+// NavigationBarItem / NavigationRailItem: the indicator pill behind the icon.
+component DestinationItem inherits Rectangle {
+    in property <string> key;
+    in property <bool> selected;
+    in property <bool> rail;
+    callback clicked();
+    accessible-role: tab;
+    accessible-label: Destinations.label(key);
+    VerticalLayout {
+        alignment: center;
+        spacing: 4px;
+        Rectangle {
+            width: 56px;
+            height: 32px;
+            x: (parent.width - self.width) / 2;
+            border-radius: 16px;
+            background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+            Icon {
+                glyph: Destinations.glyph(root.key);
+                color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            }
+        }
+        T {
+            text: Destinations.label(root.key);
+            role: TextRole.caption1;
+            emphasized: root.selected;
+            color: root.selected ? Theme.s.on-surface : Theme.s.on-surface-variant;
+            horizontal-alignment: center;
+        }
+    }
+    ta := TouchArea { clicked => { root.clicked(); } }
+}
+
+component Pages inherits Rectangle {
+    property <string> current: Nav.tab;
+    clip: true;
+    DashboardPage { visible: current == "Dashboard"; }
+    ProxiesPage { visible: current == "Proxies"; }
+    ProfilesPage { visible: current == "Profiles"; }
+    ToolsPage { visible: current == "Tools"; }
+    if current == "Requests": RequestsPage { }
+    if current == "Logs": LogsPage { }
+}
+
+export component HomePage inherits Rectangle {
+    background: Theme.s.surface;
+    if Nav.mobile: VerticalLayout {
+        Pages { vertical-stretch: 1; }
+        // NavigationBar: 80 dp over the system navigation bar.
+        Rectangle {
+            height: 80px + Nav.inset-bottom;
+            background: Theme.s.surface-container;
+            HorizontalLayout {
+                padding-bottom: Nav.inset-bottom;
+                for d in Nav.destinations: DestinationItem {
+                    key: d;
+                    selected: d == Nav.tab;
+                    clicked => { Nav.select-tab(d); }
+                }
+            }
+        }
+    }
+    if !Nav.mobile: HorizontalLayout {
+        // NavigationRail, then a VerticalDivider.
+        Rectangle {
+            width: 80px;
+            background: Theme.s.surface;
+            VerticalLayout {
+                padding-top: 8px;
+                alignment: start;
+                spacing: 12px;
+                for d in Nav.destinations: DestinationItem {
+                    key: d;
+                    rail: true;
+                    height: 56px;
+                    selected: d == Nav.tab;
+                    clicked => { Nav.select-tab(d); }
+                }
+            }
+        }
+        Rectangle { width: 1px; background: Theme.s.outline-variant; }
+        Pages { horizontal-stretch: 1; }
+    }
+}

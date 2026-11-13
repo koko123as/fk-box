@@ -1,0 +1,15 @@
+// Placeholder until the page is ported.
+import { Theme } from "../theme.slint";
+import { Icons } from "../icons.slint";
+import { TopBar, EmptyState } from "../kit.slint";
+export component ToolsPage inherits Rectangle {
+    background: Theme.s.surface;
+    bar := TopBar { y: 0; title: @tr("Tools"); }
+    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Tools"); }
+}
+export component ToolRoutes inherits Rectangle {
+    in property <string> kind;
+    in property <string> arg;
+    in property <int> leading;
+    out property <bool> handles: false;
+}

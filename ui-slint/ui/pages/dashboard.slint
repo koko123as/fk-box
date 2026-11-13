@@ -24,7 +24,7 @@ component StartToggle inherits Rectangle {
         border-radius: parent.border-radius;
         background: ta.pressed ? Theme.s.on-primary.with-alpha(0.12) : transparent;
     }
-    if root.busy: Spinner { size: root.size * 0.36; color: Theme.s.on-primary; }
+    if root.busy: Spinner { size: root.size * 0.36; tint: Theme.s.on-primary; }
     if !root.busy: Icon {
         glyph: root.running ? Icons.pause : Icons.start;
         size: root.size * 0.4;
@@ -49,7 +49,7 @@ component CountryBadge inherits Rectangle {
     height: size;
     border-radius: size / 2;
     background: Theme.level(3);
-    if root.checking: Spinner { size: root.size * 0.5; color: root.fg; }
+    if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
     if !root.checking && root.country != "": T {
         text: root.country;
         role: TextRole.footnote;
@@ -154,10 +154,10 @@ export component StatusPanel inherits Rectangle {
                         if !(Dash.egress-failed && Dash.egress-ip == ""): HorizontalLayout {
                             alignment: start;
                             spacing: 6px;
-                            if Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "": Skeleton { width: 48px; pill-height: 28px; }
-                            if Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "": Skeleton { width: 72px; pill-height: 28px; }
-                            if !(Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == ""): Chip { label: Dash.egress-type; large: true; }
-                            if !(Dash.egress-skeleton || Dash.organization-loading && Dash.egress-ip == "") && Dash.egress-quality != "": Chip {
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 48px; pill-height: 28px; }
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 72px; pill-height: 28px; }
+                            if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")): Chip { label: Dash.egress-type; large: true; }
+                            if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")) && Dash.egress-quality != "": Chip {
                                 label: @tr("Quality") + " " + Dash.egress-quality;
                                 large: true;
                                 tone: Dash.egress-quality-tone;
@@ -197,7 +197,7 @@ export component StatusPanel inherits Rectangle {
 component LineChart inherits Rectangle {
     in property <string> line;
     in property <string> area;
-    in property <color> color;
+    in property <color> tint;
     in property <float> span: 31;
     clip: true;
     if root.area != "": Path {
@@ -206,7 +206,7 @@ component LineChart inherits Rectangle {
         viewbox-width: root.span;
         viewbox-height: 1000;
         commands: root.area;
-        fill: root.color.with-alpha(0.14);
+        fill: root.tint.with-alpha(0.14);
         stroke-width: 0;
     }
     if root.line != "": Path {
@@ -216,7 +216,7 @@ component LineChart inherits Rectangle {
         viewbox-height: 1000;
         commands: root.line;
         fill: transparent;
-        stroke: root.color;
+        stroke: root.tint;
         stroke-width: 2px;
     }
 }
@@ -238,7 +238,7 @@ component SpeedTile inherits Rectangle {
         span: Dash.chart-width;
         line: root.upload ? Dash.up-line : Dash.down-line;
         area: root.upload ? Dash.up-area : Dash.down-area;
-        color: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
+        tint: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
     }
     VerticalLayout {
         x: 16px;
@@ -533,20 +533,20 @@ export component MemorySummary inherits VerticalLayout {
         emphasized: true;
     }
     Rectangle { height: 14px; }
-    Rectangle {
+    bar := Rectangle {
         height: 8px;
         border-radius: 4px;
         clip: true;
         background: Theme.level(3);
         property <float> sum: Dash.memory-app-weight + Dash.memory-core-weight;
-        if parent.sum > 0 && !Dash.memory-remote: Rectangle {
+        if bar.sum > 0 && !Dash.memory-remote: Rectangle {
             x: 0;
-            width: (parent.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 ? 2px : 0)) * Dash.memory-app-weight / parent.sum;
+            width: (bar.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 ? 2px : 0)) * Dash.memory-app-weight / bar.sum;
             background: Theme.s.primary;
         }
-        if parent.sum > 0: Rectangle {
-            width: (parent.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 && !Dash.memory-remote ? 2px : 0)) * Dash.memory-core-weight / parent.sum;
-            x: parent.width - self.width;
+        if bar.sum > 0: Rectangle {
+            width: (bar.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 && !Dash.memory-remote ? 2px : 0)) * Dash.memory-core-weight / bar.sum;
+            x: bar.width - self.width;
             background: Theme.s.primary.mix(Theme.level(1), 0.45);
         }
     }
@@ -603,7 +603,7 @@ export component LanProxyRow inherits Rectangle {
             glyph: Icons.wifi;
             size: 38px;
             container: root.value ? Theme.s.primary : Theme.level(1);
-            color: root.value ? Theme.s.on-primary : Theme.s.on-surface-variant;
+            tint: root.value ? Theme.s.on-primary : Theme.s.on-surface-variant;
             y: (parent.height - self.height) / 2;
         }
         VerticalLayout {
@@ -680,7 +680,7 @@ export component SystemProxyPanel inherits Panel {
             glyph: Icons.system-proxy;
             size: 48px;
             container: Dash.system-proxy ? Theme.s.primary : Theme.level(2);
-            color: Dash.system-proxy ? Theme.s.on-primary : Theme.s.on-surface-variant;
+            tint: Dash.system-proxy ? Theme.s.on-primary : Theme.s.on-surface-variant;
             y: (parent.height - self.height) / 2;
         }
         VerticalLayout {
@@ -805,7 +805,7 @@ export component DashboardPage inherits Rectangle {
     Flickable {
         y: bar.height;
         height: parent.height - bar.height;
-        viewport-height: body.preferred-height;
+        content-height: body.preferred-height;
         body := VerticalLayout {
             property <length> side: max(16px, (root.width - 560px) / 2);
             padding-left: side;
@@ -868,7 +868,7 @@ export component EgressPage inherits ScrollPage {
     title: @tr("Outbound IP");
     actions: [{ id: "egress-copy", glyph: Icons.copy, tooltip: @tr("Copy"), enabled: Dash.egress-ip != "" }];
     action(id) => { Nav.act(id, ""); }
-    SectionTitle { text: ""; first: true; height: 8px; }
+    SectionTitle { first: true; }
     VerticalLayout {
         for r[i] in Dash.egress-rows: ListItem {
             position: Dash.egress-rows.length == 1 ? 4 : i == 0 ? 1 : i == Dash.egress-rows.length - 1 ? 3 : 2;

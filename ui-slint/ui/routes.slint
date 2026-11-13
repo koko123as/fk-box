@@ -1,0 +1,70 @@
+// The routes over the home page (ui/Navigator.kt NavigatorHost,
+// NestedNavigatorHost, PageRoute, FormPage, FormCard). On a phone every route
+// fills the window; on wider windows a pushed page stays in the content pane
+// of the destination it was pushed from, and a form is a card centred over a
+// scrim that dismisses it. Pages pushed inside a form stay in its card.
+
+import { Theme, TextRole } from "theme.slint";
+import { Icons } from "icons.slint";
+import { Nav, Route } from "globals.slint";
+import { T, ScrollPage, EmptyState, RouteSurface } from "kit.slint";
+import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage } from "pages/dashboard.slint";
+import { ProxiesPage, NodeDetailsPage } from "pages/proxies.slint";
+import { ProfileRoutes } from "pages/profiles.slint";
+import { ToolRoutes } from "pages/tools.slint";
+import { SettingRoutes } from "pages/settings.slint";
+import { RequestRoutes } from "pages/requests.slint";
+
+// One route's page, by kind.
+component RoutePage inherits Rectangle {
+    in property <Route> route;
+    property <int> leading: route.sheet-root ? 2 : 1;
+    property <string> k: route.kind;
+    property <bool> known: k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details"
+        || profiles.handles || tools.handles || settings.handles || requests.handles;
+    background: Theme.s.surface;
+    TouchArea { }
+    if k == "memory": MemoryPage { leading: root.leading; }
+    if k == "egress": EgressPage { leading: root.leading; }
+    if k == "intranet": IntranetPage { leading: root.leading; }
+    if k == "lan-add": NewLanProxyPage { leading: root.leading; }
+    if k == "proxies": ProxiesPage { form: true; }
+    if k == "node-details": NodeDetailsPage { leading: root.leading; }
+    profiles := ProfileRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
+    tools := ToolRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
+    settings := SettingRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
+    requests := RequestRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
+    if !root.known: ScrollPage {
+        title: root.k;
+        leading: root.leading;
+        EmptyState { glyph: Icons.info; title: @tr("Unavailable"); }
+    }
+}
+
+export component RouteHost inherits Rectangle {
+    property <length> pane-x: Nav.mobile ? 0px : 81px;
+    for r[i] in Nav.routes: Rectangle {
+        // A page of the destination shown (or of the root navigator).
+        if !r.form && (Nav.mobile || r.pane < 0 || Nav.destinations[r.pane] == Nav.tab): RoutePage {
+            x: r.pane < 0 ? 0px : root.pane-x;
+            width: root.width - self.x;
+            height: root.height;
+            route: r;
+        }
+        // A form: full screen on a phone; a card over a scrim elsewhere.
+        if r.form && Nav.mobile: RoutePage { route: r; }
+        if r.form && !Nav.mobile && r.sheet-root: Rectangle {
+            background: Theme.s.scrim.with-alpha(0.32);
+            TouchArea { clicked => { Nav.dismiss-form(r.id); } }
+        }
+        if r.form && !Nav.mobile: Rectangle {
+            width: min(580px, root.width * 0.9);
+            height: min(720px, (root.height - Nav.keyboard-height) * 0.85);
+            x: (root.width - self.width) / 2;
+            y: (root.height - Nav.keyboard-height - self.height) / 2;
+            border-radius: Theme.radius;
+            clip: true;
+            RoutePage { route: r; }
+        }
+    }
+}
