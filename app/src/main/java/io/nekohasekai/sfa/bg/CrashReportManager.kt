@@ -41,6 +41,7 @@ object CrashReportManager {
     private const val METADATA_FILE_NAME = "metadata.json"
     private const val GO_LOG_FILE_NAME = "go.log"
     private const val JVM_LOG_FILE_NAME = "jvm.log"
+    private const val UI_PANIC_FILE_NAME = "fkui-panic.txt"
     private const val CONFIG_FILE_NAME = "configuration.json"
     private const val READ_MARKER_FILE_NAME = ".read"
     private const val CRASH_REPORTS_DIR_NAME = "crash_reports"
@@ -222,9 +223,13 @@ object CrashReportManager {
         if (!includeConfig) {
             File(strippedDir, CONFIG_FILE_NAME).delete()
         }
+        // jvm.log is the crash's stack trace, not a log: it stays in every export.
         if (!includeLog) {
             File(strippedDir, GO_LOG_FILE_NAME).delete()
-            File(strippedDir, JVM_LOG_FILE_NAME).delete()
+        }
+        // The UI's latest panic (Rust, written by libfkui's panic hook) as plain text.
+        File(Application.application.filesDir, UI_PANIC_FILE_NAME).takeIf { it.isFile }?.let {
+            runCatching { it.copyTo(File(strippedDir, UI_PANIC_FILE_NAME), overwrite = true) }
         }
         Libbox.createZipArchive(strippedDir.path, zipFile.path, useAgeEncryption)
         zipFile

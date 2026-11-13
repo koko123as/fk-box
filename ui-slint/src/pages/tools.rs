@@ -347,7 +347,7 @@ struct ReportExport {
 fn open_report(kind: &'static str, id: String, on_closed: Rc<dyn Fn()>) {
     let files: LoadedRef = Rc::new(RefCell::new(Loaded::default()));
     reload(&files, "reports.files", json!({ "kind": kind, "id": id }));
-    let ex = Rc::new(RefCell::new(ReportExport { config: false, logs: true, encrypt: true, busy: false }));
+    let ex = Rc::new(RefCell::new(ReportExport { config: false, logs: true, encrypt: false, busy: false }));
     let route = rows::push(move || {
         let f = files.borrow();
         let e = ex.borrow();
@@ -399,7 +399,13 @@ fn open_report(kind: &'static str, id: String, on_closed: Rc<dyn Fn()>) {
         let a = ex.clone();
         rows.push(Row::switch(&tr("Include logs"), e.logs, move |v| a.borrow_mut().logs = v).key("logs"));
         let a = ex.clone();
-        rows.push(Row::switch(&tr("Encrypt for sing-box maintainers"), e.encrypt, move |v| a.borrow_mut().encrypt = v).key("encrypt"));
+        // Off by default: the key belongs to the sing-box maintainers, so an
+        // encrypted archive cannot be read by FK-box or the user.
+        rows.push(
+            Row::switch(&tr("Encrypt for sing-box maintainers"), e.encrypt, move |v| a.borrow_mut().encrypt = v)
+                .subtitle(&tr("Only the sing-box maintainers can open an encrypted archive. Leave off to send the report anywhere else."))
+                .key("encrypt"),
+        );
         let a = ex.clone();
         let id_x = id.clone();
         rows.push(
