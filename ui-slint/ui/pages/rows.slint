@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { SettingRow, PageData } from "../data.slint";
-import { Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton } from "../kit.slint";
 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
@@ -52,18 +52,18 @@ export component RowView inherits Rectangle {
                     Nav.act2("row", root.key, root.entry.value);
                 }
             }
-            if root.entry.kind == "radio": Radio { selected: root.entry.checked; y: (parent.height - self.height) / 2; }
-            if root.entry.loading: Spinner { size: 24px; y: (parent.height - self.height) / 2; }
-            if root.entry.kind == "switch": Switch {
+            if root.entry.kind == "radio": Mid { Radio { selected: root.entry.checked;  } }
+            if root.entry.loading: Mid { Spinner { size: 24px;  } }
+            if root.entry.kind == "switch": Mid { Switch {
                 checked: root.entry.checked;
                 enabled: root.entry.enabled && root.entry.clickable;
-                y: (parent.height - self.height) / 2;
+                
                 toggled(v) => { Nav.act2("row", root.key, v ? "1" : "0"); }
-            }
-            if root.entry.kind == "check": CheckBox { checked: root.entry.checked; y: (parent.height - self.height) / 2; }
-            if root.entry.has-trailing: IconButton {
+            } }
+            if root.entry.kind == "check": Mid { CheckBox { checked: root.entry.checked;  } }
+            if root.entry.has-trailing: Mid { IconButton {
                 glyph: root.entry.trailing-glyph;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => {
                     if (root.entry.menu) {
                         Nav.open-menu("row:" + root.key, self.absolute-position.x + self.width, self.absolute-position.y + self.height);
@@ -71,7 +71,7 @@ export component RowView inherits Rectangle {
                         Nav.act2("row-trail", root.key, "");
                     }
                 }
-            }
+            } }
         }
         // ReorderableColumn: drag the SortHandle; the row follows the finger and
         // lands by whole rows when released.
@@ -88,12 +88,12 @@ export component RowView inherits Rectangle {
                 clickable: root.entry.clickable;
                 level: handle.pressed ? 2 : 1;
                 clicked => { Nav.act2("row-done", root.key, ""); }
-                if root.entry.hint == "switch": Switch {
+                if root.entry.hint == "switch": Mid { Switch {
                     checked: root.entry.checked;
                     enabled: root.entry.enabled;
-                    y: (parent.height - self.height) / 2;
+                    
                     toggled(v) => { Nav.act2("row-edit", root.key, v ? "1" : "0"); }
-                }
+                } }
                 Rectangle {
                     width: 40px;
                     Icon { glyph: Icons.drag-handle; color: Theme.s.on-surface-variant; }
@@ -112,23 +112,28 @@ export component RowView inherits Rectangle {
         if entry.kind == "segments": Rectangle {
             height: 40px;
             border-radius: 20px;
-            border-width: 1px;
-            border-color: Theme.s.outline;
-            clip: true;
             HorizontalLayout {
                 for l[i] in root.entry.options: Rectangle {
                     background: i == root.entry.lines ? Theme.s.secondary-container : transparent;
+                    // Equal widths (SegmentedButton weight 1); the ends carry the row's rounded corners.
+                    horizontal-stretch: 1;
+                    preferred-width: 0px;
+                    border-top-left-radius: i == 0 ? 20px : 0px;
+                    border-bottom-left-radius: i == 0 ? 20px : 0px;
+                    border-top-right-radius: i == root.entry.options.length - 1 ? 20px : 0px;
+                    border-bottom-right-radius: i == root.entry.options.length - 1 ? 20px : 0px;
                     if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
                     HorizontalLayout {
                         alignment: center;
                         spacing: 6px;
-                        if i == root.entry.lines: Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; y: (parent.height - self.height) / 2; }
+                        if i == root.entry.lines: Mid { Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container;  } }
                         T { text: l; role: TextRole.subheadline; emphasized: true; vertical-alignment: center; horizontal-stretch: 0;
                             color: i == root.entry.lines ? Theme.s.on-secondary-container : Theme.s.on-surface; }
                     }
                     TouchArea { clicked => { Nav.act2("row", root.key, i); } }
                 }
             }
+            Rectangle { border-radius: 20px; border-width: 1px; border-color: Theme.s.outline; }
         }
         // TonalChip flow (a row of chips that wrap), each picks its label.
         if entry.kind == "chips": Rectangle {
@@ -242,24 +247,24 @@ export component RowView inherits Rectangle {
                     HorizontalLayout {
                         spacing: 8px;
                         if root.entry.value != "": T { text: root.entry.value; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
-                        for l[i] in root.entry.options: Rectangle {
+                        for l[i] in root.entry.options: Mid { Rectangle {
                             height: lt.preferred-height + 2px;
                             width: lt.preferred-width + 12px;
-                            y: (parent.height - self.height) / 2;
+                            
                             border-radius: Theme.radius;
                             background: root.entry.lines == 2 && i == 0 ? Theme.s.error-container : root.entry.lines == 1 && i == 0 ? Theme.s.warning-container : Theme.level(3);
                             lt := T { text: l; role: TextRole.caption1; emphasized: true; horizontal-stretch: 0;
                                 color: root.entry.lines == 2 && i == 0 ? Theme.s.on-error-container : root.entry.lines == 1 && i == 0 ? Theme.s.on-warning-container : Theme.s.on-surface-variant; }
                             TouchArea { clicked => { Nav.act2("row-edit", root.key, "l" + i); } }
-                        }
+                        } }
                         Rectangle { horizontal-stretch: 1; }
-                        if root.entry.has-trailing: IconButton {
+                        if root.entry.has-trailing: Mid { IconButton {
                             glyph: root.entry.trailing-glyph;
                             width: 28px;
                             height: 28px;
-                            y: (parent.height - self.height) / 2;
+                            
                             clicked => { Nav.act2("row-trail", root.key, ""); }
-                        }
+                        } }
                     }
                     if root.entry.title != "": TextInput {
                         text: root.entry.title;
@@ -282,20 +287,20 @@ export component RowView inherits Rectangle {
                             vertical-alignment: center;
                             TouchArea { clicked => { Nav.act2("row-edit", root.key, "r"); } }
                         }
-                        if root.entry.detail != "": Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+                        if root.entry.detail != "": Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant;  } }
                         for c[i] in root.entry.chain: HorizontalLayout {
                             spacing: 6px;
-                            if i > 0: Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
-                            Rectangle {
+                            if i > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant;  } }
+                            Mid { Rectangle {
                                 height: cl.preferred-height + 2px;
                                 width: cl.preferred-width + 12px;
-                                y: (parent.height - self.height) / 2;
+                                
                                 border-radius: Theme.radius;
                                 background: i == root.entry.chain.length - 1 ? Theme.s.primary.with-alpha(0.12) : Theme.level(3);
                                 cl := T { text: c; role: TextRole.caption1; emphasized: true; horizontal-stretch: 0;
                                     color: i == root.entry.chain.length - 1 ? Theme.s.primary : Theme.s.on-surface-variant; }
                                 TouchArea { clicked => { Nav.act2("row-edit", root.key, "c" + i); } }
-                            }
+                            } }
                         }
                     }
                     if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.footnote; color: Theme.s.on-surface-variant; wrap: word-wrap; }
@@ -314,7 +319,7 @@ export component RowView inherits Rectangle {
                 T { text: root.entry.title; role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
                 T { text: "(" + root.entry.value + ")"; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
                 if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.footnote; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
-                Icon { glyph: root.entry.checked ? Icons.chevron-down : Icons.chevron-forward; size: 20px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+                Mid { Icon { glyph: root.entry.checked ? Icons.chevron-down : Icons.chevron-forward; size: 20px; color: Theme.s.on-surface-variant;  } }
             }
         }
         if entry.kind == "card": Card {
@@ -330,7 +335,7 @@ export component RowView inherits Rectangle {
                 padding-top: 10px;
                 padding-bottom: 10px;
                 spacing: 16px;
-                if root.entry.has-glyph: Icon { glyph: root.entry.glyph; y: (parent.height - self.height) / 2; color: Theme.s.on-surface-variant; }
+                if root.entry.has-glyph: Mid { Icon { glyph: root.entry.glyph;  color: Theme.s.on-surface-variant; } }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     alignment: center;
@@ -344,11 +349,11 @@ export component RowView inherits Rectangle {
                     }
                 }
                 if root.entry.value != "": T { text: root.entry.value; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
-                if root.entry.menu: IconButton {
+                if root.entry.menu: Mid { IconButton {
                     glyph: Icons.more;
-                    y: (parent.height - self.height) / 2;
+                    
                     clicked => { Nav.open-menu("row:" + root.key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
-                }
+                } }
             }
         }
         // FormRow: the label on the left, the field filling the rest.
@@ -368,7 +373,7 @@ export component RowView inherits Rectangle {
                 padding-bottom: 8px;
                 spacing: 16px;
                 T { text: root.entry.title; horizontal-stretch: 0; min-width: min(self.preferred-width, 140px); }
-                Field {
+                Mid { horizontal-stretch: 1; Field {
                     outlined: false;
                     horizontal-stretch: 1;
                     text: root.entry.value;
@@ -377,10 +382,10 @@ export component RowView inherits Rectangle {
                     enabled: root.entry.enabled;
                     align: TextHorizontalAlignment.right;
                     input-type: root.entry.secret ? InputType.password : root.entry.number ? InputType.number : InputType.text;
-                    y: (parent.height - self.height) / 2;
+                    
                     edited(t) => { Nav.act2("row-edit", root.key, t); }
                     accepted(t) => { Nav.act2("row-done", root.key, t); }
-                }
+                } }
                 if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.subheadline; horizontal-stretch: 0; }
             }
             if !bottom: Rectangle {
@@ -553,16 +558,16 @@ export component RowsPage inherits Rectangle {
             padding-top: 6px;
             padding-bottom: 6px;
             spacing: 12px;
-            Icon { glyph: root.d.foot-glyph; size: 20px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+            Mid { Icon { glyph: root.d.foot-glyph; size: 20px; color: Theme.s.on-surface-variant;  } }
             T { text: root.d.foot-text; role: TextRole.footnote; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
-            if root.d.foot-chip != "": Rectangle {
-                y: (parent.height - self.height) / 2;
+            if root.d.foot-chip != "": Mid { Rectangle {
+                
                 height: chip.preferred-height + 8px;
                 width: chip.preferred-width + 24px;
                 border-radius: self.height / 2;
                 background: Theme.s.primary.with-alpha(0.15);
                 chip := T { text: root.d.foot-chip; role: TextRole.footnote; emphasized: true; color: Theme.s.primary; horizontal-stretch: 0; }
-            }
+            } }
             if root.d.foot-button != "": Button {
                 label: root.d.foot-button;
                 kind: 0;

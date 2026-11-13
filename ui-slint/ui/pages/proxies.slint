@@ -6,7 +6,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Proxies, GroupRow, NodeRow } from "../data.slint";
-import { Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem } from "../kit.slint";
+import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem } from "../kit.slint";
 
 // ProxyCardMetrics
 global Metrics {
@@ -219,16 +219,16 @@ component GroupHeader inherits Rectangle {
             }
             if root.expanded: HorizontalLayout {
                 spacing: 0px;
-                TonalIconButton {
+                Mid { TonalIconButton {
                     glyph: Icons.locate;
                     tooltip: @tr("Scroll to selected");
                     grouped: true;
                     size: 36px;
                     icon-size: 19px;
-                    y: (parent.height - self.height) / 2;
+                    
                     clicked => { Nav.act("locate-group", root.group.tag); }
-                }
-                TonalIconButton {
+                } }
+                Mid { TonalIconButton {
                     glyph: Icons.bolt;
                     tooltip: @tr("Test latency");
                     grouped: true;
@@ -236,9 +236,9 @@ component GroupHeader inherits Rectangle {
                     icon-size: 20px;
                     loading: root.group.testing;
                     enabled: App.running;
-                    y: (parent.height - self.height) / 2;
+                    
                     clicked => { Nav.act("test-group", root.group.tag); }
-                }
+                } }
             }
             if !root.expanded: T {
                 text: root.group.kind;
@@ -248,14 +248,14 @@ component GroupHeader inherits Rectangle {
                 horizontal-stretch: 0;
             }
             Rectangle { width: 6px; }
-            TonalIconButton {
+            Mid { TonalIconButton {
                 glyph: root.expanded ? Icons.arrow-up : Icons.caret-down;
                 tooltip: root.expanded ? @tr("Show less") : @tr("Show more");
                 size: 36px;
                 icon-size: 20px;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act("toggle-group", root.group.tag); }
-            }
+            } }
         }
     }
 }

@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
-import { Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField } from "../kit.slint";
 
 // The expiry date on a tinted pill (SubscriptionExpireChip) and the core chip.
 component TonePill inherits Rectangle {
@@ -44,12 +44,12 @@ component ProfileCard inherits Card {
             HorizontalLayout {
                 spacing: 8px;
                 T { text: root.p.name; role: TextRole.headline; horizontal-stretch: 0; min-width: 40px; }
-                if root.p.days != "": TonePill { label: root.p.days; tone: root.tone; y: (parent.height - self.height) / 2; }
+                if root.p.days != "": Mid { TonePill { label: root.p.days; tone: root.tone;  } }
                 Rectangle { horizontal-stretch: 1; }
             }
             HorizontalLayout {
                 spacing: 6px;
-                if root.p.core != "": TonePill { label: root.p.core; tone: Theme.s.secondary; y: (parent.height - self.height) / 2; }
+                if root.p.core != "": Mid { TonePill { label: root.p.core; tone: Theme.s.secondary;  } }
                 T { text: root.p.source; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 1; }
             }
             if root.p.has-usage: Rectangle {
@@ -67,9 +67,9 @@ component ProfileCard inherits Card {
         HorizontalLayout {
             spacing: 8px;
             alignment: end;
-            if root.p.updating: Spinner { size: 24px; y: (parent.height - self.height) / 2; }
+            if root.p.updating: Mid { Spinner { size: 24px;  } }
             if !root.p.updating: T { text: root.p.updated; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 0; }
-            if root.p.selected: SelectionBadge { size: 24px; y: (parent.height - self.height) / 2; }
+            if root.p.selected: Mid { SelectionBadge { size: 24px;  } }
         }
     }
 }
@@ -149,7 +149,7 @@ export component CodeEditorPage inherits Rectangle {
                 text <=> Profiles.editor-find;
                 edited(t) => { Nav.act("editor-find", t); }
             }
-            IconButton { glyph: Icons.arrow-down; tooltip: @tr("Search"); y: (parent.height - self.height) / 2; clicked => { Nav.act("editor-next", Profiles.editor-find); } }
+            Mid { IconButton { glyph: Icons.arrow-down; tooltip: @tr("Search");  clicked => { Nav.act("editor-next", Profiles.editor-find); } } }
         }
         if Profiles.editor-error != "": Rectangle {
             background: Theme.s.error-container;

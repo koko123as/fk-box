@@ -23,6 +23,14 @@ export component Icon inherits Text {
     accessible-role: none;
 }
 
+// Centres its child vertically inside a row layout (a layout ignores a child's own y).
+export component Mid {
+    VerticalLayout {
+        alignment: center;
+        @children
+    }
+}
+
 // Text in one of the AppTextStyle roles.
 export component T inherits Text {
     in property <TextRole> role: TextRole.body;
@@ -154,12 +162,12 @@ export component Button inherits Rectangle {
         padding-right: self.padding-left;
         spacing: 8px;
         alignment: center;
-        if root.has-glyph: Icon {
+        if root.has-glyph: Mid { Icon {
             glyph: root.glyph;
             size: 18px;
-            y: (parent.height - self.height) / 2;
+            
             color: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(0.38);
-        }
+        } }
         label-text := T {
             text: root.label;
             role: TextRole.subheadline;
@@ -354,12 +362,11 @@ export component PanelTitle inherits HorizontalLayout {
     in property <Glyph> glyph;
     height: max(26px, Theme.sp(26));
     spacing: 8px;
-    Icon {
+    Mid { Icon {
         glyph: root.glyph;
         size: 18px;
-        y: (parent.height - 18px) / 2;
         color: Theme.s.on-surface-variant;
-    }
+    } }
     T {
         text: root.title;
         role: TextRole.subheadline;
@@ -466,17 +473,17 @@ export component ListItem inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 16px;
-        if root.has-leading-image: Image {
+        if root.has-leading-image: Mid { Image {
             source: root.leading-image;
             width: 48px;
             height: 48px;
-            y: (parent.height - self.height) / 2;
-        }
-        if root.has-leading && !root.has-leading-image: Icon {
+            
+        } }
+        if root.has-leading && !root.has-leading-image: Mid { Icon {
             glyph: root.leading;
             color: Theme.s.on-surface-variant;
-            y: (parent.height - self.height) / 2;
-        }
+            
+        } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
@@ -501,11 +508,11 @@ export component ListItem inherits Rectangle {
             min-width: 24px;
         }
         @children
-        if root.chevron: Icon {
+        if root.chevron: Mid { Icon {
             glyph: Icons.chevron-forward;
             color: Theme.s.on-surface-variant;
-            y: (parent.height - self.height) / 2;
-        }
+            
+        } }
     }
     if root.position != 0 && !root.bottom: Rectangle {
         x: root.has-leading ? 56px : 16px;
@@ -534,17 +541,17 @@ export component SectionTitle inherits Rectangle {
 }
 
 // ListFooter
-export component Footer inherits Rectangle {
+export component Footer inherits VerticalLayout {
     in property <string> text;
-    height: t.preferred-height + 8px;
-    t := T {
-        x: 16px;
-        y: 8px;
-        width: parent.width - 32px;
-        height: self.preferred-height;
+    // In a layout, so the wrapped text gets its height for the real width.
+    padding-left: 16px;
+    padding-right: 16px;
+    padding-top: 8px;
+    T {
         text: root.text;
         role: TextRole.footnote;
         color: Theme.s.on-surface-variant;
+        vertical-alignment: top;
         wrap: word-wrap;
     }
 }
@@ -565,11 +572,13 @@ export component EmptyState inherits VerticalLayout {
     padding-right: 24px;
     spacing: 12px;
     alignment: center;
-    Icon {
-        glyph: root.glyph;
-        size: 48px;
-        color: Theme.s.on-surface-variant;
-        x: (parent.width - self.width) / 2;
+    HorizontalLayout {
+        alignment: center;
+        Icon {
+            glyph: root.glyph;
+            size: 48px;
+            color: Theme.s.on-surface-variant;
+        }
     }
     T {
         text: root.title;
@@ -677,7 +686,7 @@ export component SearchField inherits Rectangle {
         padding-left: 12px;
         padding-right: 8px;
         spacing: 8px;
-        Icon { glyph: Icons.search; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+        Mid { Icon { glyph: Icons.search; color: Theme.s.on-surface-variant;  } }
         f := Field {
             outlined: false;
             text <=> root.text;
@@ -685,13 +694,13 @@ export component SearchField inherits Rectangle {
             horizontal-stretch: 1;
             edited(t) => { root.edited(t); }
         }
-        if root.text != "": IconButton {
+        if root.text != "": Mid { IconButton {
             glyph: Icons.clear-field;
             size: 32px;
             icon-size: 20px;
-            y: (parent.height - self.height) / 2;
+            
             clicked => { root.text = ""; root.edited(""); }
-        }
+        } }
     }
 }
 
@@ -724,31 +733,31 @@ export component TopBar inherits Rectangle {
             padding-left: root.leading == 0 && !root.searching ? 16px : 4px;
             padding-right: 4px;
             spacing: 4px;
-            if root.searching: IconButton {
+            if root.searching: Mid { IconButton {
                 glyph: Icons.back;
                 tooltip: @tr("Cancel");
                 tint: Theme.s.on-surface;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => {
                     root.searching = false;
                     root.query = "";
                     root.search("");
                 }
-            }
-            if !root.searching && root.leading != 0: IconButton {
+            } }
+            if !root.searching && root.leading != 0: Mid { IconButton {
                 glyph: root.leading == 2 ? Icons.close : Icons.back;
                 tooltip: root.leading == 2 ? @tr("Close") : @tr("Back");
                 tint: Theme.s.on-surface;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.pop(); }
-            }
-            if root.searching: sf := SearchField {
+            } }
+            if root.searching: Mid { horizontal-stretch: 1; sf := SearchField {
                 horizontal-stretch: 1;
-                y: (parent.height - self.height) / 2;
+                
                 text <=> root.query;
                 edited(t) => { root.search(t); }
                 init => { self.focus-input(); }
-            }
+            } }
             if !root.searching: Rectangle {
                 horizontal-stretch: 1;
                 HorizontalLayout {
@@ -761,23 +770,23 @@ export component TopBar inherits Rectangle {
                         horizontal-stretch: 0;
                         max-width: root.width - 220px;
                     }
-                    if root.title-menu-key != "": Icon {
+                    if root.title-menu-key != "": Mid { Icon {
                         glyph: Icons.caret-down;
                         color: Theme.s.on-surface-variant;
-                        y: (parent.height - self.height) / 2;
-                    }
+                        
+                    } }
                 }
                 if root.title-menu-key != "": TouchArea {
                     clicked => { Nav.open-menu(root.title-menu-key, self.absolute-position.x, self.absolute-position.y + self.height); }
                 }
             }
-            if !root.searching && root.searchable: IconButton {
+            if !root.searching && root.searchable: Mid { IconButton {
                 glyph: Icons.search;
                 tooltip: @tr("Search");
                 tint: Theme.s.on-surface;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { root.searching = true; }
-            }
+            } }
             if !root.searching: HorizontalLayout {
                 spacing: 4px;
                 for a in root.actions: Rectangle {
@@ -792,13 +801,13 @@ export component TopBar inherits Rectangle {
                     }
                 }
             }
-            if !root.searching && root.menu-key != "": IconButton {
+            if !root.searching && root.menu-key != "": Mid { IconButton {
                 glyph: Icons.more;
                 tooltip: @tr("More");
                 tint: Theme.s.on-surface;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.open-menu(root.menu-key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
-            }
+            } }
         }
         if root.loading: ProgressBar { }
         if root.keywords.length > 0: Flickable {
@@ -820,9 +829,9 @@ export component TopBar inherits Rectangle {
                         padding-left: 12px;
                         padding-right: k.removable ? 8px : 12px;
                         spacing: 6px;
-                        if k.selected && !k.removable: Icon { glyph: Icons.check; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-secondary-container; }
+                        if k.selected && !k.removable: Mid { Icon { glyph: Icons.check; size: 18px;  color: Theme.s.on-secondary-container; } }
                         T { text: k.label; role: TextRole.subheadline; emphasized: true; color: k.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; }
-                        if k.removable: Icon { glyph: Icons.close; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+                        if k.removable: Mid { Icon { glyph: Icons.close; size: 18px;  color: Theme.s.on-surface-variant; } }
                     }
                     TouchArea { clicked => { root.keyword(k.key, k.removable); } }
                 }

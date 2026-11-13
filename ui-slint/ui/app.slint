@@ -8,7 +8,7 @@ import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword } from "globals.slint";
 import { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow } from "data.slint";
-import { Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, RouteSurface } from "kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, RouteSurface } from "kit.slint";
 import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
@@ -22,11 +22,13 @@ component Splash inherits Rectangle {
     VerticalLayout {
         alignment: center;
         spacing: 16px;
-        Image {
-            source: @image-url("box_icon.png");
-            width: 96px;
-            height: 96px;
-            x: (parent.width - self.width) / 2;
+        HorizontalLayout {
+            alignment: center;
+            Image {
+                source: @image-url("box_icon.png");
+                width: 96px;
+                height: 96px;
+            }
         }
         T { text: "FK-box"; role: TextRole.title3; horizontal-alignment: center; }
         Rectangle { height: 16px; }
@@ -133,7 +135,7 @@ component DialogLayer inherits Rectangle {
                         height: 48px;
                         HorizontalLayout {
                             spacing: 16px;
-                            Radio { selected: i == Nav.dialog-option; y: (parent.height - self.height) / 2; }
+                            Mid { Radio { selected: i == Nav.dialog-option;  } }
                             T { text: o; horizontal-stretch: 1; }
                         }
                         TouchArea { clicked => { Nav.dialog-pick(i); } }

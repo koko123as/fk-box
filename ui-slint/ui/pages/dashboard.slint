@@ -5,7 +5,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Dash, ModeItem, KeyValue } from "../data.slint";
-import { Icon, T, Spinner, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field } from "../kit.slint";
+import { Mid, Icon, T, Spinner, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field } from "../kit.slint";
 
 // StartToggle: a round filled button showing start or stop.
 component StartToggle inherits Rectangle {
@@ -90,7 +90,7 @@ export component StatusPanel inherits Rectangle {
             HorizontalLayout {
                 height: max(26px, Theme.sp(26));
                 spacing: 8px;
-                Icon { glyph: Icons.status; size: 18px; color: Theme.s.on-surface-variant; y: (parent.height - 18px) / 2; }
+                Mid { Icon { glyph: Icons.status; size: 18px; color: Theme.s.on-surface-variant;  } }
                 T { text: @tr("Status"); role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
                 Rectangle {
                     horizontal-stretch: 1;
@@ -105,14 +105,14 @@ export component StatusPanel inherits Rectangle {
             Rectangle { height: 12px; }
             HorizontalLayout {
                 spacing: 12px;
-                CountryBadge {
+                Mid { CountryBadge {
                     country: Dash.egress-country;
                     active: App.running;
                     checking: Dash.egress-loading;
                     can-retry: Dash.egress-can-retry;
-                    y: (parent.height - self.height) / 2;
+                    
                     retry => { Nav.act("egress-retry", ""); }
-                }
+                } }
                 VerticalLayout {
                     horizontal-stretch: 1;
                     spacing: 4px;
@@ -408,11 +408,12 @@ export component ProfilePanel inherits Panel {
                 clicked => { Nav.act("update-selected-profile", ""); }
             }
         }
-        Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+        Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
     }
     Rectangle { height: 12px; }
+    // Compose: the name (weight 1, fill = false), 8 dp, the core chip, then the 32 dp switch button right after it.
     HorizontalLayout {
-        spacing: 8px;
+        spacing: 0px;
         alignment: start;
         T {
             text: App.remote ? @tr("Remote configuration") : Dash.has-profile ? Dash.profile-name : @tr("Add profile");
@@ -420,7 +421,8 @@ export component ProfilePanel inherits Panel {
             emphasized: true;
             horizontal-stretch: 0;
         }
-        if Dash.has-profile && Dash.profile-core != "": Rectangle {
+        if Dash.has-profile && Dash.profile-core != "": Rectangle { width: 8px; }
+        if Dash.has-profile && Dash.profile-core != "": Mid { Rectangle {
             width: core-chip.preferred-width + 16px;
             core-chip := T {
                 text: Dash.profile-core;
@@ -429,20 +431,19 @@ export component ProfilePanel inherits Panel {
                 color: Theme.s.secondary;
             }
             height: core-chip.preferred-height + 4px;
-            y: (parent.height - self.height) / 2;
+            
             border-radius: self.height / 2;
             background: Theme.s.secondary.with-alpha(0.15);
-        }
-        Rectangle { horizontal-stretch: 1; }
-        if !App.remote && App.profile-count > 1: IconButton {
+        } }
+        if !App.remote && App.profile-count > 1: Mid { IconButton {
             glyph: Icons.swap;
             tooltip: @tr("Switch profile");
             size: 32px;
             icon-size: 18px;
             enabled: !App.transitioning;
-            y: (parent.height - self.height) / 2;
+            
             clicked => { Nav.form("profiles-picker", ""); }
-        }
+        } }
     }
     if Dash.has-profile || App.remote: VerticalLayout {
         HorizontalLayout {
@@ -525,8 +526,8 @@ export component GroupsPanel inherits Panel {
         glyph: Icons.layers;
         HorizontalLayout {
             spacing: 6px;
-            if Dash.timeout-count > 0: Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2; y: (parent.height - self.height) / 2; }
-            if Dash.group-count > 0: Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+            if Dash.timeout-count > 0: Mid { Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2;  } }
+            if Dash.group-count > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
         }
     }
     Rectangle { height: 12px; }
@@ -553,7 +554,7 @@ export component GroupsPanel inherits Panel {
             T { text: Dash.group-count; role: TextRole.display; emphasized: true; vertical-alignment: bottom; }
             T { text: " " + @tr("Groups"); role: TextRole.subheadline; color: Theme.s.on-surface-variant; vertical-alignment: bottom; height: Theme.leading(TextRole.display) - 8px; }
         }
-        GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest; y: (parent.height - self.height) / 2; }
+        Mid { GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest;  } }
     }
 }
 
@@ -607,7 +608,7 @@ export component MemoryPanel inherits Panel {
     PanelTitle {
         title: @tr("Memory");
         glyph: Icons.memory;
-        Icon { glyph: Icons.chevron-forward; size: 18px; y: (parent.height - 18px) / 2; color: Theme.s.on-surface-variant; }
+        Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
     }
     Rectangle { height: 12px; }
     MemorySummary { }
@@ -631,25 +632,25 @@ export component LanProxyRow inherits Rectangle {
         padding-top: 10px;
         padding-bottom: 10px;
         spacing: 12px;
-        IconBadge {
+        Mid { IconBadge {
             glyph: Icons.wifi;
             size: 38px;
             container: root.value ? Theme.s.primary : Theme.level(1);
             tint: root.value ? Theme.s.on-primary : Theme.s.on-surface-variant;
-            y: (parent.height - self.height) / 2;
-        }
+            
+        } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
             T { text: @tr("LAN proxy"); role: TextRole.subheadline; emphasized: true; }
             T { text: root.subtitle; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
         }
-        Switch {
+        Mid { Switch {
             checked: root.value;
             enabled: root.enabled;
-            y: (parent.height - self.height) / 2;
+            
             toggled(v) => { Nav.act("lan-toggle", v ? "1" : "0"); }
-        }
+        } }
     }
 }
 
@@ -657,15 +658,15 @@ export component IntranetPanel inherits Panel {
     PanelTitle {
         title: @tr("Intranet IP");
         glyph: Icons.devices;
-        IconButton {
+        Mid { IconButton {
             glyph: Icons.copy;
             tooltip: @tr("Copy");
             size: 32px;
             icon-size: 18px;
             enabled: Dash.lan-can-copy;
-            y: (parent.height - self.height) / 2;
+            
             clicked => { Nav.act("lan-copy", ""); }
-        }
+        } }
     }
     Rectangle { height: 12px; }
     Rectangle {
@@ -708,24 +709,24 @@ export component SystemProxyPanel inherits Panel {
         padding-top: 16px;
         padding-bottom: 16px;
         spacing: 14px;
-        IconBadge {
+        Mid { IconBadge {
             glyph: Icons.system-proxy;
             size: 48px;
             container: Dash.system-proxy ? Theme.s.primary : Theme.level(2);
             tint: Dash.system-proxy ? Theme.s.on-primary : Theme.s.on-surface-variant;
-            y: (parent.height - self.height) / 2;
-        }
+            
+        } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
             T { text: @tr("System HTTP proxy"); role: TextRole.callout; emphasized: true; wrap: word-wrap; }
             T { text: Dash.system-proxy ? @tr("Enabled") : @tr("Disabled"); role: TextRole.footnote; color: Theme.s.on-surface-variant; }
         }
-        Switch {
+        Mid { Switch {
             checked: Dash.system-proxy;
-            y: (parent.height - self.height) / 2;
+            
             toggled(v) => { Nav.act("system-proxy", v ? "1" : "0"); }
-        }
+        } }
     }
 }
 
@@ -736,21 +737,21 @@ component Banners inherits VerticalLayout {
     if root.top && App.remote: ListItem {
         title: App.remote-name;
         subtitle: @tr("Remote control");
-        Button {
+        Mid { Button {
             label: @tr("Disconnect");
             kind: 2;
-            y: (parent.height - self.height) / 2;
+            
             clicked => { Nav.act("remote-disconnect", ""); }
-        }
+        } }
     }
     if root.top && Dash.apply-required: ListItem {
         title: @tr("Restart required");
-        Button {
+        Mid { Button {
             label: @tr("Apply");
             kind: 2;
-            y: (parent.height - self.height) / 2;
+            
             clicked => { Nav.act("apply-restart", ""); }
-        }
+        } }
     }
     if !root.top: VerticalLayout {
         spacing: Nav.gap;
@@ -787,39 +788,39 @@ component DashboardEditor inherits VerticalLayout {
         title: c.value;
         HorizontalLayout {
             spacing: 0px;
-            IconButton {
+            Mid { IconButton {
                 glyph: Icons.arrow-up;
                 tooltip: @tr("Move up");
                 enabled: i > 0;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act2("dash-move", c.key, "-1"); }
-            }
-            IconButton {
+            } }
+            Mid { IconButton {
                 glyph: Icons.arrow-down;
                 tooltip: @tr("Move down");
                 enabled: i < Dash.edit-shown.length - 1;
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act2("dash-move", c.key, "1"); }
-            }
-            IconButton {
+            } }
+            Mid { IconButton {
                 glyph: Icons.remove;
                 tooltip: @tr("Remove");
                 enabled: c.key != "Status";
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act2("dash-hide", c.key, ""); }
-            }
+            } }
         }
     }
     if Dash.edit-hidden.length > 0: SectionTitle { text: @tr("Hidden"); }
     for c[i] in Dash.edit-hidden: ListItem {
         position: Dash.edit-hidden.length == 1 ? 4 : i == 0 ? 1 : i == Dash.edit-hidden.length - 1 ? 3 : 2;
         title: c.value;
-        IconButton {
+        Mid { IconButton {
             glyph: Icons.add;
             tooltip: @tr("Add");
-            y: (parent.height - self.height) / 2;
+            
             clicked => { Nav.act2("dash-show", c.key, ""); }
-        }
+        } }
     }
 }
 
@@ -921,12 +922,12 @@ export component IntranetPage inherits ScrollPage {
         for a[i] in Dash.lan-addresses: ListItem {
             position: Dash.lan-addresses.length == 1 ? 4 : i == 0 ? 1 : i == Dash.lan-addresses.length - 1 ? 3 : 2;
             title: a;
-            IconButton {
+            Mid { IconButton {
                 glyph: Icons.copy;
                 tooltip: @tr("Copy");
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act("copy", a); }
-            }
+            } }
         }
     }
     if !App.remote: Rectangle { height: 24px; }
@@ -943,12 +944,12 @@ export component IntranetPage inherits ScrollPage {
             position: Dash.lan-listeners.length == 1 ? 4 : i == 0 ? 1 : i == Dash.lan-listeners.length - 1 ? 3 : 2;
             title: r.key;
             subtitle: r.value == "copy" ? "" : r.value;
-            if r.value == "copy": IconButton {
+            if r.value == "copy": Mid { IconButton {
                 glyph: Icons.copy;
                 tooltip: @tr("Copy");
-                y: (parent.height - self.height) / 2;
+                
                 clicked => { Nav.act("copy", r.key); }
-            }
+            } }
         }
     }
     if !App.remote && Dash.has-profile: Rectangle { height: 24px; }

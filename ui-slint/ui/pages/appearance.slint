@@ -6,7 +6,7 @@
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav } from "../globals.slint";
-import { Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field } from "../kit.slint";
+import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field } from "../kit.slint";
 
 export struct Swatch {
     fill: color,
@@ -56,7 +56,7 @@ component InfoHeader inherits HorizontalLayout {
     padding-top: 8px;
     height: 56px;
     spacing: 8px;
-    Icon { glyph: root.glyph; size: 20px; color: Theme.s.primary; y: (parent.height - self.height) / 2; }
+    Mid { Icon { glyph: root.glyph; size: 20px; color: Theme.s.primary; } }
     T { text: root.label; role: TextRole.subheadline; emphasized: true; color: Theme.s.primary; horizontal-stretch: 1; vertical-alignment: center; }
     @children
 }
@@ -68,24 +68,29 @@ component Segmented inherits Rectangle {
     callback picked(int);
     height: 40px;
     border-radius: 20px;
-    border-width: 1px;
-    border-color: Theme.s.outline;
-    clip: true;
     HorizontalLayout {
         for l[i] in root.labels: Rectangle {
             background: i == root.selected ? Theme.s.secondary-container : transparent;
+            // Equal widths (SegmentedButton weight 1); the ends carry the row's rounded corners.
+            horizontal-stretch: 1;
+            preferred-width: 0px;
+            border-top-left-radius: i == 0 ? 20px : 0px;
+            border-bottom-left-radius: i == 0 ? 20px : 0px;
+            border-top-right-radius: i == root.labels.length - 1 ? 20px : 0px;
+            border-bottom-right-radius: i == root.labels.length - 1 ? 20px : 0px;
             border-width: 0;
             if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
             HorizontalLayout {
                 alignment: center;
                 spacing: 6px;
-                if i == root.selected: Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; y: (parent.height - self.height) / 2; }
+                if i == root.selected: Mid { Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container;  } }
                 T { text: l; role: TextRole.subheadline; emphasized: true; vertical-alignment: center; horizontal-stretch: 0;
                     color: i == root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface; }
             }
             TouchArea { clicked => { root.picked(i); } }
         }
     }
+    Rectangle { border-radius: 20px; border-width: 1px; border-color: Theme.s.outline; }
 }
 
 // The swatch: a 32 px dot in a 44 px cell, a ring and a check when selected.
@@ -140,21 +145,21 @@ export component AppearancePage inherits ScrollPage {
         title: c.l;
         clickable: true;
         clicked => { Nav.act("look-theme", c.v); }
-        Radio { selected: Look.theme == c.v; y: (parent.height - self.height) / 2; }
+        Mid { Radio { selected: Look.theme == c.v;  } }
     }
     Rectangle { height: 16px; }
     ListItem {
         title: @tr("Pure black mode");
         clickable: true;
         clicked => { Nav.act("look-pure-black", Look.pure-black ? "0" : "1"); }
-        Switch { checked: Look.pure-black; y: (parent.height - self.height) / 2; toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } }
+        Mid { Switch { checked: Look.pure-black;  toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } } }
     }
     Rectangle { height: 16px; }
     // Accent colour
     InfoHeader {
         label: @tr("Accent color");
         glyph: Icons.palette;
-        IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); y: (parent.height - self.height) / 2; clicked => { Nav.act("look-reset-colors", ""); } }
+        Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-reset-colors", ""); } } }
     }
     swatches := Rectangle {
         property <length> inner: self.width - 2 * 10px;
@@ -205,7 +210,7 @@ export component AppearancePage inherits ScrollPage {
     InfoHeader {
         label: @tr("Font scale");
         glyph: Icons.text-size;
-        if Look.custom-scale && Look.scale != 1: IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); y: (parent.height - self.height) / 2; clicked => { Nav.act("look-scale", "1"); } }
+        if Look.custom-scale && Look.scale != 1: Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-scale", "1"); } } }
     }
     Segmented {
         labels: [@tr("Follow system"), @tr("Custom")];
@@ -341,7 +346,7 @@ export component CustomColorPage inherits ScrollPage {
                         init => { self.text = Look.hex; }
                         edited => { Nav.act("look-hex", self.text); }
                     }
-                    Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick; y: (parent.height - self.height) / 2; }
+                    Mid { Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick;  } }
                 }
             }
         }
