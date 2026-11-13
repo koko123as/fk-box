@@ -29,11 +29,7 @@ interface TerminalChannel {
     fun notify(method: String, value: Any?)
 }
 
-/** Only the terminal surface is native. Navigation, settings and prompts are Compose. */
-internal class BoxTerminalFactory {
-    fun create(context: Context, viewId: Int, args: Any?, channel: TerminalChannel): TerminalSurface = TerminalSurface(context, viewId, args, channel)
-}
-
+/** The Ghostty terminal surface; navigation, settings and prompts are in the Slint UI. */
 internal class TerminalSurface(context: Context, id: Int, args: Any?, private val channel: TerminalChannel) : PlatformView {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val view = GhosttyTerminalView(context)

@@ -31,6 +31,14 @@ jobs:
         with:
           persist-credentials: false
 
+      # The version is the publish day (China Standard Time): YYYY.MM.DD, then
+      # YYYY.MM.DD.2 and so on for later releases that day; code YYMMDDNN.
+      - id: version
+        name: Set the release version from the date
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 tools/release_version.py
+
       - id: core
         uses: ./.github/actions/build-libbox
         with:

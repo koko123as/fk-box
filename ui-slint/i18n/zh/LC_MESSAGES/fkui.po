@@ -7,9 +7,6 @@ msgstr ""
 msgid "%d days left"
 msgstr "剩余 %d 天"
 
-msgid "A core that is off is skipped when choosing automatically, and profiles that need it will not start."
-msgstr "关闭的内核不会被自动选择，需要它的配置也无法启动。"
-
 msgid "About"
 msgstr "关于"
 
@@ -30,9 +27,6 @@ msgstr "操作"
 
 msgid "Active"
 msgstr "活动"
-
-msgid "AdBlock (||example.com^), hosts, plain domain/CIDR lists and Clash rule lists. Downloaded when the service starts and refreshed daily; the last copy is used when a download fails."
-msgstr "支持 AdBlock（||example.com^）、hosts、纯域名/CIDR 列表和 Clash 规则列表。服务启动时下载并每天刷新，下载失败时使用上次的副本。"
 
 msgid "Add"
 msgstr "添加"
@@ -97,9 +91,6 @@ msgstr "允许终端读取剪贴板？"
 msgid "Already up to date"
 msgstr "已是最新"
 
-msgid "An empty selection captures all applications routed through the local service. Unknown owners do not match a selected application. Applications sharing a UID share the same filter."
-msgstr "未选择时抓取经过本地服务的所有应用。无法确定来源的连接不会匹配已选应用；共享 UID 的应用使用相同筛选。"
-
 msgid "App"
 msgstr "应用"
 
@@ -133,9 +124,6 @@ msgstr "应用"
 msgid "Apps"
 msgstr "应用"
 
-msgid "Apps (package names)"
-msgstr "应用（包名）"
-
 msgid "At least 15 minutes"
 msgstr "至少 15 分钟"
 
@@ -156,9 +144,6 @@ msgstr "自动更新"
 
 msgid "Automatic"
 msgstr "自动"
-
-msgid "Automatic picks the core from the content."
-msgstr "自动会按配置内容选择内核。"
 
 msgid "Automatic port"
 msgstr "自动分配端口"
@@ -186,9 +171,6 @@ msgstr "备份完成"
 
 msgid "Base Android app and backend"
 msgstr "Android 应用基础与后端"
-
-msgid "Based on sing-box-for-android"
-msgstr "基于 sing-box-for-android"
 
 msgid "Battery optimization"
 msgstr "电池优化"
@@ -529,9 +511,6 @@ msgstr "删除此字体？"
 msgid "Delete this profile?"
 msgstr "删除此配置？"
 
-msgid "Deprecation warnings and memory protection apply to the sing-box core only."
-msgstr "弃用提示和内存保护仅对 sing-box 内核生效。"
-
 msgid "Deselect all"
 msgstr "取消全选"
 
@@ -588,9 +567,6 @@ msgstr "已断开"
 
 msgid "Domain only"
 msgstr "仅域名"
-
-msgid "Domains are extracted from retained requests and visible TLS/QUIC names, using the current search filter. Encrypted hostnames cannot be recovered."
-msgstr "按当前搜索条件，从保留的请求及可见 TLS／QUIC 信息中提取域名。无法还原被加密的域名。"
 
 msgid "Domains, IPs or geo"
 msgstr "域名、IP 或 geo"
@@ -669,9 +645,6 @@ msgstr "请输入 WebDAV 的 HTTP 或 HTTPS 目录地址"
 
 msgid "Enter an http(s) rule list URL"
 msgstr "请输入 http(s) 规则列表地址"
-
-msgid "Enter the WebDAV directory URL. Backups are stored in its B-box folder."
-msgstr "请输入 WebDAV 目录地址。备份保存在该目录的 B-box 文件夹中。"
 
 msgid "Error"
 msgstr "错误"
@@ -832,9 +805,6 @@ msgstr "HTTP 调试仅支持本地服务"
 msgid "HTTP rewriting"
 msgstr "HTTP 改写"
 
-msgid "HTTPS decryption requires the target app to trust this CA. Apps with certificate pinning or their own trust store may reject it; add those domains to HTTPS exclusions."
-msgstr "HTTPS 解密需要目标应用信任此 CA。采用证书固定校验或独立信任库的应用可能拒绝连接，可将相关域名加入 HTTPS 排除列表。"
-
 msgid "HTTPS domains"
 msgstr "HTTPS 抓取域名"
 
@@ -907,9 +877,6 @@ msgstr "信息"
 msgid "Install and export"
 msgstr "安装与导出"
 
-msgid "Install and trust the MITM CA, start capture, then reconnect the target app. Only traffic routed through the local service is captured. Server certificates are always verified."
-msgstr "安装并信任 MITM CA 后开启抓包，再让目标应用重新连接。仅抓取经过本地服务的流量，始终校验服务端证书。"
-
 msgid "Intranet IP"
 msgstr "内网 IP"
 
@@ -934,14 +901,8 @@ msgstr "需要 JSON 对象"
 msgid "JavaScript for HTTP rewrite scripts"
 msgstr "HTTP 改写脚本的 JavaScript 引擎"
 
-msgid "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. Port filters use the connection destination."
-msgstr "最多保留 300 条请求、32 MiB 数据。超长正文只保存开头，端口按连接目标筛选。"
-
 msgid "Keyboard"
 msgstr "键盘"
-
-msgid "Kotlin + Jetpack Compose three-core client"
-msgstr "Kotlin+Jetpack Compose三内核客户端"
 
 msgid "LAN direct"
 msgstr "局域网直连"
@@ -963,9 +924,6 @@ msgstr "最新错误"
 
 msgid "Layout"
 msgstr "布局"
-
-msgid "Leave empty to decrypt all HTTPS domains. Exact names and *.example.com are accepted; exclusions take priority."
-msgstr "留空表示解密所有 HTTPS 域名。支持精确名称和 *.example.com，排除规则优先。"
 
 msgid "Level"
 msgstr "级别"
@@ -1090,9 +1048,6 @@ msgstr "网络质量"
 msgid "Network speed"
 msgstr "网络速度"
 
-msgid "New example rules are disabled. Edit their pattern and content, then set disabled to false."
-msgstr "新增示例规则默认禁用。修改匹配条件和内容后，将 disabled 设为 false。"
-
 msgid "New profile"
 msgstr "新建配置"
 
@@ -1213,9 +1168,6 @@ msgstr "未应用"
 msgid "Not applied at the last start; the profile runs without the rules"
 msgstr "上次启动未应用，当前按原配置运行"
 
-msgid "Not available in the Slint UI yet"
-msgstr "Slint 界面暂未提供此页面"
-
 msgid "Not negotiated"
 msgstr "未协商"
 
@@ -1236,18 +1188,6 @@ msgstr "关闭（仅用配置）"
 
 msgid "Offline"
 msgstr "离线"
-
-msgid "On Android 11 or later, export the certificate first, then choose CA certificate in Android security settings. For system trust, install the exported module with Magisk, KernelSU or APatch and reboot."
-msgstr "Android 11 及以上请先导出证书，再到系统安全设置中选择安装 CA 证书。需要系统信任时，可用 Magisk、KernelSU 或 APatch 安装导出的模块并重启。"
-
-msgid "One item per line."
-msgstr "每行一项。"
-
-msgid "One package name per line, such as com.android.chrome. Empty matches every app. Xray cannot match apps; such rules are skipped on Xray."
-msgstr "每行一个包名，例如 com.android.chrome。留空匹配所有应用。Xray 无法按应用匹配，此类规则在 Xray 上跳过。"
-
-msgid "One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern (the whole line), 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private."
-msgstr "每行一条：example.com（含子域名）、full:example.com、keyword:关键词、regexp:正则（整行为一条）、1.2.3.0/24、geosite:cn、geoip:cn、geoip:private。"
 
 msgid "Online"
 msgstr "在线"
@@ -1318,23 +1258,14 @@ msgstr "覆盖"
 msgid "Page layout reference"
 msgstr "页面布局参考"
 
-msgid "Page layout reference · GPL-3.0"
-msgstr "页面布局参考 · GPL-3.0"
-
 msgid "Panic"
 msgstr "崩溃"
-
-msgid "ParceledListSlice, Material 3 shapes"
-msgstr "ParceledListSlice、Material 3 形状"
 
 msgid "Parsed"
 msgstr "已解析"
 
 msgid "Parsed requests"
 msgstr "已解析请求"
-
-msgid "Pass these TLS connections through unchanged. Visible hostnames can still be extracted."
-msgstr "这些 TLS 连接原样通过，仍可提取可见域名。"
 
 msgid "Password"
 msgstr "密码"
@@ -1383,9 +1314,6 @@ msgstr "端口须为 1–65535 的整数"
 
 msgid "Power reports"
 msgstr "电量报告"
-
-msgid "Predecessor: B-box"
-msgstr "前身：B-box"
 
 msgid "Present in system CA store"
 msgstr "已在系统 CA 存储中找到"
@@ -1483,14 +1411,8 @@ msgstr "请求频率受限"
 msgid "Received files"
 msgstr "收到的文件"
 
-msgid "Recent logs are kept until the app process exits. Export logs to keep them."
-msgstr "保留近期日志，应用进程退出后清除。可导出日志以便留存。"
-
 msgid "Recent requests"
 msgstr "最近请求"
-
-msgid "Reconnect target applications to capture new connections."
-msgstr "请让目标应用重新连接，以抓取新连接。"
 
 msgid "Redo"
 msgstr "重做"
@@ -1675,12 +1597,6 @@ msgstr "规则集"
 msgid "Rules applied"
 msgstr "已应用规则"
 
-msgid "Rules apply to the core that runs the selected profile and are added when the service starts; the profile file is not changed. Long-press or drag the handle to reorder; the first matching rule wins."
-msgstr "规则作用于运行当前配置的内核，在服务启动时加入，不修改配置文件。长按或拖动手柄调整顺序，按从上到下第一条匹配生效。"
-
-msgid "Rules belong to this JSON profile and run with the local service. Request recording is controlled separately."
-msgstr "规则保存在此 JSON 配置中，随本地服务生效。请求记录单独控制。"
-
 msgid "Rules remain active when request recording is stopped."
 msgstr "停止请求记录后，改写规则仍然生效。"
 
@@ -1698,9 +1614,6 @@ msgstr "饱和度"
 
 msgid "Save"
 msgstr "保存"
-
-msgid "Saved on this device. Capture stops when the local service restarts."
-msgstr "设置保存在本机，重启本地服务时停止抓包。"
 
 msgid "Scan QR code"
 msgstr "扫描二维码"
@@ -1764,9 +1677,6 @@ msgstr "会话"
 
 msgid "Settings"
 msgstr "设置"
-
-msgid "Shape morphing"
-msgstr "形状变形"
 
 msgid "Share"
 msgstr "分享"
@@ -1876,14 +1786,8 @@ msgstr "提交"
 msgid "Subscription URL"
 msgstr "订阅链接"
 
-msgid "Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content."
-msgstr "订阅可以是 sing-box JSON、Xray JSON、Clash YAML 或节点列表。自动会按内容选择内核。"
-
 msgid "Subscription info"
 msgstr "订阅信息"
-
-msgid "Supported Ghostty options: foreground, background, cursor-color, selection-background, selection-foreground, palette, font-family."
-msgstr "支持的 Ghostty 配置项：foreground、background、cursor-color、selection-background、selection-foreground、palette、font-family。"
 
 msgid "Switch profile"
 msgstr "切换配置"
@@ -1939,15 +1843,6 @@ msgstr "测试延迟"
 msgid "Text size preview"
 msgstr "文字大小预览"
 
-msgid "The private signing key stays on this device. Exports contain only the public CA. Regeneration requires replacing installed certificates; remove system modules in the root manager and reboot."
-msgstr "签名私钥保留在本设备，导出内容仅含 CA 公钥证书。重新生成后需替换已安装证书；系统模块请在 Root 管理器中卸载并重启。"
-
-msgid "The profile runs without the routing rules. Fix the rules or the network, then reload the service to apply them again."
-msgstr "当前按原配置运行，未带分流规则。修正规则或网络后，重载服务即可重新应用。"
-
-msgid "The selected profile runs on another core, so its rules are shown instead of this tab's."
-msgstr "当前配置运行在其他内核上，因此显示的是该内核的规则结果。"
-
 msgid "The status appears after the service starts."
 msgstr "服务启动后显示状态。"
 
@@ -1965,9 +1860,6 @@ msgstr "此操作无法撤销。"
 
 msgid "This device"
 msgstr "本机"
-
-msgid "This page has not been ported to the Rust + Slint UI. Its Compose version remains in the source tree; see slint-manifest.md."
-msgstr "此页面尚未移植到 Rust + Slint 界面，Compose 版本仍保留在源码中，详见 slint-manifest.md。"
 
 msgid "This test transfers data on a metered network. Continue?"
 msgstr "当前网络按流量计费，测试会消耗数据流量。继续？"
@@ -2100,12 +1992,6 @@ msgstr "警告"
 
 msgid "WebDAV configuration"
 msgstr "WebDAV 配置"
-
-msgid "Xray and mihomo share these files. A failed update keeps the current file; changes apply when the core next starts."
-msgstr "Xray 和 mihomo 共用这些文件。更新失败时保留现有文件；更新后在内核下次启动时生效。"
-
-msgid "Xray: IP and geoip entries match connections to IP addresses; sniffed domains are matched by domain and geosite entries. Set domainStrategy in the profile to also resolve domains for IP rules."
-msgstr "Xray：IP 和 geoip 条目匹配目标为 IP 地址的连接；嗅探到域名的连接按域名和 geosite 条目匹配。如需 IP 规则也匹配域名（会先解析域名），请在配置中设置 domainStrategy。"
 
 msgid "You are up to date"
 msgstr "已是最新版本"

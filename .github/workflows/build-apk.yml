@@ -1,12 +1,12 @@
-name: Slint UI Release APK (arm64-v8a)
+name: Build APK on push (arm64-v8a)
 
-# Builds the slint-ui branch: the Rust + Slint UI (ui-slint/, libfkui.so) over
+# Builds every push to main: the Rust + Slint UI (ui-slint/, libfkui.so) over
 # the Kotlin service layer and the patched core, signed with the release key
 # and uploaded as a workflow artifact only. This workflow never creates tags or
 # GitHub Releases.
 on:
   push:
-    branches: [slint-ui]
+    branches: [main]
     paths-ignore: ['**/*.md']
   workflow_dispatch:
 
@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: slint-ui-${{ github.ref }}
+  group: build-apk-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -80,7 +80,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: slint-ui-unit-tests
+          name: ui-unit-tests
           path: |
             app/build/reports/tests/testOtherDebugUnitTest/
             app/build/test-results/testOtherDebugUnitTest/*.xml
@@ -124,7 +124,7 @@ jobs:
       - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: FK-box-${{ steps.core.outputs.version }}-slint-ui-arm64-v8a-release
+          name: FK-box-${{ steps.core.outputs.version }}-${{ github.sha }}-arm64-v8a-release
           path: app/build/outputs/apk/other/release/*-arm64-v8a.apk
           if-no-files-found: error
           compression-level: 0

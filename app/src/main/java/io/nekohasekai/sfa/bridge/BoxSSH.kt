@@ -11,7 +11,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import java.io.Closeable
 
-/** Compose owns presentation; the process-wide Ghostty store owns SSH. */
+/** The Slint UI owns presentation; the process-wide Ghostty store owns SSH. */
 internal class BoxSSH(scope: CoroutineScope, private val tailscale: TailscaleStatusViewModel,
     private val emit: (String, Any?) -> Unit) : Closeable {
     private val store = TailscaleSSHSessionStore

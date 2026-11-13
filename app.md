@@ -177,7 +177,7 @@ Release 构建开启 R8 与 `isShrinkResources`（[keep.xml](app/src/main/res/ra
 
 Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及 Compose 源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
 
-`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
+`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
 
 ## 验证与历史记录
 

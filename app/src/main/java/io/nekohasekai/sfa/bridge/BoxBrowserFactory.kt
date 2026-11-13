@@ -7,7 +7,7 @@ import android.widget.TextView
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.backend.tools.OpenConnectWebViewBrowser
 
-/** A native view hosted by Compose. */
+/** A native view hosted by a native page. */
 interface PlatformView {
     fun getView(): View
     fun dispose()

@@ -46,7 +46,7 @@ import org.json.JSONObject
 import java.io.Closeable
 
 /**
- * Native facade for the Compose UI: typed commands run through [call] once the
+ * Native facade for the Slint UI: typed commands run through [call] once the
  * bridge is initialized, and state is streamed as events ([listen]).
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
@@ -536,7 +536,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return result
     }
 
-    /** The app's launcher icon drawn at 48 dp on IO; handed to Compose as a bitmap, without a PNG round-trip. */
+    /** The app's launcher icon drawn at 48 dp on IO; handed to the UI as a bitmap, without a PNG round-trip. */
     suspend fun appIcon(packageName: String): android.graphics.Bitmap = withContext(Dispatchers.IO) {
         val drawable = activity.packageManager.getApplicationIcon(packageName)
         val size = (48 * activity.resources.displayMetrics.density).toInt().coerceIn(48, 192)
