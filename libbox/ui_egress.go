@@ -179,6 +179,10 @@ func (p *UIEgressProbe) Reach(link string, timeoutMillis int64) (*UIReachResult,
 }
 
 func (p *UIEgressProbe) newRequest(ctx context.Context, link string) (*http.Request, error) {
+	return p.newMethodRequest(ctx, http.MethodGet, link, nil)
+}
+
+func (p *UIEgressProbe) newMethodRequest(ctx context.Context, method string, link string, body io.Reader) (*http.Request, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
@@ -193,7 +197,7 @@ func (p *UIEgressProbe) newRequest(ctx context.Context, link string) (*http.Requ
 	// net/http may detach the dial context's cancellation for connection reuse;
 	// retain the owning request context for both direct and routed dials.
 	requestContext := context.WithValue(ctx, uiEgressRequestContextKey{}, ctx)
-	request, err := http.NewRequestWithContext(requestContext, http.MethodGet, link, nil)
+	request, err := http.NewRequestWithContext(requestContext, method, link, body)
 	if err != nil {
 		return nil, err
 	}

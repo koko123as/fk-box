@@ -16,6 +16,7 @@
 | HTTP/WebDAV 绑定 | [ui_http.go](libbox/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
 | 订阅获取绑定 | [ui_subscription.go](libbox/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |
 | 出口探测绑定 | [ui_egress.go](libbox/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询、质量请求传输与只读响应头的可达性探测 |
+| 服务状态检测 | [ui_service_check.go](libbox/ui_service_check.go) | FlClash 13 项服务检测规则，经出口探测会话发送 |
 | DNS 查询计数 | [patch_dns_count.py](tools/patch_dns_count.py)、[dns/](libbox/dns/)、[ui_dns.go](libbox/ui_dns.go) | 仪表盘 DNS 查询数，见[仪表盘 DNS 查询计数](#仪表盘-dns-查询计数) |
 | 局域网代理配置绑定 | [ui_lan.go](libbox/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
 | HTTP/HTTPS 请求抓取 | [httpdebug.patch](libbox/httpdebug.patch)、[httpdebug/](libbox/httpdebug/)、[route/](libbox/route/)、[ui_capture.go](libbox/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
@@ -179,9 +180,14 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - `LookupOutboundIP`：对八个来源错峰竞速，总时限 6 秒、间隔 800 毫秒、最多并发 3 个请求、响应上限 4096 字节；每个 HTTP 200 响应先按对应来源解析并校验公网 IP 与国家字段，首个完整解析成功的结果才取消其余请求。解析失败立即继续其他来源，国家字段允许空字符串表示未知。返回 IP、地理信息、来源与查询时间。
 - `Get`：供 Compose 仪表盘的 IP 质量查询使用，保留 HTTP 状态，响应上限 128 KiB，调用方可指定 1～8000 毫秒超时。
 - `Reach`：服务状态卡用的可达性探测。一次 GET，读到响应头即关闭连接（不读正文；探测关闭了 keep-alive），不跟随重定向，返回首个响应的状态码与到响应头的毫秒延迟（含拨号与 TLS），因此可直接探测任意大小的首页，超时 1～8000 毫秒。
+- `ServiceCheck(name, timeoutMillis)`：服务状态检测，见下节。
 - `Close`：取消本次探测的请求和等待中的连接。每个请求独立持有连接与截止时间，不将 IP 竞速连接复用于后续质量查询。
 
 两种探测共用 libbox TLS 证书库；运行中的路由查询失败不能回退到设备网络。远程会话不提供本机出口探测。FlClash 来源、分批质量查询、缓存和界面刷新规则见 [flclash.md](flclash.md)；其中质量解析与缓存主要在 Dart/Android 层，不能将它们误记为 Go 核心补丁。
+
+### 服务状态检测
+
+[ui_service_check.go](libbox/ui_service_check.go) 移植 FlClash v0.9.3 的 `core/service_check.go`、`core/service_rules.go`、`core/region.go` 和 `core/probe.go` 的请求部分：Google（`generate_204`）与 GitHub 只看状态码；YouTube Premium、ChatGPT（iOS 页、trace 与合规接口合并为一项）、Claude、Gemini、Netflix（fast.com CDN，再看两部片目）、Disney+（设备注册、令牌交换、会话查询三步）、Prime Video、Spotify、TikTok、Discord、Bilibili（大陆与港澳台番剧）按 FlClash 的地址、标记、地区和正文上限判断，返回状态（`available`、`unavailable`、`restricted`、`disallowed-isp`、`blocked`、`unsupported-region`、`originals-only`、`coming-soon`、`timeout`、`failed`）、地区（ISO 3166 两位码，只在判定依赖地区时保留）、首个应答请求的延迟和完成时间。请求经 `UIEgressProbe` 的传输（运行中的内核路由或停服时的设备网络），支持 POST、请求头、正文上限、边读边找标记（扫描上限 8 MiB）及不跟随重定向；单个请求超时 1～10000 毫秒，整项检测预算为其 6 倍，超时且预算尚足时重试一次。FlClash 返回的出口链路与路由命中不移植。`UIServiceNames` 列出全部服务名。回归见 [ui_service_check_test.go](libbox/ui_service_check_test.go)（各规则的判定、超时重试，以及经直连探测的 POST、重定向、不跟随重定向与扫描读取）。
 
 ### 仪表盘 DNS 查询计数
 
