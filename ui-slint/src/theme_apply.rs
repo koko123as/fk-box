@@ -107,3 +107,8 @@ pub fn apply() {
     theme.set_font_family(if font == "JetBrainsMono" { "JetBrains Mono".into() } else { font.as_str().into() });
     theme.set_text_scale(text_scale(SYSTEM_FONT_SCALE.with(|s| s.get())));
 }
+
+/// Whether the dark scheme is showing (for the native pages opened over the UI).
+pub fn is_dark() -> bool {
+    crate::app::window().map(|w| w.global::<Theme>().get_dark()).unwrap_or(false)
+}

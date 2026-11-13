@@ -111,6 +111,22 @@
             </intent-filter>
 
         </activity>
+        <!-- The native pages the Slint UI opens through JNI (bridge/NativePages.kt). -->
+        <activity
+            android:name=".bridge.ScanActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+        <activity
+            android:name=".bridge.TerminalActivity"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/AppTheme" />
+        <activity
+            android:name=".bridge.BrowserActivity"
+            android:exported="false"
+            android:theme="@style/AppTheme" />
+
         <activity
             android:name=".compose.ShareActivity"
             android:excludeFromRecents="true"

@@ -98,6 +98,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     /** The Rust + Slint UI (libfkui.so) draws on GameActivity's surface; it reaches BoxBridge through [slintCall]. */
     private fun attachUi() {
         bridge = BoxBridge(this)
+        NativePages.bridge = bridge?.let { java.lang.ref.WeakReference(it) }
     }
 
     /** Called by the Slint UI from its own thread; answers through [SlintHost.nativeReply]. */
@@ -133,6 +134,33 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
                     val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@BoxActivity)?.toString()
                     SlintHost.nativeReply(id, true, SlintHost.wire(text))
+                    return@launch
+                }
+                // The native pages over the Slint UI (NativePages.kt); each answers this call when it closes.
+                "scanQrCode", "openTerminalView", "openConnectBrowser" -> {
+                    val values = org.json.JSONObject(args)
+                    val extras = Bundle()
+                    val texts = Bundle()
+                    for (key in values.keys()) {
+                        when (val value = values.get(key)) {
+                            is Boolean -> extras.putBoolean(key, value)
+                            is org.json.JSONObject -> for (k in value.keys()) texts.putString(k, value.optString(k))
+                            else -> extras.putString(key, value.toString())
+                        }
+                    }
+                    extras.putBundle("texts", texts)
+                    extras.putBundle("keys", texts)
+                    val type = when (method) {
+                        "scanQrCode" -> ScanActivity::class.java
+                        "openTerminalView" -> TerminalActivity::class.java
+                        else -> BrowserActivity::class.java
+                    }
+                    NativePages.launch(this@BoxActivity, type, id, extras)
+                    return@launch
+                }
+                "closeBrowser" -> {
+                    NativePages.browser?.get()?.finish()
+                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
                     return@launch
                 }
                 "appIcon" -> {

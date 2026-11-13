@@ -1066,7 +1066,7 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
             let (e, i) = (endpoint.to_string(), id.to_string());
             rows.push(Row::item(&tr("Open sign-in page")).key("browser").on(move |_| {
                 // AuthBrowser: the native WebView Activity; its result arrives as browserComplete.
-                app::act("openConnectBrowser", json!({ "endpoint": e, "challenge": i }));
+                app::act("openConnectBrowser", json!({ "endpoint": e, "challenge": i, "title": tr("Sign in"), "dark": crate::theme_apply::is_dark() }));
             }));
         }
         for f in list(&challenge["form"]["fields"]) {
@@ -1150,6 +1150,8 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
 
 /// The sign-in page finished (BoxController.browserEvents): close its AuthenticationPage on success.
 pub fn browser_complete(value: &Value) {
+    // The native sign-in page closes with its challenge.
+    app::act("closeBrowser", json!({}));
     let id = s(value, "id");
     if !truthy(&value["success"]) {
         return;

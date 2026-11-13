@@ -350,7 +350,7 @@ fn import(source: &str) {
         }),
         // ScanPage: the native camera Activity returns the decoded profile, or
         // the text of a QR code that is not a profile link.
-        _ => app::call("scanQrCode", json!({}), |r| match r {
+        _ => app::call("scanQrCode", json!({ "title": tr("Scan QR code"), "flash": tr("Flash"), "camera": tr("Camera"), "retry": tr("Retry"), "scanning": tr("Scanning configuration"), "dark": crate::theme_apply::is_dark() }), |r| match r {
             Ok(v) if v.get("profile").map(Value::is_object).unwrap_or(false) => import_done(Ok(v["profile"].clone())),
             Ok(v) if v.get("text").map(Value::is_string).unwrap_or(false) => decode_import(text(&v["text"]), import_done),
             Ok(_) => import_done(Ok(Value::Null)),
