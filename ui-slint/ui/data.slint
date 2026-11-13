@@ -3,6 +3,7 @@
 // fields, compose/BoxController.kt).
 
 import { Glyph } from "icons.slint";
+import { BarAction } from "globals.slint";
 
 // Values the whole app reads (BoxController.running, remote, transitioning, …).
 export global App {
@@ -206,27 +207,29 @@ export struct ProfileRow {
 
 export global Profiles {
     in property <[ProfileRow]> rows;
-    in property <bool> picker;
-    in property <bool> sorting;
-    // Profile details (ProfileDetailsPage)
-    in property <string> detail-id;
-    in property <string> detail-name;
-    in property <[KeyValue]> detail-rows;
-    in property <bool> detail-remote;
-    in property <bool> detail-sing-box;
-    // Add / edit form (ProfileEditor's subscription fields)
-    in-out property <string> form-name;
-    in-out property <string> form-url;
-    in-out property <string> form-interval: "60";
-    in-out property <bool> form-auto-update: true;
-    in-out property <string> form-core: "auto";
-    in property <string> form-error;
-    in property <bool> form-busy;
-    // Configuration viewer / editor
-    in-out property <string> config-text;
+    in property <bool> any-usage;
+    in property <[BarAction]> bar-actions;
+    // The code editor (ProfileEditor / CodeEditor)
+    in property <string> editor-title;
+    in property <[BarAction]> editor-actions;
+    in property <bool> editor-ready;
+    in property <bool> editor-busy;
+    in property <bool> editor-search;
+    in-out property <string> editor-find;
+    in property <string> editor-error;
+    in property <string> editor-note;
+    in property <string> editor-lines: "1";
+    in property <int> editor-select-tick;
+    in property <int> editor-select-start;
+    in property <int> editor-select-end;
+    in property <int> editor-select-line;
+    in property <int> editor-text-tick;
+    in property <string> config-text;
     in property <bool> config-loading;
-    in property <bool> config-dirty;
-    in property <string> config-core;
+    // The QR code page
+    in property <string> qr-path;
+    in property <float> qr-size: 1;
+    in property <string> qr-text;
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +270,8 @@ export global Records {
 // ---------------------------------------------------------------------------
 
 export struct SettingRow {
-    // "switch" | "choice" | "link" | "text" | "info" | "action" | "header" | "footer"
+    // section | gap | footer | item | switch | check | radio | field | editor
+    // | text | error | button | progress | spacer | card | title
     kind: string,
     key: string,
     title: string,
@@ -275,11 +279,47 @@ export struct SettingRow {
     value: string,
     checked: bool,
     enabled: bool,
+    clickable: bool,
+    chevron: bool,
     glyph: Glyph,
     has-glyph: bool,
+    trailing-glyph: Glyph,
+    has-trailing: bool,
     danger: bool,
+    mono: bool,
+    hint: string,
+    number: bool,
+    invalid: bool,
+    loading: bool,
+    progress: float,
+    lines: int,
+    menu: bool,
     // 0 alone, 1 start, 2 middle, 3 end, 4 start and end
     position: int,
+}
+
+// A Rust-built page (src/rows.rs): its bar and rows, one per route, in route order.
+export struct PageData {
+    id: int,
+    generic: bool,
+    title: string,
+    actions: [BarAction],
+    menu-key: string,
+    loading: bool,
+    searchable: bool,
+    rows: [SettingRow],
+    empty-title: string,
+    empty-message: string,
+    empty-glyph: Glyph,
+    empty-action: string,
+    // Extra content kinds the page shows above or instead of its rows.
+    special: string,
+}
+
+export global Pages {
+    in property <[PageData]> data;
+    // The home destinations built in Rust (Tools), by label.
+    in property <PageData> tools;
 }
 
 export global Settings {

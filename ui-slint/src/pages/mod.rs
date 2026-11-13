@@ -34,6 +34,7 @@ impl Mark {
     pub const THEME: Mark = Mark(64);
     pub const RATES: Mark = Mark(128);
     pub const CLOCK: Mark = Mark(256);
+    pub const ROWS: Mark = Mark(512);
     pub const ALL: Mark = Mark(0xffff);
 }
 
@@ -99,6 +100,7 @@ fn flush() {
     if m.has(Mark::RECORDS) || m.has(Mark::SETTINGS) {
         requests::project(&w, m);
     }
+    crate::rows::project(&w);
     sync_visibility(false);
 }
 
@@ -156,6 +158,9 @@ pub fn opened(kind: &str, arg: &str, id: i32) {
 }
 
 pub fn closed(kind: &str, arg: &str, id: i32) {
+    if kind == "rows" {
+        crate::rows::closed(id);
+    }
     profiles::closed(kind, arg, id);
     tools::closed(kind, arg, id);
     settings::closed(kind, arg, id);
@@ -186,7 +191,8 @@ fn act(id: &str, arg: &str) {
 }
 
 fn act2(id: &str, a: &str, b: &str) {
-    let _ = dashboard::act2(id, a, b)
+    let _ = crate::rows::act2(id, a, b)
+        || dashboard::act2(id, a, b)
         || proxies::act2(id, a, b)
         || profiles::act2(id, a, b)
         || tools::act2(id, a, b)
@@ -196,7 +202,10 @@ fn act2(id: &str, a: &str, b: &str) {
 
 /// The menu for a key: the page that owns it builds the entries.
 pub fn menu(key: &str) -> Vec<MenuEntry> {
-    let mut entries = proxies::menu(key);
+    let mut entries = crate::rows::menu(key);
+    if entries.is_empty() {
+        entries = proxies::menu(key);
+    }
     if entries.is_empty() {
         entries = profiles::menu(key);
     }
