@@ -49,6 +49,15 @@ pub struct AndroidWindowAdapter {
 
     long_press: RefCell<Option<LongPressDetection>>,
     last_pressed_state: Cell<ButtonState>,
+
+    // FK-box patch: the last text state GameTextInput holds (sent or reported),
+    // whether the keyboard covers part of the window, and the one retry of
+    // showing it after a field is focused.
+    #[allow(dead_code)]
+    ime_state: RefCell<Option<crate::fkbox_ime::JavaTextState>>,
+    pub(crate) keyboard_visible: Cell<bool>,
+    #[allow(dead_code)]
+    ime_reshow: RefCell<Option<Timer>>,
 }
 
 impl WindowAdapter for AndroidWindowAdapter {
@@ -131,37 +140,71 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
         };
     }
 
+    // FK-box patch (FKBOX-PATCH.md): GameTextInput state in Java's units
+    // (UTF-16, ordered selection), echoes of what the IME just reported not
+    // sent back (each set_text_input_state restarts the IME, which drops a
+    // Chinese composition), the keyboard shown explicitly and the editor
+    // info set per field.
     #[cfg(not(feature = "native-activity"))]
     fn input_method_request(&self, request: InputMethodRequest) {
-        use android_activity::input::{TextInputState, TextSpan};
-
-        let props = match request {
-            InputMethodRequest::Enable(props) => {
-                self.app.show_soft_input(true);
-                props
-            }
-            InputMethodRequest::Update(props) => props,
+        let (props, enable) = match request {
+            InputMethodRequest::Enable(props) => (props, true),
+            InputMethodRequest::Update(props) => (props, false),
             InputMethodRequest::Disable => {
-                self.app.hide_soft_input(true);
+                self.ime_state.replace(None);
+                self.ime_reshow.replace(None);
+                // Not implicit-only: the keyboard was shown explicitly.
+                self.app.hide_soft_input(false);
                 return;
             }
             _ => return,
         };
-        let mut text = props.text.to_string();
-        if !props.preedit_text.is_empty() {
-            text.insert_str(props.preedit_offset, props.preedit_text.as_str());
+        let state = crate::fkbox_ime::to_java(
+            props.text.as_str(),
+            props.cursor_position,
+            props.anchor_position,
+            props.preedit_text.as_str(),
+            props.preedit_offset,
+        );
+        if enable {
+            self.app.set_ime_editor_info(
+                ime_input_type(&props, self.focused_text_input_multiline()),
+                if self.focused_text_input_multiline() {
+                    android_activity::input::TextInputAction::None
+                } else {
+                    android_activity::input::TextInputAction::Done
+                },
+                android_activity::input::ImeOptions::IME_FLAG_NO_FULLSCREEN,
+            );
+        } else if self.ime_state.borrow().as_ref() == Some(&state) {
+            return;
         }
-        self.app.set_text_input_state(TextInputState {
-            text,
-            selection: TextSpan {
-                start: props.anchor_position.unwrap_or(props.cursor_position),
-                end: props.cursor_position,
+        self.app.set_text_input_state(android_activity::input::TextInputState {
+            text: state.text.clone(),
+            selection: android_activity::input::TextSpan {
+                start: state.selection_start,
+                end: state.selection_end,
             },
-            compose_region: (!props.preedit_text.is_empty()).then_some(TextSpan {
-                start: props.preedit_offset,
-                end: props.preedit_offset + props.preedit_text.len(),
-            }),
+            compose_region: state
+                .compose
+                .map(|(start, end)| android_activity::input::TextSpan { start, end }),
         });
+        self.ime_state.replace(Some(state));
+        if enable {
+            // Explicit (not SHOW_IMPLICIT, which some ROMs ignore), and once
+            // more shortly after when no keyboard came up: the request can
+            // reach the input method before it serves the view just focused.
+            self.app.show_soft_input(false);
+            let app = self.app.clone();
+            let timer = Timer::default();
+            timer.start(TimerMode::SingleShot, std::time::Duration::from_millis(250), move || {
+                let Some(adaptor) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) else { return };
+                if !adaptor.keyboard_visible.get() && adaptor.focused_text_input_editable() {
+                    app.show_soft_input(false);
+                }
+            });
+            self.ime_reshow.replace(Some(timer));
+        }
     }
 
     fn safe_area_inset(&self) -> PhysicalEdges {
@@ -194,6 +237,9 @@ impl AndroidWindowAdapter {
             show_cursor_handles: Cell::new(false),
             long_press: RefCell::default(),
             last_pressed_state: Cell::new(ButtonState(0)),
+            ime_state: RefCell::new(None),
+            keyboard_visible: Cell::new(false),
+            ime_reshow: RefCell::new(None),
         })
     }
 
@@ -449,40 +495,51 @@ impl AndroidWindowAdapter {
                 }
                 InputEvent::TextEvent(state) => {
                     self.show_cursor_handles.set(false);
-                    // remove the pre_edit
-                    let event = if let Some(r) = state.compose_region {
-                        let adjust =
-                            |pos| if pos > r.start { pos - r.start + r.end } else { pos } as i32;
-                        let mut key_event = KeyEvent::default();
-                        key_event.text = i_slint_core::format!(
-                            "{}{}",
-                            &state.text[..r.start],
-                            &state.text[r.end..]
-                        );
-
+                    // FK-box patch: Java's UTF-16 indices as byte offsets on
+                    // char boundaries, the composing region taken out, the
+                    // cursor after it moved back by its length.
+                    let selection = (state.selection.start as i64, state.selection.end as i64);
+                    let compose = state.compose_region.map(|r| (r.start as i64, r.end as i64));
+                    self.ime_state.replace(Some(crate::fkbox_ime::normalize_java(
+                        &state.text,
+                        selection,
+                        compose,
+                    )));
+                    let edit = crate::fkbox_ime::from_java(&state.text, selection, compose);
+                    let mut key_event = KeyEvent::default();
+                    key_event.text = edit.text.as_str().into();
+                    let event = if !edit.preedit.is_empty() {
                         InternalKeyEvent {
                             event_type: KeyEventType::UpdateComposition,
-                            preedit_text: state.text[r.start..r.end].into(),
-                            preedit_selection: Some(0..(r.end - r.start) as i32),
+                            preedit_selection: Some(0..edit.preedit.len() as i32),
+                            preedit_text: edit.preedit.as_str().into(),
                             replacement_range: Some(i32::MIN..i32::MAX),
-                            cursor_position: Some(adjust(state.selection.end)),
-                            anchor_position: Some(adjust(state.selection.start)),
+                            cursor_position: Some(edit.cursor as i32),
+                            anchor_position: Some(edit.anchor as i32),
                             key_event,
                             ..Default::default()
                         }
                     } else {
-                        let mut key_event = KeyEvent::default();
-                        key_event.text = state.text.as_str().into();
                         InternalKeyEvent {
                             event_type: KeyEventType::CommitComposition,
                             replacement_range: Some(i32::MIN..i32::MAX),
-                            cursor_position: Some(state.selection.end as _),
-                            anchor_position: Some(state.selection.start as _),
+                            cursor_position: Some(edit.cursor as i32),
+                            anchor_position: Some(edit.anchor as i32),
                             key_event,
                             ..Default::default()
                         }
                     };
                     self.window.dispatch_event(WindowEvent::internal(event));
+                    InputStatus::Handled
+                }
+                // FK-box patch: the keyboard's action key (Done) on a
+                // single-line field is Return, so `accepted` runs.
+                InputEvent::TextAction(_) => {
+                    let text: SharedString = Key::Return.into();
+                    let _ = self
+                        .window
+                        .dispatch_event_with_result(WindowEvent::KeyPressed { text: text.clone() });
+                    let _ = self.window.dispatch_event_with_result(WindowEvent::KeyReleased { text });
                     InputStatus::Handled
                 }
                 _ => InputStatus::Unhandled,
@@ -547,6 +604,11 @@ impl AndroidWindowAdapter {
         let window_origin = window_origin.to_logical(scale_factor);
         let window_size = window_size.to_logical(scale_factor);
         let keyboard = keyboard.to_logical(scale_factor);
+        // FK-box patch: read by the keyboard retry in input_method_request.
+        let zero = 0 as i_slint_core::Coord;
+        self.keyboard_visible.set(
+            keyboard.bottom > zero || keyboard.top > zero || keyboard.left > zero || keyboard.right > zero,
+        );
 
         // Assume that the keyboard is only on one side.
         let rect = if keyboard.bottom > (0 as i_slint_core::Coord) {
@@ -580,6 +642,45 @@ impl AndroidWindowAdapter {
         };
 
         self.window.set_virtual_keyboard(rect.0, rect.1, i_slint_core::InternalToken);
+    }
+}
+
+// FK-box patch: the focused TextInput, read when the IME is configured.
+impl AndroidWindowAdapter {
+    fn focused_text_input<R>(
+        &self,
+        f: impl FnOnce(core::pin::Pin<&i_slint_core::items::TextInput>) -> R,
+    ) -> Option<R> {
+        let focus_item = WindowInner::from_pub(&self.window).focus_item.borrow().upgrade()?;
+        let text_input = focus_item.downcast::<i_slint_core::items::TextInput>()?;
+        Some(f(text_input.as_pin_ref()))
+    }
+
+    #[allow(dead_code)]
+    fn focused_text_input_multiline(&self) -> bool {
+        self.focused_text_input(|t| !t.single_line()).unwrap_or(false)
+    }
+
+    #[allow(dead_code)]
+    fn focused_text_input_editable(&self) -> bool {
+        self.focused_text_input(|t| t.enabled() && !t.read_only()).unwrap_or(false)
+    }
+}
+
+/// FK-box patch: the EditorInfo input type for the focused field.
+#[allow(dead_code)]
+fn ime_input_type(
+    props: &i_slint_core::window::InputMethodProperties,
+    multiline: bool,
+) -> android_activity::input::InputType {
+    use android_activity::input::InputType as T;
+    use i_slint_core::items::InputType as Slint;
+    match props.input_type {
+        Slint::Password => T::TYPE_CLASS_TEXT | T::TYPE_TEXT_VARIATION_PASSWORD,
+        Slint::Number => T::TYPE_CLASS_NUMBER,
+        Slint::Decimal => T::TYPE_CLASS_NUMBER | T::TYPE_NUMBER_FLAG_DECIMAL,
+        _ if multiline => T::TYPE_CLASS_TEXT | T::TYPE_TEXT_FLAG_MULTI_LINE,
+        _ => T::TYPE_CLASS_TEXT,
     }
 }
 

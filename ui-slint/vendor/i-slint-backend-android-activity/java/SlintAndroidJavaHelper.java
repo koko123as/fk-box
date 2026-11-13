@@ -164,14 +164,18 @@ class SlintInputView extends View {
 
     public SlintInputView(Context context) {
         super(context);
-        setFocusable(true);
-        setFocusableInTouchMode(true);
+        // FK-box patch: not focusable until show_keyboard (NativeActivity
+        // only). Under GameActivity this full-window overlay is never the
+        // editor, and a focusable one could take the IME away from
+        // GameActivity's own input view.
+        setFocusable(false);
+        setFocusableInTouchMode(false);
         mEditable = new SlintEditable();
     }
 
     @Override
     public boolean onCheckIsTextEditor() {
-        return true;
+        return isFocusable();
     }
 
     @Override
@@ -552,6 +556,8 @@ public class SlintAndroidJavaHelper {
         mActivity.runOnUiThread(new Runnable() {
             @Override
             public void run() {
+                mInputView.setFocusable(true);
+                mInputView.setFocusableInTouchMode(true);
                 mInputView.requestFocus();
                 InputMethodManager imm = (InputMethodManager) mActivity.getSystemService(Context.INPUT_METHOD_SERVICE);
                 imm.showSoftInput(mInputView, 0);

@@ -12,6 +12,8 @@ mod fonts;
 mod format;
 mod host;
 mod i18n;
+#[cfg(test)]
+mod ime_tests;
 mod memory;
 mod nav;
 mod pages;

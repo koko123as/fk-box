@@ -273,6 +273,43 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         resendInsets()
     }
 
+    /**
+     * GameTextInput's own key handling (InputConnection.processKeyEvent, run
+     * from the input view's key listener for the IME's backspace and arrow
+     * keys) deletes and moves with the editable's selection as it finds it;
+     * a reversed or out-of-range selection threw IndexOutOfBoundsException
+     * ("replace (4 ... 0) has end before start") and closed the app. The
+     * selection is put in order first, and anything that still throws there
+     * is logged and the key dropped: the next IME update resynchronizes the
+     * text with the UI (vendored backend, FKBOX-PATCH.md).
+     */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        normalizeTextInputSelection()
+        return try {
+            super.dispatchKeyEvent(event)
+        } catch (e: IndexOutOfBoundsException) {
+            android.util.Log.w("BoxActivity", "text input key ${event.keyCode} dropped: ${e.message}")
+            true
+        }
+    }
+
+    private fun normalizeTextInputSelection() {
+        runCatching {
+            val view = mSurfaceView ?: return
+            val editable = view.onCreateInputConnection(android.view.inputmethod.EditorInfo())?.editable ?: return
+            val length = editable.length
+            val start = android.text.Selection.getSelectionStart(editable)
+            val end = android.text.Selection.getSelectionEnd(editable)
+            if (start < 0 || end < 0) return
+            val low = minOf(start, end).coerceIn(0, length)
+            val high = maxOf(start, end).coerceIn(0, length)
+            if (low != start || high != end) android.text.Selection.setSelection(editable, low, high)
+            val composeStart = android.view.inputmethod.BaseInputConnection.getComposingSpanStart(editable)
+            val composeEnd = android.view.inputmethod.BaseInputConnection.getComposingSpanEnd(editable)
+            if (composeStart > length || composeEnd > length) android.view.inputmethod.BaseInputConnection.removeComposingSpans(editable)
+        }
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (hasFocus) resendInsets()

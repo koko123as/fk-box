@@ -102,6 +102,13 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   `FontFamily.Monospace`.
 - `ui-slint/vendor/i-slint-renderer-skia` (1.18.1 + FKBOX-PATCH.md): font data shared without
   copies and a 32 MB GPU resource cache.
+- `ui-slint/vendor/i-slint-backend-android-activity` (1.18.1 + FKBOX-PATCH.md): the GameActivity
+  IME path exchanges text state with GameTextInput in UTF-16 with an ordered selection (upstream
+  sent UTF-8 byte offsets, which crashed GameTextInput's backspace with Chinese text and panicked
+  on composing regions), does not echo the IME's own state back (each echo restarted the IME and
+  broke Chinese composition), sets the EditorInfo per field and shows the keyboard explicitly.
+  Host tests: `src/ime_tests.rs`. `BoxActivity.dispatchKeyEvent` orders the editable's selection
+  and drops a key that still throws IndexOutOfBoundsException.
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
   fixture data; never part of the Android build). Its software renderer measures wrapped Chinese
   text with one font, so wrapped CJK footers show one line there; the Skia renderer on Android
