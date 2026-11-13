@@ -435,6 +435,9 @@ export component ListItem inherits Rectangle {
     in property <bool> enabled: true;
     in property <int> level: 1;
     in property <int> title-lines: 2;
+    // The subtitle's lines at most (0: as many as it wraps to); one line is
+    // elided at the end.
+    in property <int> subtitle-lines: 0;
     in property <color> title-color: Theme.s.on-surface;
     // ContextMenuRegion: a long press reports where it happened.
     in property <bool> long-press-menu;
@@ -489,20 +492,37 @@ export component ListItem inherits Rectangle {
             
         } }
         // Custom rows (usage, fields) leave the title empty and take the width themselves.
+        // Each text sits in a box as tall as the text wraps at the width the
+        // row gives it: a wrapped text's own height in a nested layout was
+        // measured for one line, so a long value (a profile's URL) overflowed
+        // the row onto its divider.
         if root.title != "" || root.subtitle != "": VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T {
-                text: root.title;
-                color: root.title-color;
-                wrap: word-wrap;
-                max-height: root.title-lines * Theme.leading(TextRole.body);
+            Rectangle {
+                min-width: title-text.min-width;
+                preferred-width: title-text.preferred-width;
+                height: min(title-text.preferred-height, root.title-lines * Theme.leading(TextRole.body));
+                title-text := T {
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.title;
+                    color: root.title-color;
+                    wrap: root.title-lines == 1 ? no-wrap : word-wrap;
+                }
             }
-            if root.subtitle != "": T {
-                text: root.subtitle;
-                role: TextRole.subheadline;
-                color: Theme.s.on-surface-variant;
-                wrap: word-wrap;
+            if root.subtitle != "": Rectangle {
+                min-width: subtitle-text.min-width;
+                preferred-width: subtitle-text.preferred-width;
+                height: root.subtitle-lines > 0 ? min(subtitle-text.preferred-height, root.subtitle-lines * Theme.leading(TextRole.subheadline)) : subtitle-text.preferred-height;
+                subtitle-text := T {
+                    width: parent.width;
+                    height: parent.height;
+                    text: root.subtitle;
+                    role: TextRole.subheadline;
+                    color: Theme.s.on-surface-variant;
+                    wrap: root.subtitle-lines == 1 ? no-wrap : word-wrap;
+                }
             }
         }
         if root.trailing-text != "": T {

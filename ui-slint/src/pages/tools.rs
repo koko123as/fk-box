@@ -1094,7 +1094,7 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
     } else if s(challenge, "kind") == "open-url" {
         let url = s(challenge, "url");
         let u = url.clone();
-        rows.push(Row::item(&tr("Open sign-in page")).subtitle(&url).key("url").on(move |_| app::act("openUrl", json!({ "url": u }))));
+        rows.push(Row::item(&tr("Open sign-in page")).subtitle(&url).subtitle_lines(1).key("url").on(move |_| app::act("openUrl", json!({ "url": u }))));
     } else {
         if s(challenge, "kind") == "credentials" {
             field(&mut rows, "username", &tr("Username"), false);

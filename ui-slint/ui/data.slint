@@ -300,6 +300,8 @@ export struct SettingRow {
     loading: bool,
     progress: float,
     lines: int,
+    // The subtitle's lines at most (0: as many as it wraps to; ListItem).
+    subtitle-lines: int,
     menu: bool,
     // A password field (LabeledField secret = true).
     secret: bool,

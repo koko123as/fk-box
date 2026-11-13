@@ -392,6 +392,12 @@ impl Row {
         self
     }
 
+    /// The subtitle on at most this many lines (one line is elided).
+    pub fn subtitle_lines(mut self, lines: i32) -> Row {
+        self.data.subtitle_lines = lines;
+        self
+    }
+
     pub fn lines(mut self, lines: i32) -> Row {
         self.data.lines = lines;
         self

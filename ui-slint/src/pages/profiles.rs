@@ -726,18 +726,18 @@ fn details_page(id: Option<i64>) -> Page {
         }
         rows.push(r);
         if let Some(url) = web.clone() {
-            rows.push(Row::item(&tr("Open website")).subtitle(&url).lines(1).on(move |_| app::act("openUrl", json!({ "url": url }))));
+            rows.push(Row::item(&tr("Open website")).subtitle(&url).lines(1).subtitle_lines(1).on(move |_| app::act("openUrl", json!({ "url": url }))));
         }
     } else if let Some(url) = web {
         rows.push(Row::section(&tr("Subscription info")));
-        rows.push(Row::item(&tr("Open website")).subtitle(&url).on(move |_| app::act("openUrl", json!({ "url": url }))));
+        rows.push(Row::item(&tr("Open website")).subtitle(&url).subtitle_lines(1).on(move |_| app::act("openUrl", json!({ "url": url }))));
     }
     rows.push(Row::gap());
     let remote_profile = is_remote(&p);
     if remote_profile {
         let url = s(&p, "url");
         let u = url.clone();
-        rows.push(Row::item(&tr("URL")).subtitle(&url).key("url").trailing("copy", move || {
+        rows.push(Row::item(&tr("URL")).subtitle(&url).subtitle_lines(1).key("url").trailing("copy", move || {
             app::copy_text(&u);
             app::message("Copied");
         }));
