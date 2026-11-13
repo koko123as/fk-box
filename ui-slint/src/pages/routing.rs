@@ -301,6 +301,11 @@ fn validate_rule(rule: &Value, core: &str) -> Result<(), String> {
 }
 
 fn rule_summary(rule: &Value) -> String {
+    rule_summary_with(rule, true)
+}
+
+/// The summary under a rule; without the app names when the title already shows them.
+fn rule_summary_with(rule: &Value, app_names: bool) -> String {
     let content = s(rule, "content");
     let apps = list_of(rule, "apps");
     let what = match content.as_str() {
@@ -320,7 +325,7 @@ fn rule_summary(rule: &Value) -> String {
         }
     };
     let mut parts: Vec<String> = Some(what).filter(|w| !w.is_empty()).into_iter().collect();
-    if !apps.is_empty() {
+    if !apps.is_empty() && app_names {
         parts.push(apps_text(&apps));
     }
     let network = s(rule, "network");
@@ -330,6 +335,9 @@ fn rule_summary(rule: &Value) -> String {
     let ports = s(rule, "ports");
     if !ports.trim().is_empty() {
         parts.push(ports);
+    }
+    if !apps.is_empty() && !app_names {
+        parts.push(format!("{} {}", tr("Apps"), apps.len()));
     }
     format!("{} → {}", parts.join(" · "), target_text(&rule["target"]))
 }
@@ -503,7 +511,8 @@ fn routing_page(st: &RoutingRef) -> Page {
                 }
             });
         })
-        .subtitle(&rule_summary(rule))
+        // An unnamed app rule is titled by its apps; the summary then counts them.
+        .subtitle(&rule_summary_with(rule, !(name.trim().is_empty() && s(rule, "content") == "all")))
         .key(&id)
         .checked(truthy(&rule["enabled"]))
         .hint("switch")

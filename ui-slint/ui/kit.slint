@@ -698,6 +698,7 @@ export component Field inherits Rectangle {
         height: root.multiline ? self.preferred-height : flick.height;
         vertical-alignment: root.multiline ? top : center;
         horizontal-alignment: root.align;
+        wrap: root.multiline ? word-wrap : no-wrap;
         text: root.hint;
         color: Theme.s.on-surface-variant;
     }
