@@ -14,16 +14,22 @@ import { ProfileRoutes } from "pages/profiles.slint";
 import { ToolRoutes } from "pages/tools.slint";
 import { SettingRoutes } from "pages/settings.slint";
 import { RequestRoutes } from "pages/requests.slint";
+import { RowsPage } from "pages/rows.slint";
+import { Pages } from "data.slint";
 
 // One route's page, by kind.
 component RoutePage inherits Rectangle {
     in property <Route> route;
+    in property <int> index;
     property <int> leading: route.sheet-root ? 2 : 1;
     property <string> k: route.kind;
-    property <bool> known: k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details"
+    // A route opened from Slint by kind that a page adopted as Rust-built rows.
+    property <bool> generic: k == "rows" || Pages.data[root.index].generic;
+    property <bool> known: generic || k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details"
         || profiles.handles || tools.handles || settings.handles || requests.handles;
     background: Theme.s.surface;
     TouchArea { }
+    if generic: RowsPage { d: Pages.data[root.index]; leading: root.leading; }
     if k == "memory": MemoryPage { leading: root.leading; }
     if k == "egress": EgressPage { leading: root.leading; }
     if k == "intranet": IntranetPage { leading: root.leading; }
@@ -44,27 +50,23 @@ component RoutePage inherits Rectangle {
 export component RouteHost inherits Rectangle {
     property <length> pane-x: Nav.mobile ? 0px : 81px;
     for r[i] in Nav.routes: Rectangle {
-        // A page of the destination shown (or of the root navigator).
-        if !r.form && (Nav.mobile || r.pane < 0 || Nav.destinations[r.pane] == Nav.tab): RoutePage {
-            x: r.pane < 0 ? 0px : root.pane-x;
-            width: root.width - self.x;
-            height: root.height;
-            route: r;
-        }
-        // A form: full screen on a phone; a card over a scrim elsewhere.
-        if r.form && Nav.mobile: RoutePage { route: r; }
-        if r.form && !Nav.mobile && r.sheet-root: Rectangle {
+        property <bool> card: r.form && !Nav.mobile;
+        // A page of another destination stays hidden in its pane.
+        property <bool> shown: r.form || Nav.mobile || r.pane < 0 || Nav.destinations[r.pane] == Nav.tab;
+        if card && r.sheet-root: Rectangle {
             background: Theme.s.scrim.with-alpha(0.32);
             TouchArea { clicked => { Nav.dismiss-form(r.id); } }
         }
-        if r.form && !Nav.mobile: Rectangle {
-            width: min(580px, root.width * 0.9);
-            height: min(720px, (root.height - Nav.keyboard-height) * 0.85);
-            x: (root.width - self.width) / 2;
-            y: (root.height - Nav.keyboard-height - self.height) / 2;
-            border-radius: Theme.radius;
-            clip: true;
-            RoutePage { route: r; }
+        RoutePage {
+            visible: shown;
+            route: r;
+            index: i;
+            width: card ? min(580px, root.width * 0.9) : r.form || r.pane < 0 ? root.width : root.width - root.pane-x;
+            height: card ? min(720px, (root.height - Nav.keyboard-height) * 0.85) : root.height;
+            x: card ? (root.width - self.width) / 2 : r.form || r.pane < 0 ? 0px : root.pane-x;
+            y: card ? (root.height - Nav.keyboard-height - self.height) / 2 : 0px;
+            border-radius: card ? Theme.radius : 0px;
+            clip: card;
         }
     }
 }

@@ -18,3 +18,5 @@ pub fn menu(_key: &str) -> Vec<MenuEntry> {
 }
 pub fn install(_w: &AppWindow) {}
 pub fn browser_complete(_value: &serde_json::Value) {}
+pub fn open_mitm_certificate() {}
+pub fn open_share(_token: &str) {}

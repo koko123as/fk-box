@@ -1,0 +1,15 @@
+// A light main file for local type checks of the Rust side (build.rs with
+// FKUI_LIGHT=1): the same globals and structs as app.slint, no pages.
+
+import { Theme, TextRole, Scheme } from "theme.slint";
+import { Icons, Glyph } from "icons.slint";
+import { Nav, MenuItem, BarAction, Route, Keyword } from "globals.slint";
+import { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow } from "data.slint";
+import { Extra } from "extra.slint";
+
+export { Theme, Scheme, TextRole, Nav, MenuItem, BarAction, Route, Keyword, Glyph, Icons, Extra }
+export { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow }
+
+export component AppWindow inherits Window {
+    in property <int> unused: Nav.focus-tick + (Theme.dark ? 1 : 0) + App.profile-count + Pages.data.length;
+}

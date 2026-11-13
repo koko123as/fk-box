@@ -1,0 +1,345 @@
+// The Rust-built list pages (src/rows.rs): Section, ListItem, ListItemOpen,
+// ListItemToggle, ListItemOptions, ListItemInput, FormRow, ListFooter,
+// ErrorState and the editors of ui/Forms.kt, ui/Kit.kt and ui/Card.kt, laid
+// out from rows. Every action goes back to Rust with the page and row keys.
+
+import { Theme, TextRole } from "../theme.slint";
+import { Icons, Glyph } from "../icons.slint";
+import { Nav, BarAction } from "../globals.slint";
+import { SettingRow, PageData } from "../data.slint";
+import { Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton } from "../kit.slint";
+
+export component RowView inherits Rectangle {
+    in property <SettingRow> entry;
+    in property <int> page;
+    property <string> key: page + ":" + entry.key;
+    height: lay.preferred-height;
+    lay := VerticalLayout {
+        if entry.kind == "section": SectionTitle { text: root.entry.title; first: root.entry.checked; }
+        if entry.kind == "gap": SectionGap { }
+        if entry.kind == "spacer": Rectangle { height: root.entry.lines * 1px; }
+        if entry.kind == "footer": Footer { text: root.entry.title; }
+        if entry.kind == "title": VerticalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-top: 12px;
+            padding-bottom: 12px;
+            spacing: 4px;
+            T { text: root.entry.title; role: TextRole.title2; emphasized: true; wrap: word-wrap; }
+            if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.subheadline; color: Theme.s.on-surface-variant; wrap: word-wrap; }
+        }
+        if entry.kind == "item" || entry.kind == "switch" || entry.kind == "check" || entry.kind == "radio": ListItem {
+            position: root.entry.position;
+            title: root.entry.title;
+            subtitle: root.entry.subtitle;
+            has-leading: root.entry.has-glyph && root.entry.kind != "radio";
+            leading: root.entry.glyph;
+            trailing-text: root.entry.kind == "item" ? root.entry.value : "";
+            chevron: root.entry.chevron;
+            clickable: root.entry.clickable;
+            enabled: root.entry.enabled;
+            invalid: root.entry.invalid;
+            title-lines: root.entry.lines > 0 ? root.entry.lines : 2;
+            title-color: root.entry.danger ? Theme.s.error : Theme.s.on-surface;
+            clicked => {
+                if (root.entry.kind == "switch" || root.entry.kind == "check") {
+                    Nav.act2("row", root.key, root.entry.checked ? "0" : "1");
+                } else {
+                    Nav.act2("row", root.key, root.entry.value);
+                }
+            }
+            if root.entry.kind == "radio": Radio { selected: root.entry.checked; y: (parent.height - self.height) / 2; }
+            if root.entry.loading: Spinner { size: 24px; y: (parent.height - self.height) / 2; }
+            if root.entry.kind == "switch": Switch {
+                checked: root.entry.checked;
+                enabled: root.entry.enabled && root.entry.clickable;
+                y: (parent.height - self.height) / 2;
+                toggled(v) => { Nav.act2("row", root.key, v ? "1" : "0"); }
+            }
+            if root.entry.kind == "check": CheckBox { checked: root.entry.checked; y: (parent.height - self.height) / 2; }
+            if root.entry.has-trailing: IconButton {
+                glyph: root.entry.trailing-glyph;
+                y: (parent.height - self.height) / 2;
+                clicked => {
+                    if (root.entry.menu) {
+                        Nav.open-menu("row:" + root.key, self.absolute-position.x + self.width, self.absolute-position.y + self.height);
+                    } else {
+                        Nav.act2("row-trail", root.key, "");
+                    }
+                }
+            }
+        }
+        // ReorderableColumn: drag the SortHandle; the row follows the finger and
+        // lands by whole rows when released.
+        if entry.kind == "sort": Rectangle {
+            property <length> drag: handle.pressed ? handle.mouse-y - handle.pressed-y : 0px;
+            height: item.preferred-height;
+            item := ListItem {
+                y: parent.drag;
+                position: root.entry.position;
+                title: root.entry.title;
+                enabled: root.entry.enabled;
+                level: handle.pressed ? 2 : 1;
+                Rectangle {
+                    width: 40px;
+                    Icon { glyph: Icons.drag-handle; color: Theme.s.on-surface-variant; }
+                    handle := TouchArea {
+                        enabled: root.entry.enabled;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.up) {
+                                Nav.act2("row", root.key, round((self.mouse-y - self.pressed-y) / max(1px, item.height)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // ProfileStats: groups, outbounds and routing rules side by side.
+        if entry.kind == "stats": HorizontalLayout {
+            padding-left: 8px;
+            padding-right: 8px;
+            padding-bottom: 12px;
+            alignment: space-between;
+            for f[i] in [
+                { v: root.entry.title, l: @tr("Proxy groups") },
+                { v: root.entry.subtitle, l: @tr("Outbounds") },
+                { v: root.entry.value, l: @tr("Routing rules") },
+            ]: VerticalLayout {
+                if root.entry.loading: Skeleton { width: 34px; pill-height: Theme.leading(TextRole.title3); }
+                if !root.entry.loading: T { text: f.v; role: TextRole.title3; emphasized: true; }
+                T { text: f.l; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+            }
+        }
+        // SubscriptionInfoView inside a list item.
+        if entry.kind == "usage": u := ListItem {
+            position: root.entry.position;
+            property <color> tone: root.entry.lines == 2 ? Theme.s.error : root.entry.lines == 1 ? Theme.s.warning : Theme.s.primary;
+            VerticalLayout {
+                horizontal-stretch: 1;
+                spacing: 4px;
+                HorizontalLayout {
+                    spacing: 12px;
+                    T { text: root.entry.title; role: TextRole.subheadline; emphasized: true; color: Theme.s.on-surface-variant; horizontal-stretch: 1; overflow: elide; }
+                    T { text: root.entry.value; role: TextRole.footnote; horizontal-stretch: 0; overflow: elide;
+                        color: root.entry.lines == 0 ? Theme.s.on-surface.with-alpha(0.7) : u.tone; }
+                }
+                if root.entry.checked: ProgressBar { value: root.entry.progress; tint: u.tone; background: u.tone.with-alpha(0.15); }
+            }
+        }
+        if entry.kind == "card": Card {
+            height: card-lay.preferred-height;
+            long-press-menu: root.entry.menu;
+            selected: root.entry.checked;
+            fills: root.entry.checked;
+            clicked => { Nav.act2("row", root.key, root.entry.value); }
+            long-pressed(x, y) => { Nav.open-menu("row:" + root.key, x, y); }
+            card-lay := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 8px;
+                padding-top: 10px;
+                padding-bottom: 10px;
+                spacing: 16px;
+                if root.entry.has-glyph: Icon { glyph: root.entry.glyph; y: (parent.height - self.height) / 2; color: Theme.s.on-surface-variant; }
+                VerticalLayout {
+                    horizontal-stretch: 1;
+                    alignment: center;
+                    T { text: root.entry.title; }
+                    if root.entry.subtitle != "": T {
+                        text: root.entry.subtitle;
+                        role: TextRole.subheadline;
+                        color: Theme.s.on-surface-variant;
+                        wrap: word-wrap;
+                        max-height: Theme.leading(TextRole.subheadline) * (root.entry.lines > 0 ? root.entry.lines : 2);
+                    }
+                }
+                if root.entry.value != "": T { text: root.entry.value; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+                if root.entry.menu: IconButton {
+                    glyph: Icons.more;
+                    y: (parent.height - self.height) / 2;
+                    clicked => { Nav.open-menu("row:" + root.key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
+                }
+            }
+        }
+        // FormRow: the label on the left, the field filling the rest.
+        if entry.kind == "field": Rectangle {
+            property <bool> top: root.entry.position == 1 || root.entry.position == 4;
+            property <bool> bottom: root.entry.position == 3 || root.entry.position == 4;
+            height: max(56px, fl.preferred-height);
+            border-top-left-radius: top ? Theme.radius : 0;
+            border-top-right-radius: top ? Theme.radius : 0;
+            border-bottom-left-radius: bottom ? Theme.radius : 0;
+            border-bottom-right-radius: bottom ? Theme.radius : 0;
+            background: root.entry.invalid ? Theme.s.error-container : Theme.level(2);
+            fl := HorizontalLayout {
+                padding-left: 16px;
+                padding-right: 16px;
+                padding-top: 8px;
+                padding-bottom: 8px;
+                spacing: 16px;
+                T { text: root.entry.title; horizontal-stretch: 0; min-width: min(self.preferred-width, 140px); }
+                Field {
+                    outlined: false;
+                    horizontal-stretch: 1;
+                    text: root.entry.value;
+                    hint: root.entry.hint;
+                    mono: root.entry.mono;
+                    enabled: root.entry.enabled;
+                    align: TextHorizontalAlignment.right;
+                    input-type: root.entry.number ? InputType.number : InputType.text;
+                    y: (parent.height - self.height) / 2;
+                    edited(t) => { Nav.act2("row-edit", root.key, t); }
+                    accepted(t) => { Nav.act2("row-done", root.key, t); }
+                }
+                if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.subheadline; horizontal-stretch: 0; }
+            }
+            if !bottom: Rectangle {
+                x: 16px;
+                y: parent.height - 1px;
+                width: parent.width - 32px;
+                height: 1px;
+                background: Theme.s.outline-variant;
+            }
+        }
+        // An outlined multi-line field (ConfigValueEditor, QuickEditPage, the text tools).
+        if entry.kind == "editor": VerticalLayout {
+            padding-top: 8px;
+            spacing: 4px;
+            Field {
+                label: root.entry.title;
+                text: root.entry.value;
+                hint: root.entry.hint;
+                mono: root.entry.mono;
+                multiline: true;
+                enabled: root.entry.enabled;
+                invalid: root.entry.invalid;
+                field-min: max(120px, (root.entry.lines > 0 ? root.entry.lines : 8) * Theme.sp(21));
+                edited(t) => { Nav.act2("row-edit", root.key, t); }
+            }
+            if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.caption1; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; x: 16px; }
+        }
+        // An outlined single-line field with its label.
+        if entry.kind == "input": VerticalLayout {
+            padding-top: 8px;
+            spacing: 4px;
+            Field {
+                label: root.entry.title;
+                text: root.entry.value;
+                hint: root.entry.hint;
+                mono: root.entry.mono;
+                enabled: root.entry.enabled;
+                invalid: root.entry.invalid;
+                input-type: root.entry.number ? InputType.number : InputType.text;
+                edited(t) => { Nav.act2("row-edit", root.key, t); }
+                accepted(t) => { Nav.act2("row-done", root.key, t); }
+            }
+            if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.caption1; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; x: 16px; }
+        }
+        if entry.kind == "text": Rectangle {
+            height: tx.preferred-height + 8px;
+            tx := TextInput {
+                y: 4px;
+                height: self.preferred-height;
+                text: root.entry.title;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                font-size: root.entry.mono ? Theme.sp(13) : Theme.size(TextRole.subheadline);
+                font-family: root.entry.mono ? Theme.mono : Theme.font-family;
+                color: root.entry.danger ? Theme.s.error : root.entry.checked ? Theme.s.on-surface : Theme.s.on-surface-variant;
+            }
+        }
+        if entry.kind == "error": Rectangle {
+            height: et.preferred-height + 24px;
+            border-radius: Theme.radius;
+            background: Theme.s.error-container;
+            et := TextInput {
+                x: 12px;
+                width: parent.width - 24px;
+                height: self.preferred-height;
+                text: root.entry.title;
+                read-only: true;
+                single-line: false;
+                wrap: word-wrap;
+                font-size: Theme.size(TextRole.subheadline);
+                color: Theme.s.on-error-container;
+            }
+        }
+        if entry.kind == "button": HorizontalLayout {
+            alignment: root.entry.checked ? stretch : center;
+            padding-top: 8px;
+            padding-bottom: 8px;
+            Button {
+                label: root.entry.title;
+                has-glyph: root.entry.has-glyph;
+                glyph: root.entry.glyph;
+                kind: root.entry.lines;
+                enabled: root.entry.enabled;
+                button-height: 40px;
+                clicked => { Nav.act2("row", root.key, root.entry.value); }
+            }
+        }
+        if entry.kind == "progress": VerticalLayout {
+            padding-top: 8px;
+            padding-bottom: 8px;
+            spacing: 6px;
+            if root.entry.title != "": T { text: root.entry.title; role: TextRole.subheadline; color: Theme.s.on-surface-variant; }
+            ProgressBar { value: root.entry.progress; }
+        }
+        if entry.kind == "empty": EmptyState {
+            title: root.entry.title;
+            message: root.entry.subtitle;
+            glyph: root.entry.glyph;
+            action-label: root.entry.value;
+            action => { Nav.act2("row", root.key, ""); }
+        }
+    }
+}
+
+// The body: rows in a scrolling column, 16 px in from each side.
+export component RowsBody inherits Rectangle {
+    in property <PageData> d;
+    in property <length> side: 16px;
+    in property <length> top-pad: 8px;
+    Flickable {
+        content-height: body.preferred-height;
+        body := VerticalLayout {
+            padding-left: root.side;
+            padding-right: root.side;
+            padding-top: root.top-pad;
+            padding-bottom: 24px + max(Nav.keyboard-height, Nav.inset-bottom);
+            for r in root.d.rows: RowView { entry: r; page: root.d.id; }
+        }
+    }
+}
+
+// A Rust-built page: the bar (actions and overflow), the loading bar and the rows.
+export component RowsPage inherits Rectangle {
+    in property <PageData> d;
+    in property <int> leading: 1;
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: root.d.title;
+        leading: root.leading;
+        actions: root.d.actions;
+        menu-key: root.d.menu-key;
+        loading: root.d.loading;
+        searchable: root.d.searchable;
+        action(id) => { Nav.act2("bar", root.d.id, id); }
+        search(q) => { Nav.act2("search", root.d.id, q); }
+    }
+    if root.d.rows.length == 0 && root.d.empty-title != "": EmptyState {
+        y: bar.height;
+        height: parent.height - bar.height;
+        title: root.d.empty-title;
+        message: root.d.empty-message;
+        glyph: root.d.empty-glyph;
+        action-label: root.d.empty-action;
+        action => { Nav.act2("empty", root.d.id, ""); }
+    }
+    if root.d.rows.length > 0: RowsBody {
+        y: bar.height;
+        height: parent.height - bar.height;
+        d: root.d;
+    }
+}

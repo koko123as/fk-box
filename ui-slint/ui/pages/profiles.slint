@@ -1,15 +1,277 @@
-// Placeholder until the page is ported.
-import { Theme } from "../theme.slint";
-import { Icons } from "../icons.slint";
-import { TopBar, EmptyState } from "../kit.slint";
-export component ProfilesPage inherits Rectangle {
-    background: Theme.s.surface;
-    bar := TopBar { y: 0; title: @tr("Profiles"); }
-    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Profiles"); }
+// Profiles (pages/ProfilesPage.kt, ProfileEditor.kt's CodeEditor and
+// ProfileEditor, ui/QrCode.kt): the profile grid with its cards, the code
+// editor and the QR code page. The add, form, details, order and
+// configuration pages are Rust-built rows (src/pages/profiles.rs).
+
+import { Theme, TextRole } from "../theme.slint";
+import { Icons, Glyph } from "../icons.slint";
+import { Nav, BarAction } from "../globals.slint";
+import { App, Profiles, ProfileRow } from "../data.slint";
+import { Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField } from "../kit.slint";
+
+// The expiry date on a tinted pill (SubscriptionExpireChip) and the core chip.
+component TonePill inherits Rectangle {
+    in property <string> label;
+    in property <color> tone;
+    height: t.preferred-height + 4px;
+    width: t.preferred-width + 16px;
+    border-radius: self.height / 2;
+    background: tone.with-alpha(0.15);
+    t := T { text: root.label; role: TextRole.caption1; emphasized: true; color: root.tone; x: 8px; }
 }
+
+// ProfileCard
+component ProfileCard inherits Card {
+    in property <ProfileRow> p;
+    in property <bool> picker;
+    property <color> tone: p.days-tone == 2 ? Theme.s.error : p.days-tone == 1 ? Theme.s.warning : Theme.s.primary;
+    property <color> bar-tone: p.bar-tone == 2 ? Theme.s.error : p.bar-tone == 1 ? Theme.s.warning : Theme.s.primary;
+    selected: p.selected;
+    long-press-menu: !p.updating && !picker;
+    enabled: !App.transitioning;
+    clicked => { Nav.act2("profile-select", p.id, picker ? "1" : "0"); }
+    long-pressed(x, y) => { Nav.open-menu("profile:" + p.id, x, y); }
+    HorizontalLayout {
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+        spacing: 16px;
+        VerticalLayout {
+            horizontal-stretch: 1;
+            alignment: center;
+            spacing: 4px;
+            HorizontalLayout {
+                spacing: 8px;
+                T { text: root.p.name; role: TextRole.headline; horizontal-stretch: 0; min-width: 40px; }
+                if root.p.days != "": TonePill { label: root.p.days; tone: root.tone; y: (parent.height - self.height) / 2; }
+                Rectangle { horizontal-stretch: 1; }
+            }
+            HorizontalLayout {
+                spacing: 6px;
+                if root.p.core != "": TonePill { label: root.p.core; tone: Theme.s.secondary; y: (parent.height - self.height) / 2; }
+                T { text: root.p.source; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 1; }
+            }
+            if root.p.has-usage: Rectangle {
+                height: 10px;
+                Rectangle {
+                    y: 6px;
+                    height: 4px;
+                    border-radius: 2px;
+                    background: root.bar-tone.with-alpha(0.15);
+                    clip: true;
+                    Rectangle { x: 0; width: parent.width * clamp(root.p.ratio, 0, 1); background: root.bar-tone; }
+                }
+            }
+        }
+        HorizontalLayout {
+            spacing: 8px;
+            alignment: end;
+            if root.p.updating: Spinner { size: 24px; y: (parent.height - self.height) / 2; }
+            if !root.p.updating: T { text: root.p.updated; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 0; }
+            if root.p.selected: SelectionBadge { size: 24px; y: (parent.height - self.height) / 2; }
+        }
+    }
+}
+
+export component ProfilesPage inherits Rectangle {
+    in property <bool> picker;
+    in property <int> leading: picker ? 2 : 0;
+    property <length> gap: Nav.gap;
+    property <int> columns: clamp(floor((self.width - 32px + gap) / (300px + gap)), 1, 3);
+    property <length> card-height: Theme.leading(TextRole.headline) + 4px + Theme.leading(TextRole.footnote) + (Profiles.any-usage ? 10px : 0px) + 20px;
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: @tr("Profiles");
+        leading: root.leading;
+        actions: root.picker ? [] : Profiles.bar-actions;
+        action(id) => { Nav.act("profiles-bar", id); }
+    }
+    if App.remote: EmptyState {
+        y: bar.height;
+        height: parent.height - bar.height;
+        glyph: Icons.profiles;
+        title: @tr("Disconnect remote session to edit local profiles");
+    }
+    if !App.remote && Profiles.rows.length == 0: EmptyState {
+        y: bar.height;
+        height: parent.height - bar.height;
+        glyph: Icons.profiles;
+        title: @tr("No profiles yet");
+        message: @tr("Import a sing-box JSON configuration to get started.");
+        action-label: @tr("Add profile");
+        action => { Nav.open-menu("add-profile", root.width / 2, root.height / 2); }
+    }
+    if !App.remote && Profiles.rows.length > 0: Flickable {
+        y: bar.height;
+        height: parent.height - bar.height;
+        content-height: grid.height + 8px + 16px + Nav.inset-bottom;
+        grid := Rectangle {
+            property <length> cell: (root.width - 32px - (root.columns - 1) * root.gap) / root.columns;
+            y: 8px;
+            height: ceil(Profiles.rows.length / root.columns) * (root.card-height + root.gap);
+            for p[i] in Profiles.rows: ProfileCard {
+                x: 16px + mod(i, root.columns) * (grid.cell + root.gap);
+                y: floor(i / root.columns) * (root.card-height + root.gap);
+                width: grid.cell;
+                height: root.card-height;
+                p: p;
+                picker: root.picker;
+            }
+        }
+    }
+}
+
+// CodeEditor: a gutter of line numbers beside a monospace field, no wrapping.
+export component CodeEditorPage inherits Rectangle {
+    in property <int> leading: 1;
+    property <length> line-height: Theme.sp(13) * 1.6;
+    background: Theme.s.surface;
+    bar := TopBar {
+        y: 0;
+        title: Profiles.editor-title;
+        leading: root.leading;
+        loading: Profiles.config-loading;
+        actions: Profiles.editor-actions;
+        menu-key: "code-editor";
+        action(id) => { Nav.act("editor-" + id, ""); }
+    }
+    VerticalLayout {
+        y: bar.height;
+        height: parent.height - bar.height - max(Nav.keyboard-height, Nav.inset-bottom);
+        if Profiles.editor-search: HorizontalLayout {
+            padding: 12px;
+            spacing: 4px;
+            SearchField {
+                horizontal-stretch: 1;
+                fill: Theme.level(1);
+                text <=> Profiles.editor-find;
+                edited(t) => { Nav.act("editor-find", t); }
+            }
+            IconButton { glyph: Icons.arrow-down; tooltip: @tr("Search"); y: (parent.height - self.height) / 2; clicked => { Nav.act("editor-next", Profiles.editor-find); } }
+        }
+        if Profiles.editor-error != "": Rectangle {
+            background: Theme.s.error-container;
+            height: err.preferred-height + 24px;
+            err := TextInput {
+                x: 12px;
+                width: parent.width - 24px;
+                height: self.preferred-height;
+                text: Profiles.editor-error;
+                read-only: true;
+                wrap: word-wrap;
+                single-line: false;
+                color: Theme.s.on-error-container;
+                font-size: Theme.size(TextRole.body);
+            }
+        }
+        if Profiles.editor-note != "": T {
+            text: Profiles.editor-note;
+            role: TextRole.caption1;
+            color: Theme.s.on-surface-variant;
+            wrap: word-wrap;
+            height: self.preferred-height + 24px;
+            x: 12px;
+            width: parent.width - 24px;
+        }
+        if Profiles.editor-ready: HorizontalLayout {
+            vertical-stretch: 1;
+            gutter := Rectangle {
+                width: numbers.preferred-width + 24px;
+                background: Theme.s.surface-container-low;
+                clip: true;
+                numbers := Text {
+                    x: 12px;
+                    y: 16px + flick.content-y;
+                    width: parent.width - 24px;
+                    height: self.preferred-height;
+                    text: Profiles.editor-lines;
+                    font-family: Theme.mono;
+                    font-size: Theme.sp(13);
+                    horizontal-alignment: right;
+                    vertical-alignment: top;
+                    color: Theme.s.on-surface-variant;
+                }
+            }
+            flick := Flickable {
+                horizontal-stretch: 1;
+                content-height: max(self.height, editor.preferred-height + 32px);
+                content-width: max(self.width, editor.preferred-width + 28px);
+                editor := TextInput {
+                    x: 12px;
+                    y: 16px;
+                    width: max(flick.width - 28px, self.preferred-width);
+                    height: max(flick.height - 32px, self.preferred-height);
+                    property <int> sel-tick: Profiles.editor-select-tick;
+                    changed sel-tick => {
+                        self.set-selection-offsets(Profiles.editor-select-start, Profiles.editor-select-end);
+                        flick.content-y = -max(0px, min(Profiles.editor-select-line * root.line-height - flick.height / 3, flick.content-height - flick.height));
+                    }
+                    property <int> text-tick: Profiles.editor-text-tick;
+                    changed text-tick => { self.text = Profiles.config-text; }
+                    init => { self.text = Profiles.config-text; }
+                    single-line: false;
+                    wrap: no-wrap;
+                    read-only: Profiles.editor-busy;
+                    font-family: Theme.mono;
+                    font-size: Theme.sp(13);
+                    color: Theme.s.on-surface;
+                    selection-background-color: Theme.s.primary.with-alpha(0.3);
+                    selection-foreground-color: Theme.s.on-surface;
+                    edited => { Nav.act("editor-edited", self.text); }
+                }
+            }
+        }
+        if !Profiles.editor-ready && Profiles.editor-error == "": Rectangle { vertical-stretch: 1; }
+        if !Profiles.editor-ready && Profiles.editor-error != "": EmptyState {
+            vertical-stretch: 1;
+            glyph: Icons.info;
+            title: @tr("Retry");
+            action-label: @tr("Retry");
+            action => { Nav.act("editor-reload", ""); }
+        }
+    }
+}
+
+// QrCodeView: dark modules on white with the quiet zone, on a rounded card.
+export component QrPage inherits ScrollPage {
+    title: @tr("QR code");
+    Rectangle { height: 8px; }
+    HorizontalLayout {
+        alignment: center;
+        if Profiles.qr-path != "": Rectangle {
+            width: min(240px, root.width - 32px);
+            height: self.width;
+            background: white;
+            border-radius: Theme.radius;
+            Path {
+                width: parent.width;
+                height: parent.height;
+                viewbox-width: Profiles.qr-size;
+                viewbox-height: Profiles.qr-size;
+                commands: Profiles.qr-path;
+                fill: black;
+                stroke-width: 0;
+            }
+        }
+        if Profiles.qr-path == "": TextInput {
+            text: Profiles.qr-text;
+            read-only: true;
+            wrap: word-wrap;
+            single-line: false;
+            horizontal-alignment: center;
+            color: Theme.s.on-surface;
+        }
+    }
+}
+
 export component ProfileRoutes inherits Rectangle {
     in property <string> kind;
     in property <string> arg;
     in property <int> leading;
-    out property <bool> handles: false;
+    out property <bool> handles: kind == "profiles-picker" || kind == "code-editor" || kind == "profile-qr";
+    if root.kind == "profiles-picker": ProfilesPage { picker: true; leading: root.leading; }
+    if root.kind == "code-editor": CodeEditorPage { leading: root.leading; }
+    if root.kind == "profile-qr": QrPage { leading: root.leading; }
 }

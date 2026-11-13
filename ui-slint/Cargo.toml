@@ -13,7 +13,9 @@ path = "src/lib.rs"
 [dependencies]
 # No default backends: on Android the platform is the GameActivity backend below.
 slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2"] }
-serde_json = "1"
+serde_json = { version = "1", features = ["preserve_order"] }
+# QrCodeView (ui/QrCode.kt), ZXing Encoder at level L.
+qrcodegen = "1.8"
 # Material Color Utilities (spec 2021, as com.google.android.material.color.utilities).
 material-colors = "=0.5.0"
 

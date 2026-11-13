@@ -103,6 +103,11 @@ fn tab_index() -> i32 {
     nav.get_destinations().iter().position(|d| d == tab).map(|i| i as i32).unwrap_or(-1)
 }
 
+/// The id the next route will get.
+pub fn next_id() -> i32 {
+    NAV.with(|n| n.borrow().next_id + 1)
+}
+
 fn add(kind: &str, arg: &str, form: bool) -> i32 {
     let model = routes();
     let id = NAV.with(|n| {

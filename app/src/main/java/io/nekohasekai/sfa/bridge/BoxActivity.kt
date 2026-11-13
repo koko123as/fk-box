@@ -129,6 +129,12 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     SlintHost.nativeReply(id, true, SlintHost.wire(null))
                     return@launch
                 }
+                "clipboardText" -> {
+                    val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
+                    val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@BoxActivity)?.toString()
+                    SlintHost.nativeReply(id, true, SlintHost.wire(text))
+                    return@launch
+                }
                 "exit" -> {
                     SlintHost.nativeReply(id, true, SlintHost.wire(null))
                     finish()
