@@ -195,6 +195,23 @@ impl Row {
         r
     }
 
+    /// SegmentedButton row: `f(index)`.
+    pub fn segments(options: Vec<String>, selected: i32, f: impl Fn(usize) + 'static) -> Row {
+        let mut r = row("segments", "");
+        r.data.options = slint::ModelRc::new(slint::VecModel::from(options.into_iter().map(slint::SharedString::from).collect::<Vec<_>>()));
+        r.data.lines = selected;
+        r.action = Some(Rc::new(move |v: String| f(v.parse().unwrap_or(0))));
+        r
+    }
+
+    /// TonalChips: `f(label)`.
+    pub fn chips(options: Vec<String>, f: impl Fn(String) + 'static) -> Row {
+        let mut r = row("chips", "");
+        r.data.options = slint::ModelRc::new(slint::VecModel::from(options.into_iter().map(slint::SharedString::from).collect::<Vec<_>>()));
+        r.action = Some(Rc::new(f));
+        r
+    }
+
     /// ProfileStats: three figures (groups, outbounds, rules); loading shows skeletons.
     pub fn stats(groups: &str, outbounds: &str, rules: &str, loading: bool) -> Row {
         let mut r = row("stats", groups);

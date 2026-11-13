@@ -116,6 +116,10 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "saveRouting" -> saveRouting(args.map("value"))
     "routingPreview" -> routingPreview(args.map("draft"))
     "routingTargets" -> routingTargets(args.getString("core"))
+    // BoxService.routingStatus, which the Compose pages collected directly.
+    "routingStatus" -> io.nekohasekai.sfa.bg.BoxService.routingStatus.value?.let {
+        mapOf("core" to it.core, "applied" to it.applied, "active" to it.active, "fallback" to it.fallback, "error" to it.error, "warnings" to it.warnings, "time" to it.time)
+    }
     "updateSettings" -> updateSettings(args.map("values"))
     "listApps" -> listApps(args.optBoolean("refresh"), args.optBoolean("system"), args.optBoolean("nonInternet"))
     "requestAppsPermission" -> requestAppsPermission()

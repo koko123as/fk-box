@@ -80,8 +80,18 @@ export component RowView inherits Rectangle {
                 y: parent.drag;
                 position: root.entry.position;
                 title: root.entry.title;
+                subtitle: root.entry.subtitle;
+                title-lines: 1;
                 enabled: root.entry.enabled;
+                clickable: root.entry.clickable;
                 level: handle.pressed ? 2 : 1;
+                clicked => { Nav.act2("row-done", root.key, ""); }
+                if root.entry.hint == "switch": Switch {
+                    checked: root.entry.checked;
+                    enabled: root.entry.enabled;
+                    y: (parent.height - self.height) / 2;
+                    toggled(v) => { Nav.act2("row-edit", root.key, v ? "1" : "0"); }
+                }
                 Rectangle {
                     width: 40px;
                     Icon { glyph: Icons.drag-handle; color: Theme.s.on-surface-variant; }
@@ -92,6 +102,48 @@ export component RowView inherits Rectangle {
                                 Nav.act2("row", root.key, round((self.mouse-y - self.pressed-y) / max(1px, item.height)));
                             }
                         }
+                    }
+                }
+            }
+        }
+        // SegmentedButton row.
+        if entry.kind == "segments": Rectangle {
+            height: 40px;
+            border-radius: 20px;
+            border-width: 1px;
+            border-color: Theme.s.outline;
+            clip: true;
+            HorizontalLayout {
+                for l[i] in root.entry.options: Rectangle {
+                    background: i == root.entry.lines ? Theme.s.secondary-container : transparent;
+                    if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 6px;
+                        if i == root.entry.lines: Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; y: (parent.height - self.height) / 2; }
+                        T { text: l; role: TextRole.subheadline; emphasized: true; vertical-alignment: center; horizontal-stretch: 0;
+                            color: i == root.entry.lines ? Theme.s.on-secondary-container : Theme.s.on-surface; }
+                    }
+                    TouchArea { clicked => { Nav.act2("row", root.key, i); } }
+                }
+            }
+        }
+        // TonalChip flow (a row of chips that wrap), each picks its label.
+        if entry.kind == "chips": Rectangle {
+            height: chipflow.preferred-height;
+            chipflow := VerticalLayout {
+                padding-top: 8px;
+                // Laid out as a simple wrapping list: one line per chip row of up to 3.
+                for l[i] in root.entry.options: HorizontalLayout {
+                    padding-bottom: 6px;
+                    alignment: start;
+                    Rectangle {
+                        height: ct.preferred-height + 12px;
+                        width: ct.preferred-width + 24px;
+                        border-radius: 8px;
+                        background: Theme.s.secondary-container;
+                        ct := T { text: l; role: TextRole.footnote; emphasized: true; color: Theme.s.on-secondary-container; }
+                        TouchArea { clicked => { Nav.act2("row", root.key, l); } }
                     }
                 }
             }

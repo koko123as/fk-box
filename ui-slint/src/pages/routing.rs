@@ -1,2 +1,887 @@
-//! Placeholder until the page is ported.
-pub fn open() {}
+//! Traffic routing (pages/RoutingPage.kt): one rule set per core
+//! (bridge/CoreRouting.kt's wire form, kept as JSON here), the rule editor,
+//! the preview and the last start's status. Rust-built rows.
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use serde_json::{json, Map, Value};
+
+use crate::app::{self, data, long, text, truthy};
+use crate::format;
+use crate::forms;
+use crate::i18n::tr;
+use crate::nav::{self, MenuEntry};
+use crate::pages::{mark, Mark};
+use crate::rows::{self, Bar, Page, Row};
+
+const CORES: [&str; 3] = ["sing-box", "xray", "mihomo"];
+const MODES: [&str; 3] = ["prepend", "override", "off"];
+const CONTENTS: [&str; 4] = ["all", "match", "preset", "list"];
+const TARGETS: [&str; 4] = ["proxy", "direct", "block", "node"];
+const FINALS: [&str; 5] = ["config", "proxy", "direct", "block", "node"];
+const NETWORKS: [&str; 3] = ["any", "tcp", "udp"];
+const PRESETS: [(&str, &str, &str); 4] = [
+    ("cn-direct", "Bypass mainland China", "geosite:cn, geoip:cn and private addresses go direct"),
+    ("gfw-proxy", "GFW list through proxy, the rest direct", "geosite:gfw through the proxy; all other traffic direct"),
+    ("ads-block", "Block ads", "geosite:category-ads-all is blocked"),
+    ("lan-direct", "LAN direct", "Private and LAN addresses go direct"),
+];
+
+fn core_title(core: &str) -> &str {
+    match core {
+        "xray" => "Xray",
+        other => other,
+    }
+}
+
+fn mode_title(v: &str) -> String {
+    tr(match v {
+        "prepend" => "Before the profile's rules",
+        "override" => "Replace the profile's rules",
+        "off" => "Off (profile only)",
+        o => o,
+    })
+}
+
+fn target_title(v: &str) -> String {
+    tr(match v {
+        "config" => "Profile's own",
+        "proxy" => "Proxy",
+        "direct" => "Direct",
+        "block" => "Block",
+        "node" => "Node or group",
+        o => o,
+    })
+}
+
+fn content_title(v: &str) -> String {
+    tr(match v {
+        "all" => "All traffic",
+        "match" => "Domains, IPs or geo",
+        "preset" => "Preset",
+        "list" => "Rule list URL",
+        o => o,
+    })
+}
+
+fn network_title(v: &str) -> String {
+    tr(match v {
+        "any" => "TCP and UDP",
+        "tcp" => "TCP",
+        "udp" => "UDP",
+        o => o,
+    })
+}
+
+fn s(v: &Value, k: &str) -> String {
+    v.get(k).and_then(Value::as_str).unwrap_or("").to_string()
+}
+
+fn uuid() -> String {
+    // A random v4 UUID from the clock and a counter (no RNG crate needed).
+    thread_local!(static N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) });
+    let n = N.with(|n| {
+        n.set(n.get().wrapping_add(1));
+        n.get()
+    });
+    let mut x = (format::now_ms() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ n.wrapping_mul(0xBF58_476D_1CE4_E5B9) ^ (std::process::id() as u64) << 32;
+    let mut bytes = [0u8; 16];
+    for b in bytes.iter_mut() {
+        x ^= x >> 33;
+        x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
+        x ^= x >> 29;
+        *b = (x & 0xff) as u8;
+    }
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    let h: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
+    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+}
+
+fn new_rule() -> Value {
+    json!({ "id": uuid(), "enabled": true, "name": "", "content": "match", "values": [], "preset": "", "url": "", "target": { "type": "proxy", "tag": "" }, "apps": [], "network": "any", "ports": "" })
+}
+
+fn preset_rules(id: &str) -> Vec<Value> {
+    let rule = |name: &str, content: &str, preset: &str, target: &str| {
+        let mut r = new_rule();
+        r["name"] = json!(name);
+        r["content"] = json!(content);
+        r["preset"] = json!(preset);
+        r["target"] = json!({ "type": target, "tag": "" });
+        r
+    };
+    match id {
+        "cn-direct" => vec![rule("Bypass mainland China", "preset", "cn-direct", "direct")],
+        "gfw-proxy" => vec![rule("GFW list", "preset", "gfw-proxy", "proxy"), rule("Everything else", "all", "", "direct")],
+        "ads-block" => vec![rule("Block ads", "preset", "ads-block", "block")],
+        "lan-direct" => vec![rule("LAN direct", "preset", "lan-direct", "direct")],
+        _ => Vec::new(),
+    }
+}
+
+fn default_set() -> Value {
+    json!({ "mode": "prepend", "final": { "type": "config", "tag": "" }, "rules": [] })
+}
+
+/// storedRouting: the saved rules, defaults filled in.
+fn stored() -> Value {
+    let wire = data(|d| d.settings.get("routingRules").cloned().unwrap_or(Value::Null));
+    let mut rules = json!({ "version": 1, "cores": {} });
+    if let Some(cores) = wire.get("cores").and_then(Value::as_object) {
+        for (core, set) in cores {
+            let mut full = default_set();
+            if let Some(o) = set.as_object() {
+                for (k, v) in o {
+                    full[k] = v.clone();
+                }
+            }
+            let rules_list: Vec<Value> = full["rules"].as_array().cloned().unwrap_or_default().into_iter().map(|r| {
+                let mut base = new_rule();
+                if let Some(o) = r.as_object() {
+                    for (k, v) in o {
+                        base[k] = v.clone();
+                    }
+                }
+                base
+            }).collect();
+            full["rules"] = json!(rules_list);
+            rules["cores"][core] = full;
+        }
+    }
+    rules
+}
+
+fn core_set(rules: &Value, core: &str) -> Value {
+    rules["cores"].get(core).cloned().unwrap_or_else(default_set)
+}
+
+/// splitValues: one per line, or several on a line split by commas or spaces; `regexp:` lines whole.
+fn split_values(text: &str) -> Vec<String> {
+    text.lines()
+        .flat_map(|line| {
+            let t = line.trim();
+            if t.len() >= 7 && t[..7].eq_ignore_ascii_case("regexp:") {
+                vec![t.to_string()]
+            } else {
+                t.split([',', ' ', '\t']).map(str::to_string).collect()
+            }
+        })
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .collect()
+}
+
+fn ports_valid(text: &str) -> bool {
+    if text.trim().is_empty() {
+        return true;
+    }
+    if !text.chars().all(|c| c.is_ascii_digit() || matches!(c, ',' | ' ' | '-' | '\t')) {
+        return false;
+    }
+    let ranges: Vec<&str> = text.split([',', ' ']).filter(|p| !p.trim().is_empty()).collect();
+    if ranges.is_empty() || ranges.len() > 28 {
+        return false;
+    }
+    ranges.iter().all(|part| {
+        let bounds: Vec<Option<u32>> = part.split('-').map(|b| b.trim().parse::<u32>().ok().filter(|_| b.trim().len() <= 5)).collect();
+        if bounds.iter().any(Option::is_none) || bounds.len() > 2 {
+            return false;
+        }
+        let b: Vec<u32> = bounds.into_iter().flatten().collect();
+        b.iter().all(|v| (1..=65535).contains(v)) && (b.len() == 1 || b[0] <= b[1])
+    })
+}
+
+fn package_valid(name: &str) -> bool {
+    name.len() < 256 && !name.is_empty() && name.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+}
+
+fn url_valid(url: &str) -> bool {
+    url.len() <= 2048 && (url.starts_with("https://") || url.starts_with("http://")) && url.len() > 8
+}
+
+/// validateRule
+fn validate_rule(rule: &Value) -> Result<(), String> {
+    let content = s(rule, "content");
+    let target = rule["target"].clone();
+    let values: Vec<String> = rule["values"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+    let apps: Vec<String> = rule["apps"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+    if s(&target, "type") == "node" && s(&target, "tag").trim().is_empty() {
+        return Err(tr("Choose a node or group"));
+    }
+    if values.len() > 5000 || values.iter().any(|v| v.len() > 2048) {
+        return Err(tr("Too many or too long entries"));
+    }
+    if content == "match" && !values.iter().any(|v| !v.trim().is_empty()) {
+        return Err(tr("Add at least one domain, IP or geo entry"));
+    }
+    if content == "preset" && !PRESETS.iter().any(|p| p.0 == s(rule, "preset")) {
+        return Err(format!("{}: {}", tr("Unknown preset"), s(rule, "preset")));
+    }
+    if content == "list" && !url_valid(&s(rule, "url")) {
+        return Err(tr("Enter an http(s) rule list URL"));
+    }
+    if apps.len() > 1000 || !apps.iter().all(|a| package_valid(a)) {
+        return Err(tr("Invalid package name"));
+    }
+    if !ports_valid(&s(rule, "ports")) {
+        return Err(tr("Ports are 1–65535, as 443 or 8000-9000, separated by commas"));
+    }
+    Ok(())
+}
+
+fn rule_summary(rule: &Value) -> String {
+    let content = s(rule, "content");
+    let what = match content.as_str() {
+        "all" => tr("All traffic"),
+        "preset" => tr(PRESETS.iter().find(|p| p.0 == s(rule, "preset")).map(|p| p.1).unwrap_or(&s(rule, "preset"))),
+        "list" => s(rule, "url").split_once("://").map(|x| x.1).unwrap_or(&s(rule, "url")).chars().take(48).collect(),
+        _ => {
+            let values: Vec<String> = rule["values"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+            let shown = values.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+            if values.len() > 3 {
+                format!("{shown} +{}", values.len() - 3)
+            } else {
+                shown
+            }
+        }
+    };
+    let mut parts = vec![what];
+    let network = s(rule, "network");
+    if network != "any" && !network.is_empty() {
+        parts.push(network.to_uppercase());
+    }
+    let ports = s(rule, "ports");
+    if !ports.trim().is_empty() {
+        parts.push(ports);
+    }
+    let apps = rule["apps"].as_array().map(Vec::len).unwrap_or(0);
+    if apps > 0 {
+        parts.push(format!("{} {apps}", tr("Apps")));
+    }
+    format!("{} → {}", parts.join(" · "), target_text(&rule["target"]))
+}
+
+fn target_text(target: &Value) -> String {
+    if s(target, "type") == "node" {
+        let tag = s(target, "tag");
+        if tag.trim().is_empty() {
+            tr("Node or group")
+        } else {
+            tag
+        }
+    } else {
+        target_title(&s(target, "type"))
+    }
+}
+
+struct Routing {
+    saved: Value,
+    draft: Value,
+    core: String,
+    saving: bool,
+    error: Option<String>,
+    status: Option<Value>,
+}
+
+type RoutingRef = Rc<RefCell<Routing>>;
+
+fn update(st: &RoutingRef, f: impl FnOnce(&mut Value)) {
+    let mut r = st.borrow_mut();
+    let core = r.core.clone();
+    let mut set = core_set(&r.draft, &core);
+    f(&mut set);
+    r.draft["cores"][core.as_str()] = set;
+    drop(r);
+    mark(Mark::ROWS);
+}
+
+fn load_status(st: &RoutingRef) {
+    let a = st.clone();
+    app::call("routingStatus", json!({}), move |r| {
+        if let Ok(v) = r {
+            a.borrow_mut().status = if v.is_object() { Some(v) } else { None };
+            mark(Mark::ROWS);
+        }
+    });
+}
+
+pub fn open() {
+    let saved = stored();
+    let st: RoutingRef = Rc::new(RefCell::new(Routing { draft: saved.clone(), saved, core: "sing-box".into(), saving: false, error: None, status: None }));
+    load_status(&st);
+    let a = st.clone();
+    let id = rows::push(move || routing_page(&a));
+    let a = st.clone();
+    nav::guard(id, move || {
+        let r = a.borrow();
+        r.draft != r.saved
+    });
+    let a = st.clone();
+    nav::busy_guard(id, move || a.borrow().saving);
+}
+
+fn routing_page(st: &RoutingRef) -> Page {
+    let r = st.borrow();
+    let set = core_set(&r.draft, &r.core);
+    let core = r.core.clone();
+    let saving = r.saving;
+    let dirty = r.draft != r.saved;
+    let mut rows = Vec::new();
+    let a = st.clone();
+    rows.push(Row::segments(CORES.iter().map(|c| core_title(c).to_string()).collect(), CORES.iter().position(|c| *c == core).unwrap_or(0) as i32, move |i| {
+        a.borrow_mut().core = CORES[i.min(2)].to_string();
+        mark(Mark::ROWS);
+    }).key("cores"));
+    if let Some(e) = &r.error {
+        rows.push(Row::text(e).danger());
+    }
+    if let Some(status) = &r.status {
+        let title = core_title(&s(status, "core")).to_string();
+        let error = s(status, "error");
+        let warnings = status["warnings"].as_array().map(Vec::len).unwrap_or(0);
+        let line = if !error.is_empty() {
+            format!("{} ({title})", tr("Not applied at the last start; the profile runs without the rules"))
+        } else if truthy(&status["active"]) {
+            let mut l = format!("{}: {title} · {} {}", tr("Applied at the last start"), long(&status["applied"]).unwrap_or(0), tr("rules"));
+            if warnings > 0 {
+                l.push_str(&format!(" · {} {warnings}", tr("Warnings")));
+            }
+            l
+        } else {
+            format!("{} ({title})", tr("No routing changes at the last start"))
+        };
+        rows.push(Row::spacer(8));
+        let a = st.clone();
+        let mut row = Row::item(&line).lines(2).key("status").on(move |_| open_status(&a));
+        if !error.is_empty() {
+            row = row.danger();
+        }
+        rows.push(row);
+        rows.push(Row::spacer(4));
+    }
+    rows.push(Row::spacer(12));
+    let a = st.clone();
+    rows.push(
+        forms::options_row(&tr("Merge mode"), MODES.iter().map(|m| m.to_string()).collect(), &s(&set, "mode"), Rc::new(|m: &str| mode_title(m)), Rc::new(move |m| update(&a, |set| set["mode"] = json!(m))))
+            .key("mode"),
+    );
+    let final_target = set["final"].clone();
+    let a = st.clone();
+    let ft = final_target.clone();
+    rows.push(
+        forms::options_row(
+            &tr("Fallback"),
+            FINALS.iter().map(|m| m.to_string()).collect(),
+            &s(&final_target, "type"),
+            Rc::new(move |t: &str| if t == "node" && s(&ft, "type") == "node" { target_text(&ft) } else { target_title(t) }),
+            Rc::new(move |t| {
+                if t == "node" {
+                    let a = a.clone();
+                    let current = s(&core_set(&a.borrow().draft, &a.borrow().core)["final"], "tag");
+                    let mut spec = nav::InputSpec::new(&tr("Node or group"), &current);
+                    spec.validator = Some(Box::new(|v: &str| if v.trim().is_empty() { Some(tr("Required")) } else { None }));
+                    nav::input(spec, move |tag| {
+                        if let Some(tag) = tag.filter(|t| !t.trim().is_empty()) {
+                            update(&a, |set| set["final"] = json!({ "type": "node", "tag": tag.trim() }));
+                        }
+                    });
+                } else {
+                    update(&a, |set| set["final"] = json!({ "type": t, "tag": "" }));
+                }
+            }),
+        )
+        .key("final"),
+    );
+    rows.push(Row::footer(&tr("Rules apply to the core that runs the selected profile and are added when the service starts; the profile file is not changed. Long-press or drag the handle to reorder; the first matching rule wins.")));
+    if core == "xray" {
+        rows.push(Row::footer(&tr("Xray: IP and geoip entries match connections to IP addresses; sniffed domains are matched by domain and geosite entries. Set domainStrategy in the profile to also resolve domains for IP rules.")));
+    }
+    rows.push(Row::spacer(16));
+    let list: Vec<Value> = set["rules"].as_array().cloned().unwrap_or_default();
+    if list.is_empty() {
+        rows.push(Row::empty(&tr("No rules"), &tr("Add a rule, a preset, or copy the rules of another core from the menu."), "rules"));
+    }
+    for (i, rule) in list.iter().enumerate() {
+        let id = s(rule, "id");
+        let name = s(rule, "name");
+        let title = if name.trim().is_empty() { content_title(&s(rule, "content")) } else { name };
+        let (a, b, c) = (st.clone(), st.clone(), st.clone());
+        let rid = id.clone();
+        let mut row = Row::sort(&title, move |offset| {
+            if a.borrow().saving {
+                return;
+            }
+            update(&a, |set| {
+                if let Some(rules) = set["rules"].as_array_mut() {
+                    let to = (i as i32 + offset).clamp(0, rules.len() as i32 - 1) as usize;
+                    if to != i {
+                        let item = rules.remove(i);
+                        rules.insert(to, item);
+                    }
+                }
+            });
+        })
+        .subtitle(&rule_summary(rule))
+        .key(&id)
+        .checked(truthy(&rule["enabled"]))
+        .hint("switch")
+        .enabled(!saving);
+        row.edit = Some(Rc::new(move |v: String| {
+            let rid = rid.clone();
+            update(&b, |set| {
+                if let Some(rules) = set["rules"].as_array_mut() {
+                    for r in rules.iter_mut() {
+                        if s(r, "id") == rid {
+                            r["enabled"] = json!(v == "1");
+                        }
+                    }
+                }
+            })
+        }));
+        row.done = Some(Rc::new(move |_| {
+            if !c.borrow().saving {
+                open_rule(&c, Some(i));
+            }
+        }));
+        row.data.clickable = !saving;
+        rows.push(row);
+    }
+    drop(r);
+    let (a, b, c) = (st.clone(), st.clone(), st.clone());
+    Page::new(&tr("Traffic routing"))
+        .loading(saving)
+        .bar(vec![Bar::new("add", "Add rule", move || open_rule(&a, None)).when(!saving)])
+        .confirm(Bar::new("check", "Save", move || save(&b)).when(!saving && dirty))
+        .menu(move || routing_menu(&c))
+        .rows(rows)
+}
+
+fn routing_menu(st: &RoutingRef) -> Vec<MenuEntry> {
+    let mut items = Vec::new();
+    for (id, title, description) in PRESETS {
+        let a = st.clone();
+        let mut m = MenuEntry::plain(&tr(title), move || {
+            let added = preset_rules(id);
+            update(&a, |set| {
+                if let Some(rules) = set["rules"].as_array_mut() {
+                    rules.extend(added);
+                } else {
+                    set["rules"] = json!(added);
+                }
+            })
+        });
+        m.label = format!("{}\n{}", tr(title), tr(description));
+        items.push(m);
+    }
+    let core = st.borrow().core.clone();
+    for from in CORES.iter().filter(|c| **c != core) {
+        let a = st.clone();
+        let from = from.to_string();
+        let label = format!("{} {}", tr("Copy from"), core_title(&from));
+        items.push(MenuEntry::plain(&label, move || {
+            let (count, empty, to) = {
+                let r = a.borrow();
+                (core_set(&r.draft, &from)["rules"].as_array().map(Vec::len).unwrap_or(0), core_set(&r.draft, &r.core)["rules"].as_array().map(Vec::is_empty).unwrap_or(true), r.core.clone())
+            };
+            let a2 = a.clone();
+            let from2 = from.clone();
+            let copy = move || {
+                let mut r = a2.borrow_mut();
+                let mut source = core_set(&r.draft, &from2);
+                if let Some(rules) = source["rules"].as_array_mut() {
+                    for rule in rules.iter_mut() {
+                        rule["id"] = json!(uuid());
+                    }
+                }
+                let to = r.core.clone();
+                r.draft["cores"][to.as_str()] = source;
+                drop(r);
+                mark(Mark::ROWS);
+            };
+            if empty {
+                copy();
+            } else {
+                let title = format!("{} {}?", tr("Replace the rules of"), core_title(&to));
+                let message = format!("{}: {count}", core_title(&from));
+                nav::confirm_styled(&title, Some(&message), "Replace", false, move |ok| {
+                    if ok {
+                        copy()
+                    }
+                });
+            }
+        }));
+    }
+    let a = st.clone();
+    items.push(MenuEntry::act("Preview", "code", move || {
+        let (draft, core) = {
+            let r = a.borrow();
+            (r.draft.clone(), r.core.clone())
+        };
+        open_preview(draft, core);
+    }));
+    items
+}
+
+fn save(st: &RoutingRef) {
+    let draft = {
+        let mut r = st.borrow_mut();
+        if r.saving {
+            return;
+        }
+        r.saving = true;
+        r.error = None;
+        r.draft.clone()
+    };
+    mark(Mark::ROWS);
+    let a = st.clone();
+    app::call("saveRouting", json!({ "value": draft }), move |res| {
+        let mut r = a.borrow_mut();
+        r.saving = false;
+        match res {
+            Ok(settings) => {
+                app::data_mut(|d| d.settings = app::obj(&settings));
+                r.saved = stored();
+                r.draft = r.saved.clone();
+            }
+            Err(e) => r.error = Some(format::clean_error(&e)),
+        }
+        drop(r);
+        mark(Mark::ALL);
+    });
+}
+
+// ---------------------------------------------------------------------------
+// The rule editor
+// ---------------------------------------------------------------------------
+
+struct Editor {
+    initial: Value,
+    rule: Value,
+    values: String,
+    apps: String,
+    error: Option<String>,
+    tags: Vec<String>,
+    is_new: bool,
+}
+
+impl Editor {
+    fn result(&self) -> Value {
+        let mut r = self.rule.clone();
+        let content = s(&r, "content");
+        r["name"] = json!(s(&r, "name").trim());
+        r["values"] = json!(if content == "match" { split_values(&self.values) } else { Vec::new() });
+        r["apps"] = json!(split_values(&self.apps));
+        r["url"] = json!(if content == "list" { s(&r, "url").trim().to_string() } else { String::new() });
+        r["preset"] = json!(if content == "preset" { s(&r, "preset") } else { String::new() });
+        r["ports"] = json!(s(&r, "ports").trim());
+        r
+    }
+}
+
+fn open_rule(st: &RoutingRef, index: Option<usize>) {
+    let (rule, core) = {
+        let r = st.borrow();
+        let set = core_set(&r.draft, &r.core);
+        (index.and_then(|i| set["rules"].get(i).cloned()).unwrap_or_else(new_rule), r.core.clone())
+    };
+    let join = |k: &str| rule[k].as_array().map(|a| a.iter().map(text).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+    let ed = Rc::new(RefCell::new(Editor { initial: rule.clone(), values: join("values"), apps: join("apps"), rule, error: None, tags: Vec::new(), is_new: index.is_none() }));
+    // Outbounds, groups and balancers of the selected profile when it runs on this core.
+    let e = ed.clone();
+    app::call("routingTargets", json!({ "core": core }), move |r| {
+        if let Ok(v) = r {
+            e.borrow_mut().tags = v.as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+            mark(Mark::ROWS);
+        }
+    });
+    let (e, routing) = (ed.clone(), st.clone());
+    let id = rows::push(move || rule_page(&e, &routing));
+    let e = ed.clone();
+    nav::guard(id, move || {
+        let e = e.borrow();
+        e.result() != e.initial
+    });
+}
+
+fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
+    let e = ed.borrow();
+    let rule = e.rule.clone();
+    let mut rows = Vec::new();
+    if let Some(err) = &e.error {
+        rows.push(Row::error(err));
+        rows.push(Row::spacer(8));
+    }
+    let set = |f: Rc<dyn Fn(&mut Value, String)>| {
+        let a = ed.clone();
+        move |v: String| {
+            f(&mut a.borrow_mut().rule, v);
+            mark(Mark::ROWS);
+        }
+    };
+    let a = ed.clone();
+    rows.push(Row::field(&tr("Name"), &s(&rule, "name"), &tr("Optional"), move |v| a.borrow_mut().rule["name"] = json!(v)).key("name"));
+    let a = ed.clone();
+    rows.push(Row::switch(&tr("Enabled"), truthy(&rule["enabled"]), move |v| a.borrow_mut().rule["enabled"] = json!(v)).key("enabled"));
+    rows.push(Row::section(&tr("Match")));
+    rows.push(
+        forms::options_row(
+            &tr("Content"),
+            CONTENTS.iter().map(|c| c.to_string()).collect(),
+            &s(&rule, "content"),
+            Rc::new(|c: &str| content_title(c)),
+            Rc::new(set(Rc::new(|r: &mut Value, v: String| {
+                if v == "preset" && s(r, "preset").trim().is_empty() {
+                    r["preset"] = json!(PRESETS[0].0);
+                }
+                r["content"] = json!(v);
+            }))),
+        )
+        .key("content"),
+    );
+    match s(&rule, "content").as_str() {
+        "match" => {
+            rows.push(Row::spacer(12));
+            let a = ed.clone();
+            rows.push(Row::editor(&tr("Domains, IPs or geo"), &e.values, 6, move |v| a.borrow_mut().values = v).key("values"));
+            rows.push(Row::footer(&tr("One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern (the whole line), 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private.")));
+        }
+        "preset" => {
+            rows.push(Row::gap());
+            rows.push(
+                forms::options_row(
+                    &tr("Preset"),
+                    PRESETS.iter().map(|p| p.0.to_string()).collect(),
+                    &s(&rule, "preset"),
+                    Rc::new(|id: &str| PRESETS.iter().find(|p| p.0 == id).map(|p| tr(p.1)).unwrap_or_else(|| id.to_string())),
+                    Rc::new(set(Rc::new(|r: &mut Value, v: String| r["preset"] = json!(v)))),
+                )
+                .key("preset"),
+            );
+        }
+        "list" => {
+            rows.push(Row::gap());
+            let a = ed.clone();
+            rows.push(Row::field(&tr("URL"), &s(&rule, "url"), "https://", move |v| a.borrow_mut().rule["url"] = json!(v)).key("url").mono());
+            rows.push(Row::footer(&tr("AdBlock (||example.com^), hosts, plain domain/CIDR lists and Clash rule lists. Downloaded when the service starts and refreshed daily; the last copy is used when a download fails.")));
+        }
+        _ => {}
+    }
+    rows.push(Row::section(&tr("Action")));
+    let target = rule["target"].clone();
+    let a = ed.clone();
+    let tg = target.clone();
+    rows.push(
+        forms::options_row(
+            &tr("Target"),
+            TARGETS.iter().map(|t| t.to_string()).collect(),
+            &s(&target, "type"),
+            Rc::new(move |t: &str| if t == "node" && s(&tg, "type") == "node" && !s(&tg, "tag").trim().is_empty() { s(&tg, "tag") } else { target_title(t) }),
+            Rc::new(move |t| {
+                if t == "node" {
+                    let a = a.clone();
+                    let current = s(&a.borrow().rule["target"], "tag");
+                    let mut spec = nav::InputSpec::new(&tr("Node or group"), &current);
+                    spec.validator = Some(Box::new(|v: &str| if v.trim().is_empty() { Some(tr("Required")) } else { None }));
+                    nav::input(spec, move |tag| {
+                        if let Some(tag) = tag.filter(|t| !t.trim().is_empty()) {
+                            a.borrow_mut().rule["target"] = json!({ "type": "node", "tag": tag.trim() });
+                            mark(Mark::ROWS);
+                        }
+                    });
+                } else {
+                    a.borrow_mut().rule["target"] = json!({ "type": t, "tag": "" });
+                    mark(Mark::ROWS);
+                }
+            }),
+        )
+        .key("target"),
+    );
+    if s(&target, "type") == "node" && !e.tags.is_empty() {
+        let a = ed.clone();
+        rows.push(Row::chips(e.tags.iter().take(60).cloned().collect(), move |tag| {
+            a.borrow_mut().rule["target"] = json!({ "type": "node", "tag": tag });
+            mark(Mark::ROWS);
+        }).key("tags"));
+    }
+    rows.push(Row::section(&tr("Conditions")));
+    rows.push(
+        forms::options_row(
+            &tr("Network"),
+            NETWORKS.iter().map(|n| n.to_string()).collect(),
+            &s(&rule, "network"),
+            Rc::new(|n: &str| network_title(n)),
+            Rc::new(set(Rc::new(|r: &mut Value, v: String| r["network"] = json!(v)))),
+        )
+        .key("network"),
+    );
+    let a = ed.clone();
+    rows.push(Row::field(&tr("Ports"), &s(&rule, "ports"), "443, 8000-9000", move |v| {
+        a.borrow_mut().rule["ports"] = json!(v);
+        mark(Mark::ROWS);
+    }).key("ports").invalid(!ports_valid(&s(&rule, "ports"))));
+    rows.push(Row::spacer(12));
+    let a = ed.clone();
+    rows.push(Row::editor(&tr("Apps (package names)"), &e.apps, 3, move |v| a.borrow_mut().apps = v).key("apps"));
+    rows.push(Row::footer(&tr("One package name per line, such as com.android.chrome. Empty matches every app. Xray cannot match apps; such rules are skipped on Xray.")));
+    if !e.is_new {
+        rows.push(Row::spacer(24));
+        let (a, r) = (ed.clone(), routing.clone());
+        rows.push(Row::button(&tr("Delete rule"), 0, move || {
+            let (a, r) = (a.clone(), r.clone());
+            nav::confirm(&format!("{}?", tr("Delete rule")), None, "Delete", move |ok| {
+                if ok {
+                    let id = s(&a.borrow().initial, "id");
+                    update(&r, |set| {
+                        if let Some(rules) = set["rules"].as_array_mut() {
+                            rules.retain(|x| s(x, "id") != id);
+                        }
+                    });
+                    a.borrow_mut().initial = a.borrow().result();
+                    nav::pop();
+                }
+            });
+        }).icon("delete").key("delete"));
+    }
+    let title = tr(if e.is_new { "Add rule" } else { "Edit rule" });
+    drop(e);
+    let (a, r) = (ed.clone(), routing.clone());
+    Page::new(&title)
+        .confirm(Bar::new("check", "Save", move || {
+            let next = a.borrow().result();
+            match validate_rule(&next) {
+                Ok(()) => {
+                    let is_new = a.borrow().is_new;
+                    let id = s(&next, "id");
+                    let n2 = next.clone();
+                    update(&r, move |set| {
+                        let rules = set["rules"].as_array_mut();
+                        match rules {
+                            Some(rules) => {
+                                if is_new {
+                                    rules.push(n2);
+                                } else {
+                                    for x in rules.iter_mut() {
+                                        if s(x, "id") == id {
+                                            *x = n2.clone();
+                                        }
+                                    }
+                                }
+                            }
+                            None => set["rules"] = json!([n2]),
+                        }
+                    });
+                    a.borrow_mut().initial = next;
+                    nav::pop();
+                }
+                Err(err) => {
+                    a.borrow_mut().error = Some(err);
+                    mark(Mark::ROWS);
+                }
+            }
+        }))
+        .rows(rows)
+}
+
+// ---------------------------------------------------------------------------
+// Preview and status
+// ---------------------------------------------------------------------------
+
+fn open_preview(draft: Value, tab_core: String) {
+    let st: Rc<RefCell<Option<Result<Value, String>>>> = Rc::new(RefCell::new(None));
+    let a = st.clone();
+    app::call("routingPreview", json!({ "draft": draft }), move |r| {
+        *a.borrow_mut() = Some(r.map_err(|e| format::clean_error(&e)));
+        mark(Mark::ROWS);
+    });
+    rows::push(move || {
+        let result = st.borrow().clone();
+        let mut rows = Vec::new();
+        match result {
+            None => return Page::new(&tr("Preview")).loading(true),
+            Some(Err(e)) => rows.push(Row::empty(&tr("Preview unavailable"), &e, "info")),
+            Some(Ok(v)) => {
+                let core = s(&v, "core");
+                rows.push(Row::item(&tr("Profile")).value(&text(&v["profile"])));
+                rows.push(Row::item(&tr("Core")).value(core_title(&core)));
+                rows.push(Row::item(&tr("Rules applied")).value(&text(&v["applied"])));
+                if core != tab_core {
+                    rows.push(Row::footer(&tr("The selected profile runs on another core, so its rules are shown instead of this tab's.")));
+                }
+                if !truthy(&v["active"]) {
+                    rows.push(Row::footer(&tr("No routing changes: the profile starts as it is.")));
+                }
+                let warnings: Vec<String> = v["warnings"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+                if !warnings.is_empty() {
+                    rows.push(Row::section(&tr("Warnings")));
+                    for w in warnings {
+                        rows.push(Row::item(&w).lines(20));
+                    }
+                }
+                rows.push(Row::section(&tr("Content handed to the core")));
+                let content: String = text(&v["content"]).chars().take(200_000).collect();
+                rows.push(Row::text(&content).mono().checked(true));
+            }
+        }
+        Page::new(&tr("Preview")).rows(rows)
+    });
+}
+
+fn open_status(routing: &RoutingRef) {
+    let retry = Rc::new(RefCell::new((false, None::<String>)));
+    let r = routing.clone();
+    rows::push(move || {
+        let status = r.borrow().status.clone();
+        let Some(current) = status else {
+            return Page::new(&tr("Routing status")).rows(vec![Row::empty(&tr("Not started yet"), &tr("The status appears after the service starts."), "info")]);
+        };
+        let error = s(&current, "error");
+        let time = format::local_date(long(&current["time"]).unwrap_or(0));
+        let time = time.split(' ').nth(1).unwrap_or(&time).to_string();
+        let mut rows = vec![
+            Row::item(&tr("Core")).value(core_title(&s(&current, "core"))),
+            Row::item(&tr("Started")).value(&time),
+            Row::item(&tr("Rules applied")).value(&if error.is_empty() { text(&current["applied"]) } else { "0".into() }),
+        ];
+        if !error.is_empty() {
+            rows.push(Row::section(&tr("Not applied")));
+            rows.push(Row::item(&error).lines(20).danger());
+            rows.push(Row::footer(&tr("The profile runs without the routing rules. Fix the rules or the network, then reload the service to apply them again.")));
+            rows.push(Row::spacer(12));
+            let (retrying, failure) = retry.borrow().clone();
+            let (a, rr) = (retry.clone(), r.clone());
+            rows.push(Row::button(&tr("Reload service"), 0, move || {
+                a.borrow_mut().0 = true;
+                a.borrow_mut().1 = None;
+                mark(Mark::ROWS);
+                let (b, rr) = (a.clone(), rr.clone());
+                app::call("reloadService", json!({}), move |res| {
+                    let mut x = b.borrow_mut();
+                    x.0 = false;
+                    if let Err(e) = res {
+                        x.1 = Some(format::clean_error(&e));
+                    }
+                    drop(x);
+                    load_status(&rr);
+                    mark(Mark::ROWS);
+                });
+            }).icon("refresh").enabled(!retrying).key("reload"));
+            if let Some(f) = failure {
+                rows.push(Row::footer(&f));
+            }
+        }
+        let warnings: Vec<String> = current["warnings"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
+        if !warnings.is_empty() {
+            rows.push(Row::section(&tr("Warnings")));
+            for w in warnings {
+                rows.push(Row::item(&w).lines(20));
+            }
+        }
+        Page::new(&tr("Routing status")).rows(rows)
+    });
+}
+
+#[allow(dead_code)]
+fn unused(_: Map<String, Value>) {}
