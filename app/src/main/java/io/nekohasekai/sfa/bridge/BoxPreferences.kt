@@ -2,7 +2,10 @@ package io.nekohasekai.sfa.bridge
 
 internal object BoxPreferences {
     // Keep accepting the retired Connections key so older layouts and backups retain their other preferences.
-    private val cards = setOf("Status", "Network speed", "Outbound mode", "Current profile", "Connections", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy")
+    private val cards = setOf(
+        "Status", "Network speed", "Outbound mode", "VPN", "Intranet IP", "Current profile", "Service status", "Memory",
+        "Connection stats", "Proxy groups", "System HTTP proxy", "Connections",
+    )
     private val choices = mapOf(
         "theme" to setOf("system", "light", "dark"),
         "colorStyle" to setOf("vivid", "tinted", "soft", "monochrome"),

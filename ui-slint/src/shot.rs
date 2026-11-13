@@ -6,7 +6,8 @@
 //!
 //! Steps: `shot:NAME`, `tab:Dashboard`, `push:KIND:ARG`, `form:KIND:ARG`, `pop`,
 //! `dark`, `light`, `tick:N` (N seconds with rate samples), `scroll:DY`,
-//! `tap:X,Y` (logical px), `size:W,H,SCALE`, `rss` (print VmRSS).
+//! `tap:X,Y` (logical px), `size:W,H,SCALE`, `access` (open Access control),
+//! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -68,6 +69,25 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         }),
         "egress" => json!({ "ip": "23.191.200.117", "country": "us", "organization": "Unredacted Inc", "asn": "AS396356", "type": "Hosting", "ipSource": "ident.me", "checkedAt": now }),
         "profileStats" => json!({ "groups": "6", "outbounds": "48", "rules": "1203" }),
+        // Access control: a phone's worth of installed apps, each icon a
+        // 48 dp PNG at 3x like the host renders (BoxActivity appIcon).
+        "listApps" => Value::Array(
+            (0..400)
+                .map(|i| json!({ "package": format!("com.example.app{i:03}"), "name": format!("App {i:03}"), "system": false, "internet": true, "updatedAt": now - i as i64 * 60_000 }))
+                .collect(),
+        ),
+        // Service status probes: GitHub answers after a real 160 ms, Google
+        // fails as it does on a network that cannot reach it.
+        "openProbe" | "closeProbe" => Value::Null,
+        "probeGet" => {
+            if args["url"].as_str().unwrap_or("").contains("github") {
+                std::thread::sleep(Duration::from_millis(160));
+                json!({ "status": 200, "body": "" })
+            } else {
+                return Err("dial tcp 142.250.72.4:443: connect: connection refused".into());
+            }
+        }
+        "appIcon" => Value::String(icon_png(args["package"].as_str().unwrap_or("app"))),
         "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
         // Setters and visibility switches: nothing to answer.
         _ => {
@@ -77,6 +97,33 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
             Value::Null
         }
     })
+}
+
+/// A 144 px launcher icon PNG for `pkg`, written once to the temp dir.
+fn icon_png(pkg: &str) -> String {
+    let dir = std::env::temp_dir().join("fkui-shot-icons");
+    std::fs::create_dir_all(&dir).ok();
+    let path = dir.join(format!("{pkg}.png"));
+    if !path.exists() {
+        let size = 144u32;
+        let seed = pkg.bytes().fold(7u32, |h, b| h.wrapping_mul(31).wrapping_add(b as u32));
+        let mut pixels = Vec::with_capacity((size * size * 4) as usize);
+        for y in 0..size {
+            for x in 0..size {
+                let inside = (x as i32 - 72).pow(2) + (y as i32 - 72).pow(2) < 70 * 70;
+                pixels.extend_from_slice(&if inside { [(seed >> 4) as u8 ^ x as u8, (seed >> 12) as u8 ^ y as u8, (seed >> 20) as u8, 255] } else { [0, 0, 0, 0] });
+            }
+        }
+        if let Ok(file) = std::fs::File::create(&path) {
+            let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), size, size);
+            encoder.set_color(png::ColorType::Rgba);
+            encoder.set_depth(png::BitDepth::Eight);
+            if let Ok(mut writer) = encoder.write_header() {
+                writer.write_image_data(&pixels).ok();
+            }
+        }
+    }
+    path.to_string_lossy().into_owned()
 }
 
 fn dashboard(now: i64) -> Value {
@@ -173,7 +220,8 @@ impl Harness {
         let t = self.tick as f64;
         let up = (1.0 + (t * 0.7).sin()) * 40_000.0 + 2_000.0;
         let down = (1.0 + (t * 0.4).cos()) * 900_000.0 + 50_000.0;
-        event("rates", json!({ "upload": up, "download": down, "uploadTotal": format!("{:.1} MB", t * 0.3), "downloadTotal": format!("{:.1} MB", t * 4.1), "memoryBytes": 19_700_000 }));
+        event("rates", json!({ "upload": up, "download": down, "uploadTotal": format!("{:.1} MB", t * 0.3), "downloadTotal": format!("{:.1} MB", t * 4.1), "memoryBytes": 19_700_000, "connections": 23 }));
+        event("connectionStats", json!({ "active": 23, "recent": 148 + self.tick * 3, "dns": 14 }));
         event("memory", json!({ "total": 85_000_000, "rss": 85_000_000, "app": 65_300_000, "core": 19_700_000, "remote": false, "running": true, "heapInuse": 9_000_000, "heapIdle": 4_000_000, "stack": 1_000_000, "runtimeOther": 5_700_000, "goroutines": 120 }));
         for _ in 0..10 {
             self.advance(Duration::from_millis(100));
@@ -307,7 +355,23 @@ pub fn main() {
                     h.pump();
                 }
             }
-            "rss" => eprintln!("rss: {} kB ({rest})", rss_kb()),
+            "access" => {
+                crate::pages::settings::open_access();
+                h.settle();
+            }
+            "rss" => {
+                let (loaded, pending) = crate::pages::settings::icon_stats();
+                eprintln!("rss: {} kB ({rest}) icons {loaded} loaded, {pending} pending", rss_kb());
+            }
+            // Return freed heap to the OS, to tell retention from a leak.
+            "trim" => {
+                extern "C" {
+                    fn malloc_trim(pad: usize) -> i32;
+                }
+                // SAFETY: glibc's malloc_trim only releases free heap pages.
+                unsafe { malloc_trim(0) };
+                eprintln!("rss: {} kB after malloc_trim", rss_kb());
+            }
             other => eprintln!("unknown step {other}"),
         }
     }

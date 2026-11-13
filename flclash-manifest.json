@@ -28,6 +28,39 @@
           "changes": "IpInfo response fields adapted to Go JSON/trace parsers."
         }
       ]
+    },
+    "ui-slint/src/pages/services.rs": {
+      "sources": [
+        {
+          "source": "core/service_check.go",
+          "sourceSHA256": "d955596a7b247510754415f77e250ee53af23c88216357695f4d0998044f9ed0",
+          "changes": "Google and GitHub reachability rule (checkReachable/statusFromCode): 2xx available with latency, 401/403/429/451 restricted, other codes unavailable, one retry after a timeout. Requests go through the FK-box egress probe (8 s ceiling); GitHub uses its favicon because the home page exceeds the probe's 128 KiB body limit."
+        },
+        {
+          "source": "lib/providers/service_status.dart",
+          "sourceSHA256": "6c2707bbd94722a73a9c937f5ebe2f7e1abe575b95b55bebe1e6c0b1dcbc1b55",
+          "changes": "Route-keyed answers with the 1.5 s settle and 5 s throttle of RoutedProbe; FK-box adds a two-minute re-check while the card is shown."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/service_status.dart",
+          "sourceSHA256": "03cb655b8e4c7c0e3f73904863cecd130e0a338bc32df934c3d14dbafa3bdd4a",
+          "changes": "Card layout only: service badge with a notched status dot, latency in ms or the failure label; drawn with Slint and Simple Icons marks."
+        }
+      ]
+    },
+    "ui-slint/ui/pages/dashboard.slint": {
+      "sources": [
+        {
+          "source": "lib/views/dashboard/widgets/traffic.dart",
+          "sourceSHA256": "0d9b65b6ec78bb81df7eea3f262ef0e6e109698db39094e446af168989202413",
+          "changes": "Separate upload and download cards with the peak of the charted samples; layout only."
+        },
+        {
+          "source": "lib/views/dashboard/widgets/connection_stats.dart",
+          "sourceSHA256": "5e495b40238ca7b47aaa1655b60ae13d52749a683c18db0766cce6071d914e5d",
+          "changes": "Three counts (live connections, recent requests, DNS queries), the first two opening their request views; counts come from the FK-box connection stream."
+        }
+      ]
     }
   },
   "supplementalReferences": [

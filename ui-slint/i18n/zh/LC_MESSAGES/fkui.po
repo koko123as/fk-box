@@ -94,9 +94,6 @@ msgstr "已是最新"
 msgid "App"
 msgstr "应用"
 
-msgid "App and core memory"
-msgstr "应用和内核的内存占用"
-
 msgid "App and core share one process. Core runtime memory is separated from process RSS, not added twice."
 msgstr "应用与内核共享进程；内核运行时占用从进程常驻内存中拆分，避免重复计算。"
 
@@ -151,12 +148,6 @@ msgstr "自动分配端口"
 msgid "Automatic selection"
 msgstr "内核自动选择"
 
-msgid "Available cards"
-msgstr "可添加的卡片"
-
-msgid "Available routing modes"
-msgstr "当前可用的路由模式"
-
 msgid "Back"
 msgstr "返回"
 
@@ -195,9 +186,6 @@ msgstr "正文"
 
 msgid "Body limit per message"
 msgstr "每条报文正文上限"
-
-msgid "Body stream is incomplete"
-msgstr "正文流尚未完整结束"
 
 msgid "Brightness"
 msgstr "亮度"
@@ -475,9 +463,6 @@ msgstr "机房"
 msgid "Debug"
 msgstr "调试"
 
-msgid "Decrease"
-msgstr "减小"
-
 msgid "Decrypt HTTPS"
 msgstr "解密 HTTPS"
 
@@ -516,9 +501,6 @@ msgstr "取消全选"
 
 msgid "Destination"
 msgstr "目标地址"
-
-msgid "Detach"
-msgstr "断开设备"
 
 msgid "Details"
 msgstr "详情"
@@ -739,9 +721,6 @@ msgstr "字号"
 msgid "Format"
 msgstr "格式化"
 
-msgid "Format JSON"
-msgstr "格式化 JSON"
-
 msgid "GFW list"
 msgstr "GFW 列表"
 
@@ -783,9 +762,6 @@ msgstr "分组方式"
 
 msgid "Groups"
 msgstr "组"
-
-msgid "Groups and selected nodes"
-msgstr "代理组和所选节点"
 
 msgid "HTTP / SOCKS"
 msgstr "HTTP / SOCKS"
@@ -867,9 +843,6 @@ msgstr "包含配置文件"
 
 msgid "Include logs"
 msgstr "包含日志"
-
-msgid "Increase"
-msgstr "增大"
 
 msgid "Info"
 msgstr "信息"
@@ -1023,9 +996,6 @@ msgstr "移动网络"
 
 msgid "Mode"
 msgstr "模式"
-
-msgid "Monospace font"
-msgstr "等宽字体"
 
 msgid "More"
 msgstr "更多"
@@ -1191,9 +1161,6 @@ msgstr "离线"
 
 msgid "Online"
 msgstr "在线"
-
-msgid "Only a limited body preview was saved or decoded."
-msgstr "仅保存或解码限额内的正文预览。"
 
 msgid "Only selected apps use the VPN"
 msgstr "仅选中的应用使用 VPN"
@@ -1651,9 +1618,6 @@ msgstr "选中的应用绕过 VPN"
 msgid "Selected profile changed; reload it before saving"
 msgstr "当前配置已切换，请重新加载后保存"
 
-msgid "Selected sing-box configuration"
-msgstr "当前 sing-box 配置"
-
 msgid "Selector"
 msgstr "手动选择"
 
@@ -1695,9 +1659,6 @@ msgstr "收起"
 
 msgid "Show more"
 msgstr "展开"
-
-msgid "Show original"
-msgstr "显示原文"
 
 msgid "Show system apps"
 msgstr "显示系统应用"
@@ -1930,12 +1891,6 @@ msgstr "不可达"
 msgid "Unrestricted"
 msgstr "无限制"
 
-msgid "Unsaved changes"
-msgstr "有未保存的修改"
-
-msgid "Unsupported routing rules version %d"
-msgstr "不支持的分流规则版本 %d"
-
 msgid "Update"
 msgstr "更新"
 
@@ -1956,9 +1911,6 @@ msgstr "已更新"
 
 msgid "Upload"
 msgstr "上传"
-
-msgid "Upload and download traffic"
-msgstr "上传和下载流量"
 
 msgid "Upstream TLS"
 msgstr "上游 TLS"
@@ -2037,3 +1989,24 @@ msgstr "收起标签"
 
 msgid "Show labels"
 msgstr "展开标签"
+
+msgid "Turned on"
+msgstr "已开启"
+
+msgid "Turned off"
+msgstr "已关闭"
+
+msgid "Service status"
+msgstr "服务状态"
+
+msgid "Connection stats"
+msgstr "连接统计"
+
+msgid "DNS queries"
+msgstr "DNS查询"
+
+msgid "Pending"
+msgstr "待检测"
+
+msgid "Restricted"
+msgstr "受限"

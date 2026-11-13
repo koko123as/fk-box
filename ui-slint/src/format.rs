@@ -18,6 +18,17 @@ pub fn now_ms() -> i64 {
 }
 
 /// 1024-based units, no decimals for bytes ("512 B", "1.5 MB").
+/// A count on a dashboard figure: whole up to 9999, then 12.3k (dashboardCount).
+pub fn count(value: i64) -> String {
+    if value < 10_000 {
+        value.max(0).to_string()
+    } else if value < 1_000_000 {
+        format!("{:.1}k", value as f64 / 1000.0)
+    } else {
+        format!("{:.1}M", value as f64 / 1_000_000.0)
+    }
+}
+
 pub fn bytes(value: f64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
     let mut size = value;

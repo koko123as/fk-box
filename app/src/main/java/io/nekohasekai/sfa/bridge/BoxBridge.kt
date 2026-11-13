@@ -11,6 +11,7 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
+import io.nekohasekai.sfa.backend.connections.ConnectionsUiState
 import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
@@ -65,6 +66,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     internal lateinit var toolBridge: BoxTools
     private lateinit var dashboardDetails: BoxDashboard
     private var connectionsVisible = false
+    private var connectionStatsVisible = false
     private val connectionWire = ConnectionWire()
     private val logsVisible = MutableStateFlow(false)
     private val operations = Mutex()
@@ -96,7 +98,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             // Traffic totals change every second, so they ride with the rates
             // instead of the dashboard state that most pages read.
             emit("rates", mapOf("upload" to status.uplink, "download" to status.downlink, "memoryBytes" to status.memory,
-                "uploadTotal" to Libbox.formatBytes(status.uplinkTotal), "downloadTotal" to Libbox.formatBytes(status.downlinkTotal)))
+                "uploadTotal" to Libbox.formatBytes(status.uplinkTotal), "downloadTotal" to Libbox.formatBytes(status.downlinkTotal),
+                "connections" to status.connectionsIn))
         }
     }
     private val profileCallback: () -> Unit = { scope.launch { operations.withLock { publishProfiles() } } }
@@ -155,6 +158,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
                     launch { connections.uiState.collect { state ->
                         if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
+                        if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
                     } }
                     launch {
                         val stream = LogStream()
@@ -190,6 +194,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
         if (::connections.isInitialized && connectionsVisible) {
             connectionsVisible = false
+            connections.setVisible(false)
+        }
+        if (::connections.isInitialized && connectionStatsVisible) {
+            connectionStatsVisible = false
             connections.setVisible(false)
         }
     }
@@ -431,6 +439,24 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (visible) emit("connections", connectionWire.rows(connections.uiState.value.allConnections))
     }
 
+    /** The dashboard's connection statistics card: counts only, no rows. */
+    fun setConnectionStatsVisible(visible: Boolean) {
+        if (visible != connectionStatsVisible) {
+            connectionStatsVisible = visible
+            connections.setVisible(visible)
+        }
+        if (visible) emit("connectionStats", connectionStats(connections.uiState.value))
+    }
+
+    private fun connectionStats(state: ConnectionsUiState): Map<String, Any?> {
+        var active = 0
+        var recent = 0
+        for (connection in state.allConnections) {
+            if (connection.closedAt == null) active++ else recent++
+        }
+        return mapOf("active" to active, "recent" to recent, "dns" to state.dnsCount)
+    }
+
     suspend fun closeConnection(id: String?) {
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().closeConnection(required(id, "id")) }
     }
@@ -534,17 +560,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         // Package broadcasts may have updated managed selections while the page was closed.
         emit("settings", settings())
         return result
-    }
-
-    /** The app's launcher icon drawn at 48 dp on IO; handed to the UI as a bitmap, without a PNG round-trip. */
-    suspend fun appIcon(packageName: String): android.graphics.Bitmap = withContext(Dispatchers.IO) {
-        val drawable = activity.packageManager.getApplicationIcon(packageName)
-        val size = (48 * activity.resources.displayMetrics.density).toInt().coerceIn(48, 192)
-        val bitmap = android.graphics.Bitmap.createBitmap(size, size, android.graphics.Bitmap.Config.ARGB_8888)
-        drawable.setBounds(0, 0, size, size)
-        drawable.draw(android.graphics.Canvas(bitmap))
-        bitmap.prepareToDraw()
-        bitmap
     }
 
     fun requestAppsPermission() { PackageQueryManager.requestShizukuPermission() }
@@ -827,6 +842,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
             if (connectionsVisible) connections.setVisible(false)
+            if (connectionStatsVisible) connections.setVisible(false)
             logs.setVisible(false)
             toolBridge.close()
             dashboardDetails.close()

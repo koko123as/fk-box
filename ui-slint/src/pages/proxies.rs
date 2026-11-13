@@ -97,7 +97,6 @@ pub fn project(w: &AppWindow) {
     p.set_compact(size.as_deref() == Some("Compact") || (size.is_none() && layout == "Compact"));
     p.set_loose(size.as_deref() == Some("Loose"));
     p.set_icon_style(icon.into());
-    p.set_query(query.as_str().into());
     // A group's node model is updated in place when the group is still there,
     // so a delay update does not rebuild every node card.
     let current = p.get_groups();

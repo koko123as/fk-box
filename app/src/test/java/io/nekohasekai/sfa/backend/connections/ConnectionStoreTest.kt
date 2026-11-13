@@ -50,6 +50,15 @@ class ConnectionStoreTest {
         assertEquals(2_000L, store.snapshot().first { it.id == "c" }.closedAt)
     }
 
+    @Test fun dnsLookupsAreCountedNotListed() {
+        val store = ConnectionStore()
+        store.apply(EVENT_NEW, "a", connection("a"), 0, 0, 0)
+        store.apply(EVENT_NEW, "d", connection("d", outboundType = "dns"), 0, 0, 0)
+        store.apply(EVENT_NEW, "p", connection("p").copy(destination = "8.8.8.8:53", protocolName = "dns"), 0, 0, 0)
+        assertEquals(2, store.dnsCount())
+        assertEquals(listOf("a", "p"), store.snapshot().map { it.id })
+    }
+
     @Test fun eventsForUnknownIdsAreIgnored() {
         val store = ConnectionStore()
         assertFalse(store.apply(EVENT_UPDATE, "x", null, 1, 1, 0))

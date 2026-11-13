@@ -1,6 +1,7 @@
-//! The dashboard (pages/DashboardPage.kt, StatusPanel.kt, DashboardEditor.kt):
-//! the cards the preferences order and hide, each panel's values, the
-//! editor, and the memory, outbound IP, intranet and new LAN proxy pages.
+//! The dashboard (pages/DashboardPage.kt, StatusPanel.kt, DashboardEditor.kt;
+//! layout after FlClash): the cards the preferences order and hide, each
+//! panel's values, the editor, and the memory, outbound IP, intranet and new
+//! LAN proxy pages.
 
 use std::cell::RefCell;
 
@@ -11,12 +12,25 @@ use crate::app::{self, data, long, num, rows, ss, strings, text, truthy};
 use crate::format;
 use crate::i18n::tr;
 use crate::nav::{self, glyph};
-use crate::pages::{egress, mark, Mark};
-use crate::{AppWindow, Dash, DashCell, DashRow, KeyValue, ModeItem, Note};
+use crate::pages::{egress, mark, services, Mark};
+use crate::{AppWindow, Dash, DashCell, DashRow, KeyValue, ModeItem, Note, ServiceItem};
 
-pub const CARDS: [&str; 8] = ["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"];
-const DEFAULT_CARDS: [&str; 5] = ["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups"];
-const DEFAULT_HIDDEN: [&str; 2] = ["Memory", "Intranet IP"];
+/// Every card, in the default order: at four grid columns the status and the
+/// two speed cards, the mode and VPN switches, the four small cards, then the
+/// connection counts and the proxy groups (FlClash's tablet dashboard).
+pub const CARDS: [&str; 11] = [
+    "Status",
+    "Network speed",
+    "Outbound mode",
+    "VPN",
+    "Intranet IP",
+    "Current profile",
+    "Service status",
+    "Memory",
+    "Connection stats",
+    "Proxy groups",
+    "System HTTP proxy",
+];
 
 #[derive(Default)]
 struct Local {
@@ -38,22 +52,32 @@ fn local<R>(f: impl FnOnce(&mut Local) -> R) -> R {
     LOCAL.with(|l| f(&mut l.borrow_mut()))
 }
 
-/// dashboardOrder: the saved order, then the cards it does not name.
+/// dashboardOrder: the saved order; a card it does not name (one added since
+/// it was saved) goes after the card it follows in the default order.
 fn order() -> Vec<String> {
-    data(|d| {
-        let saved = d.preferences.get("dashboardCards").map(strings).unwrap_or_else(|| DEFAULT_CARDS.iter().map(|s| s.to_string()).collect());
-        let mut out: Vec<String> = Vec::new();
-        for card in saved.into_iter().filter(|c| CARDS.contains(&c.as_str())).chain(CARDS.iter().map(|s| s.to_string())) {
-            if !out.contains(&card) {
-                out.push(card);
-            }
+    let saved = data(|d| d.preferences.get("dashboardCards").map(strings));
+    merge_order(saved.as_deref().unwrap_or(&[]))
+}
+
+pub fn merge_order(saved: &[String]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for card in saved.iter().filter(|c| CARDS.contains(&c.as_str())) {
+        if !out.contains(card) {
+            out.push(card.clone());
         }
-        out
-    })
+    }
+    for (i, card) in CARDS.iter().enumerate() {
+        if out.iter().any(|c| c == card) {
+            continue;
+        }
+        let after = CARDS[..i].iter().rev().find_map(|prev| out.iter().position(|c| c == prev));
+        out.insert(after.map(|p| p + 1).unwrap_or(0), card.to_string());
+    }
+    out
 }
 
 fn hidden() -> Vec<String> {
-    data(|d| d.preferences.get("hiddenCards").map(strings).unwrap_or_else(|| DEFAULT_HIDDEN.iter().map(|s| s.to_string()).collect()))
+    data(|d| d.preferences.get("hiddenCards").map(strings).unwrap_or_default())
 }
 
 /// The cards this device can show.
@@ -61,11 +85,14 @@ fn available() -> Vec<String> {
     data(|d| {
         let modes = d.dashboard.get("modes").and_then(|m| m.as_array()).map(|m| !m.is_empty()).unwrap_or(false);
         let system_proxy = d.dashboard.get("systemProxyAvailable").map(truthy).unwrap_or(false);
+        let remote = d.remote();
         CARDS
             .iter()
             .filter(|c| match **c {
                 "Outbound mode" => modes,
                 "System HTTP proxy" => system_proxy,
+                // The service and the probes are this device's own.
+                "VPN" | "Service status" => !remote,
                 _ => true,
             })
             .map(|s| s.to_string())
@@ -80,10 +107,11 @@ pub fn shown_cards() -> Vec<String> {
 }
 
 /// The grid columns a card takes on wider windows (FlClash's dashboard grid):
-/// the status, the speed charts and the groups take two, the rest one.
+/// the status, the upload and download pair, the single-row switches, the
+/// connection counts and the groups take two, the rest one.
 fn span(card: &str) -> usize {
     match card {
-        "Status" | "Network speed" | "Proxy groups" => 2,
+        "Status" | "Network speed" | "Outbound mode" | "VPN" | "System HTTP proxy" | "Connection stats" | "Proxy groups" => 2,
         _ => 1,
     }
 }
@@ -426,11 +454,24 @@ pub fn project(w: &AppWindow, m: Mark) {
             dash.set_down_unit(du.into());
             dash.set_up_total(d.rates.get("uploadTotal").map(text).filter(|s| !s.is_empty()).unwrap_or_else(|| "0 B".into()).into());
             dash.set_down_total(d.rates.get("downloadTotal").map(text).filter(|s| !s.is_empty()).unwrap_or_else(|| "0 B".into()).into());
+            // The highest rate in the charted window (FlClash SpeedCard).
+            let peak = |h: &std::collections::VecDeque<f64>| format::bytes(h.iter().cloned().fold(0.0, f64::max));
+            dash.set_up_peak(peak(&d.upload_history).into());
+            dash.set_down_peak(peak(&d.download_history).into());
+            // Connection statistics: the live count from the connection list
+            // while it streams, else the core's status count.
+            let stats = &d.connection_stats;
+            let count = |v: Option<&Value>| v.and_then(long).map(|n| format::count(n)).unwrap_or_else(|| "0".into());
+            let live = if d.running() { stats.get("active").or_else(|| d.rates.get("connections")) } else { None };
+            dash.set_conn_live(count(live).into());
+            dash.set_conn_recent(count(stats.get("recent")).into());
+            dash.set_conn_dns(count(stats.get("dns")).into());
         });
         project_charts(&dash);
     }
     if m.has(Mark::DASH) || m.has(Mark::PROXIES) || m.has(Mark::PROFILES) || m == Mark::ALL {
         egress::sync();
+        services::sync();
     }
     // The status panel.
     let view = egress::view();
@@ -509,6 +550,12 @@ pub fn project(w: &AppWindow, m: Mark) {
     if m.has(Mark::RATES) && m.0 == Mark::RATES.0 {
         return;
     }
+    // Service status
+    sync!(dash, get_services, set_services, services::view()
+        .into_iter()
+        .map(|v| ServiceItem { id: ss(v.id), label: ss(v.label), status: ss(v.status), tone: v.tone, loading: v.loading })
+        .collect());
+    dash.set_services_checking(services::checking());
 
     let (editing, saving, updating, releasing) = local(|l| (l.editing.clone(), l.saving, l.updating, l.releasing));
     let available_cards = available();
@@ -522,7 +569,6 @@ pub fn project(w: &AppWindow, m: Mark) {
         dash.set_grid4(grid_model(&shown_now, 4));
         local(|l| l.grid = Some(shown_now.clone()));
     }
-    sync!(dash, get_available, set_available, available_cards.iter().map(ss).collect());
     dash.set_editing(editing.is_some());
     dash.set_saving(saving);
     if let Some(shown) = &editing {
@@ -693,7 +739,6 @@ pub fn project(w: &AppWindow, m: Mark) {
         dash.set_lan_changing(d.lan_changing);
         dash.set_lan_error(d.lan.get("error").filter(|e| !e.is_null()).map(text).unwrap_or_default().into());
         let active = !d.remote() && d.running() && d.lan.get("running").map(truthy).unwrap_or(false);
-        dash.set_lan_active(active);
         let bindings = d.lan.get(if active { "activeBindings" } else { "bindings" }).map(rows).unwrap_or_default();
         let mut listeners = Vec::new();
         if !active {
@@ -751,6 +796,11 @@ pub fn back() -> bool {
 pub fn act(id: &str, arg: &str) -> bool {
     match id {
         "toggle-service" => egress::toggle_service(),
+        "service-check" => services::check_id(arg),
+        "service-check-all" => services::check_all(true),
+        "open-requests" => {
+            nav::push("requests", arg);
+        }
         "egress-retry" => egress::retry(),
         "egress-copy" => {
             if let Some(ip) = egress::view().egress.and_then(|e| e.get("ip").map(text)) {
@@ -882,26 +932,70 @@ pub fn install(w: &AppWindow) {
 
 #[cfg(test)]
 mod grid_tests {
-    use super::pack;
+    use super::{merge_order, pack, CARDS};
 
     fn cards(names: &[&str]) -> Vec<String> {
         names.iter().map(|s| s.to_string()).collect()
     }
 
+    fn names(row: &[(String, usize)]) -> Vec<(&str, usize)> {
+        row.iter().map(|(c, s)| (c.as_str(), *s)).collect()
+    }
+
     #[test]
     fn rows_fill_the_width() {
-        let all = cards(&["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"]);
+        let all = cards(&CARDS);
         for columns in 1..=4 {
             for row in pack(&all, columns) {
                 assert_eq!(row.iter().map(|c| c.1).sum::<usize>(), columns);
             }
         }
-        let four = pack(&all, 4);
-        assert_eq!(four[0], vec![("Status".to_string(), 2), ("Network speed".to_string(), 2)]);
-        assert_eq!(four[1].len(), 3);
-        let three = pack(&all, 3);
-        assert_eq!(three[0], vec![("Status".to_string(), 2), ("Outbound mode".to_string(), 1)]);
-        assert_eq!(three[1], vec![("Network speed".to_string(), 2), ("Current profile".to_string(), 1)]);
         assert!(pack(&[], 3).is_empty());
+    }
+
+    /// The default cards (no system proxy) at four columns: the tablet layout.
+    #[test]
+    fn four_columns_match_the_reference() {
+        let shown = cards(&CARDS[..10]);
+        let four = pack(&shown, 4);
+        assert_eq!(names(&four[0]), vec![("Status", 2), ("Network speed", 2)]);
+        assert_eq!(names(&four[1]), vec![("Outbound mode", 2), ("VPN", 2)]);
+        assert_eq!(names(&four[2]), vec![("Intranet IP", 1), ("Current profile", 1), ("Service status", 1), ("Memory", 1)]);
+        assert_eq!(names(&four[3]), vec![("Connection stats", 2), ("Proxy groups", 2)]);
+        assert_eq!(four.len(), 4);
+    }
+
+    #[test]
+    fn three_and_two_columns() {
+        let shown = cards(&CARDS[..10]);
+        let three = pack(&shown, 3);
+        assert_eq!(names(&three[0]), vec![("Status", 2), ("Intranet IP", 1)]);
+        assert_eq!(names(&three[1]), vec![("Network speed", 2), ("Current profile", 1)]);
+        assert_eq!(names(&three[2]), vec![("Outbound mode", 2), ("Service status", 1)]);
+        assert_eq!(names(&three[3]), vec![("VPN", 2), ("Memory", 1)]);
+        assert_eq!(names(&three[4]), vec![("Connection stats", 3)]);
+        assert_eq!(names(&three[5]), vec![("Proxy groups", 3)]);
+        let two = pack(&shown, 2);
+        assert_eq!(names(&two[3]), vec![("VPN", 2)]);
+        assert_eq!(names(&two[4]), vec![("Intranet IP", 1), ("Current profile", 1)]);
+        assert_eq!(names(&two[5]), vec![("Service status", 1), ("Memory", 1)]);
+        assert_eq!(two.len(), 8);
+    }
+
+    /// A layout saved before the new cards keeps its order and takes each new
+    /// card after the one it follows by default.
+    #[test]
+    fn saved_order_takes_new_cards_in_place() {
+        let saved = cards(&["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"]);
+        assert_eq!(
+            merge_order(&saved),
+            cards(&["Status", "Network speed", "Outbound mode", "VPN", "Current profile", "Service status", "Proxy groups", "Memory", "Connection stats", "Intranet IP", "System HTTP proxy"])
+        );
+        assert_eq!(merge_order(&[]), cards(&CARDS));
+        // Unknown cards drop; a new card still follows its default neighbour.
+        assert_eq!(
+            merge_order(&cards(&["Memory", "Bogus", "Status"])),
+            cards(&["Memory", "Connection stats", "Proxy groups", "System HTTP proxy", "Status", "Network speed", "Outbound mode", "VPN", "Intranet IP", "Current profile", "Service status"])
+        );
     }
 }

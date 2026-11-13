@@ -12,7 +12,14 @@ import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
     in property <int> page;
+    // The part of the list in view, in the list's coordinates; a row waiting
+    // for its app icon asks for it once it comes within a screen of it.
+    in property <length> view-top: -1000000px;
+    in property <length> view-bottom: 1000000px;
     property <string> key: page + ":" + entry.key;
+    property <bool> wants-image: root.entry.image-key != "" && root.y + root.height > root.view-top - 600px && root.y < root.view-bottom + 600px;
+    init => { if (root.wants-image) { Nav.act2("row-image", root.entry.image-key, ""); } }
+    changed wants-image => { if (root.wants-image) { Nav.act2("row-image", root.entry.image-key, ""); } }
     height: lay.preferred-height;
     lay := VerticalLayout {
         if entry.kind == "section": SectionTitle { text: root.entry.title; first: root.entry.checked; }
@@ -509,7 +516,12 @@ export component RowsBody inherits Rectangle {
             padding-right: root.side;
             padding-top: root.top-pad;
             padding-bottom: 24px + max(Nav.keyboard-height, root.bottom);
-            for r in root.d.rows: RowView { entry: r; page: root.d.id; }
+            for r in root.d.rows: RowView {
+                entry: r;
+                page: root.d.id;
+                view-top: -flick.content-y;
+                view-bottom: -flick.content-y + flick.height;
+            }
         }
     }
 }

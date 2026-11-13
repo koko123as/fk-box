@@ -769,7 +769,7 @@ fn access_load(st: &AccessRef) {
 }
 
 fn access_reload(st: &AccessRef) {
-    APP_ICONS.with(|i| i.borrow_mut().clear());
+    release_icons();
     st.borrow_mut().refresh = true;
     access_load(st);
 }
@@ -870,6 +870,7 @@ pub fn open_access() {
     });
     let a = st.clone();
     nav::busy_guard(id, move || a.borrow().saving);
+    nav::on_closed(id, release_icons);
 }
 
 fn access_visible(s: &Access, selected: &BTreeSet<String>) -> Vec<Value> {
@@ -974,7 +975,7 @@ fn access_page(st: &AccessRef) -> Page {
                 .lines(1)
                 .key(&pkg)
                 .icon("apps-list")
-                .image(app_icon(&pkg))
+                .app_icon(&pkg)
                 .enabled(enabled && !managed && !saving);
             r.data.position = 0;
             rows.push(r);
@@ -1148,7 +1149,8 @@ pub fn pick_apps(initial: Vec<String>, done: impl Fn(Vec<String>) + 'static) {
     picker_load(&st, false);
     let done: Rc<dyn Fn(Vec<String>)> = Rc::new(done);
     let a = st.clone();
-    rows::push(move || picker_page(&a, done.clone()));
+    let id = rows::push(move || picker_page(&a, done.clone()));
+    nav::on_closed(id, release_icons);
 }
 
 fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page {
@@ -1187,7 +1189,7 @@ fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page 
         .lines(1)
         .key(&pkg)
         .icon("apps-list")
-        .image(app_icon(&pkg));
+        .app_icon(&pkg);
         r.data.position = 0;
         rows.push(r);
     }
@@ -1224,7 +1226,7 @@ fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page 
                     mark(Mark::ROWS);
                 }),
                 MenuEntry::act("Refresh", "refresh", move || {
-                    APP_ICONS.with(|i| i.borrow_mut().clear());
+                    release_icons();
                     picker_load(&z, true);
                 }),
             ]
@@ -1236,28 +1238,128 @@ fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page 
 }
 
 // ---------------------------------------------------------------------------
-// App icons (PackageIcon): PNGs the native side renders into its cache.
+// App icons (PackageIcon): PNGs the native side renders into its cache, read
+// only for the rows the list scrolls near (rows.slint asks with "row-image"),
+// a few at a time, and kept in a small cache that the app lists drop when
+// they close. Asking for every installed app at once rendered and decoded
+// hundreds of icons in one burst and kept them all for the process lifetime.
 // ---------------------------------------------------------------------------
 
-thread_local! {
-    static APP_ICONS: RefCell<HashMap<String, Option<slint::Image>>> = RefCell::new(HashMap::new());
+/// Decoded icons kept at most (about 80 KiB each at 3x).
+const ICON_CACHE: usize = 96;
+/// Icon requests in flight at most.
+const ICON_PARALLEL: usize = 3;
+
+#[derive(Default)]
+struct Icons {
+    loaded: HashMap<String, slint::Image>,
+    /// Loaded packages, least recently asked for first.
+    order: std::collections::VecDeque<String>,
+    queue: std::collections::VecDeque<String>,
+    pending: BTreeSet<String>,
+    failed: BTreeSet<String>,
+    in_flight: usize,
+    generation: u64,
 }
 
+thread_local! {
+    static APP_ICONS: RefCell<Icons> = RefCell::new(Icons::default());
+}
+
+/// The icon when it is loaded; rows without one ask for it when shown.
 pub fn app_icon(pkg: &str) -> Option<slint::Image> {
-    if let Some(known) = APP_ICONS.with(|i| i.borrow().get(pkg).cloned()) {
-        return known;
+    APP_ICONS.with(|i| i.borrow().loaded.get(pkg).cloned())
+}
+
+/// Drops every icon (an app list closed or reloaded).
+pub fn release_icons() {
+    APP_ICONS.with(|i| {
+        let mut i = i.borrow_mut();
+        let generation = i.generation + 1;
+        *i = Icons { generation, ..Default::default() };
+    });
+}
+
+/// Icons decoded and requests waiting (the screenshot harness's memory check).
+#[cfg(feature = "shot")]
+pub fn icon_stats() -> (usize, usize) {
+    APP_ICONS.with(|i| {
+        let i = i.borrow();
+        (i.loaded.len(), i.pending.len())
+    })
+}
+
+/// A row with this package's icon came near the viewport.
+pub fn request_icon(pkg: &str) {
+    if pkg.is_empty() {
+        return;
     }
-    APP_ICONS.with(|i| i.borrow_mut().insert(pkg.to_string(), None));
-    let p = pkg.to_string();
-    app::call("appIcon", json!({ "package": pkg }), move |r| {
-        if let Ok(Value::String(path)) = r {
-            if let Ok(image) = slint::Image::load_from_path(std::path::Path::new(&path)) {
-                APP_ICONS.with(|i| i.borrow_mut().insert(p, Some(image)));
+    let queued = APP_ICONS.with(|i| {
+        let mut i = i.borrow_mut();
+        if i.loaded.contains_key(pkg) {
+            i.order.retain(|p| p != pkg);
+            i.order.push_back(pkg.to_string());
+            return false;
+        }
+        if i.pending.contains(pkg) || i.failed.contains(pkg) {
+            return false;
+        }
+        i.pending.insert(pkg.to_string());
+        i.queue.push_back(pkg.to_string());
+        true
+    });
+    if queued {
+        pump_icons();
+    }
+}
+
+fn pump_icons() {
+    loop {
+        let next = APP_ICONS.with(|i| {
+            let mut i = i.borrow_mut();
+            if i.in_flight >= ICON_PARALLEL {
+                return None;
+            }
+            let pkg = i.queue.pop_front()?;
+            i.in_flight += 1;
+            Some((pkg, i.generation))
+        });
+        let Some((pkg, generation)) = next else { return };
+        app::call("appIcon", json!({ "package": pkg }), move |r| {
+            let image = match r {
+                Ok(Value::String(path)) => slint::Image::load_from_path(std::path::Path::new(&path)).ok(),
+                _ => None,
+            };
+            let changed = APP_ICONS.with(|i| {
+                let mut i = i.borrow_mut();
+                if i.generation != generation {
+                    return false;
+                }
+                i.in_flight -= 1;
+                i.pending.remove(&pkg);
+                match image {
+                    Some(image) => {
+                        i.loaded.insert(pkg.clone(), image);
+                        i.order.push_back(pkg);
+                        while i.order.len() > ICON_CACHE {
+                            if let Some(old) = i.order.pop_front() {
+                                i.loaded.remove(&old);
+                            }
+                        }
+                        true
+                    }
+                    None => {
+                        i.failed.insert(pkg);
+                        false
+                    }
+                }
+            });
+            if changed {
                 mark(Mark::ROWS);
             }
-        }
-    });
-    None
+            pump_icons();
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------

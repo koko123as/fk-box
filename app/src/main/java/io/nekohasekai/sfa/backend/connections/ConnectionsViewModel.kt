@@ -20,6 +20,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 data class ConnectionsUiState(
     val allConnections: List<Connection> = emptyList(),
+    // DNS lookups the store holds (live, or closed within its five-minute
+    // window); kept out of [allConnections], counted for the dashboard.
+    val dnsCount: Int = 0,
     val isLoading: Boolean = false,
 )
 
@@ -93,7 +96,7 @@ class ConnectionsViewModel :
                 connectionsGeneration.incrementAndGet()
             }
             updateState {
-                copy(allConnections = emptyList(), isLoading = false)
+                copy(allConnections = emptyList(), dnsCount = 0, isLoading = false)
             }
         }
     }
@@ -113,7 +116,7 @@ class ConnectionsViewModel :
             connectionsGeneration.incrementAndGet()
             withContext(Dispatchers.Main) {
                 updateState {
-                    copy(allConnections = emptyList(), isLoading = false)
+                    copy(allConnections = emptyList(), dnsCount = 0, isLoading = false)
                 }
             }
         }
@@ -123,6 +126,7 @@ class ConnectionsViewModel :
         viewModelScope.launch(connectionsLane) {
             val generation = connectionsGeneration.get()
             val snapshot = connectionStore.apply(events, System.currentTimeMillis())
+            val dnsCount = connectionStore.dnsCount()
             withContext(Dispatchers.Main) {
                 if (connectionsGeneration.get() != generation) {
                     return@withContext
@@ -130,6 +134,7 @@ class ConnectionsViewModel :
                 updateState {
                     copy(
                         allConnections = snapshot,
+                        dnsCount = dnsCount,
                         isLoading = false,
                     )
                 }
@@ -198,6 +203,16 @@ internal class ConnectionStore {
     }
 
     fun snapshot(): List<Connection> = connections.values.filter { it.outboundType != "dns" }
+
+    /**
+     * The DNS lookups among the connections the core reports: rows of a DNS
+     * outbound, sniffed as DNS, or to port 53. Queries a core answers inside
+     * its own resolver (sing-box hijack-dns, mihomo dns-hijack) never become
+     * connections, so they are not counted here.
+     */
+    fun dnsCount(): Int = connections.values.count {
+        it.outboundType == "dns" || it.protocolName.equals("dns", ignoreCase = true) || it.destination.endsWith(":53")
+    }
 
     companion object {
         // libbox ConnectionEventNew/Update/Closed (iota) and closedConnectionMaxAge.

@@ -7,17 +7,11 @@ import { BarAction, Keyword } from "globals.slint";
 
 // Values the whole app reads (BoxController.running, remote, transitioning, …).
 export global App {
-    in property <string> status: "Stopped";
     in property <bool> running;
     in property <bool> transitioning;
     in property <bool> remote;
     in property <string> remote-name;
-    in property <bool> has-selected-profile;
     in property <int> profile-count;
-    in property <string> version;
-    in property <string> core-version;
-    in property <string> xray-version;
-    in property <string> mihomo-version;
 }
 
 // ---------------------------------------------------------------------------
@@ -33,6 +27,9 @@ export struct KeyValue { key: string, value: string }
 // A dashboard grid row on wider windows: each card and the columns it takes.
 export struct DashCell { card: string, span: int }
 export struct DashRow { cells: [DashCell] }
+// A service status row: the target, its latency or failure, the tone of its
+// dot (0 idle, 1 available, 2 restricted, 3 failed) and a check in progress.
+export struct ServiceItem { id: string, label: string, status: string, tone: int, loading: bool }
 
 export global Dash {
     // The cards shown, in order ("Status", "Network speed", …).
@@ -42,8 +39,6 @@ export global Dash {
     in property <[DashRow]> grid2;
     in property <[DashRow]> grid3;
     in property <[DashRow]> grid4;
-    // Every card this device can show, for the editor.
-    in property <[string]> available;
     in property <bool> editing;
     // The editor's working list (DashboardEditorState).
     in property <[KeyValue]> edit-shown;
@@ -81,6 +76,9 @@ export global Dash {
     in property <string> down-total: "0 B";
     in property <string> down-line;
     in property <string> down-area;
+    // The highest rate in the charted window, as "12.3 KB".
+    in property <string> up-peak: "0 B";
+    in property <string> down-peak: "0 B";
     // The tiles' chart area in logical px (both tiles are the same size); the
     // paths are drawn in it, so Rust needs it (chart-resized).
     in-out property <length> chart-w;
@@ -141,7 +139,6 @@ export global Dash {
     in property <bool> lan-can-copy;
     in property <[string]> lan-addresses;
     in property <string> lan-error;
-    in property <bool> lan-active;
     in property <[KeyValue]> lan-listeners;
     in property <bool> lan-changing;
     in-out property <string> lan-port: "2080";
@@ -149,6 +146,16 @@ export global Dash {
 
     // System HTTP proxy
     in property <bool> system-proxy;
+
+    // Service status (pages/services.rs)
+    in property <[ServiceItem]> services;
+    in property <bool> services-checking;
+
+    // Connection statistics: live connections, recent (closed) requests and
+    // DNS lookups.
+    in property <string> conn-live: "0";
+    in property <string> conn-recent: "0";
+    in property <string> conn-dns: "0";
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +197,6 @@ export global Proxies {
     in property <bool> loose;
     // proxyIconStyle: "Filled" | "Plain" | "Hidden"
     in property <string> icon-style: "Filled";
-    in property <string> query;
     // The node shown in the details form.
     in property <[KeyValue]> details;
 }
@@ -247,39 +253,6 @@ export global Profiles {
 }
 
 // ---------------------------------------------------------------------------
-// Logs and requests (pages/RequestsPage.kt, ui/Records.kt)
-// ---------------------------------------------------------------------------
-
-export struct LogRow {
-    level: string,
-    time: string,
-    message: string,
-    tone: int,
-}
-
-export struct ConnectionRow {
-    id: string,
-    title: string,
-    subtitle: string,
-    detail: string,
-    upload: string,
-    download: string,
-    closed: bool,
-}
-
-export global Records {
-    in property <[LogRow]> logs;
-    in property <string> log-filter;
-    in property <string> log-level: "all";
-    in property <bool> log-paused;
-    in property <[ConnectionRow]> connections;
-    in property <bool> show-closed;
-    in property <string> connection-filter;
-    in property <[KeyValue]> connection-detail;
-    in property <string> connection-detail-id;
-}
-
-// ---------------------------------------------------------------------------
 // Tools and settings (pages/ToolsPage.kt, SettingsPages.kt, AppearancePage.kt, …)
 // ---------------------------------------------------------------------------
 
@@ -313,6 +286,9 @@ export struct SettingRow {
     // An app icon (PackageIcon) in place of the glyph.
     image: image,
     has-image: bool,
+    // The package whose icon the row still waits for: asked for (row-image)
+    // only once the row scrolls near the viewport.
+    image-key: string,
     // The segments of a SegmentedButton row (kind "segments"), the selected one in lines.
     options: [string],
     // A record (RecordListItem): the outbound chain under its rule (detail).
@@ -357,12 +333,3 @@ export global Pages {
     in property <PageData> logs;
 }
 
-export global Settings {
-    // The rows of the settings page on top, keyed by the route's kind.
-    in property <[SettingRow]> tools;
-    in property <[SettingRow]> page;
-    in property <string> page-title;
-    in property <bool> page-loading;
-    in property <string> page-footer;
-    in property <bool> apply-required;
-}

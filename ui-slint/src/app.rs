@@ -33,6 +33,8 @@ pub struct Data {
     pub ping: Json,
     pub terminal: Json,
     pub memory: Json,
+    // The dashboard's connection counts (BoxBridge connectionStats).
+    pub connection_stats: Json,
     pub lan: Json,
     pub transfers: Vec<Value>,
     pub usb_devices: Vec<Value>,
@@ -272,8 +274,10 @@ pub fn fetch(method: &str, args: Value, then: impl FnOnce(Value) + 'static) {
     });
 }
 
+/// An error in the snackbar, translated when it is one of the host's own
+/// messages (BoxBridge require/check texts).
 pub fn report(error: &str) {
-    crate::nav::toast(&format::clean_error(error), true);
+    crate::nav::toast(&tr(&format::clean_error(error)), true);
 }
 
 /// box.message(): a translated line in the snackbar.
@@ -529,6 +533,10 @@ pub fn on_event(payload: &str) {
         "connections" => {
             d.connections = rows(&value);
             Mark::RECORDS
+        }
+        "connectionStats" => {
+            d.connection_stats = obj(&value);
+            Mark::RATES
         }
         "logs" => {
             let entries = rows(&value["entries"]);

@@ -4,12 +4,12 @@
 import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword } from "globals.slint";
-import { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow } from "data.slint";
+import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
 import { Extra } from "extra.slint";
 import { Look, Swatch } from "pages/appearance.slint";
 
 export { Theme, Scheme, TextRole, Nav, MenuItem, BarAction, Route, Keyword, Glyph, Icons, Extra, Look, Swatch }
-export { App, Dash, Proxies, Profiles, Records, Settings, Pages, PageData, ModeItem, Note, KeyValue, NodeRow, GroupRow, ProfileRow, LogRow, ConnectionRow, SettingRow }
+export { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow }
 
 export component AppWindow inherits Window {
     in property <int> unused: Nav.focus-tick + (Theme.dark ? 1 : 0) + App.profile-count + Pages.data.length;

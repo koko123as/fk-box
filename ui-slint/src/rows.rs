@@ -348,10 +348,15 @@ impl Row {
         r
     }
 
-    pub fn image(mut self, image: Option<slint::Image>) -> Row {
-        if let Some(i) = image {
-            self.data.image = i;
-            self.data.has_image = true;
+    /// An installed app's icon: shown once loaded; until then the row asks
+    /// for it when it scrolls near the viewport (settings::request_icon).
+    pub fn app_icon(mut self, package: &str) -> Row {
+        match crate::pages::settings::app_icon(package) {
+            Some(i) => {
+                self.data.image = i;
+                self.data.has_image = true;
+            }
+            None => self.data.image_key = package.into(),
         }
         self
     }
@@ -769,6 +774,10 @@ pub fn act2(id: &str, a: &str, b: &str) -> bool {
                 }
             }
             crate::pages::mark(crate::pages::Mark::ROWS);
+            true
+        }
+        "row-image" => {
+            crate::pages::settings::request_icon(a);
             true
         }
         "bar" => {

@@ -23,6 +23,7 @@ pub mod resources;
 pub mod terminal;
 pub mod appearance;
 pub mod routing;
+pub mod services;
 
 /// What changed, so only the affected pages are projected again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -59,7 +60,7 @@ impl Mark {
 thread_local! {
     static PENDING: Cell<u32> = const { Cell::new(0) };
     static SCHEDULED: Cell<bool> = const { Cell::new(false) };
-    static VISIBLE: Cell<[bool; 4]> = const { Cell::new([false; 4]) };
+    static VISIBLE: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
 }
 
 /// Schedules a projection of the marked pages on the next turn of the event loop.
@@ -116,17 +117,11 @@ fn project_app(w: &AppWindow) {
     let app = w.global::<crate::App>();
     data(|d| {
         w.global::<crate::Nav>().set_rail_extended(d.preferences.get("railExtended").and_then(|v| v.as_bool()).unwrap_or(false));
-        app.set_status(d.status().into());
         app.set_running(d.running());
         app.set_transitioning(d.transitioning());
         app.set_remote(d.remote());
         app.set_remote_name(d.dashboard.get("remote").map(crate::app::text).unwrap_or_default().into());
-        app.set_has_selected_profile(d.selected_profile().is_some());
         app.set_profile_count(d.profiles.len() as i32);
-        app.set_version(d.version.as_str().into());
-        app.set_core_version(d.core_version.as_str().into());
-        app.set_xray_version(d.xray_version.as_str().into());
-        app.set_mihomo_version(d.mihomo_version.as_str().into());
     });
 }
 
@@ -146,10 +141,12 @@ pub fn sync_visibility(force: bool) {
     let lan = (dash_shown && cards.iter().any(|c| c == "Intranet IP")) || routes.iter().any(|r| r == "intranet" || r == "lan-add");
     let logs = (!covered && tab == "Logs") || routes.iter().any(|r| r == "logs");
     let connections = (!covered && tab == "Requests") || routes.iter().any(|r| r == "requests" || r == "connection");
-    let next = [memory, lan, logs, connections];
+    let connection_stats = dash_shown && cards.iter().any(|c| c == "Connection stats");
+    services::set_shown(dash_shown && cards.iter().any(|c| c == "Service status"));
+    let next = [memory, lan, logs, connections, connection_stats];
     let previous = VISIBLE.with(|v| v.replace(next));
-    let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible"];
-    for i in 0..4 {
+    let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible"];
+    for i in 0..names.len() {
         if force || previous[i] != next[i] {
             crate::app::act(names[i], serde_json::json!({ "visible": next[i] }));
         }

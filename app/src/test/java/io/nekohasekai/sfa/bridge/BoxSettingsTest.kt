@@ -71,4 +71,13 @@ class BoxSettingsTest {
         val hidden = shown + ("hiddenCards" to listOf("Memory", "System HTTP proxy"))
         assertEquals(hidden, BoxPreferences.validate(hidden))
     }
+
+    @Test
+    fun tabletDashboardCardsSurvivePreferenceValidation() {
+        val layout = mapOf(
+            "dashboardCards" to listOf("Status", "Network speed", "Outbound mode", "VPN", "Intranet IP", "Current profile", "Service status", "Memory", "Connection stats", "Proxy groups"),
+            "hiddenCards" to listOf("System HTTP proxy"),
+        )
+        assertEquals(layout, BoxPreferences.validate(layout))
+    }
 }
