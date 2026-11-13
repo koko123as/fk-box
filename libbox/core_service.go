@@ -31,7 +31,9 @@ import (
 	mihomoConfig "github.com/metacubex/mihomo/config"
 	mihomoConstant "github.com/metacubex/mihomo/constant"
 	mihomoExecutor "github.com/metacubex/mihomo/hub/executor"
+	mihomoListener "github.com/metacubex/mihomo/listener"
 	mihomoLog "github.com/metacubex/mihomo/log"
+	mihomoTunnel "github.com/metacubex/mihomo/tunnel"
 	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/log"
@@ -84,6 +86,9 @@ type coreDelay struct {
 }
 
 var (
+	// coreLifecycle serializes starting and stopping Xray and mihomo;
+	// coreAccess guards activeCore only.
+	coreLifecycle sync.Mutex
 	coreAccess    sync.Mutex
 	activeCore    *runningCore
 	coreProtector atomic.Pointer[PlatformInterface]
@@ -143,9 +148,21 @@ func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
 
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
 // core ran before. sing-box goes through StartOrReloadService unchanged.
+//
+// Starting and stopping are serialized by coreLifecycle, which is held for
+// the whole switch; coreAccess only guards activeCore and is never held while
+// a core starts or stops. A first mihomo start can take tens of seconds (its
+// remote proxy and rule providers are downloaded inside ApplyConfig before it
+// returns); holding coreAccess that long froze every reader of the running
+// core with it: the dashboard's status, memory, connection and group streams,
+// the egress and service-status probes, and the network callback
+// (CoreDefaultNetworkChanged), whose thread also delivers the default
+// network to the service's start and stop.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
 	resetUIDNSQueryCount()
 	if core == CoreSingBox || core == "" {
+		// Not held across sing-box's own start: CloseService interrupts a
+		// slow one (rule-set downloads) and must not wait for it here.
 		s.stopOtherCore()
 		return s.StartOrReloadService(withDefaultSingBoxLogLevel(dropUnbuiltTunStack(configContent)), options)
 	}
@@ -164,12 +181,12 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	} else if err := CheckCoreConfig(core, configContent); err != nil {
 		return err
 	}
+	coreLifecycle.Lock()
+	defer coreLifecycle.Unlock()
 	// Stop sing-box (if it was running) before its TUN is replaced.
 	_ = s.CloseService()
-	s.stopOtherCore()
+	s.stopOtherCoreLocked()
 
-	coreAccess.Lock()
-	defer coreAccess.Unlock()
 	platform := s.platformInterface
 	coreProtector.Store(&platform)
 	coreLogSink.Store(s)
@@ -189,7 +206,9 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 		return E.Cause(err, "start ", core)
 	}
 	running.startedAt = time.Now()
+	coreAccess.Lock()
 	activeCore = running
+	coreAccess.Unlock()
 	s.StartedService.WriteMessage(log.LevelInfo, core+" started")
 	go notifyCoreChange()
 	// Config parsing (rule sets, geo matchers) leaves garbage behind; give
@@ -208,13 +227,22 @@ func (s *CommandServer) CloseCoreService() error {
 
 // stopOtherCore stops Xray or mihomo and reports whether one was running.
 func (s *CommandServer) stopOtherCore() bool {
+	coreLifecycle.Lock()
+	defer coreLifecycle.Unlock()
+	return s.stopOtherCoreLocked()
+}
+
+// stopOtherCoreLocked is stopOtherCore with coreLifecycle held. The core is
+// taken out of activeCore first, so readers stop using it at once, and shut
+// down without coreAccess held.
+func (s *CommandServer) stopOtherCoreLocked() bool {
 	coreAccess.Lock()
-	defer coreAccess.Unlock()
 	running := activeCore
+	activeCore = nil
+	coreAccess.Unlock()
 	if running == nil {
 		return false
 	}
-	activeCore = nil
 	switch running.core {
 	case CoreXray:
 		if running.xray != nil {
@@ -476,9 +504,46 @@ func startMihomoCore(s *CommandServer, running *runningCore, content string, raw
 		return E.Cause(err, "dup tun")
 	}
 	config.General.Tun.FileDescriptor = mihomoFd
+	if remote := mihomoRemoteProviders(raw); remote > 0 {
+		// executor.loadProvider waits for each one that has no cached copy
+		// yet (up to 20 s each): on a profile's first start this is what
+		// the start is waiting for.
+		s.StartedService.WriteMessage(log.LevelInfo, fmt.Sprintf("[mihomo] loading %d remote providers; a first start downloads them", remote))
+	}
+	// The TUN starts only once ApplyConfig has returned and the DNS counter
+	// wraps the resolver ApplyConfig installed: the TUN's DNS hijack reads
+	// resolver.DefaultService on every query, so replacing it while the
+	// TUN already served would race those reads.
+	tunConf := config.General.Tun
+	config.General.Tun.Enable = false
 	mihomoExecutor.ApplyConfig(config, true)
 	countMihomoDNS()
+	config.General.Tun = tunConf
+	mihomoListener.ReCreateTun(tunConf, mihomoTunnel.Tunnel)
+	if !mihomoListener.GetTunConf().Enable {
+		// ReCreateTun logs its error and leaves the TUN off; without it
+		// nothing is routed, so the start fails instead of looking fine.
+		mihomoExecutor.Shutdown()
+		mihomoCloseListeners()
+		mihomoReleaseState()
+		close(running.mihomoLog)
+		running.mihomoLog = nil
+		return E.New("mihomo TUN did not start; see the log")
+	}
 	return nil
+}
+
+// mihomoRemoteProviders counts the profile's http proxy and rule providers.
+func mihomoRemoteProviders(raw *mihomoConfig.RawConfig) int {
+	count := 0
+	for _, providers := range []map[string]map[string]any{raw.ProxyProvider, raw.RuleProvider} {
+		for _, provider := range providers {
+			if kind, _ := provider["type"].(string); kind == "http" {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 // countingMihomoDNS counts the queries mihomo's dns-hijack answers: the TUN
