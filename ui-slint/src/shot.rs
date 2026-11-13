@@ -8,7 +8,9 @@
 //! `dark`, `light`, `tick:N` (N seconds with rate samples), `scroll:DY`,
 //! `tap:X,Y` (logical px), `size:W,H,SCALE`, `access` (open Access control),
 //! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS),
-//! `bg` / `fg` (the host's lifecycle event), `wait:N` (N real seconds).
+//! `bg` / `fg` (the host's lifecycle event), `wait:N` (N real seconds),
+//! `insets:T,B,L,R` (the host's insets, physical px), `nav` (print the insets
+//! the UI uses and the scale factor).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -362,6 +364,27 @@ pub fn main() {
             "bg" | "fg" => {
                 event("foreground", json!(cmd == "fg"));
                 h.pump();
+            }
+            // The host's insets in physical pixels (BoxActivity pushInsets).
+            "insets" => {
+                let v: Vec<f64> = rest.split(',').filter_map(|s| s.parse().ok()).collect();
+                if v.len() == 4 {
+                    event("insets", json!({ "top": v[0], "bottom": v[1], "left": v[2], "right": v[3] }));
+                    h.pump();
+                }
+            }
+            // The insets as the UI places them (logical px), and the scale factor.
+            "nav" => {
+                h.settle();
+                let nav = h.app.global::<Nav>();
+                eprintln!(
+                    "nav ({rest}): scale {} insets top {} bottom {} left {} right {}",
+                    h.app.window().scale_factor(),
+                    nav.get_inset_top(),
+                    nav.get_inset_bottom(),
+                    nav.get_inset_left(),
+                    nav.get_inset_right()
+                );
             }
             "access" => {
                 crate::pages::settings::open_access();

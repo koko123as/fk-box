@@ -245,7 +245,30 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
 
     override fun onMultiWindowModeChanged(isInMultiWindowMode: Boolean, newConfig: android.content.res.Configuration) {
         super.onMultiWindowModeChanged(isInMultiWindowMode, newConfig)
-        window.decorView.post { pushInsets() }
+        resendInsets()
+    }
+
+    /**
+     * Sends the insets again even when they did not change: the UI may have
+     * recreated its window (a new surface after the background, or a new
+     * activity after the system destroyed the old one) and it replaces, never
+     * adds to, what it had.
+     */
+    private fun resendInsets() {
+        window.decorView.post {
+            lastInsets = null
+            pushInsets()
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resendInsets()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) resendInsets()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -297,7 +320,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     override fun onConfigurationChanged(newConfig: android.content.res.Configuration) {
         super.onConfigurationChanged(newConfig)
         bridge?.refreshSystemAppearance()
-        window.decorView.post { pushInsets() }
+        resendInsets()
     }
 
     private fun handleIntent(intent: Intent?) {

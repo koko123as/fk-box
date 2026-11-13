@@ -619,16 +619,25 @@ pub fn on_event(payload: &str) {
     pages::mark(mark);
 }
 
-fn apply_insets(value: &Value) {
+/// The host's insets (physical pixels) replace the last ones. They are kept
+/// physical: the window converts them with its scale factor whenever that
+/// changes (ui/app.slint), so insets that arrive before the window knows its
+/// scale (a new surface or activity after the background) are not stretched by
+/// it. The logical values are also set here at once for this frame.
+pub fn apply_insets(value: &Value) {
     with_window(|w| {
+        let px = |key: &str| (num(&value[key]) as f32).max(0.0);
         let scale = w.window().scale_factor().max(0.1);
-        let side = |key: &str| (num(&value[key]) as f32 / scale).max(0.0);
         let nav = w.global::<crate::Nav>();
+        nav.set_host_top_px(px("top"));
+        nav.set_host_bottom_px(px("bottom"));
+        nav.set_host_left_px(px("left"));
+        nav.set_host_right_px(px("right"));
         nav.set_host_insets(true);
-        nav.set_inset_top(side("top"));
-        nav.set_inset_bottom(side("bottom"));
-        nav.set_inset_left(side("left"));
-        nav.set_inset_right(side("right"));
+        nav.set_inset_top(px("top") / scale);
+        nav.set_inset_bottom(px("bottom") / scale);
+        nav.set_inset_left(px("left") / scale);
+        nav.set_inset_right(px("right") / scale);
     });
 }
 

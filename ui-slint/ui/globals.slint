@@ -59,8 +59,17 @@ export global Nav {
     out property <length> gap: view-mode == 0 ? 8px : view-mode == 1 ? 12px : 16px;
     // System bar insets: Window.safe-area-insets, unless the host reports its
     // own (host-insets; Android does, since Slint reads screen-level insets
-    // that are wrong in floating and split-screen windows).
+    // that are wrong in floating and split-screen windows). The host's
+    // values are physical pixels (host-*-px); the window turns them into
+    // lengths with its current scale factor, so a window whose scale factor
+    // arrives after the insets (a new surface or activity after the
+    // background) still places them right, and a value sent twice replaces
+    // the last one.
     in-out property <bool> host-insets;
+    in-out property <float> host-top-px;
+    in-out property <float> host-bottom-px;
+    in-out property <float> host-left-px;
+    in-out property <float> host-right-px;
     in-out property <length> inset-top;
     in-out property <length> inset-bottom;
     in-out property <length> inset-left;

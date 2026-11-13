@@ -205,15 +205,17 @@ export component AppWindow inherits Window {
     }
     changed width => { Nav.width = self.width; }
     changed height => { Nav.height = self.height; }
-    property <length> top-inset: self.safe-area-insets.top;
-    property <length> bottom-inset: self.safe-area-insets.bottom;
-    property <length> left-inset: self.safe-area-insets.left;
-    property <length> right-inset: self.safe-area-insets.right;
+    // 1phx follows the window's scale factor, so these are recomputed when it
+    // changes after the host sent its insets.
+    property <length> top-inset: Nav.host-insets ? Nav.host-top-px * 1phx : self.safe-area-insets.top;
+    property <length> bottom-inset: Nav.host-insets ? Nav.host-bottom-px * 1phx : self.safe-area-insets.bottom;
+    property <length> left-inset: Nav.host-insets ? Nav.host-left-px * 1phx : self.safe-area-insets.left;
+    property <length> right-inset: Nav.host-insets ? Nav.host-right-px * 1phx : self.safe-area-insets.right;
     property <length> keyboard: self.virtual-keyboard-size.height > 0 ? max(0px, self.height - self.virtual-keyboard-position.y) : 0px;
-    changed top-inset => { if (!Nav.host-insets) { Nav.inset-top = self.top-inset; } }
-    changed bottom-inset => { if (!Nav.host-insets) { Nav.inset-bottom = self.bottom-inset; } }
-    changed left-inset => { if (!Nav.host-insets) { Nav.inset-left = self.left-inset; } }
-    changed right-inset => { if (!Nav.host-insets) { Nav.inset-right = self.right-inset; } }
+    changed top-inset => { Nav.inset-top = self.top-inset; }
+    changed bottom-inset => { Nav.inset-bottom = self.bottom-inset; }
+    changed left-inset => { Nav.inset-left = self.left-inset; }
+    changed right-inset => { Nav.inset-right = self.right-inset; }
     changed keyboard => { Nav.keyboard-height = self.keyboard; }
     property <int> focus-tick: Nav.focus-tick;
     changed focus-tick => { fs.focus(); }

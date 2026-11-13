@@ -91,7 +91,7 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 正文预览（`ui/Records.kt`）放在等宽、自动折行、有界滚动的卡片中，展示内容类型、保存/总字节数及 Base64、截断、未完成状态。完整 JSON 可切换格式化与原文；格式化仅调整 JSON 字符串外的空白，保留数值字面量、重复键及转义，无法解析或超过格式化限额时显示原文。长预览分批展开，边界不拆开 UTF-16 代理对；复制始终使用内核返回的原始预览，不受当前格式或已展开长度影响，也不代表未保存的完整正文。
 
-- 后台：Kotlin 侧 `BoxBridge.listen` 跟随 `AppLifecycleObserver.isForeground`，进入后台时向界面发 `foreground: false` 并停止所有状态流（仪表盘、代理组、连接、日志、远程会话）；回到前台发 `foreground: true` 并重新收集，每个状态各发一次最新值。Rust 侧 `pages::set_foreground` 在后台停止投影（数据仍写入 `Data`，标记留到回前台）、停掉 1 秒时钟和请求页 2 秒轮询（`pages::pausable`），把内存、内网、日志、连接、连接统计订阅和服务状态卡全部置为不可见，出口查询的新请求等待前台；回到前台全部投影一次、恢复订阅，轮询立即取一次，服务状态复测一次。核心服务、通知和既有的 Kotlin 前台门控（`pollWhileVisible`、各 ViewModel 的 `connect = foreground && …`）不受影响；界面绘制由 Slint Android 后端随窗口表面销毁停止。
+- 后台：Kotlin 侧 `BoxBridge.listen` 跟随 `AppLifecycleObserver.isForeground`，进入后台时向界面发 `foreground: false` 并停止所有状态流（仪表盘、代理组、连接、日志、远程会话）；回到前台发 `foreground: true` 并重新收集，每个状态各发一次最新值。Rust 侧 `pages::set_foreground` 在后台停止投影（数据仍写入 `Data`，标记留到回前台）、停掉 1 秒时钟和请求页 2 秒轮询（`pages::pausable`），把内存、内网、日志、连接、连接统计订阅和服务状态卡全部置为不可见，出口查询的新请求等待前台；回到前台全部投影一次、恢复订阅，轮询立即取一次，服务状态复测一次。系统栏边距：Android 宿主（`BoxActivity.pushInsets`）发送窗口自己的系统栏与刘海边距（物理像素），界面按窗口当前缩放换算（`ui/app.slint` 用 `1phx`，`Nav.host-*-px`），缩放变化时自动重算，重复发送只替换不累加；宿主在 `onResume`、获得焦点、配置/多窗口变化和界面重新连接时都会重发。此前边距在收到时按当时的缩放换算一次：后台返回后若窗口（新表面或系统重建的 Activity）尚未取得屏幕密度，缩放仍为 1，边距被放大约 3 倍（顶部大片空白、内容和底栏下移），之后缩放更新也不再重算。核心服务、通知和既有的 Kotlin 前台门控（`pollWhileVisible`、各 ViewModel 的 `connect = foreground && …`）不受影响；界面绘制由 Slint Android 后端随窗口表面销毁停止。
 
 ### 配置页与内核差异
 
