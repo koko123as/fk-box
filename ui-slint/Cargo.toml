@@ -63,8 +63,12 @@ panic = "unwind"
 # FK-box patches to Slint's Skia renderer (the Android renderer), see
 # vendor/i-slint-renderer-skia/FKBOX-PATCH.md: font data shared and mapped
 # instead of copied per face and weight, and a 32 MB GPU resource budget.
+# The Android backend is vendored too (vendor/i-slint-backend-android-activity/
+# FKBOX-PATCH.md): GameTextInput text state in UTF-16 with an ordered
+# selection, no IME restart on echoes, explicit keyboard requests.
 [workspace]
-exclude = ["vendor/i-slint-renderer-skia"]
+exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity"]
 
 [patch.crates-io]
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
