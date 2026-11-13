@@ -510,7 +510,16 @@ fn schedule() {
     Timer::single_shot(Duration::ZERO, flush);
 }
 
+/// Back in the foreground: a refresh that came due in the background runs now.
+pub fn resume() {
+    schedule();
+}
+
 fn flush() {
+    // Nothing goes out in the background; [resume] picks it up.
+    if !crate::pages::foreground() {
+        return;
+    }
     let (transitioning, remote) = data(|d| (d.transitioning(), d.remote()));
     let run = model(|m| {
         if m.checking || m.quality_checking || transitioning || remote {

@@ -19,6 +19,12 @@ internal class AppListCache(private val query: suspend () -> List<Entry>) {
     private var queryKey: String? = null
     private var packages: List<Entry>? = null
 
+    /** The app lists closed: the snapshot (and the labels it loaded) goes until the next list. */
+    suspend fun clear() = mutex.withLock {
+        packages = null
+        queryKey = null
+    }
+
     suspend fun list(
         key: String,
         refresh: Boolean = false,

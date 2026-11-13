@@ -2,11 +2,12 @@
 //! GPL-3.0): Google and GitHub reached through the running core, or directly
 //! while the service is stopped, over the dashboard's egress probe. Each
 //! answer shows its latency or why it failed; a route change checks again
-//! after it settles, the card re-checks every two minutes while it is shown,
-//! and a tap checks again at once.
+//! after it settles, the card re-checks every two minutes while it is shown
+//! and the app is in the foreground (nothing runs in the background; coming
+//! back checks once), and a tap checks again at once.
 
 use std::cell::RefCell;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use serde_json::{json, Value};
 use slint::{Timer, TimerMode};
@@ -15,11 +16,13 @@ use crate::app::{call, data, long, text};
 use crate::i18n::tr;
 use crate::pages::{mark, Mark};
 
-/// (id, label, url): FlClash's reachability targets. GitHub's home page is
-/// over the probe's 128 KiB body limit, so its icon stands in for it.
+/// (id, label, url): FlClash's reachability targets, their home pages. The
+/// probe (UIEgressProbe.Reach) stops at the response headers and does not
+/// follow redirects, so a page's size does not matter and the latency is the
+/// time to the server's first answer.
 pub const TARGETS: [(&str, &str, &str); 2] = [
-    ("google", "Google", "https://www.google.com/generate_204"),
-    ("github", "GitHub", "https://github.com/favicon.ico"),
+    ("google", "Google", "https://www.google.com/"),
+    ("github", "GitHub", "https://github.com/"),
 ];
 
 /// The probe's own ceiling (UIEgressProbe.Get); FlClash waits 10 s.
@@ -41,10 +44,11 @@ pub enum Status {
     Failed,
 }
 
-/// service_check.go statusFromCode.
+/// service_check.go statusFromCode. Redirects are not followed, so a 3xx
+/// (a regional or consent redirect) is an answer from the site too.
 pub fn status_from_code(code: i64, delay: i64) -> Status {
     match code {
-        200..=299 => Status::Available(delay),
+        200..=399 => Status::Available(delay),
         401 | 403 | 429 | 451 => Status::Restricted,
         _ => Status::Unavailable,
     }
@@ -164,8 +168,10 @@ pub fn sync() {
     }
 }
 
-/// The card came into view or left it: checks run only while it is shown.
-pub fn set_shown(shown: bool) {
+/// The card came into view or left it: checks run only while it is shown
+/// and the app is in the foreground. `resumed`: the app just came back, so
+/// answers older than the throttle are checked again once.
+pub fn set_shown(shown: bool, resumed: bool) {
     let was = model(|m| std::mem::replace(&mut m.shown, shown));
     if was == shown {
         return;
@@ -174,9 +180,20 @@ pub fn set_shown(shown: bool) {
         let ticker = Timer::default();
         ticker.start(TimerMode::Repeated, Duration::from_secs(INTERVAL_SECS), || check_all(false));
         model(|m| m.ticker = Some(ticker));
-        check_all(false);
+        if resumed {
+            for index in 0..TARGETS.len() {
+                check_with(index, Check::Resume);
+            }
+        } else {
+            check_all(false);
+        }
     } else {
-        model(|m| m.ticker = None);
+        // Leaving (or going to the background) also drops a pending
+        // route-change check: the next showing checks for itself.
+        model(|m| {
+            m.ticker = None;
+            m.settle = None;
+        });
     }
 }
 
@@ -193,19 +210,34 @@ pub fn check_id(id: &str) {
     }
 }
 
+#[derive(Clone, Copy, PartialEq)]
+enum Check {
+    /// The ticker, a route change or the card coming into view: answers
+    /// younger than the interval are kept.
+    Auto,
+    /// The app came back to the foreground: anything past the throttle.
+    Resume,
+    /// A tap.
+    Manual,
+}
+
 fn check(index: usize, manual: bool) {
+    check_with(index, if manual { Check::Manual } else { Check::Auto });
+}
+
+fn check_with(index: usize, kind: Check) {
     let (transitioning, remote) = data(|d| (d.transitioning(), d.remote()));
-    if transitioning || remote {
+    if transitioning || remote || !crate::pages::foreground() {
         return;
     }
     let now = crate::format::now_ms();
     let start = model(|m| {
         let e = &mut m.entries[index];
-        if e.checking || !m.shown && !manual {
+        if e.checking || !m.shown && kind != Check::Manual {
             return None;
         }
         let fresh = e.status != Status::Pending && now - e.checked_at < INTERVAL_SECS as i64 * 1000 - 1000;
-        if !manual && (fresh || now - e.checked_at < THROTTLE_MILLIS) {
+        if kind == Check::Auto && fresh || kind != Check::Manual && now - e.checked_at < THROTTLE_MILLIS {
             return None;
         }
         e.checking = true;
@@ -227,12 +259,10 @@ fn run(index: usize, generation: u64, probe: String, retry: bool) {
             finish(index, generation, &session, status_from_error(&e));
             return;
         }
-        let started = Instant::now();
         let s2 = session.clone();
-        call("probeGet", json!({ "id": session, "url": url, "timeoutMillis": TIMEOUT_MILLIS }), move |r| {
-            let delay = started.elapsed().as_millis() as i64;
+        call("probeReach", json!({ "id": session, "url": url, "timeoutMillis": TIMEOUT_MILLIS }), move |r| {
             let status = match r {
-                Ok(v) => status_from_code(long(&v["status"]).unwrap_or(0), delay.max(1)),
+                Ok(v) => status_from_code(long(&v["status"]).unwrap_or(0), long(&v["latency"]).unwrap_or(1).max(1)),
                 Err(e) => status_from_error(&e),
             };
             if status == Status::Timeout && retry && current(generation) {
@@ -275,6 +305,7 @@ mod tests {
     fn codes_and_errors() {
         assert_eq!(status_from_code(204, 120), Status::Available(120));
         assert_eq!(status_from_code(200, 9), Status::Available(9));
+        assert_eq!(status_from_code(302, 40), Status::Available(40));
         assert_eq!(status_from_code(403, 9), Status::Restricted);
         assert_eq!(status_from_code(429, 9), Status::Restricted);
         assert_eq!(status_from_code(502, 9), Status::Unavailable);

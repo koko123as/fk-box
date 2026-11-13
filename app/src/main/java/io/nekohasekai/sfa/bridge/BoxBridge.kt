@@ -37,6 +37,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -153,27 +154,33 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             try {
                 initialize.await()
                 while (queuedErrors.isNotEmpty()) emit("error", queuedErrors.removeFirst())
-                coroutineScope {
-                    launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
-                    launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
-                    launch { connections.uiState.collect { state ->
-                        if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
-                        if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
-                    } }
-                    launch {
-                        val stream = LogStream()
-                        combine(logs.uiState, logsVisible, AppLifecycleObserver.isForeground) { state, visible, foreground ->
-                            state.takeIf { visible && foreground }
-                        }.collect { state ->
-                            if (state == null) stream.reset()
-                            else {
-                                val update = withContext(Dispatchers.Default) { stream.update(state) }
-                                if (update != null) emit("logs", update)
+                // In the background nothing streams to the UI: the collectors
+                // stop (the UI also turns its subscriptions and timers off), and
+                // coming back re-collects, so every state is sent once, fresh.
+                // The core service and its notification do not depend on this.
+                AppLifecycleObserver.isForeground.collectLatest { foreground ->
+                    emit("foreground", foreground)
+                    if (!foreground) return@collectLatest
+                    coroutineScope {
+                        launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
+                        launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
+                        launch { connections.uiState.collect { state ->
+                            if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
+                            if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
+                        } }
+                        launch {
+                            val stream = LogStream()
+                            combine(logs.uiState, logsVisible) { state, visible -> state.takeIf { visible } }.collect { state ->
+                                if (state == null) stream.reset()
+                                else {
+                                    val update = withContext(Dispatchers.Default) { stream.update(state) }
+                                    if (update != null) emit("logs", update)
+                                }
                             }
                         }
+                        launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
+                        launch { RemoteControlManager.isConnected.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
                     }
-                    launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
-                    launch { RemoteControlManager.isConnected.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -229,6 +236,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun openProbe(id: String) { dashboardDetails.openProbe(id) }
 
     suspend fun probeGet(id: String, url: String, timeoutMillis: Long) = dashboardDetails.query(id, url, timeoutMillis)
+
+    suspend fun probeReach(id: String, url: String, timeoutMillis: Long) = dashboardDetails.reach(id, url, timeoutMillis)
 
     fun closeProbe(id: String) { dashboardDetails.closeProbe(id) }
 
@@ -454,7 +463,11 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         for (connection in state.allConnections) {
             if (connection.closedAt == null) active++ else recent++
         }
-        return mapOf("active" to active, "recent" to recent, "dns" to state.dnsCount)
+        // DNS: the queries the local core answered since it started, counted
+        // inside the core (hijack-dns never becomes a connection). A remote
+        // session only has its connection list to go by.
+        val dns = if (CommandTarget.isRemote) state.dnsCount.toLong() else Libbox.readUIDNSQueryCount()
+        return mapOf("active" to active, "recent" to recent, "dns" to dns)
     }
 
     suspend fun closeConnection(id: String?) {
@@ -561,6 +574,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         emit("settings", settings())
         return result
     }
+
+    suspend fun releaseApps() { apps.clear() }
 
     fun requestAppsPermission() { PackageQueryManager.requestShizukuPermission() }
 

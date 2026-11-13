@@ -60,16 +60,22 @@ fn detail_row(title: &str, value: &str, stacked: bool) -> Row {
     }
 }
 
-/// rememberCapturePoll: fetches every two seconds while `alive` says so.
+/// rememberCapturePoll: fetches every two seconds while `alive` says so and
+/// the app is in the foreground (the timer stops in the background; coming
+/// back fetches at once).
 fn poll(alive: Rc<dyn Fn() -> bool>, fetch: Rc<dyn Fn()>) -> Rc<slint::Timer> {
     let timer = Rc::new(slint::Timer::default());
-    fetch();
-    let f = fetch.clone();
-    timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || {
+    if crate::pages::foreground() {
+        fetch();
+    }
+    let tick: Rc<dyn Fn()> = Rc::new(move || {
         if alive() && !data(|d| d.remote()) {
-            f();
+            fetch();
         }
     });
+    let t = tick.clone();
+    timer.start(slint::TimerMode::Repeated, Duration::from_secs(2), move || t());
+    crate::pages::pausable(&timer, Some(tick));
     timer
 }
 

@@ -4,6 +4,7 @@
 //! here runs on the Slint event-loop thread.
 
 use std::cell::RefCell;
+use std::rc::Rc;
 use std::collections::{HashMap, VecDeque};
 
 use serde_json::{json, Map, Value};
@@ -594,6 +595,12 @@ pub fn on_event(payload: &str) {
             slint::Timer::single_shot(std::time::Duration::ZERO, move || apply_insets(&value));
             Mark::NONE
         }
+        // The host went to the background (false) or came back (true).
+        "foreground" => {
+            let active = value.as_bool().unwrap_or(true);
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || pages::set_foreground(active));
+            Mark::NONE
+        }
         "intentAvailable" => {
             slint::Timer::single_shot(std::time::Duration::ZERO, || {
                 call("takeIntent", json!({}), |result| match result {
@@ -665,7 +672,7 @@ fn initialize() {
 }
 
 /// Creates the window and starts the bridge handshake; the caller runs it.
-pub fn start() -> Result<(AppWindow, slint::Timer), slint::PlatformError> {
+pub fn start() -> Result<(AppWindow, Rc<slint::Timer>), slint::PlatformError> {
     let window = AppWindow::new()?;
     WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
     crate::theme_apply::apply();
@@ -685,8 +692,10 @@ pub fn start() -> Result<(AppWindow, slint::Timer), slint::PlatformError> {
     });
     window.global::<Nav>().on_retry_startup(initialize);
 
-    let clock = slint::Timer::default();
+    // The relative times ("2 min ago"); stopped in the background.
+    let clock = Rc::new(slint::Timer::default());
     clock.start(slint::TimerMode::Repeated, std::time::Duration::from_secs(1), || pages::mark(Mark::CLOCK));
+    pages::pausable(&clock, None);
     Ok((window, clock))
 }
 

@@ -48,6 +48,19 @@ class AppListCacheTest {
         assertEquals(4, queries)
     }
 
+    @Test fun clearDropsTheSnapshotUntilTheNextList() = runTest {
+        var queries = 0
+        val cache = AppListCache {
+            val generation = ++queries
+            listOf(AppListCache.Entry("app.$generation", false, true, 0) { "App $generation" })
+        }
+        assertEquals("app.1", cache.list("direct").single()["package"])
+        assertEquals("app.1", cache.list("direct").single()["package"])
+        cache.clear()
+        assertEquals("app.2", cache.list("direct").single()["package"])
+        assertEquals(2, queries)
+    }
+
     @Test fun failedOrCancelledRefreshesAreRetriedWithoutReturningOldPackages() = runTest {
         var failure: Exception? = null
         var queries = 0

@@ -2,7 +2,8 @@
 //! and handles its actions (`Nav.act(id, arg)` / `Nav.act2(id, a, b)`) and
 //! menus (`Nav.open-menu(key, x, y)`), dispatched here by name.
 
-use std::cell::Cell;
+use std::cell::{Cell, RefCell};
+use std::rc::{Rc, Weak};
 use std::time::Duration;
 
 use slint::{ComponentHandle, Model};
@@ -61,6 +62,64 @@ thread_local! {
     static PENDING: Cell<u32> = const { Cell::new(0) };
     static SCHEDULED: Cell<bool> = const { Cell::new(false) };
     static VISIBLE: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
+    static FOREGROUND: Cell<bool> = const { Cell::new(true) };
+    static RESUMED: Cell<bool> = const { Cell::new(false) };
+    static PAUSABLE: RefCell<Vec<(Weak<slint::Timer>, Option<Rc<dyn Fn()>>)>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Whether the app is in the foreground (the host's process lifecycle).
+pub fn foreground() -> bool {
+    FOREGROUND.with(|f| f.get())
+}
+
+/// A repeating timer that only runs in the foreground: stopped while the app
+/// is in the background and restarted when it returns, `on_resume` running
+/// then at once (the refresh the background skipped).
+pub fn pausable(timer: &Rc<slint::Timer>, on_resume: Option<Rc<dyn Fn()>>) {
+    if !foreground() {
+        timer.stop();
+    }
+    PAUSABLE.with(|p| {
+        let mut p = p.borrow_mut();
+        p.retain(|(t, _)| t.strong_count() > 0);
+        p.push((Rc::downgrade(timer), on_resume));
+    });
+}
+
+/// The host's lifecycle event. In the background the UI does no work: no
+/// projections (data still lands in [crate::app::Data]), no repeating timers,
+/// every native sampling subscription off and no network checks; only the
+/// core service keeps running. Back in the foreground everything is projected
+/// once, the subscriptions resume and the service status checks once.
+pub fn set_foreground(active: bool) {
+    if FOREGROUND.with(|f| f.replace(active)) == active {
+        return;
+    }
+    let mut resumed: Vec<Rc<dyn Fn()>> = Vec::new();
+    PAUSABLE.with(|p| {
+        p.borrow_mut().retain(|(t, on_resume)| match t.upgrade() {
+            Some(timer) => {
+                if active {
+                    timer.restart();
+                    resumed.extend(on_resume.clone());
+                } else {
+                    timer.stop();
+                }
+                true
+            }
+            None => false,
+        })
+    });
+    for f in resumed {
+        f();
+    }
+    if active {
+        RESUMED.with(|r| r.set(true));
+        egress::resume();
+        mark(Mark::ALL);
+    } else {
+        sync_visibility(false);
+    }
 }
 
 /// Schedules a projection of the marked pages on the next turn of the event loop.
@@ -76,6 +135,10 @@ pub fn mark(m: Mark) {
 
 fn flush() {
     SCHEDULED.with(|s| s.set(false));
+    // In the background the marks wait; returning marks everything anyway.
+    if !foreground() {
+        return;
+    }
     let m = Mark(PENDING.with(|p| p.replace(0)));
     if !data(|d| d.ready) && !m.has(Mark::THEME) && m != Mark::ALL {
         return;
@@ -131,6 +194,8 @@ pub fn sync_visibility(force: bool) {
     if !data(|d| d.ready) {
         return;
     }
+    let active = foreground();
+    let resumed = RESUMED.with(|r| r.replace(false));
     let nav = w.global::<Nav>();
     let tab = nav.get_tab().to_string();
     let routes: Vec<String> = nav.get_routes().iter().map(|r| r.kind.to_string()).collect();
@@ -142,8 +207,8 @@ pub fn sync_visibility(force: bool) {
     let logs = (!covered && tab == "Logs") || routes.iter().any(|r| r == "logs");
     let connections = (!covered && tab == "Requests") || routes.iter().any(|r| r == "requests" || r == "connection");
     let connection_stats = dash_shown && cards.iter().any(|c| c == "Connection stats");
-    services::set_shown(dash_shown && cards.iter().any(|c| c == "Service status"));
-    let next = [memory, lan, logs, connections, connection_stats];
+    services::set_shown(active && dash_shown && cards.iter().any(|c| c == "Service status"), resumed);
+    let next = [memory, lan, logs, connections, connection_stats].map(|shown| active && shown);
     let previous = VISIBLE.with(|v| v.replace(next));
     let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible"];
     for i in 0..names.len() {

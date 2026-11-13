@@ -870,7 +870,7 @@ pub fn open_access() {
     });
     let a = st.clone();
     nav::busy_guard(id, move || a.borrow().saving);
-    nav::on_closed(id, release_icons);
+    nav::on_closed(id, release_app_list);
 }
 
 fn access_visible(s: &Access, selected: &BTreeSet<String>) -> Vec<Value> {
@@ -1150,7 +1150,7 @@ pub fn pick_apps(initial: Vec<String>, done: impl Fn(Vec<String>) + 'static) {
     let done: Rc<dyn Fn(Vec<String>)> = Rc::new(done);
     let a = st.clone();
     let id = rows::push(move || picker_page(&a, done.clone()));
-    nav::on_closed(id, release_icons);
+    nav::on_closed(id, release_app_list);
 }
 
 fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page {
@@ -1245,10 +1245,17 @@ fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page 
 // hundreds of icons in one burst and kept them all for the process lifetime.
 // ---------------------------------------------------------------------------
 
-/// Decoded icons kept at most (about 80 KiB each at 3x).
-const ICON_CACHE: usize = 96;
+/// Decoded icons kept at most (48 dp, about 80 KiB each at 3x). The rows that
+/// ask (the viewport and 600 px on either side) are about 30 on a phone and
+/// 36 on a tall tablet; a row only asks again when it comes back into that
+/// window, so neither this nor the queue below may be smaller than it.
+const ICON_CACHE: usize = 48;
 /// Icon requests in flight at most.
 const ICON_PARALLEL: usize = 3;
+/// Requests waiting at most: the newest are served first and the oldest
+/// (rows already scrolled past) dropped, so a fling does not decode every
+/// icon it passed and push the visible ones out of the cache.
+const ICON_QUEUE: usize = 48;
 
 #[derive(Default)]
 struct Icons {
@@ -1269,6 +1276,12 @@ thread_local! {
 /// The icon when it is loaded; rows without one ask for it when shown.
 pub fn app_icon(pkg: &str) -> Option<slint::Image> {
     APP_ICONS.with(|i| i.borrow().loaded.get(pkg).cloned())
+}
+
+/// An app list closed: its icons and the host's package snapshot go.
+fn release_app_list() {
+    release_icons();
+    app::act("releaseApps", json!({}));
 }
 
 /// Drops every icon (an app list closed or reloaded).
@@ -1306,6 +1319,11 @@ pub fn request_icon(pkg: &str) {
         }
         i.pending.insert(pkg.to_string());
         i.queue.push_back(pkg.to_string());
+        while i.queue.len() > ICON_QUEUE {
+            if let Some(old) = i.queue.pop_front() {
+                i.pending.remove(&old);
+            }
+        }
         true
     });
     if queued {
@@ -1320,7 +1338,7 @@ fn pump_icons() {
             if i.in_flight >= ICON_PARALLEL {
                 return None;
             }
-            let pkg = i.queue.pop_front()?;
+            let pkg = i.queue.pop_back()?;
             i.in_flight += 1;
             Some((pkg, i.generation))
         });

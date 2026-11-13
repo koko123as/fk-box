@@ -7,7 +7,8 @@
 //! Steps: `shot:NAME`, `tab:Dashboard`, `push:KIND:ARG`, `form:KIND:ARG`, `pop`,
 //! `dark`, `light`, `tick:N` (N seconds with rate samples), `scroll:DY`,
 //! `tap:X,Y` (logical px), `size:W,H,SCALE`, `access` (open Access control),
-//! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS).
+//! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS),
+//! `bg` / `fg` (the host's lifecycle event).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -51,6 +52,9 @@ fn now_ms() -> i64 {
 /// BoxBridge's answers, enough for every page to show content.
 fn answer(method: &str, args: &Value) -> Result<Value, String> {
     let now = now_ms();
+    if std::env::var_os("SHOT_TRACE").is_some() && method != "appIcon" {
+        eprintln!("call {method} {args}");
+    }
     Ok(match method {
         "locale" => json!({ "language": std::env::var("SHOT_LANG").unwrap_or("zh".into()), "utcOffsetMinutes": 480, "fontScale": 1.0 }),
         "attach" => Value::Null,
@@ -79,10 +83,10 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         // Service status probes: GitHub answers after a real 160 ms, Google
         // fails as it does on a network that cannot reach it.
         "openProbe" | "closeProbe" => Value::Null,
-        "probeGet" => {
+        "probeReach" => {
             if args["url"].as_str().unwrap_or("").contains("github") {
                 std::thread::sleep(Duration::from_millis(160));
-                json!({ "status": 200, "body": "" })
+                json!({ "status": 200, "latency": 160 })
             } else {
                 return Err("dial tcp 142.250.72.4:443: connect: connection refused".into());
             }
@@ -90,12 +94,7 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         "appIcon" => Value::String(icon_png(args["package"].as_str().unwrap_or("app"))),
         "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
         // Setters and visibility switches: nothing to answer.
-        _ => {
-            if std::env::var_os("SHOT_TRACE").is_some() {
-                eprintln!("call {method}");
-            }
-            Value::Null
-        }
+        _ => Value::Null,
     })
 }
 
@@ -164,7 +163,7 @@ struct Harness {
     window: Rc<MinimalSoftwareWindow>,
     clock: Rc<Cell<Duration>>,
     app: AppWindow,
-    _timer: slint::Timer,
+    _timer: Rc<slint::Timer>,
     width: u32,
     height: u32,
     tick: u64,
@@ -354,6 +353,11 @@ pub fn main() {
                     resize(&mut h, v[0], v[1], v[2]);
                     h.pump();
                 }
+            }
+            // The host's lifecycle: `bg` sends the app to the background, `fg` brings it back.
+            "bg" | "fg" => {
+                event("foreground", json!(cmd == "fg"));
+                h.pump();
             }
             "access" => {
                 crate::pages::settings::open_access();
