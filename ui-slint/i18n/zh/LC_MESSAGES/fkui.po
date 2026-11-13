@@ -2010,3 +2010,45 @@ msgstr "待检测"
 
 msgid "Restricted"
 msgstr "受限"
+
+msgid "Available"
+msgstr "可用"
+
+msgid "Access restricted"
+msgstr "访问受限"
+
+msgid "Blocked"
+msgstr "已被封禁"
+
+msgid "Unsupported region"
+msgstr "地区不支持"
+
+msgid "Originals only"
+msgstr "仅限自制内容"
+
+msgid "Coming soon"
+msgstr "即将上线"
+
+msgid "Disallowed ISP"
+msgstr "不允许的 ISP"
+
+msgid "All available"
+msgstr "全部可用"
+
+msgid "{} abnormal"
+msgstr "{} 项异常"
+
+msgid "Check all"
+msgstr "全部检测"
+
+msgid "Manage services"
+msgstr "管理服务"
+
+msgid "Shown on dashboard"
+msgstr "显示在仪表盘"
+
+msgid "Checking"
+msgstr "检测中"
+
+msgid "Region"
+msgstr "地区"

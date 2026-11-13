@@ -29,7 +29,20 @@ export struct DashCell { card: string, span: int }
 export struct DashRow { cells: [DashCell] }
 // A service status row: the target, its latency or failure, the tone of its
 // dot (0 idle, 1 available, 2 restricted, 3 failed) and a check in progress.
-export struct ServiceItem { id: string, label: string, status: string, tone: int, loading: bool }
+export struct ServiceItem {
+    id: string,
+    label: string,
+    status: string,
+    tone: int,
+    loading: bool,
+    // The region it placed the visitor in and when it was checked (the page).
+    subtitle: string,
+    // The service's mark: filled and stroked path data, 24x24 view box.
+    fill: string,
+    stroke: string,
+    enabled: bool,
+    on-card: bool,
+}
 
 export global Dash {
     // The cards shown, in order ("Status", "Network speed", …).
@@ -150,6 +163,13 @@ export global Dash {
     // Service status (pages/services.rs)
     in property <[ServiceItem]> services;
     in property <bool> services-checking;
+    // The page (every enabled service) and the manager (every service).
+    in property <[ServiceItem]> services-all;
+    in property <[ServiceItem]> services-manage;
+    in property <bool> services-checking-all;
+    // The card's verdict chip; tone 1 ok, 2 warn, 0 none.
+    in property <string> service-verdict;
+    in property <int> service-verdict-tone;
 
     // Connection statistics: live connections, recent (closed) requests and
     // DNS lookups.

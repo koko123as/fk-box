@@ -551,11 +551,29 @@ pub fn project(w: &AppWindow, m: Mark) {
         return;
     }
     // Service status
-    sync!(dash, get_services, set_services, services::view()
-        .into_iter()
-        .map(|v| ServiceItem { id: ss(v.id), label: ss(v.label), status: ss(v.status), tone: v.tone, loading: v.loading })
-        .collect());
+    let item = |v: services::View| {
+        let (fill, stroke) = crate::pages::service_icons::paths(v.icon);
+        ServiceItem {
+            id: ss(v.id),
+            label: ss(v.label),
+            status: ss(v.status),
+            tone: v.tone,
+            loading: v.loading,
+            subtitle: ss(v.subtitle),
+            fill: ss(fill),
+            stroke: ss(stroke),
+            enabled: v.enabled,
+            on_card: v.on_card,
+        }
+    };
+    sync!(dash, get_services, set_services, services::card_view().into_iter().map(item).collect());
+    sync!(dash, get_services_all, set_services_all, services::page_view().into_iter().map(item).collect());
+    sync!(dash, get_services_manage, set_services_manage, services::manage_view().into_iter().map(item).collect());
     dash.set_services_checking(services::checking());
+    dash.set_services_checking_all(services::checking_any());
+    let (verdict, tone) = services::verdict().unwrap_or_default();
+    dash.set_service_verdict(ss(verdict));
+    dash.set_service_verdict_tone(tone);
 
     let (editing, saving, updating, releasing) = local(|l| (l.editing.clone(), l.saving, l.updating, l.releasing));
     let available_cards = available();
@@ -798,6 +816,15 @@ pub fn act(id: &str, arg: &str) -> bool {
         "toggle-service" => egress::toggle_service(),
         "service-check" => services::check_id(arg),
         "service-check-all" => services::check_all(true),
+        "service-open" => {
+            nav::push("services", "");
+        }
+        "service-manage" => {
+            nav::push("services-manage", "");
+        }
+        "service-toggle" => services::toggle(arg),
+        "service-up" => services::move_by(arg, -1),
+        "service-down" => services::move_by(arg, 1),
         "open-requests" => {
             nav::push("requests", arg);
         }

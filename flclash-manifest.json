@@ -32,19 +32,24 @@
     "ui-slint/src/pages/services.rs": {
       "sources": [
         {
-          "source": "core/service_check.go",
-          "sourceSHA256": "d955596a7b247510754415f77e250ee53af23c88216357695f4d0998044f9ed0",
-          "changes": "Google and GitHub reachability rule (checkReachable/statusFromCode): 2xx available with latency, 401/403/429/451 restricted, other codes unavailable, one retry after a timeout. Requests go through the FK-box egress probe (8 s ceiling); GitHub uses its favicon because the home page exceeds the probe's 128 KiB body limit."
+          "source": "lib/common/service_probe.dart",
+          "sourceSHA256": "52020885051ee456ac48f1ab5f0164bdefbbcb628d1c3c5ef6204ee8d063ab41",
+          "changes": "ServiceTarget ids, labels and icons, ServiceProbeStatus ids and orderServiceTargets."
         },
         {
           "source": "lib/providers/service_status.dart",
           "sourceSHA256": "6c2707bbd94722a73a9c937f5ebe2f7e1abe575b95b55bebe1e6c0b1dcbc1b55",
-          "changes": "Route-keyed answers with the 1.5 s settle and 5 s throttle of RoutedProbe; FK-box adds a two-minute re-check while the card is shown."
+          "changes": "Route-keyed answers with the 1.5 s settle and 5 s throttle of RoutedProbe; FK-box adds a two-minute re-check while the card is shown and no checks in the background."
         },
         {
           "source": "lib/views/dashboard/widgets/service_status.dart",
           "sourceSHA256": "03cb655b8e4c7c0e3f73904863cecd130e0a338bc32df934c3d14dbafa3bdd4a",
-          "changes": "Card layout only: service badge with a notched status dot, latency in ms or the failure label; drawn with Slint and Simple Icons marks."
+          "changes": "Card (first four enabled services, two per row, verdict chip, tap opens the list), ServiceStatusSheet (every enabled service: region and check time, latency or status; a row re-checks, the bar checks all) and ServiceManageView (on/off switches, the four shown on the dashboard marked; reorder by up/down buttons instead of drag). The outbound IP line is replaced by the region the service reported."
+        },
+        {
+          "source": "lib/l10n/intl/messages_zh_CN.dart",
+          "sourceSHA256": "a20ea3e0ed4b8fbc54410e1b086d91f183f781ec8bade49f5bf007859617a6dc",
+          "changes": "Simplified Chinese status labels and titles (服务状态, 可用, 访问受限, 地区不支持, 全部检测, 管理服务, N 项异常 …)."
         }
       ]
     },
@@ -59,6 +64,39 @@
           "source": "lib/views/dashboard/widgets/connection_stats.dart",
           "sourceSHA256": "5e495b40238ca7b47aaa1655b60ae13d52749a683c18db0766cce6071d914e5d",
           "changes": "Three counts (live connections, recent requests, DNS queries), the first two opening their request views; counts come from the FK-box connection stream."
+        }
+      ]
+    },
+    "libbox/ui_service_check.go": {
+      "sources": [
+        {
+          "source": "core/service_check.go",
+          "sourceSHA256": "d955596a7b247510754415f77e250ee53af23c88216357695f4d0998044f9ed0",
+          "changes": "The thirteen checkers in FlClash's order, statuses, statusFromCode, the sweep budget factor (6x the request timeout) and the single retry after a timeout. Requests go through UIEgressProbe (running core's routing, device network while stopped) instead of mihomo's tunnel; route hits and chains are not reported."
+        },
+        {
+          "source": "core/service_rules.go",
+          "sourceSHA256": "e22e4ca4692c2c8c7fcd42ac69b57c77841449b0eabc17b84f148a3de4612e4d",
+          "changes": "Every rule (YouTube Premium, ChatGPT, Claude, Gemini, Netflix, Disney+, Prime Video, Spotify, TikTok, Discord, bilibili) with its URLs, markers, regions and body caps, unchanged."
+        },
+        {
+          "source": "core/region.go",
+          "sourceSHA256": "4463b32e6f0dd62e962bac7d99249006412b23cc2fc777b0c966f5a50010a1e2",
+          "changes": "normalizeRegion and the packed ISO 3166 table, unchanged."
+        },
+        {
+          "source": "core/probe.go",
+          "sourceSHA256": "dc38c8c7020b625ca204269bc7d8ba714cf529dd029a4da9a9fb8d1ffdda01fe",
+          "changes": "probeRequest/ProbeResult and the body reader (cap, scan with overlap, no-redirect); delay is the time to the final response's headers."
+        }
+      ]
+    },
+    "ui-slint/src/pages/service_icons.rs": {
+      "sources": [
+        {
+          "source": "assets/images/services/*.svg",
+          "sourceSHA256": "see LICENSE.md in that directory",
+          "changes": "Path data of the thirteen marks (Simple Icons 13.0.0, CC0; Claude and Disney+ drawn for FlClash) normalised for Slint's path parser."
         }
       ]
     }

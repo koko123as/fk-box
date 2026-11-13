@@ -275,6 +275,18 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         return mapOf("status" to result.status, "latency" to result.latencyMillis)
     }
 
+    /**
+     * Service status: one service's rule (FlClash core/service_rules.go, ported
+     * to libbox/ui_service_check.go) through this probe session.
+     */
+    suspend fun serviceCheck(id: String, name: String, timeoutMillis: Long): Map<String, Any?> {
+        val active = session(id)
+        val result = withContext(Dispatchers.IO) { active.get().serviceCheck(name, timeoutMillis) }
+        check(session(id) === active) { "IP probe changed during query" }
+        return mapOf("name" to result.name, "status" to result.status, "region" to result.region,
+            "delay" to result.delayMillis, "checkedAt" to result.checkedAt)
+    }
+
     fun closeProbe(id: String) { egressSessions.remove(id)?.close() }
 
     fun readQualityCache(ip: String): Map<String, Any?>? = runCatching {

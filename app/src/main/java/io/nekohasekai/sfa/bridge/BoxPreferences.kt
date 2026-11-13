@@ -19,6 +19,12 @@ internal object BoxPreferences {
         "requestFeed" to setOf("recent", "live", "captured"),
     )
 
+    // Service status targets (libbox/ui_service_check.go, FlClash ServiceTarget ids).
+    private val services = setOf(
+        "google", "github", "youtube", "chatgpt", "claude", "gemini", "netflix", "disney-plus", "prime-video",
+        "spotify", "tiktok", "discord", "bilibili",
+    )
+
     /**
      * Retired keys older settings and backups may still carry: the language
      * choice, and the appearance options of the earlier decorated UI
@@ -41,6 +47,9 @@ internal object BoxPreferences {
                 "recordGroupings" -> value is Map<*, *> && value.size <= 16 && value.all { (page, grouping) ->
                     page is String && page.length in 1..64 && grouping in setOf("app", "host", "rule", "exit")
                 }
+                // The service status order and the services turned off (FlClash serviceOrder, disabledServices).
+                "serviceOrder", "disabledServices" -> value is List<*> && value.all { it in services } &&
+                    value.distinct().size == value.size && (key == "serviceOrder" || value.size < services.size)
                 "fontScale" -> value is Number && value.toDouble().isFinite() && value.toDouble() in 0.8..1.4
                 "fontFamily" -> value == null || value is String && value.length in 1..128
                 "accentColors" -> value is List<*> && value.size <= 64 && value.distinct().size == value.size && value.all { it is Number && it.toLong() in 0..0xffffffffL }

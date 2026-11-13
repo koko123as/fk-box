@@ -25,6 +25,7 @@ pub mod terminal;
 pub mod appearance;
 pub mod routing;
 pub mod services;
+pub mod service_icons;
 
 /// What changed, so only the affected pages are projected again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -208,6 +209,7 @@ pub fn sync_visibility(force: bool) {
     let connections = (!covered && tab == "Requests") || routes.iter().any(|r| r == "requests" || r == "connection");
     let connection_stats = dash_shown && cards.iter().any(|c| c == "Connection stats");
     services::set_shown(active && dash_shown && cards.iter().any(|c| c == "Service status"), resumed);
+    services::set_page_shown(active && routes.iter().any(|r| r == "services" || r == "services-manage"), resumed);
     let next = [memory, lan, logs, connections, connection_stats].map(|shown| active && shown);
     let previous = VISIBLE.with(|v| v.replace(next));
     let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible"];

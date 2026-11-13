@@ -93,6 +93,26 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
                 return Err("dial tcp 142.250.72.4:443: connect: connection refused".into());
             }
         }
+        // Service checks (libbox ServiceCheck): a spread of FlClash's answers.
+        "serviceCheck" => {
+            std::thread::sleep(Duration::from_millis(20));
+            let (status, region, delay) = match args["name"].as_str().unwrap_or("") {
+                "google" => ("available", "", 212),
+                "github" => ("available", "", 160),
+                "youtube" => ("available", "JP", 388),
+                "chatgpt" => ("available", "SG", 431),
+                "claude" => ("unsupported-region", "HK", 0),
+                "gemini" => ("available", "US", 517),
+                "netflix" => ("originals-only", "", 0),
+                "disney-plus" => ("blocked", "", 0),
+                "prime-video" => ("available", "JP", 690),
+                "spotify" => ("timeout", "", 0),
+                "tiktok" => ("available", "SG", 302),
+                "discord" => ("restricted", "", 0),
+                _ => ("available", "CN", 88),
+            };
+            json!({ "name": args["name"], "status": status, "region": region, "delay": delay, "checkedAt": now })
+        }
         "appIcon" => Value::String(icon_png(args["package"].as_str().unwrap_or("app"))),
         "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
         // Setters and visibility switches: nothing to answer.

@@ -8,7 +8,7 @@ import { Theme, TextRole } from "theme.slint";
 import { Icons } from "icons.slint";
 import { Nav, Route } from "globals.slint";
 import { T, ScrollPage, EmptyState, RouteSurface } from "kit.slint";
-import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage } from "pages/dashboard.slint";
+import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage, ServicesPage, ServicesManagePage } from "pages/dashboard.slint";
 import { ProxiesPage, NodeDetailsPage } from "pages/proxies.slint";
 import { ProfileRoutes } from "pages/profiles.slint";
 import { ToolRoutes } from "pages/tools.slint";
@@ -26,7 +26,7 @@ component RoutePage inherits Rectangle {
     property <string> k: route.kind;
     // A route opened from Slint by kind that a page adopted as Rust-built rows.
     property <bool> generic: k == "rows" || Pages.data[root.index].generic;
-    property <bool> known: generic || k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details"
+    property <bool> known: generic || k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details" || k == "services" || k == "services-manage"
         || appearance.handles || profiles.handles || tools.handles || settings.handles || requests.handles;
     background: Theme.s.surface;
     TouchArea { }
@@ -35,6 +35,8 @@ component RoutePage inherits Rectangle {
     if k == "egress": EgressPage { leading: root.leading; }
     if k == "intranet": IntranetPage { leading: root.leading; }
     if k == "lan-add": NewLanProxyPage { leading: root.leading; }
+    if k == "services": ServicesPage { leading: root.leading; }
+    if k == "services-manage": ServicesManagePage { leading: root.leading; }
     if k == "proxies": ProxiesPage { form: true; }
     if k == "node-details": NodeDetailsPage { leading: root.leading; }
     appearance := AppearanceRoutes { kind: root.k; leading: root.leading; }
