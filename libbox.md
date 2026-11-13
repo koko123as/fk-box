@@ -120,7 +120,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 | `CommandServer.StartOrReloadCoreServiceWithRouting(core, content, rules, options)` | 返回 `(*CoreRoutingResult, error)`。先编译再走 `StartOrReloadCoreService`；成功后写日志“已应用 <内核> 分流规则 N 条”和逐条警告。规则不会让配置起不来：整体编译失败时按原配置启动，`Error` 为原因；带规则启动失败（如 sing-box 远程规则集首次下载失败，上游 `rule_set_remote.go` 视为启动错误）时用原配置再启动一次，`Fallback=true`、`Error` 为原因（规则集下载失败会注明“下次启动或重载时重新应用”）。只有原配置本身也起不来时才返回 error |
 | `CoreRoutingTargets(core, content)` | 按行返回“指定节点或组”可选的名字：sing-box 出站/端点 tag（不含 dns/block）、Xray balancer 与出站 tag（不含 dns）、mihomo 的 proxies 与 proxy-groups（不含 proxy-provider 里的节点，mihomo 规则不能直接引用它们） |
 
-单条规则的问题（无效条目、找不到节点、Xray 不支持应用匹配、列表下载失败且无缓存）只跳过该条或该项并给出警告，不阻止启动。
+单条规则的问题（无效条目、找不到节点、Xray 不支持应用匹配、列表下载失败且无缓存）只跳过该条或该项并给出警告，不阻止启动。没有目的地条件、只有应用/网络/端口的规则（内容 `all` 加条件，或条目为空的 `match` 加条件）只按这些条件匹配：sing-box 为仅含 `package_name`（及 `network`/端口）的路由规则，mihomo 为 `PROCESS-NAME,<包名>,目标`（有网络/端口时为 `AND`），Xray 跳过并警告；应用全部无效时该条跳过，不会变成匹配全部流量（`TestCoreRoutingAppOnly`）。
 
 字段映射（“目标 proxy”= 配置的主出站：sing-box 为 `route.final`（若是代理类）、否则第一个 selector/urltest/代理出站；Xray 为配置最后一条兜底规则的 `balancerTag`/`outboundTag`、唯一的 balancer、默认（第一个）出站、第一个代理出站；mihomo 为 `MATCH` 的目标（非 DIRECT/REJECT）、否则第一个策略组或节点）：
 

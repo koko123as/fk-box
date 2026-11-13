@@ -124,6 +124,22 @@ var routingPresets = map[string][]string{
 	"lan-direct": {"geosite:private", "geoip:private"},
 }
 
+func routingHasValues(values []string) bool {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// routingHasConditions: apps, a network or ports, which a rule can match by
+// without any destination.
+func routingHasConditions(rule routingRule) bool {
+	network := strings.ToLower(strings.TrimSpace(rule.Network))
+	return routingHasValues(rule.Apps) || (network != "" && network != "any") || strings.TrimSpace(rule.Ports) != ""
+}
+
 // routingMatch is the destination part of a rule: any of these matches.
 type routingMatch struct {
 	suffix  []string
@@ -328,6 +344,13 @@ func compileRules(set *routingSet, lists routingListLoader, warn func(string)) [
 					warn(label + ": " + valueErr.Error() + ", entry skipped")
 				}
 			}
+			if !routingHasValues(rule.Values) && routingHasConditions(rule) {
+				// No destination entries but apps, a network or ports: a rule
+				// by those alone (the UI saves it as "all"; older or
+				// hand-written sets may say "match").
+				item.all = true
+				break
+			}
 			if item.match.empty() {
 				warn(label + ": no usable entries, skipped")
 				continue
@@ -380,6 +403,11 @@ func compileRules(set *routingSet, lists routingListLoader, warn func(string)) [
 				continue
 			}
 			item.ports = ports
+		}
+		if item.all && routingHasConditions(rule) && len(item.apps) == 0 && item.network == "" && len(item.ports) == 0 {
+			// Its apps were all invalid: without them it would match everything.
+			warn(label + ": no usable apps, skipped")
+			continue
 		}
 		compiled = append(compiled, item)
 	}

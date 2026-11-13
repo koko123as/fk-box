@@ -2052,3 +2052,36 @@ msgstr "检测中"
 
 msgid "Region"
 msgstr "地区"
+
+msgid "Any destination"
+msgstr "不限目标"
+
+msgid "Match by"
+msgstr "匹配方式"
+
+msgid "Entries"
+msgstr "条目"
+
+msgid ", "
+msgstr "、"
+
+msgid "One per line: example.com, geosite:cn, geoip:cn, 1.1.1.0/24"
+msgstr "每行一个：example.com、geosite:cn、geoip:cn、1.1.1.0/24"
+
+msgid "Leave empty to match by the apps, network or ports below only."
+msgstr "留空则只按下方的应用、网络或端口匹配。"
+
+msgid "Matches by the apps, network or ports below."
+msgstr "按下方的应用、网络或端口匹配。"
+
+msgid "Matches all traffic. Choose apps, a network or ports below to narrow it."
+msgstr "匹配全部流量。可在下方选择应用、网络或端口来缩小范围。"
+
+msgid "Add a domain, IP or geo entry, or choose apps, a network or ports"
+msgstr "请添加域名、IP 或 geo 条目，或选择应用、网络或端口"
+
+msgid "Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control)."
+msgstr "Xray 不支持按应用分流。请移除应用，或改用 sing-box / mihomo 内核（也可用访问控制）。"
+
+msgid "Only the sing-box maintainers can open an encrypted archive. Leave off to send the report anywhere else."
+msgstr "加密的压缩包只有 sing-box 维护者能打开；要发给其他人请保持关闭。"

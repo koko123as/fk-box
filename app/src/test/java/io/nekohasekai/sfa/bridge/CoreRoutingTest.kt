@@ -139,4 +139,22 @@ class CoreRoutingTest {
         assertNotEquals(gfw[0].id, gfw[1].id)
         CoreRouting.presets.forEach { preset -> preset.rules().forEach(CoreRouting::validateRule) }
     }
+
+    @Test
+    fun appOnlyRulesNeedNoDestination() {
+        // Only apps (the UI saves it as "all"; an empty "match" with apps reads the same).
+        CoreRouting.validateRule(CoreRouting.Rule(id = "a", content = "all", apps = listOf("com.tencent.mm"), target = CoreRouting.Target("direct")))
+        CoreRouting.validateRule(CoreRouting.Rule(id = "b", content = "match", apps = listOf("com.tencent.mm"), target = CoreRouting.Target("direct")))
+        CoreRouting.validateRule(CoreRouting.Rule(id = "c", content = "match", network = "udp", target = CoreRouting.Target("proxy")))
+        CoreRouting.validateRule(CoreRouting.Rule(id = "d", content = "match", ports = "443", target = CoreRouting.Target("proxy")))
+        // Nothing to match by at all.
+        assertThrows(IllegalArgumentException::class.java) {
+            CoreRouting.validateRule(CoreRouting.Rule(id = "e", content = "match", values = listOf(" "), target = CoreRouting.Target("proxy")))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            CoreRouting.validateRule(CoreRouting.Rule(id = "f", content = "match", apps = listOf("not a package!"), target = CoreRouting.Target("proxy")))
+        }
+        val rules = CoreRouting.Rules().with("mihomo", CoreRouting.CoreSet(rules = listOf(CoreRouting.Rule(id = "g", content = "all", apps = listOf("com.tencent.mm"), target = CoreRouting.Target("direct")))))
+        assertEquals(rules, CoreRouting.decode(CoreRouting.encode(rules)))
+    }
 }

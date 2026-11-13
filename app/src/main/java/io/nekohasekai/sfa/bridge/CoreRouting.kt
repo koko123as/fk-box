@@ -144,13 +144,20 @@ internal object CoreRouting {
         require(rule.target.type != "node" || rule.target.tag.isNotBlank()) { "Choose a node or group" }
         require(rule.target.tag.length <= 256)
         require(rule.values.size <= MAX_VALUES && rule.values.all { it.length <= MAX_TEXT }) { "Too many or too long entries" }
-        require(rule.content != "match" || rule.values.any { it.isNotBlank() }) { "Add at least one domain, IP or geo entry" }
+        // An empty "match" with apps, a network or ports matches by those alone (an app-only rule).
+        require(rule.content != "match" || rule.values.any { it.isNotBlank() } || hasConditions(rule)) {
+            "Add a domain, IP or geo entry, or choose apps, a network or ports"
+        }
         require(rule.content != "preset" || rule.preset in presetIds) { "Unknown preset: ${rule.preset}" }
         require(rule.content != "list" || urlValid(rule.url)) { "Enter an http(s) rule list URL" }
         require(rule.apps.size <= MAX_APPS && rule.apps.all(::packageValid)) { "Invalid package name" }
         require(rule.network in networks) { "Unknown network: ${rule.network}" }
         require(portsValid(rule.ports)) { "Ports are 1–65535, as 443 or 8000-9000, separated by commas" }
     }
+
+    /** Apps, a network or ports: what a rule can match by without destination entries. */
+    fun hasConditions(rule: Rule): Boolean =
+        rule.apps.any { it.isNotBlank() } || (rule.network != "any" && rule.network.isNotBlank()) || rule.ports.isNotBlank()
 
     /**
      * Splits what the user typed into entries: one per line, or several on a

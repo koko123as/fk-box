@@ -586,6 +586,14 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * trim; this does the same as soon as the list closes.
      */
     @Suppress("DEPRECATION")
+    /** Display names of [packages] (routing rules list their apps by name); unknown packages are left out. */
+    suspend fun appLabels(packages: List<String>): Map<String, String> = withContext(Dispatchers.IO) {
+        val packageManager = activity.packageManager
+        packages.take(1000).mapNotNull { name ->
+            runCatching { name to packageManager.getApplicationInfo(name, 0).loadLabel(packageManager).toString() }.getOrNull()
+        }.toMap()
+    }
+
     suspend fun releaseApps() {
         apps.clear()
         withContext(Dispatchers.Default) {

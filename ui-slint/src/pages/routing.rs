@@ -17,7 +17,9 @@ use crate::rows::{self, Bar, Page, Row};
 
 const CORES: [&str; 3] = ["sing-box", "xray", "mihomo"];
 const MODES: [&str; 3] = ["prepend", "override", "off"];
-const CONTENTS: [&str; 4] = ["all", "match", "preset", "list"];
+// In the order the editor offers them; "all" with apps, a network or ports
+// is a rule that matches by those alone (an app-only rule).
+const CONTENTS: [&str; 4] = ["match", "preset", "list", "all"];
 const TARGETS: [&str; 4] = ["proxy", "direct", "block", "node"];
 const FINALS: [&str; 5] = ["config", "proxy", "direct", "block", "node"];
 const NETWORKS: [&str; 3] = ["any", "tcp", "udp"];
@@ -55,6 +57,15 @@ fn target_title(v: &str) -> String {
     })
 }
 
+/// The choice in the editor: "all" reads as "no destination condition".
+fn content_choice(v: &str) -> String {
+    if v == "all" {
+        tr("Any destination")
+    } else {
+        content_title(v)
+    }
+}
+
 fn content_title(v: &str) -> String {
     tr(match v {
         "all" => "All traffic",
@@ -76,6 +87,60 @@ fn network_title(v: &str) -> String {
 
 fn s(v: &Value, k: &str) -> String {
     v.get(k).and_then(Value::as_str).unwrap_or("").to_string()
+}
+
+fn list_of(v: &Value, k: &str) -> Vec<String> {
+    v[k].as_array().map(|a| a.iter().map(text).filter(|x| !x.trim().is_empty()).collect()).unwrap_or_default()
+}
+
+/// Apps, a network or ports: the conditions a rule can match by without a destination.
+fn has_conditions(rule: &Value) -> bool {
+    let network = s(rule, "network");
+    !list_of(rule, "apps").is_empty() || (network != "any" && !network.is_empty()) || !s(rule, "ports").trim().is_empty()
+}
+
+thread_local! {
+    /// App names by package for the rules' summaries (the host's appLabels).
+    static APP_LABELS: RefCell<std::collections::HashMap<String, String>> = RefCell::new(std::collections::HashMap::new());
+    static LABELS_ASKED: RefCell<std::collections::HashSet<String>> = RefCell::new(std::collections::HashSet::new());
+}
+
+fn app_label(package: &str) -> String {
+    APP_LABELS.with(|l| l.borrow().get(package).cloned()).unwrap_or_else(|| package.to_string())
+}
+
+/// Asks the host once for the names of packages not known yet.
+fn request_labels(packages: impl IntoIterator<Item = String>) {
+    let missing: Vec<String> = LABELS_ASKED.with(|asked| {
+        let mut asked = asked.borrow_mut();
+        packages.into_iter().filter(|p| asked.insert(p.clone())).collect()
+    });
+    if missing.is_empty() {
+        return;
+    }
+    app::call("appLabels", json!({ "packages": missing }), move |r| {
+        if let Ok(Value::Object(map)) = r {
+            APP_LABELS.with(|l| {
+                let mut l = l.borrow_mut();
+                for (k, v) in map {
+                    if let Some(v) = v.as_str().filter(|v| !v.trim().is_empty()) {
+                        l.insert(k, v.to_string());
+                    }
+                }
+            });
+            mark(Mark::ROWS);
+        }
+    });
+}
+
+/// "微信、Chrome +2": the apps of a rule by name.
+fn apps_text(apps: &[String]) -> String {
+    let shown: Vec<String> = apps.iter().take(2).map(|a| app_label(a)).collect();
+    let mut t = shown.join(tr(", ").as_str());
+    if apps.len() > 2 {
+        t.push_str(&format!(" +{}", apps.len() - 2));
+    }
+    t
 }
 
 fn uuid() -> String {
@@ -203,7 +268,7 @@ fn url_valid(url: &str) -> bool {
 }
 
 /// validateRule
-fn validate_rule(rule: &Value) -> Result<(), String> {
+fn validate_rule(rule: &Value, core: &str) -> Result<(), String> {
     let content = s(rule, "content");
     let target = rule["target"].clone();
     let values: Vec<String> = rule["values"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
@@ -214,8 +279,11 @@ fn validate_rule(rule: &Value) -> Result<(), String> {
     if values.len() > 5000 || values.iter().any(|v| v.len() > 2048) {
         return Err(tr("Too many or too long entries"));
     }
-    if content == "match" && !values.iter().any(|v| !v.trim().is_empty()) {
-        return Err(tr("Add at least one domain, IP or geo entry"));
+    if content == "match" && !values.iter().any(|v| !v.trim().is_empty()) && !has_conditions(rule) {
+        return Err(tr("Add a domain, IP or geo entry, or choose apps, a network or ports"));
+    }
+    if core == "xray" && apps.iter().any(|a| !a.trim().is_empty()) {
+        return Err(tr("Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control)."));
     }
     if content == "preset" && !PRESETS.iter().any(|p| p.0 == s(rule, "preset")) {
         return Err(format!("{}: {}", tr("Unknown preset"), s(rule, "preset")));
@@ -234,7 +302,10 @@ fn validate_rule(rule: &Value) -> Result<(), String> {
 
 fn rule_summary(rule: &Value) -> String {
     let content = s(rule, "content");
+    let apps = list_of(rule, "apps");
     let what = match content.as_str() {
+        // An app-only (or network/port-only) rule: its conditions say it all.
+        "all" if has_conditions(rule) => String::new(),
         "all" => tr("All traffic"),
         "preset" => tr(PRESETS.iter().find(|p| p.0 == s(rule, "preset")).map(|p| p.1).unwrap_or(&s(rule, "preset"))),
         "list" => s(rule, "url").split_once("://").map(|x| x.1).unwrap_or(&s(rule, "url")).chars().take(48).collect(),
@@ -248,7 +319,10 @@ fn rule_summary(rule: &Value) -> String {
             }
         }
     };
-    let mut parts = vec![what];
+    let mut parts: Vec<String> = Some(what).filter(|w| !w.is_empty()).into_iter().collect();
+    if !apps.is_empty() {
+        parts.push(apps_text(&apps));
+    }
     let network = s(rule, "network");
     if network != "any" && !network.is_empty() {
         parts.push(network.to_uppercase());
@@ -257,11 +331,19 @@ fn rule_summary(rule: &Value) -> String {
     if !ports.trim().is_empty() {
         parts.push(ports);
     }
-    let apps = rule["apps"].as_array().map(Vec::len).unwrap_or(0);
-    if apps > 0 {
-        parts.push(format!("{} {apps}", tr("Apps")));
-    }
     format!("{} → {}", parts.join(" · "), target_text(&rule["target"]))
+}
+
+/// The list title of a rule without a name: what it matches.
+fn rule_title(rule: &Value, name: &str) -> String {
+    if !name.trim().is_empty() {
+        return name.to_string();
+    }
+    let apps = list_of(rule, "apps");
+    if s(rule, "content") == "all" && !apps.is_empty() {
+        return apps_text(&apps);
+    }
+    content_title(&s(rule, "content"))
 }
 
 fn target_text(target: &Value) -> String {
@@ -397,13 +479,14 @@ fn routing_page(st: &RoutingRef) -> Page {
     );
     rows.push(Row::spacer(16));
     let list: Vec<Value> = set["rules"].as_array().cloned().unwrap_or_default();
+    request_labels(list.iter().flat_map(|r| list_of(r, "apps")));
     if list.is_empty() {
         rows.push(Row::empty(&tr("No rules"), &tr("Add a rule, a preset, or copy the rules of another core from the menu."), "rules"));
     }
     for (i, rule) in list.iter().enumerate() {
         let id = s(rule, "id");
         let name = s(rule, "name");
-        let title = if name.trim().is_empty() { content_title(&s(rule, "content")) } else { name };
+        let title = rule_title(rule, &name);
         let (a, b, c) = (st.clone(), st.clone(), st.clone());
         let rid = id.clone();
         let mut row = Row::sort(&title, move |offset| {
@@ -570,6 +653,11 @@ impl Editor {
         r["name"] = json!(s(&r, "name").trim());
         r["values"] = json!(if content == "match" { split_values(&self.values) } else { Vec::new() });
         r["apps"] = json!(split_values(&self.apps));
+        // No entries but apps, a network or ports: a rule by those alone,
+        // which every core reads as content "all" with conditions.
+        if content == "match" && r["values"].as_array().map(Vec::is_empty).unwrap_or(true) && has_conditions(&r) {
+            r["content"] = json!("all");
+        }
         r["url"] = json!(if content == "list" { s(&r, "url").trim().to_string() } else { String::new() });
         r["preset"] = json!(if content == "preset" { s(&r, "preset") } else { String::new() });
         r["ports"] = json!(s(&r, "ports").trim());
@@ -624,10 +712,10 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
     rows.push(Row::section(&tr("Match")));
     rows.push(
         forms::options_row(
-            &tr("Content"),
+            &tr("Match by"),
             CONTENTS.iter().map(|c| c.to_string()).collect(),
             &s(&rule, "content"),
-            Rc::new(|c: &str| content_title(c)),
+            Rc::new(|c: &str| content_choice(c)),
             Rc::new(set(Rc::new(|r: &mut Value, v: String| {
                 if v == "preset" && s(r, "preset").trim().is_empty() {
                     r["preset"] = json!(PRESETS[0].0);
@@ -641,7 +729,10 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
         "match" => {
             rows.push(Row::spacer(12));
             let a = ed.clone();
-            rows.push(Row::editor(&tr("Domains, IPs or geo"), &e.values, 6, move |v| a.borrow_mut().values = v).key("values"));
+            let mut editor = Row::editor(&tr("Entries"), &e.values, 6, move |v| a.borrow_mut().values = v).key("values");
+            editor.data.hint = tr("One per line: example.com, geosite:cn, geoip:cn, 1.1.1.0/24").into();
+            editor.data.subtitle = tr("Leave empty to match by the apps, network or ports below only.").into();
+            rows.push(editor);
         }
         "preset" => {
             rows.push(Row::gap());
@@ -655,6 +746,13 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
                 )
                 .key("preset"),
             );
+        }
+        "all" => {
+            rows.push(Row::footer(&tr(if has_conditions(&e.result()) {
+                "Matches by the apps, network or ports below."
+            } else {
+                "Matches all traffic. Choose apps, a network or ports below to narrow it."
+            })));
         }
         "list" => {
             rows.push(Row::gap());
@@ -718,11 +816,20 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
     }).key("ports").invalid(!ports_valid(&s(&rule, "ports"))));
     // Apps: picked from the installed list like Access control (Xray cannot match apps).
     let chosen = split_values(&e.apps);
-    if routing.borrow().core != "xray" || !chosen.is_empty() {
+    let xray = routing.borrow().core == "xray";
+    request_labels(chosen.iter().cloned());
+    if !xray || !chosen.is_empty() {
         rows.push(Row::gap());
         let a = ed.clone();
         let value = if chosen.is_empty() { tr("All apps") } else { format!("{} {}", tr("Selected"), chosen.len()) };
-        rows.push(Row::item(&tr("Apps")).value(&value).chevron().key("apps").on(move |_| {
+        let mut apps_row = Row::item(&tr("Apps")).value(&value).chevron().key("apps");
+        if !chosen.is_empty() {
+            apps_row = apps_row.subtitle(&apps_text(&chosen));
+        }
+        if xray {
+            apps_row = apps_row.danger();
+        }
+        rows.push(apps_row.on(move |_| {
             let a = a.clone();
             let current = split_values(&a.borrow().apps);
             crate::pages::settings::pick_apps(current, move |list| {
@@ -730,6 +837,9 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
                 mark(Mark::ROWS);
             });
         }));
+        if xray && !chosen.is_empty() {
+            rows.push(Row::footer(&tr("Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control).")));
+        }
     }
     if !e.is_new {
         rows.push(Row::spacer(24));
@@ -759,7 +869,8 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
     Page::new(&title)
         .confirm(Bar::new("check", "Save", move || {
             let next = a.borrow().result();
-            match validate_rule(&next) {
+            let core = r.borrow().core.clone();
+            match validate_rule(&next, &core) {
                 Ok(()) => {
                     let is_new = a.borrow().is_new;
                     let id = s(&next, "id");
@@ -889,3 +1000,50 @@ fn open_status(routing: &RoutingRef) {
     });
 }
 
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn editor(rule: Value, values: &str, apps: &str) -> Editor {
+        Editor { initial: rule.clone(), rule, values: values.into(), apps: apps.into(), error: None, tags: Vec::new(), is_new: true }
+    }
+
+    #[test]
+    fn a_rule_with_only_apps_saves_as_an_app_only_rule() {
+        let rule = editor(new_rule(), "", "com.tencent.mm\ncom.android.chrome").result();
+        assert_eq!(s(&rule, "content"), "all");
+        assert_eq!(list_of(&rule, "apps"), vec!["com.tencent.mm", "com.android.chrome"]);
+        assert!(validate_rule(&rule, "sing-box").is_ok());
+        assert!(validate_rule(&rule, "mihomo").is_ok());
+        assert!(validate_rule(&rule, "xray").unwrap_err().contains("Xray"));
+        // The list shows the apps, not "All traffic".
+        let summary = rule_summary(&rule);
+        assert!(summary.starts_with("com.tencent.mm, com.android.chrome →"), "{summary}");
+        assert_eq!(rule_title(&rule, ""), "com.tencent.mm, com.android.chrome");
+        APP_LABELS.with(|l| l.borrow_mut().insert("com.tencent.mm".into(), "微信".into()));
+        assert!(rule_summary(&rule).starts_with("微信, com.android.chrome →"));
+    }
+
+    #[test]
+    fn network_or_ports_alone_also_make_a_rule_but_nothing_does_not() {
+        let mut r = new_rule();
+        r["ports"] = json!("443");
+        let rule = editor(r, "  ", "").result();
+        assert_eq!(s(&rule, "content"), "all");
+        assert!(validate_rule(&rule, "xray").is_ok());
+        let empty = editor(new_rule(), "", "").result();
+        assert_eq!(s(&empty, "content"), "match");
+        assert!(validate_rule(&empty, "sing-box").is_err());
+        // Entries keep the rule a destination rule, apps narrowing it.
+        let both = editor(new_rule(), "example.com", "com.a").result();
+        assert_eq!(s(&both, "content"), "match");
+        assert!(validate_rule(&both, "sing-box").is_ok());
+        // A deliberate "all" with no conditions stays a catch-all.
+        let mut all = new_rule();
+        all["content"] = json!("all");
+        let all = editor(all, "", "").result();
+        assert!(validate_rule(&all, "sing-box").is_ok());
+        assert!(rule_summary(&all).starts_with("All traffic"));
+    }
+}

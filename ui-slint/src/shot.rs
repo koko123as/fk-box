@@ -7,6 +7,8 @@
 //! Steps: `shot:NAME`, `tab:Dashboard`, `push:KIND:ARG`, `form:KIND:ARG`, `pop`,
 //! `dark`, `light`, `tick:N` (N seconds with rate samples), `scroll:DY`,
 //! `tap:X,Y` (logical px), `size:W,H,SCALE`, `access` (open Access control),
+//! `routing` (open Traffic routing), `type:TEXT` (text into the focused field),
+//! `key:backspace|enter|left|end`,
 //! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS),
 //! `bg` / `fg` (the host's lifecycle event), `wait:N` (N real seconds),
 //! `insets:T,B,L,R` (the host's insets, physical px), `nav` (print the insets
@@ -156,6 +158,9 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
                 Value::String(icon_png(pkg))
             }
         }
+        "appLabels" => Value::Object(
+            args["packages"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|p| (p.to_string(), json!(format!("App {}", p.rsplit('.').next().unwrap_or(p).trim_start_matches("app"))))).collect(),
+        ),
         "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
         // Setters and visibility switches: nothing to answer.
         _ => Value::Null,
@@ -544,6 +549,29 @@ pub fn run(args: Vec<String>) {
             }
             "access" => {
                 crate::pages::settings::open_access();
+                h.settle();
+            }
+            "routing" => {
+                crate::pages::routing::open();
+                h.settle();
+            }
+            // Text typed into the focused field (as a committed IME text), and keys.
+            "type" => {
+                let text: slint::SharedString = rest.into();
+                h.window.window().dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+                h.window.window().dispatch_event(WindowEvent::KeyReleased { text });
+                h.settle();
+            }
+            "key" => {
+                let key = match rest {
+                    "backspace" => slint::platform::Key::Backspace,
+                    "enter" => slint::platform::Key::Return,
+                    "left" => slint::platform::Key::LeftArrow,
+                    _ => slint::platform::Key::End,
+                };
+                let text: slint::SharedString = key.into();
+                h.window.window().dispatch_event(WindowEvent::KeyPressed { text: text.clone() });
+                h.window.window().dispatch_event(WindowEvent::KeyReleased { text });
                 h.settle();
             }
             "rss" => {

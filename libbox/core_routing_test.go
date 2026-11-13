@@ -375,3 +375,92 @@ func TestCoreRoutingListCache(t *testing.T) {
 		t.Fatal("binary rule-set accepted")
 	}
 }
+
+// An app-only rule: no destination entries, only apps (and possibly a
+// network or ports). The UI saves it as content "all"; a "match" rule with no
+// entries but apps reads the same. A rule whose apps are all invalid is
+// skipped rather than becoming a catch-all.
+func TestCoreRoutingAppOnly(t *testing.T) {
+	previous := sWorkingPath
+	sWorkingPath = t.TempDir()
+	defer func() { sWorkingPath = previous }()
+	rules := []routingRule{
+		{Enabled: true, Name: "wechat", Content: routingContentAll, Apps: []string{"com.tencent.mm"}, Target: routingTarget{Type: routingTargetDirect}},
+		{Enabled: true, Name: "game", Content: routingContentMatch, Apps: []string{"com.example.game"}, Network: "udp", Target: routingTarget{Type: routingTargetProxy}},
+		{Enabled: true, Name: "broken", Content: routingContentMatch, Apps: []string{"not a package!"}, Target: routingTarget{Type: routingTargetBlock}},
+	}
+	set := routingSet{Mode: routingModePrepend, Final: routingTarget{Type: routingTargetConfig}, Rules: rules}
+
+	singProfile, err := ConvertCoreShareLinksFor(CoreAuto, testVlessReality+"\n"+testShadowsocks)
+	if err != nil || singProfile.Core != CoreSingBox {
+		t.Fatalf("convert: %v %v", singProfile, err)
+	}
+	result, err := applyCoreRouting(CoreSingBox, singProfile.Content, routingSetJSON(t, set), testRoutingLists)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 2 || !strings.Contains(result.Warnings, "broken: no usable apps") {
+		t.Fatalf("sing-box applied %d, warnings %q", result.Applied, result.Warnings)
+	}
+	var sing struct {
+		Route struct {
+			Rules []map[string]any `json:"rules"`
+		} `json:"route"`
+	}
+	if err := json.Unmarshal([]byte(result.Content), &sing); err != nil {
+		t.Fatal(err)
+	}
+	found := 0
+	for _, rule := range sing.Route.Rules {
+		packages := fmt.Sprint(rule["package_name"])
+		if packages != "[com.tencent.mm]" && packages != "[com.example.game]" {
+			continue
+		}
+		found++
+		for _, key := range []string{"domain", "domain_suffix", "ip_cidr", "rule_set", "ip_is_private"} {
+			if rule[key] != nil {
+				t.Fatalf("app-only rule has %s: %v", key, rule)
+			}
+		}
+		if packages == "[com.example.game]" && fmt.Sprint(rule["network"]) != "[udp]" {
+			t.Fatalf("network missing: %v", rule)
+		}
+	}
+	if found != 2 {
+		t.Fatalf("app rules not found in %v", sing.Route.Rules)
+	}
+	for _, rule := range sing.Route.Rules {
+		if rule["action"] == "reject" && rule["package_name"] == nil && len(rule) <= 2 {
+			t.Fatalf("the broken rule became a catch-all: %v", rule)
+		}
+	}
+
+	mihomoProfile, err := ConvertCoreShareLinksFor(CoreMihomo, testVlessXHTTP+"\n"+testShadowsocks)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err = applyCoreRouting(CoreMihomo, mihomoProfile.Content, routingSetJSON(t, set), testRoutingLists)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := CheckCoreConfig(CoreMihomo, result.Content); err != nil {
+		t.Fatalf("mihomo rejected the compiled profile: %v\n%s", err, result.Content)
+	}
+	if result.Applied != 2 || !strings.Contains(result.Content, "PROCESS-NAME,com.tencent.mm,DIRECT") ||
+		!strings.Contains(result.Content, "AND,((NETWORK,UDP),(PROCESS-NAME,com.example.game)),") ||
+		strings.Contains(result.Content, "MATCH,REJECT") {
+		t.Fatalf("mihomo applied %d, warnings %q\n%s", result.Applied, result.Warnings, result.Content)
+	}
+
+	xrayProfile, err := ConvertCoreShareLinksFor(CoreAuto, testVlessXHTTP+"\n"+testShadowsocks)
+	if err != nil || xrayProfile.Core != CoreXray {
+		t.Fatalf("convert: %v %v", xrayProfile, err)
+	}
+	result, err = applyCoreRouting(CoreXray, xrayProfile.Content, routingSetJSON(t, set), testRoutingLists)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Applied != 0 || !strings.Contains(result.Warnings, "cannot match Android apps") {
+		t.Fatalf("xray applied %d, warnings %q", result.Applied, result.Warnings)
+	}
+}
