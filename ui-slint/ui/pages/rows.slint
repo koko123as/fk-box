@@ -43,6 +43,8 @@ export component RowView inherits Rectangle {
             invalid: root.entry.invalid;
             title-lines: root.entry.lines > 0 ? root.entry.lines : 2;
             title-color: root.entry.danger ? Theme.s.error : Theme.s.on-surface;
+            long-press-menu: root.entry.menu;
+            long-pressed(x, y) => { Nav.open-menu("row:" + root.key, x, y); }
             clicked => {
                 if (root.entry.kind == "switch" || root.entry.kind == "check") {
                     Nav.act2("row", root.key, root.entry.checked ? "0" : "1");

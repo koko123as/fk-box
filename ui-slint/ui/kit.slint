@@ -425,6 +425,8 @@ export component ListItem inherits Rectangle {
     in property <int> level: 1;
     in property <int> title-lines: 2;
     in property <color> title-color: Theme.s.on-surface;
+    // ContextMenuRegion: a long press reports where it happened.
+    in property <bool> long-press-menu;
     callback clicked();
     callback long-pressed(length, length);
     property <bool> top: position == 1 || position == 4;
@@ -439,8 +441,24 @@ export component ListItem inherits Rectangle {
     opacity: enabled ? 1 : 0.6;
     if root.clickable: Rectangle { background: touch.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
     touch := TouchArea {
-        enabled: root.clickable && root.enabled;
-        clicked => { root.clicked(); }
+        enabled: (root.clickable || root.long-press-menu) && root.enabled;
+        clicked => { if (root.clickable) { root.clicked(); } }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                hold.running = root.long-press-menu;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+        moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
+    }
+    hold := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            root.long-pressed(root.absolute-position.x + touch.mouse-x, root.absolute-position.y + touch.mouse-y);
+        }
     }
     lay := HorizontalLayout {
         padding-left: 16px;
