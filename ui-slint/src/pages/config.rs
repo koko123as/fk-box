@@ -115,16 +115,25 @@ pub fn set(store: &StoreRef, path: &[&str], value: Option<Value>, expected: Opti
         }
     }
     let mut candidate = store.borrow().root.clone();
+    // A configuration whose top level is not an object (or an empty path) cannot be edited here.
+    if path.is_empty() || !candidate.is_object() {
+        done(Err(tr("Configuration changed; reload it before saving")));
+        return;
+    }
     {
         let mut parent = &mut candidate;
         for k in &path[..path.len() - 1] {
-            if !parent.get(*k).map(|v| v.is_object()).unwrap_or(false) {
-                parent.as_object_mut().unwrap().insert(k.to_string(), Value::Object(Map::new()));
+            let Some(object) = parent.as_object_mut() else { break };
+            if !object.get(*k).map(Value::is_object).unwrap_or(false) {
+                object.insert(k.to_string(), Value::Object(Map::new()));
             }
-            parent = parent.get_mut(*k).unwrap();
+            parent = parent.get_mut(*k).expect("inserted above");
         }
         let last = path[path.len() - 1].to_string();
-        let map = parent.as_object_mut().unwrap();
+        let Some(map) = parent.as_object_mut() else {
+            done(Err(tr("Configuration changed; reload it before saving")));
+            return;
+        };
         match value {
             Some(v) => {
                 map.insert(last, v);
@@ -428,7 +437,7 @@ fn http_rewrite_page(store: &StoreRef) {
             ("Map Local / API Mock", "map_local", json!({ "status": 200, "data_type": "text", "data": "{}", "headers": [{ "name": "Content-Type", "value": "application/json" }] })),
             ("JavaScript", "scripts", json!({ "phase": "response", "requires_body": true, "source": "$done({body: $response.body});" })),
         ];
-        let mut out = vec![Row::footer(&tr("Rules belong to this JSON profile and run with the local service. Request recording is controlled separately."))];
+        let mut out = Vec::new();
         out.extend(error_rows(&st));
         let a = st.clone();
         out.push(Row::switch(&tr("Enable HTTP rewriting"), enabled, move |v| launch_set(&a, &hr(&["enabled"]), Some(json!(v)))).enabled(!saving));
@@ -479,7 +488,6 @@ fn http_rewrite_page(store: &StoreRef) {
                 .subtitle(&counts[i].to_string()),
             );
         }
-        out.push(Row::footer(&tr("New example rules are disabled. Edit their pattern and content, then set disabled to false.")));
         out.push(Row::gap());
         let a = st.clone();
         out.push(Row::open(&tr("Embedded rewrite resources"), Some("resources"), move || {

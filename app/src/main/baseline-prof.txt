@@ -23,9 +23,6 @@ HSPLio/nekohasekai/sfa/database/preference/**;->**(**)**
 
 # Activity, root composable and controller
 HSPLio/nekohasekai/sfa/compose/MainActivity**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxApp**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxController**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/BoxStrings**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxActivity**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxBridge**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxWire**;->**(**)**
@@ -50,26 +47,12 @@ HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 
 # UI kit and theme
-HSPLio/nekohasekai/sfa/compose/theme/**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/ui/**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/common/**;->**(**)**
 
 # Pages on the common path
-HSPLio/nekohasekai/sfa/compose/pages/HomePage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardGrid**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/DashboardComponents**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/StatusPanel**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ProxiesPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ProfilesPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/ToolsPage**;->**(**)**
-HSPLio/nekohasekai/sfa/compose/pages/SubscriptionInfoView**;->**(**)**
 
 # Classes loaded during startup
 Lio/nekohasekai/sfa/Application;
 Lio/nekohasekai/sfa/compose/MainActivity;
 Lio/nekohasekai/sfa/bridge/BoxActivity;
 Lio/nekohasekai/sfa/bridge/BoxBridge;
-Lio/nekohasekai/sfa/compose/BoxController;
-Lio/nekohasekai/sfa/compose/**;
 Lio/nekohasekai/sfa/backend/**;

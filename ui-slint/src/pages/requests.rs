@@ -1069,7 +1069,6 @@ fn settings_page(st: &Rc<RefCell<Settings>>) -> Page {
         rows_list.push(Row::error(e));
         rows_list.push(Row::spacer(8));
     }
-    rows_list.push(Row::footer(&tr("Saved on this device. Capture stops when the local service restarts.")));
     rows_list.push(Row::section("HTTPS / MITM"));
     let a = st.clone();
     rows_list.push(Row::switch(&tr("Decrypt HTTPS"), x.https, move |v| {
@@ -1079,7 +1078,7 @@ fn settings_page(st: &Rc<RefCell<Settings>>) -> Page {
     }).key("https"));
     rows_list.push(Row::item(&tr("MITM certificate")).key("cert").on(|_| open_mitm_certificate()));
     // A list field: the text itself, and its quick edit page.
-    let field = |rows_list: &mut Vec<Row>, key: &'static str, label: &str, value: &str, hint: &str, footer: &str, setter: Rc<dyn Fn(&mut Settings, String)>, joiner: &'static str| {
+    let field = |rows_list: &mut Vec<Row>, key: &'static str, label: &str, value: &str, hint: &str, setter: Rc<dyn Fn(&mut Settings, String)>, joiner: &'static str| {
         rows_list.push(Row::section(&tr(label)));
         let (a, f) = (st.clone(), setter.clone());
         rows_list.push(Row::editor("", value, 3, move |v| {
@@ -1102,18 +1101,14 @@ fn settings_page(st: &Rc<RefCell<Settings>>) -> Page {
                 done(Ok(()));
             }));
         }));
-        if !footer.is_empty() {
-            rows_list.push(Row::footer(&tr(footer)));
-        }
     };
     if x.https {
-        field(&mut rows_list, "decrypt", "HTTPS domains", &x.decrypt, "*.example.com", "Leave empty to decrypt all HTTPS domains. Exact names and *.example.com are accepted; exclusions take priority.", Rc::new(|x, v| x.decrypt = v), "\n");
+        field(&mut rows_list, "decrypt", "HTTPS domains", &x.decrypt, "*.example.com", Rc::new(|x, v| x.decrypt = v), "\n");
         let a = st.clone();
         rows_list.push(Row::item(&tr("Add captured HTTPS domains")).key("add-decrypt").on(move |_| add_domains(&a, 0)));
-        field(&mut rows_list, "bypass", "HTTPS excluded domains", &x.bypass, "pinned.example.com", "Pass these TLS connections through unchanged. Visible hostnames can still be extracted.", Rc::new(|x, v| x.bypass = v), "\n");
+        field(&mut rows_list, "bypass", "HTTPS excluded domains", &x.bypass, "pinned.example.com", Rc::new(|x, v| x.bypass = v), "\n");
         let a = st.clone();
         rows_list.push(Row::item(&tr("Add captured HTTPS exclusions")).key("add-bypass").on(move |_| add_domains(&a, 1)));
-        rows_list.push(Row::footer(&tr("Install and trust the MITM CA, start capture, then reconnect the target app. Only traffic routed through the local service is captured. Server certificates are always verified.")));
         rows_list.push(Row::gap());
         let a = st.clone();
         rows_list.push(Row::switch(&tr("Request TCP fallback for QUIC"), x.block_quic, move |v| {
@@ -1165,7 +1160,7 @@ fn settings_page(st: &Rc<RefCell<Settings>>) -> Page {
         )
         .key("body"),
     );
-    field(&mut rows_list, "ports", "Capture ports", &x.ports, "80, 443, 8080, 8443", "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. Port filters use the connection destination.", Rc::new(|x, v| x.ports = v), ", ");
+    field(&mut rows_list, "ports", "Capture ports", &x.ports, "80, 443, 8080, 8443", Rc::new(|x, v| x.ports = v), ", ");
     let busy = x.busy;
     drop(x);
     let a = st.clone();
@@ -1298,7 +1293,7 @@ pub fn open_capture_domains(query: String, select: Option<Rc<dyn Fn(Vec<String>)
         }
         let x = st.borrow();
         let domains = x.0.clone().unwrap_or_default();
-        let mut rows_list = vec![Row::footer(&tr("Domains are extracted from retained requests and visible TLS/QUIC names, using the current search filter. Encrypted hostnames cannot be extracted."))];
+        let mut rows_list = Vec::new();
         if let Some(e) = &x.1 {
             let l = load.clone();
             rows_list.push(Row::empty(&tr("Error"), e, "info").value(&tr("Retry")).on(move |_| l()));
@@ -1436,7 +1431,6 @@ pub fn open_capture_logs() {
                 rows_list.push(detail_row(&tr("Latest error"), &latest, true));
             }
         }
-        rows_list.push(Row::footer(&tr("Recent logs are kept until the app process exits. Export logs to keep them.")));
         if let Some(e) = &x.1 {
             rows_list.push(Row::empty(&tr("Error"), e, "info"));
         }
@@ -1523,7 +1517,7 @@ pub fn open_mitm_certificate() {
         }
         let x = st.borrow();
         let busy = x.2;
-        let mut rows_list = vec![Row::footer(&tr("HTTPS decryption requires the target app to trust this CA. Apps with certificate pinning or their own trust store may reject it; add those domains to the excluded list."))];
+        let mut rows_list = Vec::new();
         if let Some(e) = &x.1 {
             let r = refresh.clone();
             rows_list.push(Row::empty(&tr("Error"), e, "info").value(&tr("Retry")).on(move |_| r()));
@@ -1563,9 +1557,7 @@ pub fn open_mitm_certificate() {
                 let a = st.clone();
                 rows_list.push(Row::item(&tr(label)).key(method).on(move |_| cert_run(&a, method)).enabled(!busy && usable));
             }
-            rows_list.push(Row::footer(&tr("On Android 11 or later, export the certificate first, then choose CA certificate in Android security settings. For system trust, install the exported module with a root manager and reboot.")));
         }
-        rows_list.push(Row::footer(&tr("The private signing key stays on this device. Exports contain only the public CA. Regeneration requires replacing installed certificates; remove system modules too.")));
         drop(x);
         let r = refresh.clone();
         Page::new(&tr("MITM certificate")).loading(busy).bar(vec![Bar::new("refresh", "Refresh trust", move || r()).when(!busy)]).rows(rows_list)
@@ -1658,8 +1650,13 @@ struct Logs {
     filters: Filters,
 }
 
+thread_local! {
+    // The viewer's level, kept while the app runs; warnings and worse by default.
+    static LOG_LEVEL: Cell<&'static str> = const { Cell::new("Warn") };
+}
+
 fn logs_builder() -> impl Fn() -> Page {
-    let st = Rc::new(RefCell::new(Logs { query: String::new(), level: "Default", paused: None, filters: Filters::new("logs", &[]) }));
+    let st = Rc::new(RefCell::new(Logs { query: String::new(), level: LOG_LEVEL.with(Cell::get), paused: None, filters: Filters::new("logs", &[]) }));
     move || logs_page(&st)
 }
 
@@ -1675,7 +1672,11 @@ fn logs_page(st: &Rc<RefCell<Logs>>) -> Page {
             let Some(threshold) = default_level.as_deref().and_then(|l| log_priority(&l.to_lowercase())) else { return true };
             return log_priority(&item_level).map(|p| p <= threshold).unwrap_or(false);
         }
-        level == "All" || item_level == level.to_lowercase()
+        // A level shows itself and everything more severe.
+        level == "All" || match (log_priority(&item_level), log_priority(&level.to_lowercase())) {
+            (Some(p), Some(threshold)) => p <= threshold,
+            _ => false,
+        }
     };
     let words: Vec<String> = x.query.to_lowercase().split_whitespace().map(str::to_string).collect();
     let searched: Vec<Value> = source
@@ -1717,7 +1718,7 @@ fn logs_page(st: &Rc<RefCell<Logs>>) -> Page {
         .reverse(true)
         .search(move |q| a.borrow_mut().query = q)
         .keywords(keywords, move |k| b.borrow_mut().filters.keyword(&LOG_FACETS, &k))
-        .bar(vec![Bar::new("export", "Export", move || app::act("saveDocument", json!({ "name": "B-box.log", "content": export })))])
+        .bar(vec![Bar::new("export", "Export", move || app::act("saveDocument", json!({ "name": "FK-box.log", "content": export })))])
         .menu(move || logs_menu(&c, paused))
         .rows(rows_list);
     if logs.is_empty() {
@@ -1755,6 +1756,7 @@ fn logs_menu(st: &Rc<RefCell<Logs>>, paused: bool) -> Vec<MenuEntry> {
         };
         let a = st.clone();
         let mut m = MenuEntry::plain(&label, move || {
+            LOG_LEVEL.with(|l| l.set(item));
             a.borrow_mut().level = item;
             mark(Mark::ROWS);
         })
@@ -1793,18 +1795,6 @@ pub fn closed(kind: &str, _arg: &str, id: i32) {
     if matches!(kind, "requests" | "logs") {
         rows::closed(id);
     }
-}
-
-pub fn act(_id: &str, _arg: &str) -> bool {
-    false
-}
-
-pub fn act2(_id: &str, _a: &str, _b: &str) -> bool {
-    false
-}
-
-pub fn menu(_key: &str) -> Vec<MenuEntry> {
-    Vec::new()
 }
 
 pub fn install(_w: &AppWindow) {

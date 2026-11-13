@@ -192,10 +192,7 @@ fn act(id: &str, arg: &str) {
             let _ = appearance::act(id, arg)
                 || dashboard::act(id, arg)
                 || proxies::act(id, arg)
-                || profiles::act(id, arg)
-                || tools::act(id, arg)
-                || settings::act(id, arg)
-                || requests::act(id, arg);
+                || profiles::act(id, arg);
         }
     }
 }
@@ -205,10 +202,7 @@ fn act2(id: &str, a: &str, b: &str) {
         || appearance::act2(id, a, b)
         || dashboard::act2(id, a, b)
         || proxies::act2(id, a, b)
-        || profiles::act2(id, a, b)
-        || tools::act2(id, a, b)
-        || settings::act2(id, a, b)
-        || requests::act2(id, a, b);
+        || profiles::act2(id, a, b);
 }
 
 /// The menu for a key: the page that owns it builds the entries.
@@ -223,18 +217,6 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
     if entries.is_empty() {
         entries = profiles::menu(key);
     }
-    if entries.is_empty() {
-        entries = tools::menu(key);
-    }
-    if entries.is_empty() {
-        entries = settings::menu(key);
-    }
-    if entries.is_empty() {
-        entries = requests::menu(key);
-    }
-    if entries.is_empty() {
-        entries = dashboard::menu(key);
-    }
     entries
 }
 
@@ -246,7 +228,6 @@ pub fn install(window: &AppWindow) {
     proxies::install(window);
     profiles::install(window);
     tools::install(window);
-    settings::install(window);
     requests::install(window);
     with_window(|_| {});
 }

@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use serde_json::{json, Map, Value};
+use serde_json::{json, Value};
 
 use crate::app::{self, data, long, text, truthy};
 use crate::format;
@@ -395,10 +395,6 @@ fn routing_page(st: &RoutingRef) -> Page {
         )
         .key("final"),
     );
-    rows.push(Row::footer(&tr("Rules apply to the core that runs the selected profile and are added when the service starts; the profile file is not changed. Long-press or drag the handle to reorder; the first matching rule wins.")));
-    if core == "xray" {
-        rows.push(Row::footer(&tr("Xray: IP and geoip entries match connections to IP addresses; sniffed domains are matched by domain and geosite entries. Set domainStrategy in the profile to also resolve domains for IP rules.")));
-    }
     rows.push(Row::spacer(16));
     let list: Vec<Value> = set["rules"].as_array().cloned().unwrap_or_default();
     if list.is_empty() {
@@ -646,7 +642,6 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             rows.push(Row::spacer(12));
             let a = ed.clone();
             rows.push(Row::editor(&tr("Domains, IPs or geo"), &e.values, 6, move |v| a.borrow_mut().values = v).key("values"));
-            rows.push(Row::footer(&tr("One per line: example.com (and subdomains), full:example.com, keyword:word, regexp:pattern (the whole line), 1.2.3.0/24, geosite:cn, geoip:cn, geoip:private.")));
         }
         "preset" => {
             rows.push(Row::gap());
@@ -665,7 +660,6 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             rows.push(Row::gap());
             let a = ed.clone();
             rows.push(Row::field(&tr("URL"), &s(&rule, "url"), "https://", move |v| a.borrow_mut().rule["url"] = json!(v)).key("url").mono());
-            rows.push(Row::footer(&tr("AdBlock (||example.com^), hosts, plain domain/CIDR lists and Clash rule lists. Downloaded when the service starts and refreshed daily; the last copy is used when a download fails.")));
         }
         _ => {}
     }
@@ -722,10 +716,21 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
         a.borrow_mut().rule["ports"] = json!(v);
         mark(Mark::ROWS);
     }).key("ports").invalid(!ports_valid(&s(&rule, "ports"))));
-    rows.push(Row::spacer(12));
-    let a = ed.clone();
-    rows.push(Row::editor(&tr("Apps (package names)"), &e.apps, 3, move |v| a.borrow_mut().apps = v).key("apps"));
-    rows.push(Row::footer(&tr("One package name per line, such as com.android.chrome. Empty matches every app. Xray cannot match apps; such rules are skipped on Xray.")));
+    // Apps: picked from the installed list like Access control (Xray cannot match apps).
+    let chosen = split_values(&e.apps);
+    if routing.borrow().core != "xray" || !chosen.is_empty() {
+        rows.push(Row::gap());
+        let a = ed.clone();
+        let value = if chosen.is_empty() { tr("All apps") } else { format!("{} {}", tr("Selected"), chosen.len()) };
+        rows.push(Row::item(&tr("Apps")).value(&value).chevron().key("apps").on(move |_| {
+            let a = a.clone();
+            let current = split_values(&a.borrow().apps);
+            crate::pages::settings::pick_apps(current, move |list| {
+                a.borrow_mut().apps = list.join("\n");
+                mark(Mark::ROWS);
+            });
+        }));
+    }
     if !e.is_new {
         rows.push(Row::spacer(24));
         let (a, r) = (ed.clone(), routing.clone());
@@ -739,7 +744,10 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
                             rules.retain(|x| s(x, "id") != id);
                         }
                     });
-                    a.borrow_mut().initial = a.borrow().result();
+                    // result() borrows the editor; take it before borrowing mutably
+                    // (doing both in one statement panicked and closed the app).
+                    let done = a.borrow().result();
+                    a.borrow_mut().initial = done;
                     nav::pop();
                 }
             });
@@ -808,7 +816,6 @@ fn open_preview(draft: Value, tab_core: String) {
                 rows.push(Row::item(&tr("Core")).value(core_title(&core)));
                 rows.push(Row::item(&tr("Rules applied")).value(&text(&v["applied"])));
                 if core != tab_core {
-                    rows.push(Row::footer(&tr("The selected profile runs on another core, so its rules are shown instead of this tab's.")));
                 }
                 if !truthy(&v["active"]) {
                     rows.push(Row::footer(&tr("No routing changes: the profile starts as it is.")));
@@ -848,7 +855,6 @@ fn open_status(routing: &RoutingRef) {
         if !error.is_empty() {
             rows.push(Row::section(&tr("Not applied")));
             rows.push(Row::item(&error).lines(20).danger());
-            rows.push(Row::footer(&tr("The profile runs without the routing rules. Fix the rules or the network, then reload the service to apply them again.")));
             rows.push(Row::spacer(12));
             let (retrying, failure) = retry.borrow().clone();
             let (a, rr) = (retry.clone(), r.clone());
@@ -883,5 +889,3 @@ fn open_status(routing: &RoutingRef) {
     });
 }
 
-#[allow(dead_code)]
-fn unused(_: Map<String, Value>) {}

@@ -1,14 +1,15 @@
 // Requests and Logs as home destinations (sidebar layouts): Rust-built rows
 // (src/pages/requests.rs); as routes they are adopted rows pages too.
 import { Pages } from "../data.slint";
+import { Nav } from "../globals.slint";
 import { RowsPage } from "rows.slint";
 
 export component RequestsPage inherits Rectangle {
-    RowsPage { d: Pages.requests; leading: 0; }
+    RowsPage { d: Pages.requests; leading: 0; bottom: Nav.home-bottom; }
 }
 
 export component LogsPage inherits Rectangle {
-    RowsPage { d: Pages.logs; leading: 0; }
+    RowsPage { d: Pages.logs; leading: 0; bottom: Nav.home-bottom; }
 }
 
 export component RequestRoutes inherits Rectangle {

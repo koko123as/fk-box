@@ -572,7 +572,6 @@ fn open_config(dark: bool, initial: String, on_closed: Rc<dyn Fn()>) {
         let (text_value, _saved, saving) = a.borrow().clone();
         let b = a.clone();
         let rows_list = vec![
-            Row::footer(&tr("Supported Ghostty options: foreground, background, cursor-color, selection-background, selection-foreground, palette, font-family.")),
             Row::editor("", &text_value, 20, move |v| b.borrow_mut().0 = v).mono().key("config"),
         ];
         let c = a.clone();

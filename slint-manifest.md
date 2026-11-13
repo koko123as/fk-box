@@ -6,6 +6,10 @@ Compose UI hosted (QR camera, Ghostty terminal surface, OpenConnect WebView) are
 Activities in `app/src/main/java/io/nekohasekai/sfa/bridge/NativePages.kt`, opened from Rust
 through `BoxActivity.slintCall`.
 
+The Compose sources themselves were deleted from `slint-ui` on 2026-11-13 (they remain on `main`);
+`compose/` keeps only `MainActivity`, `ShareActivity` and `qr/`. The Simplified Chinese table
+`ui-slint/i18n/zh/LC_MESSAGES/fkui.po` is now edited by hand (it was generated from `BoxStrings.kt`).
+
 Status: **done** = ported feature-for-feature (not yet verified on device);
 **partial** = ported, with the listed differences from the Compose original;
 **kept** = still Kotlin by design (Activity entry points / camera decoding);
@@ -73,6 +77,19 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 8. Request body view has no Format JSON toggle and no paging.
 9. Terminal font size: number field plus an "Increase font size" row instead of the −/+ stepper.
 10. Terminal surface, QR scanner and OpenConnect sign-in browser are separate native Activities over the Slint window instead of inline Compose views.
+
+## Deliberate departures from the Compose UI (2026-11-13)
+
+- Phones get a floating navigation bar (FlClash's mobile layout): a rounded bar 16 px from the
+  sides and 12 px above the gesture inset; home pages pad their content by `Nav.home-bottom`.
+- Routing rule editor: the Apps field opens the installed-app list used by Access control
+  (search, system apps toggle, selected first) instead of a package-name text box; hidden for
+  Xray rules, which cannot match apps.
+- Logs default to Warn and a level now shows itself and everything more severe; the choice is
+  kept while the app runs.
+- Most explanatory footers under rows were removed. About shows the version, update check, the
+  three cores with their versions, source code and licenses; the "based on" and "predecessor"
+  lines are gone (credits stay in README.md and the license list).
 
 ## Fonts and rendering (slint-ui only)
 

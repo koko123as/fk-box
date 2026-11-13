@@ -15,7 +15,6 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.parcelize")
     id("com.google.devtools.ksp")
-    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
@@ -175,7 +174,6 @@ android {
 
     buildFeatures {
         aidl = true
-        compose = true
         buildConfig = true
     }
 
@@ -351,15 +349,6 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraVersion")
     implementation("com.google.zxing:core:3.5.4")
 
-    // Compose UI: stock Material 3 and Material icons
-    val composeBom = platform("androidx.compose:compose-bom:2026.06.01")
-    implementation(composeBom)
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.material:material-icons-extended")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.foundation:foundation")
-    implementation("androidx.activity:activity-compose:1.13.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:$lifecycleVersion")
     // Installs the app's Baseline Profile (src/main/baseline-prof.txt) on
     // sideloaded installs, which get no Play cloud profiles.
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

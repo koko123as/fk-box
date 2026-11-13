@@ -1,4 +1,4 @@
-"""Source-level guardrails for the Kotlin + Jetpack Compose UI; runtime behavior is covered by Android CI."""
+"""Source-level guardrails for the Rust + Slint UI; runtime behavior is covered by Android CI."""
 import re
 import json
 import hashlib
@@ -9,46 +9,34 @@ native = ROOT / "app/src/main/java/io/nekohasekai/sfa"
 compose = native / "compose"
 errors = []
 
-# FK-box: the app UI is Kotlin + Jetpack Compose hosted by BoxActivity; the
-# Flutter module was removed once every page was translated.
+# FK-box: the app UI is Rust + Slint (ui-slint/, libfkui.so) hosted by
+# BoxActivity (GameActivity). compose/ keeps only the stable entry points and
+# the QR camera analyzer; the Jetpack Compose UI and the Flutter module are gone.
 if (ROOT / "flutter").exists():
-    errors.append("flutter/ must stay removed; the UI lives in compose/")
+    errors.append("flutter/ must stay removed; the UI lives in ui-slint/")
 for name in ("MainActivity", "ShareActivity"):
     source = (compose / f"{name}.kt").read_text()
     if f"class {name} : BoxActivity()" not in source:
         errors.append(f"{name} must enter BoxActivity")
 if "GameActivity()" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity must host the Slint UI (GameActivity)")
-
-# The plain UI: stock Material 3 components and Material icons, with no
-# custom-drawn icon set, glass, shaders, blur, shadows or expressive motion.
-icon_source = (compose / "ui/AppIcons.kt").read_text()
-defined = set(re.findall(r"\bval\s+(\w+)\s*:", icon_source))
-plain_rules = {
-    r"\bAppGlyphs\b|\bGlyph(?:Icon|Shape|Role|Path)?\b|drawGlyph": "custom glyph icons (use AppIcons / Material icons)",
-    r"LiquidGlass|RuntimeShader|AGSL|BlurMaskFilter|RenderEffect|\.blur\(": "glass, shader or blur effect",
-    r"\bspring\(|\bspringStepAt\b|InkSparkle|elasticPress|barItemPresence": "expressive motion or press effect",
-    r"\bMaterialShapes\b|\bM3Shapes\b|RoundedPolygon|\bMorph\b|SuperellipseShape": "decorative shape",
-    r"\bboxShadows\b|(?:Modifier|\n\s*)\.shadow\(|LocalRippleConfiguration\s+provides\s+null": "shadow or replaced ripple",
-    r"\bAppearanceStyle\b|\bAppearanceTokens\b|\bLocalAppearance\b": "retired appearance style switch",
-}
+if not (ROOT / "ui-slint/ui/app.slint").is_file():
+    errors.append("ui-slint/ui/app.slint: the Slint UI is missing")
+allowed = {"MainActivity.kt", "ShareActivity.kt"}
 for path in compose.rglob("*.kt"):
-    source = path.read_text()
-    for pattern, what in plain_rules.items():
-        if re.search(pattern, source):
-            errors.append(f"{path.relative_to(ROOT)}: {what}")
-    if path.name == "AppIcons.kt":
-        continue
-    for name in set(re.findall(r"AppIcons\.(\w+)", source)):
-        if name not in defined:
-            errors.append(f"{path.relative_to(ROOT)}: unknown icon {name}")
-if re.search(r"graphics-shapes", (ROOT / "app/build.gradle.kts").read_text()):
-    errors.append("app/build.gradle.kts: graphics-shapes is only for the retired decorative shapes")
+    rel = path.relative_to(compose)
+    if rel.parts[0] != "qr" and path.name not in allowed:
+        errors.append(f"{path.relative_to(ROOT)}: the Compose UI was replaced by ui-slint/")
+for path in (ROOT / "app/src").rglob("*.kt"):
+    if re.search(r"^import androidx\.compose\.", path.read_text(), re.M):
+        errors.append(f"{path.relative_to(ROOT)}: Jetpack Compose import")
+if re.search(r"androidx\.compose|kotlin\.plugin\.compose|compose\s*=\s*true|graphics-shapes", (ROOT / "app/build.gradle.kts").read_text()):
+    errors.append("app/build.gradle.kts: Compose or retired shape dependency")
 
-# No page may be left as a phase placeholder.
-for path in (compose / "pages").rglob("*.kt"):
-    if re.search(r"moves to Compose in the next phase|TODO\(phase \d\)", path.read_text()):
-        errors.append(f"{path.relative_to(ROOT)}: placeholder page remains")
+# The plain UI: no glass, shaders or blur in the Slint sources.
+for path in list((ROOT / "ui-slint/ui").rglob("*.slint")) + list((ROOT / "ui-slint/src").rglob("*.rs")):
+    if re.search(r"LiquidGlass|RuntimeShader|AGSL|\bblur\(", path.read_text()):
+        errors.append(f"{path.relative_to(ROOT)}: glass, shader or blur effect")
 
 for path in (ROOT / "app/src").rglob("*.kt"):
     source = path.read_text()
@@ -86,9 +74,9 @@ for reference in manifest.get("supplementalReferences", []):
                 errors.append(f"Missing supplemental reference target: {local}")
             elif source["usage"] == "verbatim" and hashlib.sha256(path.read_bytes()).hexdigest() != source["sourceSHA256"]:
                 errors.append(f"Changed verbatim supplemental import: {local}")
-for license_file in ("LICENSE", "JetBrainsMono-OFL.txt"):
+for license_file in ("LICENSE",):
     if not (ROOT / "licenses" / license_file).is_file():
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Compose entry points, plain Material UI, icons, placeholders, Flutter removal and capture removal guards passed")
+print("Slint UI entry points, Compose and Flutter removal, plain UI and capture removal guards passed")

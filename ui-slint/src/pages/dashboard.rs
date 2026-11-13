@@ -10,7 +10,7 @@ use slint::{ComponentHandle, SharedString};
 use crate::app::{self, data, long, num, rows, ss, strings, text, truthy};
 use crate::format;
 use crate::i18n::tr;
-use crate::nav::{self, glyph, MenuEntry};
+use crate::nav::{self, glyph};
 use crate::pages::{egress, mark, Mark};
 use crate::{AppWindow, Dash, KeyValue, ModeItem, Note};
 
@@ -812,10 +812,6 @@ pub fn act2(id: &str, a: &str, b: &str) -> bool {
         }
         None => matches!(id, "dash-move" | "dash-hide" | "dash-show"),
     }
-}
-
-pub fn menu(_key: &str) -> Vec<MenuEntry> {
-    Vec::new()
 }
 
 pub fn install(w: &AppWindow) {

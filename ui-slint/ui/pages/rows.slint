@@ -496,6 +496,8 @@ export component RowsBody inherits Rectangle {
     in property <PageData> d;
     in property <length> side: 16px;
     in property <length> top-pad: 8px;
+    // The room under the last row: the gesture inset, or the floating bar on home pages.
+    in property <length> bottom: Nav.inset-bottom;
     flick := Flickable {
         content-height: body.preferred-height;
         // A list read bottom up (logs) starts at its end; scrolling away stops following.
@@ -506,7 +508,7 @@ export component RowsBody inherits Rectangle {
             padding-left: root.side;
             padding-right: root.side;
             padding-top: root.top-pad;
-            padding-bottom: 24px + max(Nav.keyboard-height, Nav.inset-bottom);
+            padding-bottom: 24px + max(Nav.keyboard-height, root.bottom);
             for r in root.d.rows: RowView { entry: r; page: root.d.id; }
         }
     }
@@ -516,6 +518,7 @@ export component RowsBody inherits Rectangle {
 export component RowsPage inherits Rectangle {
     in property <PageData> d;
     in property <int> leading: 1;
+    in property <length> bottom: Nav.inset-bottom;
     background: Theme.s.surface;
     bar := TopBar {
         y: 0;
@@ -544,12 +547,13 @@ export component RowsPage inherits Rectangle {
         y: bar.height;
         height: parent.height - bar.height;
         d: root.d;
+        bottom: root.bottom;
     }
     if root.d.foot-text != "": Rectangle {
         x: 16px;
         width: parent.width - 32px;
         height: foot.preferred-height;
-        y: parent.height - self.height - 12px - max(Nav.keyboard-height, Nav.inset-bottom);
+        y: parent.height - self.height - 12px - max(Nav.keyboard-height, root.bottom);
         border-radius: self.height / 2;
         background: Theme.level(2);
         foot := HorizontalLayout {

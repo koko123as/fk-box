@@ -386,7 +386,6 @@ fn add_page() -> Page {
         rows.push(Row::item(&tr(label)).icon(icon).on(move |_| import(label)).enabled(!loading));
     }
     rows.push(Row::open(&tr("New profile"), Some("add"), || open_form(local_template())));
-    rows.push(Row::footer(&tr("Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content.")));
     Page::new(&tr("Add profile")).loading(loading).rows(rows)
 }
 
@@ -559,11 +558,6 @@ fn form_page(form: &Rc<RefCell<Form>>) -> Page {
         let a = form.clone();
         rows.push(Row::field(&tr("URL"), &f.url, &tr("Required"), move |v| a.borrow_mut().url = v).key("url").invalid(bad("url")).mono());
     }
-    rows.push(Row::footer(&tr(if f.remote {
-        "Subscription can be sing-box JSON, Xray JSON, Clash YAML or a node list. Automatic picks the core from the content."
-    } else {
-        "Automatic picks the core from the content."
-    })));
     if f.remote {
         rows.push(Row::gap());
         let a = form.clone();

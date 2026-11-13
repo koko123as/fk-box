@@ -8,7 +8,7 @@ use std::rc::Rc;
 use serde_json::{json, Value};
 use slint::{Color, ComponentHandle, ModelRc, VecModel};
 
-use crate::app::{self, data, long, num, ss, truthy};
+use crate::app::{self, data, long, ss, truthy};
 use crate::i18n::tr;
 use crate::nav::{self, MenuEntry};
 use crate::pages::{mark, Mark};
@@ -391,7 +391,3 @@ pub fn closed(kind: &str) {
     }
 }
 
-#[allow(dead_code)]
-fn unused() -> f64 {
-    num(&Value::Null)
-}

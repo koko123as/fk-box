@@ -110,7 +110,7 @@
           "sourceSHA256": "9230a6d8efa32e5d672fa4b5e8d448c9c417155fb22168d5575381a917086d24",
           "usage": "design",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
+            "ui-slint/src/pages/requests.rs"
           ],
           "changes": "Distinguish user/system trust and refresh after returning from settings. B-box queries its local Android bridge and isolates remote sessions."
         },
@@ -119,7 +119,7 @@
           "sourceSHA256": "44ab8149f393a7c4be5bbae25bddfc8084e3e3c117b56c5b5079e82835946f3c",
           "usage": "design",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
+            "ui-slint/src/pages/requests.rs"
           ],
           "changes": "Reference for explicit CA operations, HTTPS inclusion/exclusion and certificate setup. B-box uses private capture settings and shared components; profile HTTP rewriting is a separate B-box implementation documented in libbox.md. Certificate rotation is blocked while either capture or profile processing uses it; no Mihomo configuration."
         },
@@ -128,7 +128,7 @@
           "sourceSHA256": "78f44bbe580b2dea58f93ae5754ecd5abb7a1ee2f94cee06915c52ed893bb5de",
           "usage": "design",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
+            "ui-slint/src/pages/requests.rs"
           ],
           "changes": "Reference for HTTP exchange information. B-box keeps bounded libbox records and its independent live Connections page."
         },
@@ -137,7 +137,7 @@
           "sourceSHA256": "b989c3b61cfedf37253c9c61d6f5e66b3b9f8ceb7520f574fe3d6bac1ea17612",
           "usage": "design",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt"
+            "ui-slint/src/pages/requests.rs"
           ],
           "changes": "Reference for per-message detail navigation; B-box retains its record menu and copyable rows with actual route/TLS metadata and trailers."
         },
@@ -162,7 +162,7 @@
           "sourceSHA256": "9c61d1b0ec19d8a1a5f8ba9084a90f03ad1b36d547e7aad3b4f2da8101c36b40",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt"
+            "ui-slint/src/pages/resources.rs"
           ],
           "changes": "Auto update toggle, interval in hours, geo rows with size, last update, single update, URL edit with reset to default and copy link translated to Compose. Icon sets, rule providers, scripts and MITM modules are not carried over; the source (built in or downloaded) is shown beside the time."
         },
@@ -219,7 +219,7 @@
           "sourceSHA256": "fe536f9e0b197766a4461b981fe0760273f5fa0396e6a317b2b571616f93ac8f",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt"
+            "ui-slint/src/records.rs"
           ],
           "changes": "RecordFilter, RecordFacet (offered values by frequency, 12 max, fixed order then name), RecordGrouper, groupRecords and whereFilters (one facet widens, facets narrow)."
         },
@@ -228,8 +228,8 @@
           "sourceSHA256": "ee74a9aef2552d6435092ad9b3a64e60e9906b19383bd4bcb9c0d101d7c143a9",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt",
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ToolsPage.kt"
+            "ui-slint/src/records.rs",
+            "ui-slint/src/pages/tools.rs"
           ],
           "changes": "RecordFilterController as Compose state, removable and pinned keyword lists, Filter and Group by menus (menus close on toggle: fk-box PopupMenuItem has no keepsOpen), RecordFilterScope as a CompositionLocal, recordGroupings saved per page in the interface preferences; RecordGroupedList as a LazyListScope extension with animateItem rows instead of SliverCollapsibleGroups' unfold fade."
         },
@@ -238,7 +238,7 @@
           "sourceSHA256": "9ebbfb1bb0293e97ff366f52834dd6a8a31b4357b6afe067ea2a6bfbb2b9d52e",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+            "ui-slint/src/rows.rs"
           ],
           "changes": "titleMenuItems (title opens a popup over its start) and keywords (header strip under the bar; the body no longer runs under the bar while it shows)."
         },
@@ -247,7 +247,7 @@
           "sourceSHA256": "0d3fee5a534de3f5b5e101c91e887558deb6145358544ae10fde7d213c9e2557",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+            "ui-slint/src/rows.rs"
           ],
           "changes": "_KeywordStrip (36 dp chips, 16 dp inset, 8/20 dp gaps, 4/16 dp padding) and _TitleMenuButton (chevron 20/16 dp, focus overlay only)."
         },
@@ -256,8 +256,8 @@
           "sourceSHA256": "5048001beed275ab3f12341a4499c2bc186d1a50d4480eac358bc597d2f05872",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt",
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/ToolsPage.kt"
+            "ui-slint/src/pages/requests.rs",
+            "ui-slint/src/pages/tools.rs"
           ],
           "changes": "RequestsPage with title-menu feeds Recent requests (closed connections, Closed/All menu), Running (active, close-all) and fk-box's Captured HTTP list (sing-box only, greyed with the reason elsewhere; capture menu unchanged); requestFeed persisted; each feed keeps its own search, RecordFilterController and grouping (captured: MITM and app facets, app/host grouping). The connections.dart page is folded in; no per-connection exchange tabs (capture records carry no connection id)."
         },
@@ -266,9 +266,9 @@
           "sourceSHA256": "f7fc7c04342d4ddb7516255fbc1e5cc1873a6714d3301371ba6e143b7dff0978",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/QuickEdit.kt",
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/RequestsPage.kt",
-            "app/src/main/java/io/nekohasekai/sfa/compose/pages/Configuration.kt"
+            "ui-slint/src/forms.rs",
+            "ui-slint/src/pages/requests.rs",
+            "ui-slint/src/pages/config.rs"
           ],
           "changes": "QuickEditPage (monospace text editor with Save, edit guard; a failed apply shows its message with Discard changes? and stays open on cancel; QuickEditCancelled keeps it open) and ListQuickEditPage (one item a line, first three line issues). Hooked into capture HTTPS domains, exclusions, ports and applications, profile mitm.hosts/excluded_hosts, and ConfigListPage object lists as one JSON object a line; saves go through the existing draft/revision-checked setters."
         },
@@ -277,7 +277,7 @@
           "sourceSHA256": "304682223ecacb3e37b800345008f1479865eb991f9ffa4a55e49cc67300ee7d",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/QuickEdit.kt"
+            "ui-slint/src/forms.rs"
           ],
           "changes": "parseListInput (line markup and quotes stripped, comma split, blanks/repeats dropped, max length and validator issues) and parseLineInput (whole lines); the rule-type comma exception, map input and existing-entry counting are not ported (no fk-box field uses them)."
         }
@@ -297,7 +297,7 @@
           "sourceSHA256": "a8a7462ca5b03ebfb6182253d38c0eb0190e00b63fd6b1be216f0e2efc96297e",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/Scaffold.kt"
+            "ui-slint/src/rows.rs"
           ],
           "changes": "Chip as KeywordChip on CommonCard: 36 dp full pill, 16/12 dp padding, close mark 16 dp, filled primary when a selected toggle."
         },
@@ -306,7 +306,7 @@
           "sourceSHA256": "0c6b4d1e0f473381d843b60ddcc1c28bb29612920e979ebd7bafbdb7c13f824d",
           "usage": "adapted",
           "localPaths": [
-            "app/src/main/java/io/nekohasekai/sfa/compose/ui/RecordFilter.kt"
+            "ui-slint/src/records.rs"
           ],
           "changes": "CollapsibleHeader (label (count), trailing caption, chevron turning a quarter, 8/12 dp padding); groups start folded; no keyboard activate action."
         }

@@ -1,9 +1,10 @@
 // The Tools tab (pages/ToolsPage.kt ToolsPage): Rust-built rows (src/pages/tools.rs).
 import { Pages } from "../data.slint";
+import { Nav } from "../globals.slint";
 import { RowsPage } from "rows.slint";
 
 export component ToolsPage inherits Rectangle {
-    RowsPage { d: Pages.tools; leading: 0; }
+    RowsPage { d: Pages.tools; leading: 0; bottom: Nav.home-bottom; }
 }
 
 export component ToolRoutes inherits Rectangle {

@@ -157,7 +157,6 @@ pub fn quick_edit(title: &str, content: &str, hint: Option<&str>, apply: Apply) 
             .loading(s.saving)
             .confirm(Bar::new("check", "Save", save).when(!s.saving))
             .rows(vec![
-                Row::footer(&tr("One item per line.")),
                 Row::editor("", &s.text, 12, move |t| st_edit.borrow_mut().text = t).hint(&hint).enabled(!s.saving),
             ])
     });

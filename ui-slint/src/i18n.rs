@@ -35,7 +35,7 @@ fn unquote(line: &str) -> String {
     out
 }
 
-/// Single-line msgid/msgstr pairs, as tools/gen_slint_i18n.py writes them.
+/// Single-line msgid/msgstr pairs, as i18n/zh/LC_MESSAGES/fkui.po keeps them.
 pub fn parse_po(text: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let mut id: Option<String> = None;

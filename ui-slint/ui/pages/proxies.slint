@@ -321,7 +321,7 @@ export component ProxiesPage inherits Rectangle {
             property <int> tick: root.scroll-tick;
             changed tick => { self.content-y = max(root.scroll-target, self.height - self.content-height); }
             vertical-stretch: 1;
-            content-height: grid.height + 16px + Nav.inset-bottom;
+            content-height: grid.height + 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             grid := NodeGrid {
                 y: 0;
                 width: parent.width;
@@ -339,7 +339,7 @@ export component ProxiesPage inherits Rectangle {
             padding-left: 16px;
             padding-right: 16px;
             padding-top: 8px;
-            padding-bottom: 16px + Nav.inset-bottom;
+            padding-bottom: 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             spacing: 0px;
             for g in Proxies.groups: VerticalLayout {
                 spacing: 0px;

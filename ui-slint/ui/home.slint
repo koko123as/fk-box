@@ -84,16 +84,25 @@ component Pages inherits Rectangle {
 
 export component HomePage inherits Rectangle {
     background: Theme.s.surface;
-    if Nav.mobile: VerticalLayout {
-        Pages { vertical-stretch: 1; }
-        // NavigationBar: 80 dp of equal items 8 dp apart, its surface continuing
-        // under the system navigation bar (the gesture inset).
-        Rectangle {
-            height: 80px + Nav.inset-bottom;
-            background: Theme.s.surface-container;
+    // Phones: the pages run under a floating navigation bar (FlClash's mobile
+    // layout), a rounded bar inset from the edges and above the gesture inset.
+    if Nav.mobile: Rectangle {
+        Pages { }
+        bar := Rectangle {
+            x: 16px;
+            width: parent.width - 32px;
+            height: Nav.bar-height;
+            y: parent.height - self.height - Nav.inset-bottom - Nav.bar-margin;
+            border-radius: self.height / 2;
+            background: Theme.s.surface-container-high;
+            drop-shadow-blur: 12px;
+            drop-shadow-offset-y: 2px;
+            drop-shadow-color: #00000030;
+            // Taps between the items stay on the bar.
+            TouchArea { }
             HorizontalLayout {
-                padding-bottom: Nav.inset-bottom;
-                spacing: 8px;
+                padding-left: 8px;
+                padding-right: 8px;
                 for d in Nav.destinations: DestinationItem {
                     key: d;
                     horizontal-stretch: 1;

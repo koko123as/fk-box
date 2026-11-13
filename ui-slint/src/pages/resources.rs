@@ -189,7 +189,6 @@ fn page(st: &ResRef) -> Page {
         row.data.has_trailing = false;
         rows.push(row);
     }
-    rows.push(Row::footer(&tr("Xray and mihomo share these files. A failed update keeps the current file; changes apply when the core next starts.")));
     let a = st.clone();
     let empty = s.items.as_ref().map(Vec::is_empty).unwrap_or(true);
     Page::new(&tr("Resources"))

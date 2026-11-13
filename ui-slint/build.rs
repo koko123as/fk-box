@@ -1,6 +1,6 @@
 fn main() {
-    // @tr() strings carry no context, so the .po generated from the Compose
-    // UI's BoxStrings.kt (tools/gen_slint_i18n.py) applies as is.
+    // @tr() strings carry no context; i18n/zh holds the Simplified Chinese
+    // that src/i18n.rs reads too.
     let config = slint_build::CompilerConfiguration::new()
         .with_style("material".into())
         .with_bundled_translations("i18n")

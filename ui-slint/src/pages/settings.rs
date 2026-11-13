@@ -80,7 +80,6 @@ fn open_core() {
             }
             rows.push(r);
         }
-        rows.push(Row::footer(&tr("A core that is off is skipped when choosing automatically, and profiles that need it will not start.")));
         rows.push(Row::gap());
         rows.push(native_toggle("Disable deprecation warnings", "disableDeprecatedWarnings", false, false));
         rows.push(native_toggle("Enable memory protection", "oomKillerEnabled", true, false));
@@ -103,7 +102,6 @@ fn open_core() {
             .key("memory"),
         );
         rows.push(native_toggle("Power reports", "powerReportEnabled", true, false));
-        rows.push(Row::footer(&tr("Deprecation warnings and memory protection apply to the sing-box core only.")));
         Page::new(&tr("Core")).rows(rows)
     });
 }
@@ -120,7 +118,7 @@ pub fn open_about() {
         let busy = *c.borrow();
         let mut rows = Vec::new();
         // The hero: the icon, the name, the version and license pills, the update button.
-        let mut hero = Row::title("FK-box", &tr("Kotlin + Jetpack Compose three-core client"));
+        let mut hero = Row::title("FK-box", &tr("Rust + Slint three-core client"));
         hero.data.kind = "hero".into();
         hero.data.value = format!("v{version}").into();
         hero.data.hint = "GPL-3.0".into();
@@ -129,21 +127,19 @@ pub fn open_about() {
         let mut update = Row::button(&tr("Check for updates"), 0, move || check_updates(&a)).icon("sync").key("update").enabled(!busy);
         update.data.checked = false;
         rows.push(update);
-        let join = |v: &str, repo: &str| [v, repo].iter().filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join(" · ");
-        let links = vec![
-            ("code", "Source code", "github.com/koko123as/fk-box".to_string(), "https://github.com/koko123as/fk-box"),
-            ("code", "Based on sing-box-for-android", "SagerNet/sing-box-for-android · GPL-3.0".into(), "https://github.com/SagerNet/sing-box-for-android"),
-            ("code", "Predecessor: B-box", "giturass/B-box · GPL-3.0".into(), "https://github.com/giturass/B-box"),
-            ("cpu", "sing-box", join(&core, "SagerNet/sing-box"), "https://github.com/SagerNet/sing-box"),
-            ("cpu", "Xray", join(&xray, "XTLS/Xray-core"), "https://github.com/XTLS/Xray-core"),
-            ("cpu", "mihomo", join(&mihomo, "MetaCubeX/mihomo"), "https://github.com/MetaCubeX/mihomo"),
-            ("paintbrush", "FlClash", "Page layout reference · GPL-3.0".into(), "https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7"),
+        // The three cores with their versions, then the source and the licenses.
+        rows.push(Row::section(&tr("Cores")));
+        let cores = [
+            ("sing-box", core, "https://github.com/SagerNet/sing-box"),
+            ("Xray", xray, "https://github.com/XTLS/Xray-core"),
+            ("mihomo", mihomo, "https://github.com/MetaCubeX/mihomo"),
         ];
-        rows.push(Row::section(&tr("More")));
-        for (icon, title, subtitle, url) in links {
-            rows.push(Row::item(&tr(title)).subtitle(&subtitle).lines(1).icon(icon).key(title).trailing("open-external", move || app::act("openUrl", json!({ "url": url }))).on(move |_| app::act("openUrl", json!({ "url": url }))));
+        for (name, v, url) in cores {
+            rows.push(Row::item(name).value(&v).lines(1).icon("cpu").key(name).on(move |_| app::act("openUrl", json!({ "url": url }))));
         }
-        rows.push(Row::item(&tr("Open-source licenses")).icon("info").key("licenses").on(|_| open_licenses()));
+        rows.push(Row::section(&tr("More")));
+        rows.push(Row::item(&tr("Source code")).value("GitHub").lines(1).icon("code").key("source").on(|_| app::act("openUrl", json!({ "url": "https://github.com/koko123as/fk-box" }))));
+        rows.push(Row::item(&tr("Open-source licenses")).icon("info").chevron().key("licenses").on(|_| open_licenses()));
         Page::new(&tr("About")).loading(busy).rows(rows)
     });
 }
@@ -188,7 +184,7 @@ fn update_dialog(result: Value) {
 }
 
 /// showLicensePage: the projects FK-box ships or borrows from.
-const LICENSES: [(&str, &str, &str, &str); 18] = [
+const LICENSES: [(&str, &str, &str, &str); 17] = [
     ("FK-box", "GPL-3.0", "This app", "https://github.com/koko123as/fk-box"),
     ("sing-box-for-android", "GPL-3.0", "Base Android app and backend", "https://github.com/SagerNet/sing-box-for-android"),
     ("B-box", "GPL-3.0", "Direct predecessor: core extensions, MITM, multi-core", "https://github.com/giturass/B-box"),
@@ -197,9 +193,8 @@ const LICENSES: [(&str, &str, &str, &str); 18] = [
     ("mihomo", "GPL-3.0", "Third core (Clash YAML)", "https://github.com/MetaCubeX/mihomo"),
     ("FlClash", "GPL-3.0", "Page layout reference", "https://github.com/chen08209/FlClash"),
     ("shadowsocks-android", "GPL-3.0", "DefaultNetworkListener", "https://github.com/shadowsocks/shadowsocks-android"),
-    ("Android Open Source Project", "Apache-2.0", "ParceledListSlice, Material 3 shapes", "https://github.com/androidx/androidx"),
+    ("Android Open Source Project", "Apache-2.0", "ParceledListSlice", "https://github.com/androidx/androidx"),
     ("Slint", "GPL-3.0", "UI framework", "https://github.com/slint-ui/slint"),
-    ("AndroidX Graphics Shapes", "Apache-2.0", "Shape morphing", "https://developer.android.com/jetpack/androidx/releases/graphics"),
     ("CameraX", "Apache-2.0", "QR code camera", "https://developer.android.com/jetpack/androidx/releases/camera"),
     ("ZXing", "Apache-2.0", "QR code scanning and generation", "https://github.com/zxing/zxing"),
     ("libghostty", "MIT", "Terminal", "https://github.com/ghostty-org/ghostty"),
@@ -627,7 +622,6 @@ fn webdav_page(st: &Rc<RefCell<WebDav>>) -> Page {
         s.password = v.chars().take(4096).collect();
         s.error = None;
     }).key("password").secret(true));
-    rows.push(Row::footer(&tr("Enter the WebDAV directory URL. Backups are stored in its B-box folder.")));
     if s.initial.is_some() {
         rows.push(Row::gap());
         let a = st.clone();
@@ -1110,6 +1104,138 @@ fn access_menu(st: &AccessRef, enabled: bool, managed: bool, mode: i64, sort: &'
 }
 
 // ---------------------------------------------------------------------------
+// App picker: the access-control app list as a chooser (routing rules' apps).
+// ---------------------------------------------------------------------------
+
+struct Picker {
+    selected: BTreeSet<String>,
+    pinned: BTreeSet<String>,
+    query: String,
+    system: bool,
+    apps: Option<Vec<Value>>,
+    error: Option<String>,
+    generation: u64,
+}
+
+fn picker_load(st: &Rc<RefCell<Picker>>, refresh: bool) {
+    let (system, generation) = {
+        let mut s = st.borrow_mut();
+        s.generation += 1;
+        s.apps = None;
+        s.error = None;
+        (s.system, s.generation)
+    };
+    mark(Mark::ROWS);
+    let a = st.clone();
+    app::call("listApps", json!({ "refresh": refresh, "system": system, "nonInternet": false }), move |r| {
+        let mut s = a.borrow_mut();
+        if s.generation != generation {
+            return;
+        }
+        match r {
+            Ok(v) => s.apps = Some(list(&v)),
+            Err(e) => s.error = Some(format::clean_error(&e)),
+        }
+        drop(s);
+        mark(Mark::ROWS);
+    });
+}
+
+/// Picks installed apps by package; `done` gets the chosen packages when saved.
+pub fn pick_apps(initial: Vec<String>, done: impl Fn(Vec<String>) + 'static) {
+    let selected: BTreeSet<String> = initial.into_iter().filter(|p| !p.trim().is_empty()).collect();
+    let st = Rc::new(RefCell::new(Picker { pinned: selected.clone(), selected, query: String::new(), system: false, apps: None, error: None, generation: 0 }));
+    picker_load(&st, false);
+    let done: Rc<dyn Fn(Vec<String>)> = Rc::new(done);
+    let a = st.clone();
+    rows::push(move || picker_page(&a, done.clone()));
+}
+
+fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page {
+    let s = st.borrow();
+    let words: Vec<String> = s.query.to_lowercase().split_whitespace().map(str::to_string).collect();
+    let mut visible: Vec<Value> = s
+        .apps
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|app| {
+            let hay = format!("{} {}", text(&app["name"]), text(&app["package"])).to_lowercase();
+            words.iter().all(|w| hay.contains(w.as_str()))
+        })
+        .collect();
+    visible.sort_by(|a, b| {
+        let (pa, pb) = (text(&a["package"]), text(&b["package"]));
+        (s.pinned.contains(&pb)).cmp(&s.pinned.contains(&pa)).then_with(|| text(&a["name"]).to_lowercase().cmp(&text(&b["name"]).to_lowercase())).then_with(|| pa.cmp(&pb))
+    });
+    let mut rows = Vec::new();
+    if s.apps.is_some() && visible.is_empty() {
+        rows.push(Row::empty(&tr("No results"), "", "apps-list"));
+    }
+    for app_v in &visible {
+        let pkg = text(&app_v["package"]);
+        let (a, p) = (st.clone(), pkg.clone());
+        let mut r = Row::check(&text(&app_v["name"]), s.selected.contains(&pkg), move |_| {
+            let mut x = a.borrow_mut();
+            if !x.selected.insert(p.clone()) {
+                x.selected.remove(&p);
+            }
+            drop(x);
+            mark(Mark::ROWS);
+        })
+        .subtitle(&pkg)
+        .lines(1)
+        .key(&pkg)
+        .icon("apps-list")
+        .image(app_icon(&pkg));
+        r.data.position = 0;
+        rows.push(r);
+    }
+    let count = s.selected.len();
+    let error = s.error.clone();
+    let system = s.system;
+    let loading = s.apps.is_none() && error.is_none();
+    drop(s);
+    let (a, b, c) = (st.clone(), st.clone(), st.clone());
+    let mut page = Page::new(&if count > 0 { format!("{} {}", tr("Selected"), count) } else { tr("Apps") })
+        .loading(loading)
+        .rows(rows)
+        .search(move |q| {
+            let mut x = a.borrow_mut();
+            x.query = q;
+            x.pinned = x.selected.clone();
+        })
+        .confirm(Bar::new("check", "Save", move || {
+            let chosen: Vec<String> = b.borrow().selected.iter().cloned().collect();
+            nav::pop();
+            done(chosen);
+        }))
+        .menu(move || {
+            let (x, y, z) = (c.clone(), c.clone(), c.clone());
+            vec![
+                MenuEntry::plain(&tr("Show system apps"), move || {
+                    let flip = !x.borrow().system;
+                    x.borrow_mut().system = flip;
+                    picker_load(&x, false);
+                })
+                .checked(system),
+                MenuEntry::act("Deselect all", "deselect", move || {
+                    y.borrow_mut().selected.clear();
+                    mark(Mark::ROWS);
+                }),
+                MenuEntry::act("Refresh", "refresh", move || {
+                    APP_ICONS.with(|i| i.borrow_mut().clear());
+                    picker_load(&z, true);
+                }),
+            ]
+        });
+    if let Some(e) = error {
+        page = page.empty(&tr("Application query failed"), &e, "lock-open");
+    }
+    page
+}
+
+// ---------------------------------------------------------------------------
 // App icons (PackageIcon): PNGs the native side renders into its cache.
 // ---------------------------------------------------------------------------
 
@@ -1141,13 +1267,3 @@ pub fn app_icon(pkg: &str) -> Option<slint::Image> {
 pub fn project(_w: &AppWindow, _m: Mark) {}
 pub fn opened(_kind: &str, _arg: &str, _id: i32) {}
 pub fn closed(_kind: &str, _arg: &str, _id: i32) {}
-pub fn act(_id: &str, _arg: &str) -> bool {
-    false
-}
-pub fn act2(_id: &str, _a: &str, _b: &str) -> bool {
-    false
-}
-pub fn menu(_key: &str) -> Vec<MenuEntry> {
-    Vec::new()
-}
-pub fn install(_w: &AppWindow) {}

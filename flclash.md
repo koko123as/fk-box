@@ -39,7 +39,7 @@
 
 请求/MITM 功能另参考 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)（[`f544861`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计、[`1a7556d`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合）。该 dev 源码的 `FEATURE_MITM` 默认关闭，B-box 自行实现 sing-box 路由上的 TLS 接管。
 
-FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [JetBrainsMono-OFL.txt](licenses/JetBrainsMono-OFL.txt) 和 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。
+FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。
 
 ## 界面复用与业务适配
 

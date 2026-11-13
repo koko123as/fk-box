@@ -844,7 +844,7 @@ export component DashboardPage inherits Rectangle {
             padding-left: side;
             padding-right: side;
             padding-top: 8px;
-            padding-bottom: 16px;
+            padding-bottom: 16px + Nav.home-bottom;
             spacing: Dash.editing ? 0px : Nav.gap;
             if Dash.editing: DashboardEditor { }
             if !Dash.editing && (App.remote || Dash.apply-required): Banners { top: true; }

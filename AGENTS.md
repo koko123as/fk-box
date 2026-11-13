@@ -1,6 +1,6 @@
 # FK-box 项目约束
 
-本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Kotlin + Jetpack Compose 的朴素 Material 3 界面（页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
+本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Rust + Slint 的朴素 Material 3 界面（`ui-slint/`，页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
 
 ## 文档职责
 
@@ -26,7 +26,7 @@
 
 ## 架构与兼容性约束
 
-1. 界面由 Kotlin + Jetpack Compose 提供，位于 `compose/`（`theme/`、`ui/`、`pages/`），页面布局按 FlClash 翻译，控件全部为 Material 3 原生组件与 Material 图标：不使用液态玻璃、着色器、模糊、阴影、装饰形状、按压特效、弹簧动效或页面转场，返回只用系统返回（约定见 [flclash.md](flclash.md#朴素界面约定)，由 `tools/verify_newui.py` 检查）。`flutter/` 目录已删除，应用不依赖 Flutter。`compose.MainActivity` 与 `compose.ShareActivity` 保留稳定组件名，进入 `BoxActivity`；不要恢复 84e71e4^ 之前的旧 SFA Compose 页面作为界面。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt`（沿用原通道命令与事件名的 Kotlin 门面）提供给 `compose/BoxController.kt`。
+1. 界面由 Rust + Slint 提供，位于 `ui-slint/`（`ui/*.slint` 布局、`src/` 状态与页面逻辑，编为 `libfkui.so`），页面布局按 FlClash 翻译，风格为朴素 Material 3 与 Material 图标；手机端底栏为悬浮导航栏（FlClash 移动端布局），其余不使用液态玻璃、着色器、模糊、装饰形状、按压特效、弹簧动效或页面转场（约定见 [flclash.md](flclash.md#朴素界面约定)，由 `tools/verify_newui.py` 检查）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
 2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。

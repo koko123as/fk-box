@@ -248,7 +248,7 @@ export component AppWindow inherits Window {
         if Nav.toast != "": Snackbar {
             x: 16px + Nav.inset-left;
             width: min(560px, parent.width - 32px - Nav.inset-left - Nav.inset-right);
-            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.inset-bottom + (Nav.mobile ? 80px : 0px));
+            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.inset-bottom + (Nav.mobile ? Nav.bar-height + 2 * Nav.bar-margin : 0px));
         }
     }
 }

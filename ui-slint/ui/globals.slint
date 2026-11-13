@@ -63,6 +63,11 @@ export global Nav {
     in-out property <length> inset-left;
     in-out property <length> inset-right;
     in-out property <length> keyboard-height;
+    // The floating navigation bar (phones): its height, its margin, and the room
+    // the home pages leave under their content so the bar never covers it.
+    out property <length> bar-height: 64px;
+    out property <length> bar-margin: 12px;
+    out property <length> home-bottom: mobile ? inset-bottom + bar-height + 2 * bar-margin : inset-bottom;
 
     in property <[Route]> routes;
     // The selected home destination, by label (HomePage `current`).

@@ -106,7 +106,7 @@ export component ProfilesPage inherits Rectangle {
     if !App.remote && Profiles.rows.length > 0: Flickable {
         y: bar.height;
         height: parent.height - bar.height;
-        content-height: grid.height + 8px + 16px + Nav.inset-bottom;
+        content-height: grid.height + 8px + 16px + (root.picker ? Nav.inset-bottom : Nav.home-bottom);
         grid := Rectangle {
             property <length> cell: (root.width - 32px - (root.columns - 1) * root.gap) / root.columns;
             y: 8px;

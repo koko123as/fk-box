@@ -230,9 +230,10 @@ pub fn maybe_pop() {
 /// Closes the form `id` belongs to, asking the guard of its visible route.
 pub fn dismiss_form(id: i32) {
     let list = all_routes();
-    let Some(index) = list.iter().position(|r| r.id == id) else { return };
+    if !list.iter().any(|r| r.id == id) {
+        return;
+    }
     let visible = list.last().map(|r| r.id).unwrap_or(id);
-    let _ = index;
     ask_then(visible, move || close(id));
 }
 
