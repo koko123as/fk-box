@@ -1,16 +1,16 @@
-// Placeholder until the page is ported.
-import { Theme } from "../theme.slint";
-import { Icons } from "../icons.slint";
-import { TopBar, EmptyState } from "../kit.slint";
+// Requests and Logs as home destinations (sidebar layouts): Rust-built rows
+// (src/pages/requests.rs); as routes they are adopted rows pages too.
+import { Pages } from "../data.slint";
+import { RowsPage } from "rows.slint";
+
 export component RequestsPage inherits Rectangle {
-    background: Theme.s.surface;
-    bar := TopBar { y: 0; title: @tr("Requests"); }
-    EmptyState { y: bar.height; height: parent.height - bar.height; title: @tr("Requests"); }
+    RowsPage { d: Pages.requests; leading: 0; }
 }
+
 export component LogsPage inherits Rectangle {
-    background: Theme.s.surface;
-    bar := TopBar { y: 0; title: @tr("Logs"); }
+    RowsPage { d: Pages.logs; leading: 0; }
 }
+
 export component RequestRoutes inherits Rectangle {
     in property <string> kind;
     in property <string> arg;

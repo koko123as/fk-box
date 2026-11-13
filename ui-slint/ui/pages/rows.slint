@@ -224,6 +224,99 @@ export component RowView inherits Rectangle {
             T { text: root.entry.subtitle; role: TextRole.subheadline; color: Theme.s.on-surface-variant; wrap: word-wrap; horizontal-alignment: center; }
             Rectangle { height: 12px; }
         }
+        // RecordListItem: header (time, labels, trailing close), title, chain, lines.
+        if entry.kind == "record": HorizontalLayout {
+            padding-bottom: 8px;
+            Rectangle {
+                border-radius: Theme.radius;
+                background: Theme.level(2);
+                height: rec.preferred-height;
+                rt := TouchArea { clicked => { Nav.act2("row", root.key, ""); } }
+                Rectangle { background: rt.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent; border-radius: Theme.radius; }
+                rec := VerticalLayout {
+                    padding-left: 16px;
+                    padding-right: 16px;
+                    padding-top: 10px;
+                    padding-bottom: 12px;
+                    spacing: 6px;
+                    HorizontalLayout {
+                        spacing: 8px;
+                        if root.entry.value != "": T { text: root.entry.value; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
+                        for l[i] in root.entry.options: Rectangle {
+                            height: lt.preferred-height + 2px;
+                            width: lt.preferred-width + 12px;
+                            y: (parent.height - self.height) / 2;
+                            border-radius: Theme.radius;
+                            background: root.entry.lines == 2 && i == 0 ? Theme.s.error-container : root.entry.lines == 1 && i == 0 ? Theme.s.warning-container : Theme.level(3);
+                            lt := T { text: l; role: TextRole.caption1; emphasized: true; horizontal-stretch: 0;
+                                color: root.entry.lines == 2 && i == 0 ? Theme.s.on-error-container : root.entry.lines == 1 && i == 0 ? Theme.s.on-warning-container : Theme.s.on-surface-variant; }
+                            TouchArea { clicked => { Nav.act2("row-edit", root.key, "l" + i); } }
+                        }
+                        Rectangle { horizontal-stretch: 1; }
+                        if root.entry.has-trailing: IconButton {
+                            glyph: root.entry.trailing-glyph;
+                            width: 28px;
+                            height: 28px;
+                            y: (parent.height - self.height) / 2;
+                            clicked => { Nav.act2("row-trail", root.key, ""); }
+                        }
+                    }
+                    if root.entry.title != "": TextInput {
+                        text: root.entry.title;
+                        read-only: true;
+                        single-line: false;
+                        wrap: word-wrap;
+                        font-size: Theme.size(root.entry.mono ? TextRole.footnote : TextRole.subheadline);
+                        font-family: root.entry.mono ? Theme.mono : Theme.font-family;
+                        font-weight: root.entry.mono ? 400 : 500;
+                        color: Theme.s.on-surface;
+                    }
+                    if root.entry.chain.length > 0 || root.entry.detail != "": HorizontalLayout {
+                        spacing: 6px;
+                        alignment: start;
+                        if root.entry.detail != "": T {
+                            text: root.entry.detail;
+                            role: TextRole.footnote;
+                            color: Theme.s.on-surface-variant;
+                            horizontal-stretch: 0;
+                            vertical-alignment: center;
+                            TouchArea { clicked => { Nav.act2("row-edit", root.key, "r"); } }
+                        }
+                        if root.entry.detail != "": Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+                        for c[i] in root.entry.chain: HorizontalLayout {
+                            spacing: 6px;
+                            if i > 0: Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+                            Rectangle {
+                                height: cl.preferred-height + 2px;
+                                width: cl.preferred-width + 12px;
+                                y: (parent.height - self.height) / 2;
+                                border-radius: Theme.radius;
+                                background: i == root.entry.chain.length - 1 ? Theme.s.primary.with-alpha(0.12) : Theme.level(3);
+                                cl := T { text: c; role: TextRole.caption1; emphasized: true; horizontal-stretch: 0;
+                                    color: i == root.entry.chain.length - 1 ? Theme.s.primary : Theme.s.on-surface-variant; }
+                                TouchArea { clicked => { Nav.act2("row-edit", root.key, "c" + i); } }
+                            }
+                        }
+                    }
+                    if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.footnote; color: Theme.s.on-surface-variant; wrap: word-wrap; }
+                    if root.entry.hint != "": T { text: root.entry.hint; role: TextRole.footnote; color: Theme.s.error; wrap: word-wrap; }
+                }
+            }
+        }
+        // CollapsibleHeader: label (count), the expand icon.
+        if entry.kind == "group": Rectangle {
+            height: gh.preferred-height + 12px;
+            gt := TouchArea { y: 12px; height: parent.height - 12px; clicked => { Nav.act2("row", root.key, ""); } }
+            gh := HorizontalLayout {
+                y: 12px;
+                padding: 8px;
+                spacing: 8px;
+                T { text: root.entry.title; role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
+                T { text: "(" + root.entry.value + ")"; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+                if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.footnote; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+                Icon { glyph: root.entry.checked ? Icons.chevron-down : Icons.chevron-forward; size: 20px; color: Theme.s.on-surface-variant; y: (parent.height - self.height) / 2; }
+            }
+        }
         if entry.kind == "card": Card {
             height: card-lay.preferred-height;
             long-press-menu: root.entry.menu;
@@ -398,8 +491,12 @@ export component RowsBody inherits Rectangle {
     in property <PageData> d;
     in property <length> side: 16px;
     in property <length> top-pad: 8px;
-    Flickable {
+    flick := Flickable {
         content-height: body.preferred-height;
+        // A list read bottom up (logs) starts at its end; scrolling away stops following.
+        property <length> end: min(0px, self.height - body.preferred-height);
+        changed end => { if (root.d.reverse && self.content-y <= 0px && self.content-y >= self.end - 120px) { self.content-y = self.end; } }
+        init => { if (root.d.reverse) { self.content-y = self.end; } }
         body := VerticalLayout {
             padding-left: root.side;
             padding-right: root.side;
@@ -421,10 +518,13 @@ export component RowsPage inherits Rectangle {
         leading: root.leading;
         actions: root.d.actions;
         menu-key: root.d.menu-key;
+        title-menu-key: root.d.title-menu-key;
+        keywords: root.d.keywords;
         loading: root.d.loading;
         searchable: root.d.searchable;
         action(id) => { Nav.act2("bar", root.d.id, id); }
         search(q) => { Nav.act2("search", root.d.id, q); }
+        keyword(k, removable) => { Nav.act2("keyword", root.d.id, k); }
     }
     if root.d.rows.length == 0 && root.d.empty-title != "": EmptyState {
         y: bar.height;

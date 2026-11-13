@@ -318,6 +318,36 @@ impl Row {
         self
     }
 
+    /// RecordListItem: `labels` tap as "l<i>", `chain` chips as "c<i>", the rule (`detail`) as "r".
+    pub fn record(time: &str, labels: Vec<String>, title: &str, f: impl Fn() + 'static) -> Row {
+        let mut r = row("record", title);
+        r.data.value = time.into();
+        r.data.options = ModelRc::new(VecModel::from(labels.into_iter().map(SharedString::from).collect::<Vec<_>>()));
+        r.action = Some(Rc::new(move |_| f()));
+        r
+    }
+
+    pub fn chain(mut self, rule: &str, chain: Vec<String>) -> Row {
+        self.data.detail = rule.into();
+        self.data.chain = ModelRc::new(VecModel::from(chain.into_iter().map(SharedString::from).collect::<Vec<_>>()));
+        self
+    }
+
+    /// The record's label taps ("l0", "c1", "r").
+    pub fn on_tap(mut self, f: impl Fn(String) + 'static) -> Row {
+        self.edit = Some(Rc::new(f));
+        self
+    }
+
+    /// CollapsibleHeader
+    pub fn group(label: &str, count: usize, open: bool, f: impl Fn() + 'static) -> Row {
+        let mut r = row("group", label);
+        r.data.value = count.to_string().into();
+        r.data.checked = open;
+        r.action = Some(Rc::new(move |_| f()));
+        r
+    }
+
     pub fn image(mut self, image: Option<slint::Image>) -> Row {
         if let Some(i) = image {
             self.data.image = i;
@@ -380,6 +410,13 @@ pub struct Page {
     /// FloatingFootBar: text, icon, chip label, button label.
     pub foot: Option<(String, &'static str, String, String)>,
     pub foot_action: Option<Rc<dyn Fn()>>,
+    /// titleMenuItems: the title opens this menu.
+    pub title_menu: Option<Rc<dyn Fn() -> Vec<MenuEntry>>>,
+    /// The keyword strip: (key, label, removable, selected, section start), and its tap.
+    pub keywords: Vec<(String, String, bool, bool, bool)>,
+    pub on_keyword: Option<Act>,
+    /// A list read bottom up (LogsPage's reverseLayout).
+    pub reverse: bool,
 }
 
 impl Page {
@@ -422,6 +459,22 @@ impl Page {
         self
     }
 
+    pub fn title_menu(mut self, f: impl Fn() -> Vec<MenuEntry> + 'static) -> Page {
+        self.title_menu = Some(Rc::new(f));
+        self
+    }
+
+    pub fn keywords(mut self, keywords: Vec<(String, String, bool, bool, bool)>, f: impl Fn(String) + 'static) -> Page {
+        self.keywords = keywords;
+        self.on_keyword = Some(Rc::new(f));
+        self
+    }
+
+    pub fn reverse(mut self, reverse: bool) -> Page {
+        self.reverse = reverse;
+        self
+    }
+
     pub fn foot(mut self, text: &str, icon: &'static str, chip: &str, button: &str, f: impl Fn() + 'static) -> Page {
         self.foot = Some((text.into(), icon, chip.into(), button.into()));
         self.foot_action = Some(Rc::new(f));
@@ -453,6 +506,13 @@ thread_local! {
 
 /// The home Tools page is built here too, under this id.
 pub const TOOLS_ID: i32 = -100;
+/// The home Requests and Logs destinations (sidebar layouts).
+pub const REQUESTS_ID: i32 = -101;
+pub const LOGS_ID: i32 = -102;
+
+pub fn set_home(id: i32, builder: impl Fn() -> Page + 'static) {
+    register(id, Rc::new(builder));
+}
 
 fn register(id: i32, builder: Builder) {
     ENTRIES.with(|e| {
@@ -615,6 +675,18 @@ fn build(id: i32) -> Option<PageData> {
         foot_glyph: page.foot.as_ref().map(|f| glyph(f.1)).unwrap_or_default(),
         foot_chip: page.foot.as_ref().map(|f| ss(&f.2)).unwrap_or_default(),
         foot_button: page.foot.as_ref().map(|f| ss(&f.3)).unwrap_or_default(),
+        title_menu_key: if page.title_menu.is_some() { ss(format!("title:{id}")) } else { SharedString::new() },
+        keywords: if page.keywords.is_empty() {
+            ModelRc::default()
+        } else {
+            ModelRc::new(VecModel::from(
+                page.keywords
+                    .iter()
+                    .map(|(key, label, removable, selected, section)| crate::Keyword { key: ss(key), label: ss(label), removable: *removable, selected: *selected, section_start: *section })
+                    .collect::<Vec<_>>(),
+            ))
+        },
+        reverse: page.reverse,
     };
     ENTRIES.with(|e| {
         if let Some(en) = e.borrow_mut().get_mut(&id) {
@@ -641,6 +713,18 @@ pub fn project(w: &AppWindow) {
     if let Some(tools) = build(TOOLS_ID) {
         if w.global::<Pages>().get_tools() != tools {
             w.global::<Pages>().set_tools(tools);
+        }
+    }
+    // Requests and Logs on the home pane only while they are the destination shown.
+    let tab = w.global::<Nav>().get_tab();
+    if tab == "Requests" {
+        if let Some(p) = build(REQUESTS_ID) {
+            w.global::<Pages>().set_requests(p);
+        }
+    }
+    if tab == "Logs" {
+        if let Some(p) = build(LOGS_ID) {
+            w.global::<Pages>().set_logs(p);
         }
     }
 }
@@ -704,6 +788,15 @@ pub fn act2(id: &str, a: &str, b: &str) -> bool {
             }
             true
         }
+        "keyword" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.on_keyword.clone()));
+            if let Some(f) = f {
+                f(b.to_string());
+                crate::pages::mark(crate::pages::Mark::ROWS);
+            }
+            true
+        }
         "foot" => {
             let Ok(page) = a.parse::<i32>() else { return true };
             let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.foot_action.clone()));
@@ -743,6 +836,11 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
             items.extend(f());
         }
         return items;
+    }
+    if let Some(rest) = key.strip_prefix("title:") {
+        let Ok(id) = rest.parse::<i32>() else { return Vec::new() };
+        let f = ENTRIES.with(|e| e.borrow().get(&id).and_then(|en| en.last.title_menu.clone()));
+        return f.map(|f| f()).unwrap_or_default();
     }
     if let Some(rest) = key.strip_prefix("row:") {
         if let Some((page, key)) = split(rest) {

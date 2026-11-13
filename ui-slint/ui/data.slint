@@ -3,7 +3,7 @@
 // fields, compose/BoxController.kt).
 
 import { Glyph } from "icons.slint";
-import { BarAction } from "globals.slint";
+import { BarAction, Keyword } from "globals.slint";
 
 // Values the whole app reads (BoxController.running, remote, transitioning, …).
 export global App {
@@ -302,6 +302,9 @@ export struct SettingRow {
     has-image: bool,
     // The segments of a SegmentedButton row (kind "segments"), the selected one in lines.
     options: [string],
+    // A record (RecordListItem): the outbound chain under its rule (detail).
+    chain: [string],
+    detail: string,
     // 0 alone, 1 start, 2 middle, 3 end, 4 start and end
     position: int,
 }
@@ -327,12 +330,18 @@ export struct PageData {
     foot-glyph: Glyph,
     foot-chip: string,
     foot-button: string,
+    // The title menu (titleMenuItems), the keyword strip, a list read bottom up.
+    title-menu-key: string,
+    keywords: [Keyword],
+    reverse: bool,
 }
 
 export global Pages {
     in property <[PageData]> data;
-    // The home destinations built in Rust (Tools), by label.
+    // The home destinations built in Rust (Tools, Requests, Logs).
     in property <PageData> tools;
+    in property <PageData> requests;
+    in property <PageData> logs;
 }
 
 export global Settings {

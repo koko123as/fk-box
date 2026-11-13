@@ -13,6 +13,7 @@ mod host;
 mod i18n;
 mod nav;
 mod pages;
+mod records;
 mod rows;
 mod theme;
 mod theme_apply;
