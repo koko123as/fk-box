@@ -8,7 +8,7 @@
 //! `dark`, `light`, `tick:N` (N seconds with rate samples), `scroll:DY`,
 //! `tap:X,Y` (logical px), `size:W,H,SCALE`, `access` (open Access control),
 //! `rss` (print VmRSS and the icon cache), `trim` (malloc_trim, then VmRSS),
-//! `bg` / `fg` (the host's lifecycle event).
+//! `bg` / `fg` (the host's lifecycle event), `wait:N` (N real seconds).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -355,6 +355,10 @@ pub fn main() {
                 }
             }
             // The host's lifecycle: `bg` sends the app to the background, `fg` brings it back.
+            // Real time passing (the UI's throttles read the wall clock).
+            "wait" => {
+                std::thread::sleep(Duration::from_secs(rest.parse().unwrap_or(1)));
+            }
             "bg" | "fg" => {
                 event("foreground", json!(cmd == "fg"));
                 h.pump();
