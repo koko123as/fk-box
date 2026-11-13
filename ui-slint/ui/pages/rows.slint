@@ -402,6 +402,9 @@ export component RowView inherits Rectangle {
                 border-bottom-left-radius: bottom ? Theme.radius : 0;
                 border-bottom-right-radius: bottom ? Theme.radius : 0;
                 background: root.entry.invalid ? Theme.s.error-container : Theme.level(2);
+                // The whole row is the field's tap target, not only the line
+                // of text in its middle (ListItemInput).
+                TouchArea { clicked => { ff.focus-end(); } }
                 fl := HorizontalLayout {
                     padding-left: 16px;
                     padding-right: 16px;
@@ -409,7 +412,7 @@ export component RowView inherits Rectangle {
                     padding-bottom: 8px;
                     spacing: 16px;
                     T { text: root.entry.title; horizontal-stretch: 0; min-width: min(self.preferred-width, 140px); }
-                    Mid { horizontal-stretch: 1; Field {
+                    Mid { horizontal-stretch: 1; ff := Field {
                         outlined: false;
                         horizontal-stretch: 1;
                         text: root.entry.value;

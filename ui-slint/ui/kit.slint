@@ -644,6 +644,11 @@ export component Field inherits Rectangle {
     callback edited(string);
     callback accepted(string);
     public function focus-input() { input.focus(); }
+    // Focus with the cursor at the end (a tap beside the text, on the row).
+    public function focus-end() {
+        input.focus();
+        input.set-selection-offsets(2147483647, 2147483647);
+    }
     in property <length> field-min: outlined ? 56px : 24px;
     height: multiline ? field-min : max(field-min, input.preferred-height + (outlined ? 24px : 0px));
     border-radius: outlined ? 12px : 0;
