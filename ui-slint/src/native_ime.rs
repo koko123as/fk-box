@@ -22,7 +22,7 @@ thread_local! {
 fn host(method: &'static str, args: Value) {
     call(method, args, move |result| {
         if let Err(error) = result {
-            log::warn!("{method}: {error}");
+            eprintln!("{method}: {error}");
         }
     });
 }
