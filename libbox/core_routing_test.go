@@ -21,7 +21,7 @@ func (f fakeRoutingLists) load(url string) (*routingList, error) {
 	if !ok {
 		return nil, fmt.Errorf("not found")
 	}
-	list := &routingList{url: url, hash: routingListHash(url), fetched: time.Now()}
+	list := &routingList{hash: routingListHash(url), fetched: time.Now()}
 	parseRoutingListText(text, &list.match)
 	return list, nil
 }
