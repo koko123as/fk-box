@@ -137,7 +137,6 @@ export global Nav {
     in property <bool> dialog-multiline;
     in property <bool> dialog-number;
     in-out property <string> dialog-text;
-    in property <string> dialog-hint;
     in property <string> dialog-suffix;
     in property <string> dialog-error;
     // A list of choices (radio rows) above the actions; -1 for none.
@@ -150,7 +149,6 @@ export global Nav {
 
     // The snackbar: errors stay longer; a new message replaces the current one.
     in property <string> toast;
-    in property <bool> toast-error;
     callback dismiss-toast();
 }
 
@@ -188,6 +186,9 @@ export global NativeIme {
     in property <int> text-tick;
     // Moves when the keyboard's action (Done) was pressed.
     in property <int> accept-tick;
+    // The editor the last text-tick or accept-tick moved for: a field still
+    // takes an event that arrives together with its editor's "end".
+    in property <int> event-id;
     // How far the native editor scrolled its text (the code editor's gutter).
     in property <length> scroll-y;
     callback begin(NativeImeSpec) -> int;

@@ -236,8 +236,6 @@ pub fn act(id: &str, arg: &str) -> bool {
             mark(Mark::PROXIES);
         }
         "toggle-group" => toggle(arg),
-        "locate-group" => {}
-        "proxy-tab" => {}
         _ => return false,
     }
     true
@@ -295,12 +293,9 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
             .into_iter()
             .enumerate()
             .map(|(i, tag)| {
-                MenuEntry::new(&tag, None, Some(Rc::new(move || crate::app::with_window(|w| w.global::<Proxies>().set_tab(i as i32)))))
-                    .checked(i as i32 == current)
-            })
-            .map(|mut e| {
-                e.label = e.label.clone();
-                e
+                // A group's own name, not translated.
+                let entry = MenuEntry::new("", None, Some(Rc::new(move || crate::app::with_window(|w| w.global::<Proxies>().set_tab(i as i32)))));
+                MenuEntry { label: tag, ..entry }.checked(i as i32 == current)
             })
             .collect();
     }
@@ -342,5 +337,3 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
     }
     Vec::new()
 }
-
-pub fn install(_w: &AppWindow) {}

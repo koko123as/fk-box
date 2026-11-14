@@ -58,11 +58,9 @@ fn error_row(error: &str, retry: Option<Rc<dyn Fn()>>) -> Vec<Row> {
 
 fn tools_page() -> Page {
     let sidebar = !nav::mobile();
-    let (running, endpoints) = data(|d| {
-        let endpoints: Vec<&'static str> = if d.running() { ENDPOINT_KINDS.into_iter().filter(|k| d.tool_state.get(*k).map(|v| !list(v).is_empty()).unwrap_or(false)).collect() } else { Vec::new() };
-        (d.running(), endpoints)
+    let endpoints: Vec<&'static str> = data(|d| {
+        if d.running() { ENDPOINT_KINDS.into_iter().filter(|k| d.tool_state.get(*k).map(|v| !list(v).is_empty()).unwrap_or(false)).collect() } else { Vec::new() }
     });
-    let _ = running;
     let mut rows = Vec::new();
     if !sidebar {
         rows.push(Row::open(&tr("Requests"), Some("requests"), || {

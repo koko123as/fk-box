@@ -2085,3 +2085,33 @@ msgstr "Xray 不支持按应用分流。请移除应用，或改用 sing-box / m
 
 msgid "Only the sing-box maintainers can open an encrypted archive. Leave off to send the report anywhere else."
 msgstr "加密的压缩包只有 sing-box 维护者能打开；要发给其他人请保持关闭。"
+
+msgid "Confirm"
+msgstr "确认"
+
+msgid "Authenticate"
+msgstr "认证"
+
+msgid "Increase font size"
+msgstr "增大字号"
+
+msgid "Flash"
+msgstr "闪光灯"
+
+msgid "Camera"
+msgstr "相机"
+
+msgid "Too many or too long entries"
+msgstr "条目过多或过长"
+
+msgid "Unknown preset"
+msgstr "未知预设"
+
+msgid "Type"
+msgstr "类型"
+
+msgid "An empty selection captures all applications routed through the local service. Unknown owners do not match a selected application. Applications that share a UID cannot be told apart."
+msgstr "不选择时，抓取经过本地服务的所有应用。归属未知的连接不会匹配已选应用；共用同一 UID 的应用无法区分。"
+
+msgid "Reconnect target applications to capture their new connections."
+msgstr "请让目标应用重新连接，以抓取其新连接。"

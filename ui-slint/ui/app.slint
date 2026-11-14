@@ -8,7 +8,7 @@ import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec } from "globals.slint";
 import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, RouteSurface } from "kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState } from "kit.slint";
 import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
@@ -148,7 +148,6 @@ component DialogLayer inherits Rectangle {
                     spacing: 8px;
                     f := Field {
                         text <=> Nav.dialog-text;
-                        hint: Nav.dialog-hint;
                         invalid: Nav.dialog-error != "";
                         multiline: Nav.dialog-multiline;
                         field-min: Nav.dialog-multiline ? 160px : 56px;

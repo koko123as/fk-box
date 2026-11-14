@@ -227,7 +227,7 @@ fn split_values(text: &str) -> Vec<String> {
     text.lines()
         .flat_map(|line| {
             let t = line.trim();
-            if t.len() >= 7 && t[..7].eq_ignore_ascii_case("regexp:") {
+            if t.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("regexp:")) {
                 vec![t.to_string()]
             } else {
                 t.split([',', ' ', '\t']).map(str::to_string).collect()

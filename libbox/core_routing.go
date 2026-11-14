@@ -159,10 +159,6 @@ func (m *routingMatch) hasDomain() bool {
 	return len(m.suffix)+len(m.full)+len(m.keyword)+len(m.regex)+len(m.geosite) > 0
 }
 
-func (m *routingMatch) hasIP() bool {
-	return len(m.cidr)+len(m.geoip) > 0
-}
-
 type portRange struct{ from, to uint16 }
 
 // compiledRule is a user rule after its content was expanded.
@@ -395,6 +391,9 @@ func compileRules(set *routingSet, lists routingListLoader, warn func(string)) [
 			if list.stale {
 				warn(label + ": rule list " + rule.URL + " could not be refreshed, using the copy from " + list.fetched.Format("2006-01-02 15:04"))
 			}
+			if list.partial != "" {
+				warn(label + ": rule list " + rule.URL + ": " + list.partial)
+			}
 			if list.match.empty() {
 				warn(label + ": rule list " + rule.URL + " has no usable entries, skipped")
 				continue
@@ -548,11 +547,13 @@ func applyCoreRouting(core string, content string, rules string, lists routingLi
 // ---------------------------------------------------------------------------
 
 type routingList struct {
-	url     string
 	hash    string
 	match   routingMatch
 	fetched time.Time
 	stale   bool
+	// partial: the text could not be read to the end, or had more than
+	// routingListMaxEntries entries.
+	partial string
 }
 
 type routingListLoader interface {
@@ -694,8 +695,8 @@ func (c *routingListCache) read(ctx context.Context, url string) (*routingList, 
 			return nil, err
 		}
 	}
-	list := &routingList{url: url, hash: hash, fetched: fetched, stale: stale}
-	parseRoutingListText(string(body), &list.match)
+	list := &routingList{hash: hash, fetched: fetched, stale: stale}
+	list.partial = parseRoutingListText(string(body), &list.match)
 	return list, nil
 }
 
@@ -737,14 +738,19 @@ var routingHostsSkip = map[string]bool{"localhost": true, "localhost.localdomain
 //   - v2fly domain lists: full:, domain:, keyword:, regexp: (attributes such
 //     as "@cn" ignored, include: skipped)
 //   - plain IP / CIDR lines
-func parseRoutingListText(text string, match *routingMatch) {
+func parseRoutingListText(text string, match *routingMatch) (partial string) {
 	scanner := bufio.NewScanner(strings.NewReader(text))
 	scanner.Buffer(make([]byte, 64<<10), 1<<20)
 	seen := map[string]bool{}
 	count := 0
+	capped := false
 	add := func(kind, value string) {
 		key := kind + "\x00" + value
-		if seen[key] || count >= routingListMaxEntries {
+		if seen[key] {
+			return
+		}
+		if count >= routingListMaxEntries {
+			capped = true
 			return
 		}
 		seen[key] = true
@@ -873,6 +879,13 @@ func parseRoutingListText(text string, match *routingMatch) {
 		}
 		domain(line, false)
 	}
+	if err := scanner.Err(); err != nil {
+		return "read stopped early: " + err.Error()
+	}
+	if capped {
+		return fmt.Sprintf("only the first %d entries are used", routingListMaxEntries)
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------

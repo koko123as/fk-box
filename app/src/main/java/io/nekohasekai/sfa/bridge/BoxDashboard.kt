@@ -271,14 +271,6 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         return mapOf("status" to response.status, "body" to response.content.toString(Charsets.UTF_8))
     }
 
-    /** Service status: the first response's status and the latency to its headers; no body is read. */
-    suspend fun reach(id: String, url: String, timeoutMillis: Long): Map<String, Any?> {
-        val active = session(id)
-        val result = withContext(Dispatchers.IO) { active.get().reach(url, timeoutMillis) }
-        check(session(id) === active) { "IP probe changed during query" }
-        return mapOf("status" to result.status, "latency" to result.latencyMillis)
-    }
-
     /**
      * Service status: one service's rule (FlClash core/service_rules.go, ported
      * to libbox/ui_service_check.go) through this probe session.

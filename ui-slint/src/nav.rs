@@ -774,7 +774,6 @@ pub fn toast(text: &str, error: bool) {
     with_window(|w| {
         let nav = w.global::<Nav>();
         nav.set_toast(text.as_str().into());
-        nav.set_toast_error(error);
     });
     Timer::single_shot(Duration::from_millis(if error { 10_000 } else { 4_000 }), move || {
         if NAV.with(|n| n.borrow().toast_serial) == serial {

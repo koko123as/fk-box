@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import android.graphics.Typeface
+import android.os.Build
 import android.os.SystemClock
 import android.text.Editable
 import android.text.InputType
@@ -42,6 +43,32 @@ class NativeEditor(private val activity: BoxActivity) {
     private val imm = activity.getSystemService(InputMethodManager::class.java)
     private val closeAfterTap = Runnable { close(notify = true) }
     private val closeQuietly = Runnable { close(notify = false) }
+
+    // API 33+: Back can arrive through OnBackInvokedDispatcher (always on
+    // Android 16+ with targetSdk 36+), never reaching dispatchKeyEvent. Above
+    // the Slint backend's PRIORITY_DEFAULT callback while the editor is open.
+    private val backCallback: Any? = if (Build.VERSION.SDK_INT >= 33) android.window.OnBackInvokedCallback { close(notify = true) } else null
+    private var backRegistered = false
+
+    private fun setBackCallback(enabled: Boolean) {
+        if (Build.VERSION.SDK_INT < 33 || enabled == backRegistered) return
+        val callback = backCallback as android.window.OnBackInvokedCallback
+        val dispatcher = activity.onBackInvokedDispatcher
+        if (enabled) {
+            dispatcher.registerOnBackInvokedCallback(android.window.OnBackInvokedDispatcher.PRIORITY_OVERLAY, callback)
+        } else {
+            dispatcher.unregisterOnBackInvokedCallback(callback)
+        }
+        backRegistered = enabled
+    }
+
+    /** The activity is going away: drop pending closes without calling back into the UI. */
+    fun destroy() {
+        layer.removeCallbacks(closeAfterTap)
+        layer.removeCallbacks(closeQuietly)
+        id = 0
+        setBackCallback(false)
+    }
 
     init {
         // Not clickable: touches outside the editor go on to the Slint surface.
@@ -163,6 +190,7 @@ class NativeEditor(private val activity: BoxActivity) {
         applying = false
         place(args)
         edit.visibility = View.VISIBLE
+        setBackCallback(true)
         edit.setSelection(edit.text.length)
         edit.requestFocus()
         // The tap that focused the field puts the cursor where it landed.
@@ -199,6 +227,7 @@ class NativeEditor(private val activity: BoxActivity) {
         if (id == 0) return
         if (notify) send("end")
         id = 0
+        setBackCallback(false)
         imm?.hideSoftInputFromWindow(edit.windowToken, 0)
         edit.clearFocus()
         edit.visibility = View.GONE

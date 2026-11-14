@@ -237,8 +237,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun probeGet(id: String, url: String, timeoutMillis: Long) = dashboardDetails.query(id, url, timeoutMillis)
 
-    suspend fun probeReach(id: String, url: String, timeoutMillis: Long) = dashboardDetails.reach(id, url, timeoutMillis)
-
     suspend fun serviceCheck(id: String, name: String, timeoutMillis: Long) = dashboardDetails.serviceCheck(id, name, timeoutMillis)
 
     fun closeProbe(id: String) { dashboardDetails.closeProbe(id) }

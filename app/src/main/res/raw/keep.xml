@@ -5,4 +5,4 @@
   is only visible to the system.
 -->
 <resources xmlns:tools="http://schemas.android.com/tools"
-    tools:keep="@mipmap/ic_launcher*,@drawable/ic_launcher_*,@drawable/ic_menu,@drawable/box_icon" />
+    tools:keep="@mipmap/ic_launcher*,@drawable/ic_launcher_*,@drawable/ic_menu" />

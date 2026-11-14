@@ -141,7 +141,6 @@ pub fn seeded_color_scheme(seed_color: u32, dark: bool, style: ColorStyle) -> Bo
         let tone = if dark { dark_tone.unwrap_or_else(|| tone_of(role_argb)) } else { tone_of(role_argb) };
         hct_argb(Hct::from(palette.hue(), tint.unwrap_or_else(|| palette.chroma().min(max_chroma)), tone))
     };
-    let role = |c: Rgb| argb(c);
     let paper_chroma = if dark { SURFACE_CHROMA } else { PAPER_CHROMA };
     let accent = match style {
         ColorStyle::Vivid | ColorStyle::Tinted => Some(accent(seed_color, source, dark)),
@@ -154,7 +153,6 @@ pub fn seeded_color_scheme(seed_color: u32, dark: bool, style: ColorStyle) -> Bo
     } else {
         m(MaterialDynamicColors::on_surface())
     };
-    let _ = role;
     let success = TonalPalette::from_hue_and_chroma(Hct::new(rgb(0xFF4CAF50)).get_hue(), Hct::new(rgb(0xFF4CAF50)).get_chroma());
     let warning = TonalPalette::from_hue_and_chroma(Hct::new(rgb(0xFFFF9800)).get_hue(), Hct::new(rgb(0xFFFF9800)).get_chroma());
     let tone = |p: &TonalPalette, light: i32, dark_tone: i32| argb(p.tone(if dark { dark_tone } else { light }));

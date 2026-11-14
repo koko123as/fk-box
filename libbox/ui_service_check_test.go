@@ -43,7 +43,11 @@ func uiServiceRun(t *testing.T, name string, answers map[string]*uiServiceResult
 
 func TestUIServiceCheckersMatchFlClash(t *testing.T) {
 	want := "google,github,youtube,chatgpt,claude,gemini,netflix,disney-plus,prime-video,spotify,tiktok,discord,bilibili"
-	if got := UIServiceNames(); got != want {
+	names := make([]string, len(uiServiceCheckers))
+	for index, checker := range uiServiceCheckers {
+		names[index] = checker.name
+	}
+	if got := strings.Join(names, ","); got != want {
 		t.Fatalf("services %s", got)
 	}
 }

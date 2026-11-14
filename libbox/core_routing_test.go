@@ -475,3 +475,27 @@ func TestCoreRoutingAppOnly(t *testing.T) {
 		t.Fatalf("xray applied %d, warnings %q", result.Applied, result.Warnings)
 	}
 }
+
+func TestSingBoxIsCatchAll(t *testing.T) {
+	for _, c := range []struct {
+		raw  string
+		want bool
+	}{
+		{`{"outbound":"proxy"}`, true},
+		{`{"action":"route","outbound":"proxy"}`, true},
+		{`{"network":["tcp","udp"],"outbound":"proxy"}`, true},
+		{`{"action":"reject"}`, true},
+		{`{"network":"tcp","outbound":"proxy"}`, false},
+		{`{"domain_suffix":["a.example"],"outbound":"proxy"}`, false},
+		{`{"action":"sniff"}`, false},
+		{`{"type":"logical","mode":"or","rules":[],"outbound":"x"}`, false},
+	} {
+		var rule map[string]any
+		if err := json.Unmarshal([]byte(c.raw), &rule); err != nil {
+			t.Fatal(err)
+		}
+		if got := singBoxIsCatchAll(rule); got != c.want {
+			t.Errorf("%s: %v, want %v", c.raw, got, c.want)
+		}
+	}
+}

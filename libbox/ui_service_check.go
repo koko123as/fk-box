@@ -83,14 +83,6 @@ var uiServiceCheckers = []uiServiceChecker{
 	{name: "bilibili", check: uiCheckBilibili},
 }
 
-// UIServiceNames lists the services ServiceCheck knows, comma separated.
-func UIServiceNames() string {
-	names := make([]string, len(uiServiceCheckers))
-	for index, checker := range uiServiceCheckers {
-		names[index] = checker.name
-	}
-	return strings.Join(names, ",")
-}
 
 // ServiceCheck runs one service's rule through this probe. timeoutMillis
 // bounds each request; the whole check gets six times that, and a timeout is

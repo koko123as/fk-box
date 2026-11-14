@@ -3,7 +3,7 @@
 //! over it (bridge/NativeEditor.kt): the cursor, selection, handles, context
 //! menu and input connection are the system's, and every change comes back
 //! here as an `ime` event that the field copies into its text. GameTextInput
-//! is switched off (vendor/i-slint-backend-android-activity, FKBOX_NATIVE_IME).
+//! is never configured (vendor/i-slint-backend-android-activity).
 //!
 //! Lengths go to the host in physical pixels; selections in UTF-16 units.
 
@@ -62,7 +62,6 @@ pub fn install(w: &AppWindow) {
     let ime = w.global::<NativeIme>();
     #[cfg(target_os = "android")]
     {
-        i_slint_backend_android_activity::FKBOX_NATIVE_IME.store(true, std::sync::atomic::Ordering::Relaxed);
         ime.set_enabled(true);
     }
     ime.on_begin(|spec: NativeImeSpec| {
@@ -149,9 +148,13 @@ pub fn on_event(value: &Value) {
     match value["kind"].as_str().unwrap_or("") {
         "text" => {
             ime.set_text(value["text"].as_str().unwrap_or("").into());
+            ime.set_event_id(id);
             ime.set_text_tick(ime.get_text_tick().wrapping_add(1));
         }
-        "accept" => ime.set_accept_tick(ime.get_accept_tick().wrapping_add(1)),
+        "accept" => {
+            ime.set_event_id(id);
+            ime.set_accept_tick(ime.get_accept_tick().wrapping_add(1));
+        }
         "end" => ime.set_active(0),
         "scroll" => ime.set_scroll_y(value["y"].as_f64().unwrap_or(0.0) as f32 / scale()),
         _ => {}

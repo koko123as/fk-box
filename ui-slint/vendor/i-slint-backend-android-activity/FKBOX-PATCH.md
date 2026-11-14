@@ -46,45 +46,29 @@ byte offsets in both directions:
 
 ## Changes
 
-1. `fkbox_ime.rs` (new, std only): conversion between Slint's state (bytes,
-   pre-edit apart) and GameTextInput's (UTF-16, composing region inside,
-   selection ordered and clamped), char-boundary safe in both directions.
-   The fkui crate compiles the same file in its host tests
-   (`ui-slint/src/ime_tests.rs`).
-2. `androidwindowadapter.rs`, GameActivity `input_method_request`: sends the
-   converted state; skips an update equal to the last state GameTextInput
-   reported or was sent; on Enable sets the EditorInfo (text, password,
-   number, multi-line from the focused TextInput, action Done for single
-   line), shows the keyboard explicitly and once more after 250 ms when no
-   keyboard inset arrived; Disable hides it explicitly.
-3. `androidwindowadapter.rs`, `InputEvent::TextEvent`: converted with
-   `fkbox_ime::from_java`; `InputEvent::TextAction` (the keyboard's Done)
-   is dispatched as Return so single-line fields get `accepted`.
-4. `androidwindowadapter.rs`, `update_window_insets`: remembers whether a
-   keyboard inset is present (for the retry in 2).
-5. `java/SlintAndroidJavaHelper.java`: `SlintInputView` is not focusable and
-   not a text editor until `show_keyboard` (NativeActivity only) asks for it.
+FK-box now edits every text field in its own `android.widget.EditText`
+laid over the focused TextInput (`ui-slint/src/native_ime.rs`,
+`app/.../bridge/NativeEditor.kt`): the system owns the cursor, selection
+handles, context menu and the input connection. The earlier attempts to
+make GameTextInput behave (state conversion both ways, echo suppression,
+EditorInfo per field, explicit keyboard show and retry,
+`fkbox_set_initial_selection`, committing a moved composition) were removed
+once that worked; only what still runs is left:
 
-6. `androidwindowadapter.rs` / `javahelper.rs` / `java/SlintAndroidJavaHelper.java`:
-   before every `set_text_input_state` the selection is also written to
-   GameActivity's `EditorInfo.initialSelStart/End`
-   (`fkbox_set_initial_selection`, the getter found by reflection).
-   GameTextInput's `setState()` calls `restartInput()`, and the IME restarts
-   from that EditorInfo, whose selection only followed the IME's own edits:
-   after a tap in the middle of the text the IME still placed the cursor at
-   the old position (the end), so input and backspace only worked there.
-7. `androidwindowadapter.rs` + `fkbox_ime::commit_moved_composition`: a tap
-   that moves the cursor while the IME composes commits the composition where
-   it was typed and puts the cursor at the tap (Slint keeps the pre-edit
-   apart and would carry it along to the tap). Java gets the committed state
-   at once; Slint gets it as a `CommitComposition` in a zero-delay timer, and
-   requests in between keep the committed state.
-8. `lib.rs` `FKBOX_NATIVE_IME` + `androidwindowadapter.rs`
-   `input_method_request`: when the app sets the flag (fkui does at start,
-   `src/native_ime.rs`), every input method request is ignored and
-   GameTextInput is never configured or shown. Editable fields are then
-   edited in a native EditText the app lays over them
-   (`bridge/NativeEditor.kt`); items 1-7 stay for the case the flag is off.
+1. `androidwindowadapter.rs`, GameActivity `input_method_request`: empty.
+   GameTextInput is never configured and the keyboard is never shown from
+   here, so two input connections never fight over it.
+2. `fkbox_ime.rs` (new, std only) + `androidwindowadapter.rs`,
+   `InputEvent::TextEvent`: GameActivity's surface view still has an input
+   connection, so text an IME commits there is converted with
+   `fkbox_ime::from_java` (UTF-16 indices to char-boundary byte offsets,
+   composing region taken out) instead of panicking. The fkui crate compiles
+   the same file in its host tests (`ui-slint/src/ime_tests.rs`).
+3. `androidwindowadapter.rs`, `InputEvent::TextAction` (the keyboard's Done)
+   is dispatched as Return.
+4. `java/SlintAndroidJavaHelper.java`: `SlintInputView` is not focusable and
+   not a text editor until `show_keyboard` (NativeActivity only) asks for it,
+   so it cannot take focus from the app's EditText.
 
 The Kotlin host adds a last guard (BoxActivity.dispatchKeyEvent orders the
 editable's selection before GameTextInput handles a key, and a remaining

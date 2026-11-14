@@ -969,8 +969,7 @@ fn access_page(st: &AccessRef) -> Page {
                     }
                 });
             };
-            let t2 = toggle.clone();
-            let mut r = Row::check(&text(&app_v["name"]), selected.contains(&pkg), move |_| t2())
+            let mut r = Row::check(&text(&app_v["name"]), selected.contains(&pkg), move |_| toggle())
                 .subtitle(&pkg)
                 .lines(1)
                 .key(&pkg)
@@ -979,7 +978,6 @@ fn access_page(st: &AccessRef) -> Page {
                 .enabled(enabled && !managed && !saving);
             r.data.position = 0;
             rows.push(r);
-            let _ = toggle;
         }
         rows.push(Row::spacer(56));
     }

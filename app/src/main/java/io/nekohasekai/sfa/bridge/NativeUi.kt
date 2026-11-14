@@ -44,6 +44,9 @@ class NativeUi(private val activity: BoxActivity) {
     private val layer = FrameLayout(activity)
     private val anchor = View(activity)
     private var menu: PopupMenu? = null
+    // A menu waiting for the layout pass, cancelled when another request comes first.
+    private var pendingMenu: Runnable? = null
+    private var viewer: Dialog? = null
     private var menuId = 0
     private var picked = false
     private var dialog: AlertDialog? = null
@@ -104,7 +107,8 @@ class NativeUi(private val activity: BoxActivity) {
         val error = color(args, "error", 0xffb3261e)
         val items = args.optJSONArray("items") ?: JSONArray()
         // After the layout pass, so the menu opens at the anchor's new place.
-        anchor.post {
+        val show = Runnable {
+            pendingMenu = null
             val popup = PopupMenu(themed(args), anchor, Gravity.NO_GRAVITY)
             var group = 0
             for (i in 0 until items.length()) {
@@ -149,9 +153,13 @@ class NativeUi(private val activity: BoxActivity) {
             anchor.performHapticFeedback(HapticFeedbackConstants.CONTEXT_CLICK)
             popup.show()
         }
+        pendingMenu = show
+        anchor.post(show)
     }
 
     private fun hideMenu() {
+        pendingMenu?.let { anchor.removeCallbacks(it) }
+        pendingMenu = null
         val popup = menu ?: return
         menu = null
         picked = true
@@ -331,6 +339,7 @@ class NativeUi(private val activity: BoxActivity) {
         val text = args.optString("text")
         if (text.isEmpty()) return
         val context = themed(args)
+        viewer?.dismiss()
         anchor.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         val view = TextView(context).apply {
             this.text = text
@@ -351,6 +360,8 @@ class NativeUi(private val activity: BoxActivity) {
                 activity.getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(null, text))
             }
             .create()
+        viewer = shown
+        shown.setOnDismissListener { if (viewer === shown) viewer = null }
         shown.show()
     }
 
@@ -358,5 +369,7 @@ class NativeUi(private val activity: BoxActivity) {
     fun close() {
         hideMenu()
         hideDialog()
+        viewer?.dismiss()
+        viewer = null
     }
 }

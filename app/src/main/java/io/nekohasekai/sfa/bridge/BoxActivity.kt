@@ -208,11 +208,6 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     SlintHost.nativeReply(id, true, SlintHost.wire(path))
                     return@launch
                 }
-                "exit" -> {
-                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
-                    finish()
-                    return@launch
-                }
             }
             try {
                 val result = facade.call { slintDispatch(method, org.json.JSONObject(args)) }
@@ -226,6 +221,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     private fun detachUi() {
+        if (NativePages.bridge?.get() === bridge) NativePages.bridge = null
         bridge?.cancel()
         bridge?.close()
         bridge = null
@@ -673,6 +669,8 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
 
     override fun onDestroy() {
         nativeUi?.close()
+        nativeEditor?.destroy()
+        nativeEditor = null
         documentRequest?.cancel()
         startResult.failed(IllegalStateException("Activity closed during service start"))
         connection.disconnect()

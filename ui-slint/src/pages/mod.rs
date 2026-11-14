@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use slint::{ComponentHandle, Model};
 
-use crate::app::{data, with_window};
+use crate::app::data;
 use crate::nav::MenuEntry;
 use crate::{AppWindow, Nav};
 
@@ -302,9 +302,6 @@ pub fn install(window: &AppWindow) {
     nav.on_act(|id, arg| act(&id, &arg));
     nav.on_act2(|id, a, b| act2(&id, &a, &b));
     dashboard::install(window);
-    proxies::install(window);
-    profiles::install(window);
     tools::install(window);
     requests::install(window);
-    with_window(|_| {});
 }

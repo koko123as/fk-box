@@ -118,17 +118,7 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
                 })
                 .collect(),
         ),
-        // Service status probes: GitHub answers after a real 160 ms, Google
-        // fails as it does on a network that cannot reach it.
         "openProbe" | "closeProbe" => Value::Null,
-        "probeReach" => {
-            if args["url"].as_str().unwrap_or("").contains("github") {
-                std::thread::sleep(Duration::from_millis(160));
-                json!({ "status": 200, "latency": 160 })
-            } else {
-                return Err("dial tcp 142.250.72.4:443: connect: connection refused".into());
-            }
-        }
         // Service checks (libbox ServiceCheck): a spread of FlClash's answers.
         "serviceCheck" => {
             std::thread::sleep(Duration::from_millis(20));

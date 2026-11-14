@@ -152,7 +152,7 @@ component GroupTabs inherits Rectangle {
                     color: on ? Theme.s.on-primary-container : Theme.s.on-surface-variant;
                     horizontal-alignment: center;
                 }
-                tta := TouchArea { clicked => { root.selected = i; Nav.act("proxy-tab", i); } }
+                tta := TouchArea { clicked => { root.selected = i; } }
             }
         }
     }
@@ -219,15 +219,6 @@ component GroupHeader inherits Rectangle {
             }
             if root.expanded: HorizontalLayout {
                 spacing: 0px;
-                Mid { TonalIconButton {
-                    glyph: Icons.locate;
-                    tooltip: @tr("Scroll to selected");
-                    grouped: true;
-                    size: 36px;
-                    icon-size: 19px;
-                    
-                    clicked => { Nav.act("locate-group", root.group.tag); }
-                } }
                 Mid { TonalIconButton {
                     glyph: Icons.bolt;
                     tooltip: @tr("Test latency");

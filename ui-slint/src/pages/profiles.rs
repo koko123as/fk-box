@@ -417,7 +417,7 @@ impl Form {
         let url = self.url.trim();
         let ok = ["http://", "https://"].iter().any(|scheme| {
             url.len() > scheme.len()
-                && url[..scheme.len()].eq_ignore_ascii_case(scheme)
+                && url.get(..scheme.len()).is_some_and(|p| p.eq_ignore_ascii_case(scheme))
                 && !url[scheme.len()..].split(['/', '?', '#']).next().unwrap_or("").split('@').next_back().unwrap_or("").is_empty()
         });
         if !ok {
@@ -1005,10 +1005,6 @@ fn editor_check(format_it: bool) {
     });
 }
 
-fn char_to_byte(s: &str, chars: usize) -> usize {
-    s.char_indices().nth(chars).map(|(i, _)| i).unwrap_or(s.len())
-}
-
 /// nextMatch: from the selection's end, wrapping to the start.
 fn editor_next() {
     editor(|e| {
@@ -1026,7 +1022,6 @@ fn editor_next() {
         e.select = (e.select.0 + 1, index as i32, end as i32, line);
     });
     mark(Mark::PROFILES);
-    let _ = char_to_byte;
 }
 
 fn editor_undo(redo: bool) {
@@ -1268,8 +1263,6 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
     }
     Vec::new()
 }
-
-pub fn install(_w: &AppWindow) {}
 
 /// Back handled by the page itself: closes the editor's search bar.
 pub fn back() -> bool {

@@ -26,8 +26,10 @@ export component NativeTextInput inherits TextInput {
     property <bool> native-on: NativeIme.enabled && self.has-focus && self.enabled && !self.read-only;
     property <bool> owned: self.native-id != 0 && NativeIme.active == self.native-id;
     property <length> native-key: self.frame-x + 3 * self.frame-y + 7 * self.frame-width + 11 * self.frame-height;
-    property <int> native-tick: self.owned ? NativeIme.text-tick : -1;
-    property <int> native-accept: self.owned ? NativeIme.accept-tick : -1;
+    // The last editor this field opened, kept after it closes.
+    property <int> last-id;
+    property <int> native-tick: NativeIme.text-tick;
+    property <int> native-accept: NativeIme.accept-tick;
     property <length> native-scroll: self.owned ? NativeIme.scroll-y : 0px;
     color: self.owned ? transparent : self.ink;
     text-cursor-width: self.owned ? 0px : 2px;
@@ -50,6 +52,7 @@ export component NativeTextInput inherits TextInput {
                 color: self.ink,
                 input: self.input-type == InputType.password ? 1 : self.input-type == InputType.number || self.input-type == InputType.decimal ? 2 : 0,
             });
+            self.last-id = self.native-id;
         } else if (self.native-id != 0) {
             NativeIme.end(self.native-id);
             self.native-id = 0;
@@ -68,13 +71,13 @@ export component NativeTextInput inherits TextInput {
         }
     }
     changed native-tick => {
-        if (self.owned && self.text != NativeIme.text) {
+        if (self.last-id != 0 && NativeIme.event-id == self.last-id && self.text != NativeIme.text) {
             self.text = NativeIme.text;
             self.edited();
         }
     }
     changed native-accept => {
-        if (self.owned) {
+        if (self.last-id != 0 && NativeIme.event-id == self.last-id) {
             self.accepted();
         }
     }
@@ -105,10 +108,13 @@ export component NativeTextInput inherits TextInput {
 export component SelectableText inherits Text {
     callback clicked();
     wrap: word-wrap;
+    // The hold opened the viewer: the release is not a tap.
+    property <bool> held;
     touch := TouchArea {
-        clicked => { root.clicked(); }
+        clicked => { if (!root.held) { root.clicked(); } }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
+                root.held = false;
                 hold.running = true;
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
@@ -121,6 +127,7 @@ export component SelectableText inherits Text {
         running: false;
         triggered => {
             self.running = false;
+            root.held = true;
             Nav.act("select-text", root.text);
         }
     }
@@ -431,27 +438,6 @@ export component Chip inherits Rectangle {
             color: root.fg;
         }
     }
-}
-
-// A small tonal pill (ProfileCoreChip, Pill, TonalChip).
-export component Pill inherits Rectangle {
-    in property <string> label;
-    in property <color> fg: Theme.s.secondary;
-    in property <color> bg: fg.with-alpha(0.15);
-    in property <bool> clickable;
-    callback clicked();
-    height: txt.preferred-height + 4px;
-    width: txt.preferred-width + 16px;
-    border-radius: self.height / 2;
-    background: bg;
-    txt := T {
-        text: root.label;
-        role: TextRole.caption1;
-        emphasized: true;
-        color: root.fg;
-        x: 8px;
-    }
-    if root.clickable: TouchArea { clicked => { root.clicked(); } }
 }
 
 // BoxPanel: a flat card for a dashboard panel.
@@ -1031,11 +1017,4 @@ export component ScrollPage inherits Rectangle {
             @children
         }
     }
-}
-
-// Opaque, input-absorbing background for a route.
-export component RouteSurface inherits Rectangle {
-    background: Theme.s.surface;
-    TouchArea { }
-    @children
 }

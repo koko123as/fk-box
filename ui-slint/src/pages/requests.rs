@@ -1517,7 +1517,7 @@ pub fn open_mitm_certificate() {
         })
     };
     refresh();
-    let route = rows::push(move || {
+    rows::push(move || {
         if data(|d| d.remote()) {
             return local_only("MITM certificate");
         }
@@ -1568,8 +1568,6 @@ pub fn open_mitm_certificate() {
         let r = refresh.clone();
         Page::new(&tr("MITM certificate")).loading(busy).bar(vec![Bar::new("refresh", "Refresh trust", move || r()).when(!busy)]).rows(rows_list)
     });
-    // Refresh whenever the page is shown again (the app returning from certificate settings).
-    let _ = route;
 }
 
 fn cert_run(st: &Rc<RefCell<(Option<Value>, Option<String>, bool)>>, method: &'static str) {

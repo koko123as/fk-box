@@ -630,33 +630,6 @@ public class SlintAndroidJavaHelper {
         });
     }
 
-    // FK-box patch (FKBOX-PATCH.md): GameTextInput's InputConnection.setState()
-    // calls restartInput(), and the IME restarts from GameActivity's EditorInfo,
-    // whose initialSelStart/End only follow the IME's own edits. Set them to the
-    // state about to be sent, so a cursor moved by a tap reaches the IME. The
-    // getter is looked up by name: GameActivity is not on this file's classpath.
-    private java.lang.reflect.Method mImeEditorInfoGetter;
-    private boolean mImeEditorInfoLookedUp;
-
-    public void fkbox_set_initial_selection(int start, int end) {
-        try {
-            if (!mImeEditorInfoLookedUp) {
-                mImeEditorInfoLookedUp = true;
-                mImeEditorInfoGetter = mActivity.getClass().getMethod("getImeEditorInfo");
-            }
-            if (mImeEditorInfoGetter == null) {
-                return;
-            }
-            Object info = mImeEditorInfoGetter.invoke(mActivity);
-            if (info instanceof EditorInfo) {
-                ((EditorInfo) info).initialSelStart = start;
-                ((EditorInfo) info).initialSelEnd = end;
-            }
-        } catch (Exception e) {
-            android.util.Log.w("FK-box", "initial IME selection", e);
-        }
-    }
-
     public void set_handle_color(int color) {
         mActivity.runOnUiThread(new Runnable() {
             @Override

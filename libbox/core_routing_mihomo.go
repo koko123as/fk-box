@@ -21,7 +21,6 @@ import (
 
 const mihomoRoutingDir = "fk-routing"
 
-var mihomoBuiltinTargets = map[string]bool{"DIRECT": true, "REJECT": true, "REJECT-DROP": true, "PASS": true, "COMPATIBLE": true, "GLOBAL": true}
 
 func yamlMapValue(mapping *yaml.Node, key string) *yaml.Node {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
@@ -66,7 +65,7 @@ type mihomoTargets struct {
 
 func newMihomoTargets(root *yaml.Node, rules []string) *mihomoTargets {
 	targets := &mihomoTargets{names: map[string]bool{}}
-	for name := range mihomoBuiltinTargets {
+	for name := range mihomoBuiltinOutbounds {
 		targets.names[name] = true
 	}
 	proxies := yamlNames(yamlMapValue(root, "proxies"))
@@ -80,7 +79,7 @@ func newMihomoTargets(root *yaml.Node, rules []string) *mihomoTargets {
 		}
 	}
 	for i := len(rules) - 1; i >= 0; i-- {
-		if target, ok := mihomoMatchTarget(rules[i]); ok && !mihomoBuiltinTargets[strings.ToUpper(target)] {
+		if target, ok := mihomoMatchTarget(rules[i]); ok && !mihomoBuiltinOutbounds[strings.ToUpper(target)] {
 			targets.proxy = target
 			break
 		}

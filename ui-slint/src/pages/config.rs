@@ -483,7 +483,7 @@ fn http_rewrite_page(store: &StoreRef) {
                 Row::open(title, Some("code"), move || {
                     let a = a.clone();
                     let init = initial_map.clone();
-                    rows::push(move || list_page_titled(&a, title, title.to_string(), hr(&[key]), init.clone()));
+                    rows::push(move || list_page_titled(&a, title.to_string(), hr(&[key]), init.clone()));
                 })
                 .subtitle(&counts[i].to_string()),
             );
@@ -505,7 +505,7 @@ fn http_rewrite_page(store: &StoreRef) {
 
 /// ConfigListPage
 pub fn list_page(store: &StoreRef, title: &'static str, path: Vec<&'static str>, initial: Value) -> Page {
-    list_page_titled(store, title, tr(title), path, initial)
+    list_page_titled(store, tr(title), path, initial)
 }
 
 fn edit_entry(store: &StoreRef, path: Vec<&'static str>, initial: Value, index: Option<usize>) {
@@ -545,7 +545,7 @@ fn edit_entry(store: &StoreRef, path: Vec<&'static str>, initial: Value, index: 
     );
 }
 
-fn list_page_titled(store: &StoreRef, title_key: &'static str, title: String, path: Vec<&'static str>, initial: Value) -> Page {
+fn list_page_titled(store: &StoreRef, title: String, path: Vec<&'static str>, initial: Value) -> Page {
     let s = store.borrow();
     let saving = s.saving;
     let entries = s.entries(&path);
@@ -650,7 +650,6 @@ fn list_page_titled(store: &StoreRef, title_key: &'static str, title: String, pa
         );
         out.push(Row::spacer(8));
     }
-    let _ = title_key;
     let mut page = Page::new(&title).loading(saving).bar(bar).rows(out);
     if entries.is_empty() {
         page = page.empty(&tr("No results"), "", "profiles").empty_action(&tr("Add"), add);
@@ -721,9 +720,4 @@ fn order_page(store: &StoreRef, path: Vec<&'static str>) {
     let en = entries.clone();
     nav::guard(id, move || encode(&Value::Array(en.borrow().clone())) != original);
     nav::busy_guard(id, move || *saving.borrow());
-    let _ = error;
-}
-
-pub fn _obj(v: &Value) -> crate::app::Json {
-    obj(v)
 }

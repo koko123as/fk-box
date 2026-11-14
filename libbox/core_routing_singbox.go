@@ -291,20 +291,29 @@ func applySingBoxRouting(content string, set *routingSet, rules []compiledRule, 
 		head = append([]any{map[string]any{"action": "sniff"}}, head...)
 	}
 	var finalRule []any
+	userFinal := false
 	if set.Final.Type != routingTargetConfig {
 		outbound, err := targets.outbound(set.Final)
 		if err != nil {
 			warn("fallback: " + err.Error() + ", the profile's own fallback is kept")
 		} else if outbound == "" {
 			finalRule = append(finalRule, map[string]any{"action": "reject"})
+			userFinal = true
 		} else {
 			route["final"] = outbound
+			userFinal = true
 		}
 	}
 	merged := append([]any{}, head...)
 	merged = append(merged, userRules...)
 	if set.Mode == routingModePrepend {
-		merged = append(merged, tail...)
+		for _, item := range tail {
+			// Replaced by the user's fallback, as for Xray and mihomo.
+			if userFinal && singBoxIsCatchAll(anyMap(item)) {
+				continue
+			}
+			merged = append(merged, item)
+		}
 	}
 	merged = append(merged, finalRule...)
 	route["rules"] = merged
@@ -336,4 +345,40 @@ func putList(entry map[string]any, key string, values []string) {
 	if len(values) > 0 {
 		entry[key] = values
 	}
+}
+
+// singBoxIsCatchAll: a default route or reject rule with no match condition
+// (no network, or one covering both tcp and udp), which would take every
+// connection before route.final.
+func singBoxIsCatchAll(rule map[string]any) bool {
+	if rule == nil {
+		return false
+	}
+	if kind := anyString(rule["type"]); kind != "" && kind != "default" {
+		return false
+	}
+	switch anyString(rule["action"]) {
+	case "", "route", "reject":
+	default:
+		return false
+	}
+	for key, value := range rule {
+		switch key {
+		case "action", "outbound", "type", "method", "no_drop":
+		case "network":
+			networks := map[string]bool{}
+			for _, item := range anyList(value) {
+				networks[anyString(item)] = true
+			}
+			if single := anyString(value); single != "" {
+				networks[single] = true
+			}
+			if !networks["tcp"] || !networks["udp"] {
+				return false
+			}
+		default:
+			return false
+		}
+	}
+	return true
 }

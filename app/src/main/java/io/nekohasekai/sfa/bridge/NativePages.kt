@@ -134,6 +134,7 @@ internal abstract class NativePage : ComponentActivity() {
 /** ScanPage: frames go to BoxQrScanner (scanProfile) until a profile or a plain text decodes. */
 internal class ScanActivity : NativePage() {
     private val session = (System.nanoTime() / 1000).toString()
+    private val analyzerExecutor = Executors.newSingleThreadExecutor()
     private var camera: Camera? = null
     private var torch = false
     private var busy = false
@@ -186,7 +187,7 @@ internal class ScanActivity : NativePage() {
                 val provider = future.get()
                 val preview = Preview.Builder().build().also { it.setSurfaceProvider(view.surfaceProvider) }
                 val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
-                analysis.setAnalyzer(Executors.newSingleThreadExecutor(), ZxingQRCodeAnalyzer(
+                analysis.setAnalyzer(analyzerExecutor, ZxingQRCodeAnalyzer(
                     onSuccess = { text -> if (text.isNotEmpty()) view.post { scan(text) } },
                     onFailure = { failure -> view.post { status.text = failure.message } },
                 ))
@@ -235,6 +236,7 @@ internal class ScanActivity : NativePage() {
 
     override fun onDestroy() {
         if (isFinishing) bridge?.closeProfileScan(session)
+        analyzerExecutor.shutdown()
         super.onDestroy()
     }
 }
