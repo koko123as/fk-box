@@ -51,17 +51,45 @@ object TaildropFiles {
             ?: "application/octet-stream"
     }
 
+    /**
+     * A received file's name as a single local path component. The name comes
+     * from the sending peer: path separators, control characters and the "."
+     * and ".." components must not reach a local path, a document title or a
+     * share; whatever is left that is empty becomes "file".
+     */
+    fun safeName(name: String): String {
+        val cleaned = name.map { c -> if (c == '/' || c == '\\' || c.isISOControl()) '_' else c }
+            .joinToString("")
+            .trim()
+            .trimStart('.')
+        return cleaned.ifEmpty { "file" }.take(255)
+    }
+
+    /** [name] resolved inside [directory], or null when it would leave it. */
+    private fun inside(directory: File, name: String): File? {
+        val file = File(directory, name)
+        val base = directory.canonicalFile
+        return file.takeIf { it.canonicalFile.parentFile == base }
+    }
+
     private fun daemonFile(name: String): File? {
         if (CommandTarget.isRemote) return null
+        // Only a name that is already a plain file name is looked up on disk.
+        if (safeName(name) != name) return null
         val workingDirectory = Application.application.getExternalFilesDir(null) ?: return null
-        val file = File(File(workingDirectory, DIRECTORY_NAME), name)
+        val file = inside(File(workingDirectory, DIRECTORY_NAME), name) ?: return null
         return if (file.isFile) file else null
     }
 
+    /**
+     * The received file [name] as a local file: the daemon's own copy when it
+     * is on this device, otherwise downloaded into the cache under [safeName].
+     * The core is asked for the file by its original name.
+     */
     suspend fun materialize(endpointTag: String, name: String): File = withContext(Dispatchers.IO) {
         daemonFile(name)?.let { return@withContext it }
         val cacheDirectory = File(Application.application.cacheDir, CACHE_DIRECTORY).also { it.mkdirs() }
-        val destination = File(cacheDirectory, name)
+        val destination = inside(cacheDirectory, safeName(name)) ?: throw IOException("Invalid file name")
         val finish = CompletableDeferred<String>()
         val session = CommandTarget.standaloneClient().downloadTaildropFile(
             endpointTag,
@@ -179,25 +207,6 @@ class TaildropViewModel : BaseViewModel<TaildropInboxState>() {
                 CommandTarget.standaloneClient().deleteTaildropFile(endpointTag, name)
             } catch (e: Exception) {
                 sendErrorMessage(e.message ?: "delete failed")
-            }
-        }
-    }
-
-    fun deleteAll(endpointTag: String, names: List<String>) {
-        viewModelScope.launch(Dispatchers.IO) {
-            val client = try {
-                CommandTarget.standaloneClient()
-            } catch (e: Exception) {
-                sendErrorMessage(e.message ?: "delete failed")
-                return@launch
-            }
-            for (name in names) {
-                try {
-                    client.deleteTaildropFile(endpointTag, name)
-                } catch (e: Exception) {
-                    sendErrorMessage(e.message ?: "delete failed")
-                    return@launch
-                }
             }
         }
     }

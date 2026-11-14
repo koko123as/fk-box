@@ -4,10 +4,8 @@ import android.app.KeyguardManager
 import android.content.Context
 import android.service.quicksettings.Tile
 import android.service.quicksettings.TileService
-import androidx.annotation.RequiresApi
 import io.nekohasekai.sfa.constant.Status
 
-@RequiresApi(24)
 class TileService :
     TileService(),
     ServiceConnection.Callback {

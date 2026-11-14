@@ -3,6 +3,8 @@ package io.nekohasekai.sfa.bridge
 import io.nekohasekai.sfa.bg.CrashReportManager
 import io.nekohasekai.sfa.bg.OOMReportManager
 import io.nekohasekai.sfa.bg.PowerReportManager
+import io.nekohasekai.sfa.bg.ReportFile
+import io.nekohasekai.sfa.bg.ReportManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -35,85 +37,35 @@ internal class BoxReports(private val activity: BoxActivity) {
         logs: Boolean = false,
         encrypt: Boolean = false,
     ): Any? {
-        require(kind in listOf("crash", "oom", "power")) { "Unknown report kind" }
+        val manager: ReportManager = when (kind) {
+            "crash" -> CrashReportManager
+            "oom" -> OOMReportManager
+            "power" -> PowerReportManager
+            else -> error("Unknown report kind")
+        }
         val result = withContext(Dispatchers.IO) {
-            when (kind) {
-                "crash" -> {
-                    CrashReportManager.refresh()
-                    if (method == Operation.List) return@withContext CrashReportManager.reports.value.map {
-                        mapOf("id" to it.id, "date" to it.date.time, "read" to it.isRead)
-                    }
-                    if (method == Operation.Clear) { CrashReportManager.deleteAll(); return@withContext null }
-                    val report = CrashReportManager.reports.value.firstOrNull { it.id == id } ?: error("Report no longer exists")
-                    when (method) {
-                        Operation.Delete -> { CrashReportManager.delete(report); null }
-                        Operation.Files -> {
-                            CrashReportManager.markAsRead(report)
-                            CrashReportManager.availableFiles(report).map { mapOf("name" to it.file.name, "label" to it.displayName, "kind" to it.kind.name, "size" to it.file.length()) }
-                        }
-                        Operation.Read, Operation.Save -> {
-                            val file = CrashReportManager.availableFiles(report).firstOrNull { it.file.name == name } ?: error("Report file no longer exists")
-                            if (method == Operation.Save) file.file else {
-                                require(file.kind.name != "PROFILE") { "Download binary profiles to inspect them" }
-                                require(file.file.length() <= 16 * 1024 * 1024) { "Report is too large to view; download it" }
-                                CrashReportManager.loadFileContent(file)
-                            }
-                        }
-                        Operation.Export -> CrashReportManager.createZipArchive(report, config, logs, encrypt)
-                        Operation.List, Operation.Clear -> error("Unknown report operation")
+            manager.refresh()
+            if (method == Operation.List) return@withContext manager.reports.value.map {
+                mapOf("id" to it.id, "date" to it.date.time, "read" to it.isRead)
+            }
+            if (method == Operation.Clear) { manager.deleteAll(); return@withContext null }
+            val report = manager.reports.value.firstOrNull { it.id == id } ?: error("Report no longer exists")
+            when (method) {
+                Operation.Delete -> { manager.delete(report); null }
+                Operation.Files -> {
+                    manager.markAsRead(report)
+                    manager.availableFiles(report).map { mapOf("name" to it.file.name, "label" to it.displayName, "kind" to it.kind, "size" to it.file.length()) }
+                }
+                Operation.Read, Operation.Save -> {
+                    val file = manager.availableFiles(report).firstOrNull { it.file.name == name } ?: error("Report file no longer exists")
+                    if (method == Operation.Save) file.file else {
+                        require(file.kind != ReportFile.PROFILE) { "Download binary profiles to inspect them" }
+                        require(file.file.length() <= 16 * 1024 * 1024) { "Report is too large to view; download it" }
+                        manager.loadFileContent(file)
                     }
                 }
-                "oom" -> {
-                    OOMReportManager.refresh()
-                    if (method == Operation.List) return@withContext OOMReportManager.reports.value.map {
-                        mapOf("id" to it.id, "date" to it.date.time, "read" to it.isRead)
-                    }
-                    if (method == Operation.Clear) { OOMReportManager.deleteAll(); return@withContext null }
-                    val report = OOMReportManager.reports.value.firstOrNull { it.id == id } ?: error("Report no longer exists")
-                    when (method) {
-                        Operation.Delete -> { OOMReportManager.delete(report); null }
-                        Operation.Files -> {
-                            OOMReportManager.markAsRead(report)
-                            OOMReportManager.availableFiles(report).map { mapOf("name" to it.file.name, "label" to it.displayName, "kind" to it.kind.name, "size" to it.file.length()) }
-                        }
-                        Operation.Read, Operation.Save -> {
-                            val file = OOMReportManager.availableFiles(report).firstOrNull { it.file.name == name } ?: error("Report file no longer exists")
-                            if (method == Operation.Save) file.file else {
-                                require(file.kind.name != "PROFILE") { "Download binary profiles to inspect them" }
-                                require(file.file.length() <= 16 * 1024 * 1024) { "Report is too large to view; download it" }
-                                OOMReportManager.loadFileContent(file)
-                            }
-                        }
-                        Operation.Export -> OOMReportManager.createZipArchive(report, config, logs, encrypt)
-                        Operation.List, Operation.Clear -> error("Unknown report operation")
-                    }
-                }
-                "power" -> {
-                    PowerReportManager.refresh()
-                    if (method == Operation.List) return@withContext PowerReportManager.reports.value.map {
-                        mapOf("id" to it.id, "date" to it.date.time, "read" to it.isRead)
-                    }
-                    if (method == Operation.Clear) { PowerReportManager.deleteAll(); return@withContext null }
-                    val report = PowerReportManager.reports.value.firstOrNull { it.id == id } ?: error("Report no longer exists")
-                    when (method) {
-                        Operation.Delete -> { PowerReportManager.delete(report); null }
-                        Operation.Files -> {
-                            PowerReportManager.markAsRead(report)
-                            PowerReportManager.availableFiles(report).map { mapOf("name" to it.file.name, "label" to it.displayName, "kind" to it.kind.name, "size" to it.file.length()) }
-                        }
-                        Operation.Read, Operation.Save -> {
-                            val file = PowerReportManager.availableFiles(report).firstOrNull { it.file.name == name } ?: error("Report file no longer exists")
-                            if (method == Operation.Save) file.file else {
-                                require(file.kind.name != "PROFILE") { "Download binary profiles to inspect them" }
-                                require(file.file.length() <= 16 * 1024 * 1024) { "Report is too large to view; download it" }
-                                PowerReportManager.loadFileContent(file)
-                            }
-                        }
-                        Operation.Export -> PowerReportManager.createZipArchive(report, config, logs, encrypt)
-                        Operation.List, Operation.Clear -> error("Unknown report operation")
-                    }
-                }
-                else -> error("Unknown report kind")
+                Operation.Export -> manager.createZipArchive(report, config, logs, encrypt)
+                Operation.List, Operation.Clear -> error("Unknown report operation")
             }
         }
         if (result is File) {

@@ -9,6 +9,8 @@ import io.nekohasekai.sfa.Application
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.util.zip.ZipFile
@@ -73,17 +75,14 @@ object PerAppProxyScanner {
     }
 
     suspend fun scanAllChinaApps(): Set<String> = withContext(Dispatchers.Default) {
-        val packageManagerFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            PackageManager.MATCH_UNINSTALLED_PACKAGES
-        } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_UNINSTALLED_PACKAGES
-        }
-        val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags)
+        val installedPackages = PackageQueryManager.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
         val chinaApps = mutableSetOf<String>()
+        // Each scan may read a whole APK and parse its dex files: a few at a
+        // time, not one coroutine per installed package all at once.
+        val scans = Semaphore(SCAN_PARALLELISM)
         installedPackages.map { packageInfo ->
             async {
-                if (scanChinaPackage(packageInfo)) {
+                if (scans.withPermit { scanChinaPackage(packageInfo) }) {
                     synchronized(chinaApps) {
                         chinaApps.add(packageInfo.packageName)
                     }
@@ -92,6 +91,21 @@ object PerAppProxyScanner {
         }.awaitAll()
         chinaApps.toSet()
     }
+
+    /** Scans one installed package; null when it cannot be read (uninstalled since). */
+    suspend fun scanPackage(packageName: String): Boolean? = withContext(Dispatchers.Default) {
+        val packageInfo = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                Application.packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                Application.packageManager.getPackageInfo(packageName, 0)
+            }
+        }.getOrNull() ?: return@withContext null
+        scanChinaPackage(packageInfo)
+    }
+
+    private const val SCAN_PARALLELISM = 4
 
     fun scanChinaPackage(packageInfo: PackageInfo): Boolean {
         val packageName = packageInfo.packageName

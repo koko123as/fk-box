@@ -60,6 +60,16 @@ fun getVersionProps(propName: String): String {
     return ""
 }
 
+// The ABIs the APKs are split into; the Rust UI is built for the same set
+// (buildRustUi below), so no split ships without libfkui.so.
+val arm64Only = providers.gradleProperty("arm64Only").orNull.toBoolean()
+val emulatorOnly = providers.gradleProperty("emulatorOnly").orNull.toBoolean()
+val apkAbis: List<String> = when {
+    emulatorOnly -> listOf("x86_64")
+    arm64Only -> listOf("arm64-v8a")
+    else -> listOf("armeabi-v7a", "arm64-v8a", "x86_64")
+}
+
 android {
     namespace = "io.nekohasekai.sfa"
     compileSdk = 37
@@ -86,7 +96,9 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("release.keystore")
+            // CI decodes the key outside the checkout and names it in KEYSTORE_FILE;
+            // a local build may keep its own untracked app/release.keystore.
+            storeFile = getProps("KEYSTORE_FILE").takeIf { it.isNotEmpty() }?.let { file(it) } ?: file("release.keystore")
             storePassword = getProps("KEYSTORE_PASS")
             keyAlias = getProps("ALIAS_NAME")
             keyPassword = getProps("ALIAS_PASS")
@@ -104,7 +116,10 @@ android {
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName(if (getProps("KEYSTORE_PASS").isNotEmpty()) "release" else "ciDebug")
+            // Debug builds install beside the release app: the CI debug key is
+            // public, so a debug APK must never be able to update io.fkbox.app.
+            applicationIdSuffix = ".debug"
+            signingConfig = signingConfigs.getByName("ciDebug")
             // CI debug builds carry their commit, shown in About, so a test APK is identifiable.
             System.getenv("GITHUB_SHA")?.take(7)?.let { versionNameSuffix = "-$it" }
         }
@@ -146,18 +161,10 @@ android {
 
     splits {
         abi {
-            val arm64Only = providers.gradleProperty("arm64Only").orNull.toBoolean()
-            val emulatorOnly = providers.gradleProperty("emulatorOnly").orNull.toBoolean()
             isEnable = true
             isUniversalApk = !arm64Only && !emulatorOnly
             reset()
-            if (emulatorOnly) {
-                include("x86_64")
-            } else if (arm64Only) {
-                include("arm64-v8a")
-            } else {
-                include("armeabi-v7a", "arm64-v8a", "x86_64")
-            }
+            include(*apkAbis.toTypedArray())
         }
     }
 
@@ -404,17 +411,24 @@ spotless {
     }
 }
 
-// Builds the Slint UI library for arm64-v8a with cargo-ndk (Rust stable, cargo-ndk,
-// ANDROID_NDK_HOME). Skip with -PskipRustUi=true when the library is already staged.
+// Builds the Slint UI library for every split ABI with cargo-ndk (Rust stable with
+// the matching *-linux-android targets, cargo-ndk, ANDROID_NDK_HOME). Skip with
+// -PskipRustUi=true when the library is already staged.
 val rustUiOut = layout.buildDirectory.dir("rustJniLibs")
 val buildRustUi = tasks.register<Exec>("buildRustUi") {
     val crate = rootProject.file("ui-slint")
     workingDir = crate
+    // Everything the library is compiled from: sources, Slint markup, the
+    // translations bundled by build.rs, the vendored backend and renderer.
     inputs.dir(crate.resolve("src"))
     inputs.dir(crate.resolve("ui"))
+    inputs.dir(crate.resolve("i18n"))
+    inputs.dir(crate.resolve("vendor"))
     inputs.files(crate.resolve("Cargo.toml"), crate.resolve("Cargo.lock"), crate.resolve("build.rs"))
+    inputs.property("abis", apkAbis)
     outputs.dir(rustUiOut)
-    commandLine("cargo", "ndk", "-t", "arm64-v8a", "-P", "24", "-o", rustUiOut.get().asFile.absolutePath, "build", "--release")
+    val targets = apkAbis.flatMap { listOf("-t", it) }
+    commandLine(listOf("cargo", "ndk") + targets + listOf("-P", "24", "-o", rustUiOut.get().asFile.absolutePath, "build", "--release"))
     onlyIf { !providers.gradleProperty("skipRustUi").orNull.toBoolean() }
 }
 tasks.named("preBuild") { dependsOn(buildRustUi) }

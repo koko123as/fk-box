@@ -36,7 +36,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 | 17 | pages/RequestsPage.kt | `src/pages/requests.rs`, `src/records.rs`, `ui/pages/requests.slint` | partial | Logs follow the bottom instead of pausing; request body has no Format JSON toggle / paging |
 | 18 | pages/ResourcesPage.kt | `src/pages/resources.rs` | done | Geo files |
 | 19 | pages/RoutingPage.kt | `src/pages/routing.rs` | partial | Route chips stack vertically instead of flowing |
-| 20 | pages/SettingsPages.kt | `src/pages/settings.rs`, `ui/pages/settings.slint` | partial | Access-control unsaved-changes dialog lacks Save; app rows rendered as grouped cards |
+| 20 | pages/SettingsPages.kt | `src/pages/settings.rs` | partial | Access-control unsaved-changes dialog lacks Save; app rows rendered as grouped cards |
 | 21 | pages/StatusPanel.kt | `src/pages/dashboard.rs`, `src/pages/egress.rs`, `ui/pages/dashboard.slint` | done | |
 | 22 | pages/SubscriptionInfoView.kt | `src/pages/profiles.rs`, `src/rows.rs` (usage row), `ui/pages/rows.slint` | done | |
 | 23 | pages/TerminalPage.kt | `src/pages/terminal.rs`; Kotlin `TerminalActivity` (Ghostty view) | partial | Terminal surface opens as a native Activity over Slint instead of inline; font list without rendered preview; font size is a number field + "increase" row instead of a −/+ stepper |

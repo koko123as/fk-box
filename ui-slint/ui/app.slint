@@ -51,9 +51,9 @@ component MenuLayer inherits Rectangle {
         y: clamp(Nav.menu-y, Nav.inset-top + 8px, root.height - self.height - Nav.inset-bottom - 8px);
         border-radius: 4px;
         background: Theme.s.surface-container;
-        drop-shadow-blur: 8px;
-        drop-shadow-color: #00000040;
-        drop-shadow-offset-y: 2px;
+        // No shadow (flclash.md): a hairline outline separates the menu.
+        border-width: 1px;
+        border-color: Theme.s.outline-variant;
         TouchArea { }
         Flickable {
             content-height: lay.preferred-height;

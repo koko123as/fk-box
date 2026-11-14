@@ -82,6 +82,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "setLanProxy" -> setLanProxy(args.long("profileId"), args.str("revision"), args.getBoolean("enabled"), args.int("port"))
     // Profiles
     "readProfile" -> readProfile(args.long("id"))
+    "profileRevision" -> profileRevision(args.long("id"))
     "profileConfig" -> profileConfig(args.long("id"))
     "profileStats" -> profileStats(args.long("id"))
     "writeProfile" -> writeProfile(args.long("id"), args.str("content"), args.str("revision"))
@@ -135,9 +136,9 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "connectRemoteServer" -> connectRemoteServer(args.long("id"))
     "disconnectRemoteServer" -> disconnectRemoteServer()
     // Backups and WebDAV
-    "createBackup" -> createBackup()
+    "exportBackup" -> exportBackup(args.str("name"))
     "readBackup" -> readBackup(args.str("scope"))
-    "restoreBackup" -> restoreBackup(args.map("backup"), args.str("scope"), args.str("strategy"))
+    "restoreBackup" -> restoreBackup(args.str("token"), args.str("scope"), args.str("strategy"))
     "webdavAccount" -> webdavAccount()
     "setWebdavAccount" -> setWebdavAccount(args.map("value").ifEmpty { null })
     "checkWebdav" -> checkWebdav()

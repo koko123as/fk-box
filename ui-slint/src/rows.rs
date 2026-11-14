@@ -124,14 +124,6 @@ impl Row {
         r
     }
 
-    pub fn radio(title: &str, selected: bool, f: impl Fn() + 'static) -> Row {
-        let mut r = row("radio", title);
-        r.data.checked = selected;
-        r.data.clickable = true;
-        r.action = Some(Rc::new(move |_| f()));
-        r
-    }
-
     /// FormRow with FormRowTextField.
     pub fn field(title: &str, value: &str, hint: &str, f: impl Fn(String) + 'static) -> Row {
         let mut r = row("field", title);
@@ -303,11 +295,6 @@ impl Row {
         self
     }
 
-    pub fn clickable(mut self, clickable: bool) -> Row {
-        self.data.clickable = clickable && self.action.is_some();
-        self
-    }
-
     pub fn danger(mut self) -> Row {
         self.data.danger = true;
         self
@@ -423,7 +410,6 @@ pub struct Page {
     pub rows: Vec<Row>,
     pub empty: Option<(String, String, &'static str, String)>,
     pub empty_action: Option<Rc<dyn Fn()>>,
-    pub special: String,
     /// FloatingFootBar: text, icon, chip label, button label.
     pub foot: Option<(String, &'static str, String, String)>,
     pub foot_action: Option<Rc<dyn Fn()>>,
@@ -687,7 +673,6 @@ fn build(id: i32) -> Option<PageData> {
         empty_message: page.empty.as_ref().map(|e| ss(&e.1)).unwrap_or_default(),
         empty_glyph: page.empty.as_ref().map(|e| glyph(e.2)).unwrap_or_default(),
         empty_action: page.empty.as_ref().map(|e| ss(&e.3)).unwrap_or_default(),
-        special: ss(&page.special),
         foot_text: page.foot.as_ref().map(|f| ss(&f.0)).unwrap_or_default(),
         foot_glyph: page.foot.as_ref().map(|f| glyph(f.1)).unwrap_or_default(),
         foot_chip: page.foot.as_ref().map(|f| ss(&f.2)).unwrap_or_default(),
@@ -732,16 +717,23 @@ pub fn project(w: &AppWindow) {
             w.global::<Pages>().set_tools(tools);
         }
     }
-    // Requests and Logs on the home pane only while they are the destination shown.
+    // Requests and Logs on the home pane only while they are the destination
+    // shown. Their rows are updated in place in the page's own models (build);
+    // the page itself is only replaced when something else on it changed, so
+    // the clock's tick does not set the property, and rebuild the list, each second.
     let tab = w.global::<Nav>().get_tab();
     if tab == "Requests" {
         if let Some(p) = build(REQUESTS_ID) {
-            w.global::<Pages>().set_requests(p);
+            if w.global::<Pages>().get_requests() != p {
+                w.global::<Pages>().set_requests(p);
+            }
         }
     }
     if tab == "Logs" {
         if let Some(p) = build(LOGS_ID) {
-            w.global::<Pages>().set_logs(p);
+            if w.global::<Pages>().get_logs() != p {
+                w.global::<Pages>().set_logs(p);
+            }
         }
     }
 }

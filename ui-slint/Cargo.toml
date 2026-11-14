@@ -37,7 +37,7 @@ required-features = ["shot"]
 
 [target.'cfg(target_os = "android")'.dependencies]
 i-slint-backend-android-activity = { version = "=1.18.1", features = ["aa-06", "game-activity"] }
-jni = "0.21"
+jni = "0.22"
 log = "0.4"
 android_logger = "0.15"
 # The Skia renderer the backend draws with (vendored, see [patch.crates-io]):

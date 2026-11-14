@@ -27,21 +27,21 @@
 ## FK-box（本仓库 main）
 
 - 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产。
-- 界面已从 Flutter 迁移到 Kotlin + Jetpack Compose（4 期完成：外壳与仪表盘；界面套件、代理与配置；工具及其子页；设置、关于、备份、访问控制和外观），`flutter/` 目录已删除，页面对应关系见 [flclash.md](flclash.md#kotlin--jetpack-compose-翻译)。`ui/plain` 起界面为朴素 Material 3（无玻璃、阴影、特效和转场动画，Material 图标），见 [flclash.md](flclash.md#朴素界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
-- [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Compose 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行 Compose 源码检查。
+- 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/plain` 起界面为朴素 Material 3（无玻璃、阴影、特效和转场动画，Material 图标），见 [flclash.md](flclash.md#朴素界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
+- [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Slint 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行界面源码检查。
 
 ## 界面替换与 Android 桥接
 
-上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 `compose/pages` 提供（按 FlClash 布局、以 Material 3 组件实现，不是旧 SFA 页面）。`compose/` 保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。
+上游 Compose 页面、导航、编辑器、CameraX/MLKit 原生扫码及相关依赖和无引用资源已移除，所有页面由 `ui-slint/src/pages` 与 `ui-slint/ui` 提供（按 FlClash 布局、以 Material 3 风格 Slint 组件实现，不是旧 SFA 页面）。`compose/` 保留 [MainActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/MainActivity.kt) 和 [ShareActivity.kt](app/src/main/java/io/nekohasekai/sfa/compose/ShareActivity.kt) 两个稳定 Android 组件名，均继承 `BoxActivity`。
 
 下表的原生路径以 `app/src/main/java/io/nekohasekai/sfa/` 为前缀。
 
 | 区域 | 路径 | 当前职责 |
 | --- | --- | --- |
-| 界面宿主 | `bridge/BoxActivity.kt`（承载 Compose） | 启动器/分享入口、文档选择、权限、服务状态及配置应用 |
+| 界面宿主 | `bridge/BoxActivity.kt`（承载 Slint 界面） | 启动器/分享入口、文档选择、权限、服务状态及配置应用 |
 | 通道与命令 | `bridge/BoxBridge.kt` | 沿用原 MethodChannel 命令与 EventChannel 消息名，经 `call()` / `listen()`（不注册平台通道）对接配置、工具和设置 |
 | 原生状态 | `backend/` | 仪表盘、分组、连接、日志、Tailscale/Taildrop、诊断和认证状态模型 |
-| 平台视图 | `bridge/BoxBrowserFactory.kt`、`bridge/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以 `AndroidView` 嵌入 Compose 页面 |
+| 平台视图 | `bridge/BoxBrowserFactory.kt`、`bridge/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以原生视图叠加在 Slint 页面上 |
 | 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、Room、订阅更新及本地/远程命令目标 |
 | 应用查询 | [vendor/](app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
@@ -75,21 +75,21 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 备份读取/传输上限为 64 MiB，WebDAV 使用 [BoxWebDAV.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt) 与核心扩展；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
 
-原生日志保留所有收到的等级供 Compose 日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接，内核在每次订阅时重放已保存的行，缓冲（去 ANSI、环形追加、快照）在后台单线程执行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
+原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接，内核在每次订阅时重放已保存的行，缓冲（去 ANSI、环形追加、快照）在后台单线程执行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
 
 连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序处理；`ConnectionStore` 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射，只有 NEW 和带快照的 CLOSED 经 JNI 读取连接，UPDATE 按增量复制该行，关闭 5 分钟后淘汰，DNS 连接不显示；未变化的行保持同一实例与桥接映射。
 
 日志原生缓冲保留最近 3000 条记录；[LogStream.kt](app/src/main/java/io/nekohasekai/sfa/bridge/LogStream.kt) 仅在前台日志页请求数据时生成桥接消息，首次订阅及恢复可见时发送快照，随后发送新增记录、最早保留 ID 和默认等级。清空或缓冲身份重置发送替换消息，单纯等级变化不重新编码记录。隐藏日志页不影响原生缓冲和当前会话的等级同步。
 
-[BoxDashboard.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxDashboard.kt) 的详细内存采样独立于网络/热点轮询，由 Compose 内存卡片和详情页共享订阅。[VisiblePolling.kt](app/src/main/java/io/nekohasekai/sfa/bridge/VisiblePolling.kt) 仅在订阅可见、应用前台且屏幕亮起时每两秒采样；重新满足条件立即采样，隐藏或断开 EventChannel 时停止。手动释放仍单次执行 libbox 回收并更新统计，不增加自动强制 GC。
+[BoxDashboard.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxDashboard.kt) 的详细内存采样独立于网络/热点轮询，由内存卡片和详情页共享订阅。[VisiblePolling.kt](app/src/main/java/io/nekohasekai/sfa/bridge/VisiblePolling.kt) 仅在订阅可见、应用前台且屏幕亮起时每两秒采样；重新满足条件立即采样，隐藏或断开 EventChannel 时停止。手动释放仍单次执行 libbox 回收并更新统计，不增加自动强制 GC。
 
-应用列表通过 [AppListCache.kt](app/src/main/java/io/nekohasekai/sfa/bridge/AppListCache.kt) 复用一份包查询快照，参考上游基线的 `PackageCache`，先按系统应用/联网权限过滤，再按需读取并缓存应用名称。进入页面和手动刷新重新查询，切换显示范围复用快照；查询策略或语言改变后的查询不复用旧快照，查询失败/取消允许重试。排除应用自身及无 `ApplicationInfo` 的条目。Compose 应用列表的排序和图标使用方式见 [flclash.md](flclash.md#导航与交互约定)。
+应用列表通过 [AppListCache.kt](app/src/main/java/io/nekohasekai/sfa/bridge/AppListCache.kt) 复用一份包查询快照，参考上游基线的 `PackageCache`，先按系统应用/联网权限过滤，再按需读取并缓存应用名称。进入页面和手动刷新重新查询，切换显示范围复用快照；查询策略或语言改变后的查询不复用旧快照，查询失败/取消允许重试。排除应用自身及无 `ApplicationInfo` 的条目。应用列表的排序和图标使用方式见 [flclash.md](flclash.md#导航与交互约定)。
 
 托管应用模式仍在激活前完成扫描，安装/卸载广播沿用自动更新；列表查询完成后同步最新的已保存设置，包含后台更新的托管结果，打开页面不触发 APK/DEX 扫描。手动重新扫描通过既有桥接更新设置。查询策略继续持久化；Android 12 精确定位同时申请 fine/coarse 权限；远程配置卡不使用本地配置名。
 
 ## 分流规则
 
-“工具 → 设置 → 分流规则”（[RoutingPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/RoutingPage.kt)）为 sing-box、Xray、mihomo 各维护一套独立规则，参照 [Lemonochka/keqdroid](https://github.com/Lemonochka/keqdroid)（AGPL-3.0）的 TrafficRoute / RoutingProfile 设计（只借鉴数据模型，不含其代码）。编译规则、字段映射与已知限制见 [libbox.md](libbox.md#分流规则)。
+“工具 → 设置 → 分流规则”（[routing.rs](ui-slint/src/pages/routing.rs)）为 sing-box、Xray、mihomo 各维护一套独立规则，参照 [Lemonochka/keqdroid](https://github.com/Lemonochka/keqdroid)（AGPL-3.0）的 TrafficRoute / RoutingProfile 设计（只借鉴数据模型，不含其代码）。编译规则、字段映射与已知限制见 [libbox.md](libbox.md#分流规则)。
 
 - 数据：[CoreRouting.kt](app/src/main/java/io/nekohasekai/sfa/bridge/CoreRouting.kt)。每个内核一组 `{mode, final, rules}`：`mode` 为 `prepend`（默认，用户规则放在配置自身规则之前，配置规则保留）、`override`（替换配置规则，保留 sing-box 开头的 sniff/hijack-dns/resolve 规则和配置的兜底）或 `off`；`final` 为兜底：`config`（默认，沿用配置）、`proxy`、`direct`、`block` 或 `node`（指定节点/组的 tag）。每条规则含启用开关、名称、内容（`all` 全部流量；`match` 域名/IP/CIDR/`geosite:`/`geoip:`/`full:`/`keyword:`/`regexp:`；`preset` 预设；`list` 规则列表 URL）、目标（同上，无 `config`）、应用包名、网络（any/tcp/udp）、端口（`443,8000-9000`，最多 28 段）；列表顺序即匹配顺序。保存在设置键 `routing_rules`（JSON，版本 1），经 `settings()` 的 `routingRules` 随完整备份导出/恢复并由 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxSettings.kt) 校验（每核最多 500 条，每条最多 5000 项）；旧备份没有该键时不改动现有规则。
 - 预设（国内常用）：绕过大陆（`geosite:cn`、`geoip:cn`、`geosite:private`、`geoip:private` → 直连）、GFW 列表走代理其余直连（`geosite:gfw` → 代理，再加一条“全部流量 → 直连”）、广告拦截（`geosite:category-ads-all` → 拦截）、局域网直连（`geosite:private`、`geoip:private` → 直连）。预设只是插入普通规则，目标可改。
@@ -150,13 +150,13 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 - 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.newGeoUpdate().fetch(...)`，传入上次记录的 SHA-256、`ETag`、`Last-Modified`（`geo-resources.json` 的 `etag`/`lastModified`），文件仍与记录一致时发条件请求，304 视为“已是最新”且不下载。失败保留原文件并显示错误；成功后记为“已下载”。协程取消（离开资源页、WorkManager 停止任务）会调用 `cancel()` 中止 Go 侧下载。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。内置文件检查每个进程只完整做一次，之后 `geo.list` 只在有文件缺失时重新检查。
 - 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
 - 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
-- 界面：工具页顶部分组的“资源”（[ResourcesPage.kt](app/src/main/java/io/nekohasekai/sfa/compose/pages/ResourcesPage.kt)），说明见 [flclash.md](flclash.md#导航与交互约定)。
+- 界面：工具页顶部分组的“资源”（[resources.rs](ui-slint/src/pages/resources.rs)），说明见 [flclash.md](flclash.md#导航与交互约定)。
 - 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/BoxSettingsTest.kt) 覆盖三项设置的校验。
 - APK 体积：内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），APK 中压缩存放；首次解压约占 38 MB 存储。2026-11-06 实测（ARM64 debug，Artifact 未压缩打包）：630f444 为 78,069,486 字节，59d5b01 为 93,208,464 字节，增加 15,138,978 字节（约 14.4 MiB）；源码 SHA 59d5b01 的 [newui.yml](https://github.com/koko123as/fk-box/actions/runs/42207100362) 与 [build-debug-apk.yml](https://github.com/koko123as/fk-box/actions/runs/42207110939) 均通过（含 `TestCoreGeo*` 与 JVM 测试）。未覆盖：真机解压耗时、下载、自动更新、Xray/mihomo 实际读取 geo 规则。
 
 ## 构建与发布
 
-[app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心，界面为同一模块内的 Kotlin + Jetpack Compose 源码，不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
+[app/build.gradle.kts](app/build.gradle.kts) 只从本地 `app/libs/libbox.aar` 消费核心，界面为 `ui-slint/` 的 Rust + Slint 源码（经 `buildRustUi` 编译为 `libfkui.so` 打包），不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
 
 Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
 
@@ -171,13 +171,13 @@ Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm6
 | `ALIAS_NAME` | 发布密钥 alias |
 | `ALIAS_PASS` | 对应密钥密码 |
 
-工作流将已有密钥解码至 `app/release.keystore`，结束时清理，不上传密钥。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
+工作流将已有密钥解码至检出目录之外的 `$RUNNER_TEMP/release.keystore`，以 `KEYSTORE_FILE` 告知 Gradle（未设置时回退未入库的本地 `app/release.keystore`），结束时清理，不上传密钥。仓库不再跟踪任何发布密钥文件。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
 
 Release 构建开启 R8 与 `isShrinkResources`（[keep.xml](app/src/main/res/raw/keep.xml) 保留系统可见的图标；代码中没有按名称查找资源）；`useLegacyPackaging` 保持原样。
 
 应用自身的 Baseline Profile 位于 [baseline-prof.txt](app/src/main/baseline-prof.txt)，AGP 将其与库的配置合并进 `assets/dexopt/baseline.prof`，由 `profileinstaller` 在旁加载安装时编译。当前文件为手写的启动/常用页面规则（CI 模拟器为 x86_64，arm64 libbox 无法运行，不能在 CI 中采集）。[baselineprofile](baselineprofile/) 模块提供 Macrobenchmark `BaselineProfileRule` 生成器，仅在 `-PbaselineProfile=true` 时加入构建（同时定义应用的 `benchmark` 构建类型：Release 代码、不混淆、`profileable`、CI 调试签名），常规与 Release 构建不受影响。在 API 33+ 的 ARM64 设备上运行 `./gradlew -PbaselineProfile=true -Parm64Only=true :baselineprofile:connectedOtherBenchmarkAndroidTest`，再把输出的 `*-baseline-prof.txt` 替换到 `app/src/main/baseline-prof.txt`。
 
-Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及 Compose 源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
+Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及界面源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
 
 `publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
 
@@ -185,10 +185,10 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Compose 入口、朴素 Material 界面约束（禁止自绘字形、玻璃/着色器/模糊、弹簧与按压特效、装饰形状、样式开关）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
-| [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及 Compose 源码检查 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、朴素 Material 界面约束（禁止自绘字形、玻璃/着色器/模糊、弹簧与按压特效、装饰形状、样式开关）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及界面源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
-| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；Compose 源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
+| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
 | [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用 newui.yml 的核心/源码验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
 
 JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界和 QRS；[ServiceSettingsChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/ServiceSettingsChangeTest.kt) 覆盖服务开关保存后的启动确认、失败/超时/取消恢复及恢复错误保留；[ProfileChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/database/ProfileChangeTest.kt) 覆盖配置持久化失败、应用超时/取消、恢复确认及恢复错误保留。[ProfileRecoveryTest.kt](app/src/androidTest/java/io/nekohasekai/sfa/bridge/ProfileRecoveryTest.kt) 覆盖实际 libbox 二进制导入、查询策略持久化、端口占用导致的 JSON 编辑/配置切换/手动与自动订阅/完整备份恢复失败，以及停服和未选中配置更新的服务状态。界面验证范围见 [flclash.md](flclash.md)。
@@ -211,7 +211,7 @@ JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界�
 
 [LogStreamTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/LogStreamTest.kt) 覆盖日志快照、增量、淘汰边界、等级更新、清空、重新订阅和缓冲重置，并检查 3000 条缓冲新增一条时只编码一条。[VisiblePollingTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/VisiblePollingTest.kt) 用虚拟时间检查不可见/后台/熄屏时零采样、恢复立即采样及取消在途任务；两者由 Android smoke 和 Release 的 JVM 测试运行，删除前 Flutter 版的通知与订阅测试记录见 [flclash.md](flclash.md#验证与升级参考版本)。这些调用计数不代表实测内存或帧率收益。
 
-上述为已配置的检查，不是当前提交的通过声明。记录实际结果时附源码 SHA、Actions 链接和未验证范围，不能沿用旧裁剪 APK 或旧 Compose 验证记录。
+上述为已配置的检查，不是当前提交的通过声明。记录实际结果时附源码 SHA、Actions 链接和未验证范围，不能沿用旧裁剪 APK 或旧界面验证记录。
 
 以下两节是迁入本仓库前、在 B-box 仓库（含 `giturass/B-box` 的 Actions）中的历史验证记录，仅作参考，不代表本仓库当前源码已通过；本仓库的验证以 [koko123as/fk-box Actions](https://github.com/koko123as/fk-box/actions) 为准。
 

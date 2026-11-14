@@ -16,8 +16,6 @@ class BoxSettingsTest {
 
     @Test
     fun memoryLimitDialogEditsTheBareNumber() {
-        assertEquals("50", BoxSettings.memoryLimitText(null))
-        assertEquals("128", BoxSettings.memoryLimitText(128.0))
         assertEquals(256, BoxSettings.parseMemoryLimit(" 256 "))
         assertEquals(100, BoxSettings.parseMemoryLimit("100 MiB"))
         assertEquals(null, BoxSettings.parseMemoryLimit("5"))

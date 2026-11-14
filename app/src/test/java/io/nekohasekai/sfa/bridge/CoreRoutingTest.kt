@@ -110,19 +110,7 @@ class CoreRoutingTest {
     }
 
     @Test
-    fun copiesReordersAndSplits() {
-        val rules = sample()
-        val copied = CoreRouting.copyFrom(rules, "sing-box", "mihomo")
-        val source = copied.core("sing-box").rules
-        val target = copied.core("mihomo").rules
-        assertEquals(source.map { it.copy(id = "") }, target.map { it.copy(id = "") })
-        assertTrue(source.zip(target).all { (a, b) -> a.id != b.id })
-        assertEquals(copied.core("sing-box").final, copied.core("mihomo").final)
-        assertThrows(IllegalArgumentException::class.java) { CoreRouting.copyFrom(rules, "sing-box", "sing-box") }
-
-        val moved = CoreRouting.move(source, 0, 2)
-        assertEquals(listOf("b", "c", "a"), moved.map { it.id })
-        assertEquals(source, CoreRouting.move(source, 0, 5))
+    fun splitsValues() {
         assertEquals(listOf("a.com", "b.com", "geosite:cn", "1.2.3.0/24"), CoreRouting.splitValues(" a.com\nb.com, geosite:cn\t1.2.3.0/24 \n"))
         // A regexp line stays whole: patterns may contain commas and spaces.
         assertEquals(

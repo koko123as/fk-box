@@ -8,6 +8,7 @@ import android.provider.DocumentsContract
 import android.provider.DocumentsProvider
 import android.webkit.MimeTypeMap
 import java.io.File
+import java.io.FileNotFoundException
 
 class WorkingDirectoryProvider : DocumentsProvider() {
 
@@ -35,7 +36,7 @@ class WorkingDirectoryProvider : DocumentsProvider() {
     }
 
     private val baseDir: File
-        get() = context!!.getExternalFilesDir(null)!!
+        get() = context!!.getExternalFilesDir(null)!!.canonicalFile
 
     override fun onCreate(): Boolean = true
 
@@ -67,6 +68,8 @@ class WorkingDirectoryProvider : DocumentsProvider() {
         val result = MatrixCursor(projection ?: DEFAULT_DOCUMENT_PROJECTION)
         val parent = getFileForDocId(parentDocumentId)
         parent.listFiles()?.forEach { file ->
+            // A symlink leading out of the working directory is not listed.
+            if (!isInside(baseDir, file)) return@forEach
             includeFile(result, getDocIdForFile(file), file)
         }
         return result
@@ -80,7 +83,7 @@ class WorkingDirectoryProvider : DocumentsProvider() {
 
     override fun createDocument(parentDocumentId: String, mimeType: String, displayName: String): String {
         val parent = getFileForDocId(parentDocumentId)
-        val file = File(parent, displayName)
+        val file = resolveInside(File(parent, requireSafeName(displayName)))
 
         if (mimeType == DocumentsContract.Document.MIME_TYPE_DIR) {
             file.mkdirs()
@@ -102,27 +105,57 @@ class WorkingDirectoryProvider : DocumentsProvider() {
 
     override fun renameDocument(documentId: String, displayName: String): String {
         val file = getFileForDocId(documentId)
-        val newFile = File(file.parentFile, displayName)
-        file.renameTo(newFile)
+        if (file == baseDir) throw FileNotFoundException("The root cannot be renamed")
+        val newFile = resolveInside(File(file.parentFile, requireSafeName(displayName)))
+        if (!file.renameTo(newFile)) throw FileNotFoundException("Rename failed")
         return getDocIdForFile(newFile)
     }
 
     override fun isChildDocument(parentDocumentId: String, documentId: String): Boolean {
-        val parent = getFileForDocId(parentDocumentId)
-        val child = getFileForDocId(documentId)
-        return child.absolutePath.startsWith(parent.absolutePath)
+        val parent = runCatching { getFileForDocId(parentDocumentId) }.getOrNull() ?: return false
+        val child = runCatching { getFileForDocId(documentId) }.getOrNull() ?: return false
+        return child != parent && isInside(parent, child)
     }
 
+    /**
+     * Resolves a document ID (a path relative to [baseDir]) to its file. An ID that
+     * leads out of the working directory (`..`, an absolute path, a symlink out) is
+     * refused rather than concatenated onto the base path.
+     */
     private fun getFileForDocId(documentId: String): File {
         if (documentId == ROOT_DOC_ID) {
             return baseDir
         }
-        return File(baseDir, documentId)
+        return resolveInside(File(baseDir, documentId))
+    }
+
+    private fun resolveInside(file: File): File {
+        val canonical = file.canonicalFile
+        if (!isInside(baseDir, canonical)) {
+            throw FileNotFoundException("Outside the working directory")
+        }
+        return canonical
+    }
+
+    /** Separator-aware: `/base` contains `/base/x` but not `/base-other/x`. */
+    private fun isInside(parent: File, child: File): Boolean {
+        val parentPath = parent.canonicalPath
+        val childPath = child.canonicalPath
+        return childPath == parentPath || childPath.startsWith(parentPath + File.separator)
+    }
+
+    /** A display name is one path segment: no separators, no `.` or `..`, no NUL. */
+    private fun requireSafeName(displayName: String): String {
+        require(
+            displayName.isNotEmpty() && displayName != "." && displayName != ".." &&
+                '/' !in displayName && '\\' !in displayName && '\u0000' !in displayName,
+        ) { "Invalid file name" }
+        return displayName
     }
 
     private fun getDocIdForFile(file: File): String {
-        val path = file.absolutePath
-        val basePath = baseDir.absolutePath
+        val path = file.canonicalPath
+        val basePath = baseDir.path
 
         return if (path == basePath) {
             ROOT_DOC_ID

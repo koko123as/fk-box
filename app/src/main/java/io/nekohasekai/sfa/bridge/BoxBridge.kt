@@ -56,7 +56,15 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         fun success(event: Map<String, Any?>)
     }
 
-    private val scope = activity.lifecycleScope
+    // The activity's scope, with failures of the bridge's own jobs (stream
+    // collectors, profile callbacks, tool sessions) reported to the UI instead
+    // of crashing the app. reportError is not used for its own failure.
+    private val scope = kotlinx.coroutines.CoroutineScope(
+        activity.lifecycleScope.coroutineContext + kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            android.util.Log.e("BoxBridge", "bridge job failed", e)
+            if (e !is CancellationException) runCatching { reportError(e.message ?: e.toString()) }
+        },
+    )
     private var sink: EventSink? = null
     private var streamJob: Job? = null
     private val queuedErrors = ArrayDeque<String>()
@@ -299,6 +307,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     }
 
     suspend fun readProfile(id: Long?) = withContext(Dispatchers.IO) { profiles.read(required(id)) }
+
+    suspend fun profileRevision(id: Long?) = withContext(Dispatchers.IO) { profiles.revisionOf(required(id)) }
 
     suspend fun profileConfig(id: Long?) = withContext(Dispatchers.IO) { profiles.config(required(id)) }
 
@@ -651,18 +661,36 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     fun disconnectRemoteServer() { RemoteControlManager.exitRemoteControl() }
 
-    suspend fun createBackup() = operations.withLock { withContext(Dispatchers.IO) { backups.create() } }
-
-    /** Null when the user dismissed the file picker. */
-    suspend fun readBackup(scope: String?): Any? {
-        val uri = activity.pickDocument() ?: return null
-        return withContext(Dispatchers.IO) {
-            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second, scope ?: "all")
+    /**
+     * Creates a backup and writes it to a document the user picks. The backup
+     * (up to 64 MiB) stays on this side: it never crosses JNI to the UI.
+     * False when the user dismissed the file picker.
+     */
+    suspend fun exportBackup(name: String?): Boolean {
+        val bytes = operations.withLock { withContext(Dispatchers.IO) { backups.encode(backups.create()) } }
+        val uri = activity.pickDocument(required(name, "name")) ?: return false
+        withContext(Dispatchers.IO) {
+            activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Unable to write document")
         }
+        return true
     }
 
-    suspend fun restoreBackup(backup: Map<String, Any?>?, scope: String?, strategy: String?) = localProfiles {
-        backups.restore(backup ?: error("Missing backup"), scope ?: "all", strategy ?: "Compatible")
+    /**
+     * Reads and validates a backup from a document the user picks, keeps it
+     * here and returns its summary and token for [restoreBackup]. Null when
+     * the user dismissed the file picker.
+     */
+    suspend fun readBackup(scope: String?): Any? {
+        val uri = activity.pickDocument() ?: return null
+        val backup = withContext(Dispatchers.IO) {
+            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second, scope ?: "all")
+        }
+        return backups.stage(backup)
+    }
+
+    suspend fun restoreBackup(token: String?, scope: String?, strategy: String?) = localProfiles {
+        val backup = backups.staged(required(token, "token")) ?: error("The backup is no longer available; open it again")
+        backups.restore(backup, scope ?: "all", strategy ?: "Compatible")
     }
 
     fun webdavAccount() = webdav.snapshot()
@@ -684,7 +712,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 
-    suspend fun readWebdavBackup(scope: String?) = withContext(Dispatchers.IO) { backups.read(webdav.download(), scope ?: "all") }
+    suspend fun readWebdavBackup(scope: String?): Any? {
+        val backup = withContext(Dispatchers.IO) { backups.read(webdav.download(), scope ?: "all") }
+        return backups.stage(backup)
+    }
 
     // Terminal settings that change files or several settings at once run
     // under the same lock as the other setting writes.
@@ -869,7 +900,11 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun refreshSystemAppearance() = emit("systemAccent", systemAccentColor())
 
     internal fun emit(type: String, value: Any?) {
-        scope.launch(Dispatchers.Main.immediate) { sink?.success(mapOf("type" to type, "value" to value)) }
+        scope.launch(Dispatchers.Main.immediate) {
+            // Never routed to the scope's handler, which reports through emit.
+            runCatching { sink?.success(mapOf("type" to type, "value" to value)) }
+                .onFailure { android.util.Log.e("BoxBridge", "emit $type failed", it) }
+        }
     }
 
     override fun close() {

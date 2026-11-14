@@ -106,15 +106,26 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     /** Called by the Slint UI from its own thread; answers through [SlintHost.nativeReply]. */
     @Suppress("unused")
     fun slintCall(id: Long, method: String, args: String) {
-        lifecycleScope.launch(Dispatchers.Main) {
+        // Every call gets exactly one reply: the Rust side waits on it. A call
+        // that ends without one (a timeout, the activity's scope cancelled,
+        // an exception in a branch below) is answered with an error.
+        val replied = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun reply(ok: Boolean, payload: String) {
+            if (replied.compareAndSet(false, true)) SlintHost.nativeReply(id, ok, payload)
+        }
+        // A failure in any branch is reported to the UI (below) instead of crashing the app.
+        val failures = kotlinx.coroutines.CoroutineExceptionHandler { _, e ->
+            android.util.Log.e("BoxActivity", "slintCall $method failed", e)
+        }
+        val job = lifecycleScope.launch(Dispatchers.Main + failures) {
             val facade = bridge
             if (facade == null) {
-                SlintHost.nativeReply(id, false, SlintHost.wire("Bridge is not ready"))
+                reply(false, SlintHost.wire("Bridge is not ready"))
                 return@launch
             }
             if (method == "attach") {
                 facade.listen { event -> SlintHost.nativeEvent(SlintHost.wire(event)) }
-                SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                reply(true, SlintHost.wire(null))
                 uiAttached = true
                 lastInsets = null
                 pushInsets()
@@ -123,12 +134,12 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             // The native text editor over the Slint field (NativeEditor.kt).
             if (method.startsWith("ime")) {
                 nativeEditor?.handle(method, org.json.JSONObject(args))
-                SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                reply(true, SlintHost.wire(null))
                 return@launch
             }
             // The platform's own menus, dialogs and messages (NativeUi.kt).
             if (method in NATIVE_UI && nativeUi?.handle(method, org.json.JSONObject(args)) == true) {
-                SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                reply(true, SlintHost.wire(null))
                 return@launch
             }
             // Calls the activity answers itself (the Compose UI used the context directly).
@@ -136,20 +147,20 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 "locale" -> {
                     val locale = resources.configuration.locales[0]
                     val offset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
-                    SlintHost.nativeReply(id, true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset, "fontScale" to resources.configuration.fontScale)))
+                    reply(true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset, "fontScale" to resources.configuration.fontScale)))
                     return@launch
                 }
                 "copyText" -> {
                     val text = org.json.JSONObject(args).optString("text")
                     getSystemService(android.content.ClipboardManager::class.java)
                         ?.setPrimaryClip(android.content.ClipData.newPlainText(null, text))
-                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                    reply(true, SlintHost.wire(null))
                     return@launch
                 }
                 "clipboardText" -> {
                     val clip = getSystemService(android.content.ClipboardManager::class.java)?.primaryClip
                     val text = clip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@BoxActivity)?.toString()
-                    SlintHost.nativeReply(id, true, SlintHost.wire(text))
+                    reply(true, SlintHost.wire(text))
                     return@launch
                 }
                 // The native pages over the Slint UI (NativePages.kt); each answers this call when it closes.
@@ -171,12 +182,14 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                         "openTerminalView" -> TerminalActivity::class.java
                         else -> BrowserActivity::class.java
                     }
+                    // The page answers this call itself when it closes.
+                    replied.set(true)
                     NativePages.launch(this@BoxActivity, type, id, extras)
                     return@launch
                 }
                 "closeBrowser" -> {
                     NativePages.browser?.get()?.finish()
-                    SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                    reply(true, SlintHost.wire(null))
                     return@launch
                 }
                 "appIcon" -> {
@@ -205,17 +218,30 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                             file.absolutePath
                         }.getOrNull()
                     }
-                    SlintHost.nativeReply(id, true, SlintHost.wire(path))
+                    reply(true, SlintHost.wire(path))
                     return@launch
                 }
             }
             try {
                 val result = facade.call { slintDispatch(method, org.json.JSONObject(args)) }
-                SlintHost.nativeReply(id, true, SlintHost.wire(result))
+                reply(true, SlintHost.wire(result))
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                // A timeout inside the call is its failure, not this scope's cancellation.
+                reply(false, SlintHost.wire(e.message ?: "Timed out"))
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                SlintHost.nativeReply(id, false, SlintHost.wire(e.message ?: e.toString()))
+                reply(false, SlintHost.wire(e.message ?: e.toString()))
+            }
+        }
+        job.invokeOnCompletion { cause ->
+            if (!replied.get()) {
+                val message = when (cause) {
+                    null -> "No reply"
+                    is CancellationException -> "Cancelled"
+                    else -> cause.message ?: cause.toString()
+                }
+                reply(false, SlintHost.wire(message))
             }
         }
     }

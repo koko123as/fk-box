@@ -26,7 +26,7 @@ jobs:
         shell: bash
     steps:
       - name: Checkout app
-        uses: actions/checkout@v5
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
         with:
           persist-credentials: false
 
@@ -39,14 +39,13 @@ jobs:
           platform: android/arm64
 
       - name: Set up Java for Gradle
-        uses: actions/setup-java@v5
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin
           java-version: '21'
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@v4
-
+        uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
       # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
         run: |
@@ -58,7 +57,7 @@ jobs:
           echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
 
       - name: Cache Rust build
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
           workspaces: ui-slint
 
@@ -78,7 +77,7 @@ jobs:
 
       - name: Upload unit test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ui-unit-tests
           path: |
@@ -100,9 +99,13 @@ jobs:
               exit 1
             fi
           done
+          # Decoded outside the checkout, so it can never be committed or
+          # packaged; Gradle reads its path from KEYSTORE_FILE.
           umask 077
-          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > app/release.keystore
-          test -s app/release.keystore
+          keystore="$RUNNER_TEMP/release.keystore"
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$keystore"
+          test -s "$keystore"
+          echo "KEYSTORE_FILE=$keystore" >> "$GITHUB_ENV"
 
       - name: Build signed Release APK
         env:
@@ -122,7 +125,7 @@ jobs:
           unzip -l app/build/outputs/apk/other/release/*-arm64-v8a.apk | grep -E 'lib/arm64-v8a/lib(fkui|box)\.so'
 
       - name: Upload Release APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: FK-box-${{ steps.core.outputs.version }}-${{ github.sha }}-arm64-v8a-release
           path: app/build/outputs/apk/other/release/*-arm64-v8a.apk
@@ -132,4 +135,4 @@ jobs:
 
       - name: Remove signing key
         if: always()
-        run: rm -f app/release.keystore
+        run: rm -f "$RUNNER_TEMP/release.keystore"

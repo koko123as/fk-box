@@ -33,6 +33,9 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     suspend fun read(id: Long): String = mutex.withLock { File(get(id).typed.path).readText() }
 
+    /** The revision of a profile's file now, which an edit form sends back with its save. */
+    suspend fun revisionOf(id: Long): String = mutex.withLock { revision(File(get(id).typed.path).readText()) }
+
     suspend fun config(id: Long): Map<String, Any?> = mutex.withLock { configLocked(id) }
 
     private suspend fun configLocked(id: Long): Map<String, Any?> {
@@ -184,7 +187,15 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             File(profile.typed.path)
         }
         val oldContent = if (file.exists()) file.readText() else null
+        // An edit that carries the revision it was opened at is refused when the
+        // file changed since (another editor, a subscription update).
+        (args["revision"] as? String)?.let { expected ->
+            require(oldContent != null && revision(oldContent) == expected) { "Configuration changed; reload it before saving" }
+        }
         val previousUrl = profile.typed.remoteURL
+        // Everything an edit changes, to put back if saving or applying fails.
+        val previousName = profile.name
+        val previousTyped = profile.typed.copy()
         write(file, content)
         profile.name = name
         profile.typed.core = declaredCore
@@ -206,6 +217,9 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             val importedAt = (args["updatedAt"] as? Number)?.toLong()?.takeIf { it >= 0L }
             profile.typed.lastUpdated = if (url.isNotEmpty() && args["content"] is String && importedAt != null) Date(importedAt) else Date()
         }
+        var stored = false
+        var applyAttempted = false
+        val previousSelection = Settings.selectedProfile
         try {
             if (id == 0L) {
                 profile.userOrder = ProfileManager.nextOrder()
@@ -213,12 +227,36 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
             } else {
                 ProfileManager.update(profile)
             }
+            stored = true
+            UpdateProfileWork.reconfigureUpdater()
+            if (profile.id == Settings.selectedProfile && content != oldContent) {
+                applyAttempted = true
+                applySelected(false)
+            }
         } catch (e: Exception) {
-            if (oldContent != null) write(file, oldContent) else file.delete()
+            // Roll back the file and the profile row, then bring the service
+            // back on the previous configuration, as ProfileChange does.
+            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
+                fun attempt(task: () -> Unit) = runCatching(task).exceptionOrNull()?.let(e::addSuppressed)
+                attempt { if (oldContent != null) write(file, oldContent) else check(!file.exists() || file.delete()) }
+                if (stored) {
+                    if (id == 0L) {
+                        runCatching { ProfileManager.delete(profile) }.exceptionOrNull()?.let(e::addSuppressed)
+                        if (Settings.selectedProfile != previousSelection) {
+                            Settings.selectedProfile = previousSelection
+                            runCatching { Settings.dataStore.flush() }.exceptionOrNull()?.let(e::addSuppressed)
+                        }
+                    } else {
+                        profile.name = previousName
+                        profile.typed = previousTyped
+                        runCatching { ProfileManager.update(profile) }.exceptionOrNull()?.let(e::addSuppressed)
+                    }
+                    runCatching { UpdateProfileWork.reconfigureUpdater() }.exceptionOrNull()?.let(e::addSuppressed)
+                }
+                if (applyAttempted) runCatching { applySelected(true) }.exceptionOrNull()?.let(e::addSuppressed)
+            }
             throw e
         }
-        UpdateProfileWork.reconfigureUpdater()
-        if (profile.id == Settings.selectedProfile && content != oldContent) applySelected(false)
         return profile.id
     }
 

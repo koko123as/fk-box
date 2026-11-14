@@ -224,7 +224,7 @@ fn terminal_page(st: &TermRef) -> Page {
         // The native surface opens over the page for each newly active session.
         if t.shown.as_deref() != Some(sid.as_str()) && phase != "FINISHED" {
             let (a, i, n) = (st.clone(), sid.clone(), name.clone());
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+            crate::defer("terminal surface", move || {
                 if a.borrow().shown.as_deref() != Some(i.as_str()) {
                     a.borrow_mut().shown = Some(i.clone());
                     open_surface(&i, &n, false);

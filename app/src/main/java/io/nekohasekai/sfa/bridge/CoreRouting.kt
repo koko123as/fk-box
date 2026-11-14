@@ -170,20 +170,6 @@ internal object CoreRouting {
         else trimmed.split(',', ' ', '\t')
     }.map { it.trim() }.filter { it.isNotEmpty() }
 
-    /** Copies another core's rules (new ids, so both can be edited independently). */
-    fun copyFrom(rules: Rules, from: String, to: String): Rules {
-        require(from in cores && to in cores && from != to)
-        val source = rules.core(from)
-        return rules.with(to, source.copy(rules = source.rules.map { it.copy(id = UUID.randomUUID().toString()) }))
-    }
-
-    fun move(rules: List<Rule>, from: Int, to: Int): List<Rule> {
-        if (from !in rules.indices || to !in rules.indices || from == to) return rules
-        val list = rules.toMutableList()
-        list.add(to, list.removeAt(from))
-        return list
-    }
-
     // ---- wire form (bridge events and backups): maps and lists only ----
 
     fun toWire(rules: Rules): Map<String, Any?> = fromElement(json.encodeToJsonElement(Rules.serializer(), rules)) as Map<String, Any?>

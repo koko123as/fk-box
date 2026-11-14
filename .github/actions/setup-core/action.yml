@@ -22,13 +22,13 @@ runs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "go_version=$go_version" >> "$GITHUB_OUTPUT"
         echo "core_version=$core_version" >> "$GITHUB_OUTPUT"
-    - uses: actions/checkout@v5
+    - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       with:
         repository: SagerNet/sing-box
         ref: v${{ steps.versions.outputs.core_version }}
         path: .core
         persist-credentials: false
-    - uses: actions/setup-go@v5
+    - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
         go-version: ${{ steps.versions.outputs.go_version }}
         cache-dependency-path: .core/go.sum

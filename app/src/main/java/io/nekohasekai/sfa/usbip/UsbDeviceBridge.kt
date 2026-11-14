@@ -6,6 +6,7 @@ import android.hardware.usb.UsbDeviceConnection
 import android.hardware.usb.UsbEndpoint
 import android.hardware.usb.UsbInterface
 import android.hardware.usb.UsbManager
+import android.os.SystemClock
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.USBDeviceDescriptor
 import io.nekohasekai.libbox.USBURBRequest
@@ -92,8 +93,16 @@ class UsbDeviceBridge private constructor(
     fun submit(request: USBURBRequest) {
         if (closed) return
         val endpointNumber = request.endpoint and 0x0f
-        executors.getOrPut(endpointNumber) { Executors.newSingleThreadExecutor() }
-            .execute { execute(request, endpointNumber) }
+        // One worker per endpoint address (number and direction): an IN transfer
+        // waiting for data must not hold up the OUT transfers of the same number,
+        // which serial/CDC devices need to answer it. Endpoint 0 (control) has one.
+        val key = if (endpointNumber == 0) 0 else endpointNumber or (if (request.directionIn) USB_DIR_IN else 0)
+        val executor = executors.getOrPut(key) { Executors.newSingleThreadExecutor() }
+        try {
+            executor.execute { execute(request, endpointNumber) }
+        } catch (_: java.util.concurrent.RejectedExecutionException) {
+            // Closed while submitting.
+        }
     }
 
     private fun execute(request: USBURBRequest, endpointNumber: Int) {
@@ -174,7 +183,17 @@ class UsbDeviceBridge private constructor(
         }
         if (request.directionIn) {
             val buffer = ByteArray(request.transferBufferLength)
-            val transferred = connection.bulkTransfer(endpoint, buffer, buffer.size, TRANSFER_TIMEOUT_MS)
+            // An IN transfer completes when the device has data, which may be never.
+            // Wait in bounded slices so close() is noticed; bulkTransfer reports a
+            // timeout and an error alike (-1), so a -1 that took the whole slice is
+            // a timeout and the wait goes on, an earlier one is a real failure.
+            var transferred: Int
+            while (true) {
+                val started = SystemClock.elapsedRealtime()
+                transferred = connection.bulkTransfer(endpoint, buffer, buffer.size, BULK_IN_POLL_MS)
+                if (transferred >= 0 || closed) break
+                if (SystemClock.elapsedRealtime() - started < BULK_IN_POLL_MS - BULK_IN_POLL_SLACK_MS) break
+            }
             applyResult(response, transferred, buffer)
         } else {
             val out = request.outData
@@ -272,7 +291,12 @@ class UsbDeviceBridge private constructor(
 
         private const val CONTROL_TIMEOUT_MS = 5000
 
-        // Block until the endpoint completes; detach closes the fd to unblock waiters.
+        // OUT transfers block until the endpoint completes; detach closes the fd to
+        // unblock them. They run on their own worker, apart from the IN transfers.
         private const val TRANSFER_TIMEOUT_MS = 0
+
+        // IN transfers wait in slices of this length (see executeBulk).
+        private const val BULK_IN_POLL_MS = 1000
+        private const val BULK_IN_POLL_SLACK_MS = 100
     }
 }

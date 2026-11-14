@@ -9,6 +9,35 @@ from pathlib import Path
 from zipfile import ZipFile
 
 
+# The libraries every ABI directory must carry: the core (libbox.so) and the
+# Rust + Slint UI (libfkui.so), each an ELF shared object for that ABI.
+REQUIRED_LIBRARIES = ('libbox.so', 'libfkui.so')
+ELF_MACHINES = {'arm64-v8a': 183, 'armeabi-v7a': 40, 'x86_64': 62, 'x86': 3}
+
+
+def verify_native_libraries(apk_path, abis):
+    with ZipFile(apk_path) as apk:
+        names = set(apk.namelist())
+        for abi in sorted(abis):
+            for library in REQUIRED_LIBRARIES:
+                name = f'lib/{abi}/{library}'
+                if name not in names:
+                    raise SystemExit(f'Missing native library {name}')
+            for name in sorted(n for n in names if n.startswith(f'lib/{abi}/') and n.endswith('.so')):
+                with apk.open(name) as handle:
+                    header = handle.read(20)
+                if len(header) < 20 or header[:4] != b'\x7fELF':
+                    raise SystemExit(f'Not an ELF library: {name}')
+                elf_class = header[4]
+                little = header[5] == 1
+                elf_type = int.from_bytes(header[16:18], 'little' if little else 'big')
+                machine = int.from_bytes(header[18:20], 'little' if little else 'big')
+                expected_class = 1 if abi in ('armeabi-v7a', 'x86') else 2
+                if elf_class != expected_class or elf_type != 3 or machine != ELF_MACHINES.get(abi):
+                    raise SystemExit(f'{name}: class {elf_class}, type {elf_type}, machine {machine} do not match {abi}')
+    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI')
+
+
 def main():
     properties = dict(
         line.strip().split('=', 1)
@@ -46,6 +75,7 @@ def main():
                 raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
     if abis != {'arm64-v8a'}:
         raise SystemExit(f'Unexpected native ABIs: {abis}')
+    verify_native_libraries(apks[0], abis)
 
     aapt2 = Path(os.environ['ANDROID_HOME']) / 'build-tools/37.0.0/aapt2'
     badging = subprocess.check_output(
