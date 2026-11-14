@@ -19,7 +19,19 @@ thread_local! {
     static NEXT_ID: Cell<i32> = const { Cell::new(0) };
 }
 
-fn host(method: &'static str, args: Value) {
+pub fn host(method: &'static str, mut args: Value) {
+    // The platform widgets take the UI's own colours.
+    if matches!(method, "menuShow" | "dialogShow" | "textViewer") {
+        if let (Some(map), Some(w)) = (args.as_object_mut(), window()) {
+            let scheme = w.global::<crate::Theme>().get_s();
+            map.insert("dark".into(), json!(crate::theme_apply::is_dark()));
+            map.insert("primary".into(), json!(scheme.primary.as_argb_encoded()));
+            map.insert("error".into(), json!(scheme.error.as_argb_encoded()));
+            map.insert("surface".into(), json!(scheme.surface_container_high.as_argb_encoded()));
+            map.insert("onSurface".into(), json!(scheme.on_surface.as_argb_encoded()));
+            map.insert("onSurfaceVariant".into(), json!(scheme.on_surface_variant.as_argb_encoded()));
+        }
+    }
     call(method, args, move |result| {
         if let Err(error) = result {
             eprintln!("{method}: {error}");
@@ -27,8 +39,14 @@ fn host(method: &'static str, args: Value) {
     });
 }
 
-fn scale() -> f32 {
+pub fn scale() -> f32 {
     window().map(|w| w.window().scale_factor()).unwrap_or(1.0).max(0.1)
+}
+
+/// Menus, dialogs, messages and text selection go to the platform's own
+/// widgets (src/nav.rs) where the host has them.
+pub fn native_ui() -> bool {
+    cfg!(target_os = "android")
 }
 
 /// The UTF-16 offset of a byte offset (clamped to the text and a character).

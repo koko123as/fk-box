@@ -51,6 +51,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     private var startGeneration = 0
     private val startResult = ServiceStartResult()
     private var nativeEditor: NativeEditor? = null
+    private var nativeUi: NativeUi? = null
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (startPending && (granted || !Settings.dynamicNotification)) resumeStart() else {
@@ -122,6 +123,11 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             // The native text editor over the Slint field (NativeEditor.kt).
             if (method.startsWith("ime")) {
                 nativeEditor?.handle(method, org.json.JSONObject(args))
+                SlintHost.nativeReply(id, true, SlintHost.wire(null))
+                return@launch
+            }
+            // The platform's own menus, dialogs and messages (NativeUi.kt).
+            if (method in NATIVE_UI && nativeUi?.handle(method, org.json.JSONObject(args)) == true) {
                 SlintHost.nativeReply(id, true, SlintHost.wire(null))
                 return@launch
             }
@@ -363,6 +369,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         }
         attachUi()
         nativeEditor = NativeEditor(this)
+        nativeUi = NativeUi(this)
         window.decorView.viewTreeObserver.addOnGlobalLayoutListener(insetsLayout)
         lifecycleScope.launch {
             Settings.dataStore.initialize()
@@ -665,6 +672,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     override fun onDestroy() {
+        nativeUi?.close()
         documentRequest?.cancel()
         startResult.failed(IllegalStateException("Activity closed during service start"))
         connection.disconnect()
@@ -674,3 +682,6 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         super.onDestroy()
     }
 }
+
+/** Bridge calls NativeUi answers (ui-slint/src/nav.rs). */
+private val NATIVE_UI = setOf("menuShow", "menuHide", "dialogShow", "dialogHide", "dialogError", "toast", "textViewer")

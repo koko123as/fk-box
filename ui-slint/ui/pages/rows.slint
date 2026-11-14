@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { SettingRow, PageData } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText } from "../kit.slint";
 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
@@ -302,15 +302,14 @@ export component RowView inherits Rectangle {
                                 clicked => { Nav.act2("row-trail", root.key, ""); }
                             } }
                         }
-                        if root.entry.title != "": TextInput {
+                        if root.entry.title != "": SelectableText {
                             text: root.entry.title;
-                            read-only: true;
-                            single-line: false;
                             wrap: word-wrap;
                             font-size: Theme.size(root.entry.mono ? TextRole.footnote : TextRole.subheadline);
                             font-family: root.entry.mono ? Theme.mono : Theme.font-family;
                             font-weight: root.entry.mono ? 400 : 500;
                             color: Theme.s.on-surface;
+                            clicked => { Nav.act2("row", root.key, ""); }
                         }
                         if root.entry.chain.length > 0 || root.entry.detail != "": HorizontalLayout {
                             spacing: 6px;
@@ -471,12 +470,10 @@ export component RowView inherits Rectangle {
             }
             if entry.kind == "text": Rectangle {
                 height: tx.preferred-height + 8px;
-                tx := TextInput {
+                tx := SelectableText {
                     y: 4px;
                     height: self.preferred-height;
                     text: root.entry.title;
-                    read-only: true;
-                    single-line: false;
                     wrap: word-wrap;
                     font-size: root.entry.mono ? Theme.sp(13) : Theme.size(TextRole.subheadline);
                     font-family: root.entry.mono ? Theme.mono : Theme.font-family;
@@ -487,13 +484,11 @@ export component RowView inherits Rectangle {
                 height: et.preferred-height + 24px;
                 border-radius: Theme.radius;
                 background: Theme.s.error-container;
-                et := TextInput {
+                et := SelectableText {
                     x: 12px;
                     width: parent.width - 24px;
                     height: self.preferred-height;
                     text: root.entry.title;
-                    read-only: true;
-                    single-line: false;
                     wrap: word-wrap;
                     font-size: Theme.size(TextRole.subheadline);
                     color: Theme.s.on-error-container;

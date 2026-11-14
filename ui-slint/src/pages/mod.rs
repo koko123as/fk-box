@@ -250,6 +250,15 @@ fn act(id: &str, arg: &str) {
             crate::app::copy_text(arg);
             crate::app::message("Copied");
         }
+        // Long press on read-only text: the platform's own text selection.
+        "select-text" => {
+            if crate::native_ime::native_ui() {
+                crate::native_ime::host("textViewer", serde_json::json!({ "text": arg }));
+            } else {
+                crate::app::copy_text(arg);
+                crate::app::message("Copied");
+            }
+        }
         "open-url" => crate::app::act("openUrl", serde_json::json!({ "url": arg })),
         "rail-extended" => {
             let extended = arg == "1";

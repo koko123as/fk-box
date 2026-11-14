@@ -99,6 +99,33 @@ export component NativeTextInput inherits TextInput {
 }
 
 // AppIcon
+// Read-only text whose selection is the platform's: a long press opens the
+// text in a native selectable view (Nav.act "select-text"), where the system
+// handles, copy and share work as in any other app.
+export component SelectableText inherits Text {
+    callback clicked();
+    wrap: word-wrap;
+    touch := TouchArea {
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) {
+                hold.running = true;
+            } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                hold.running = false;
+            }
+        }
+        moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
+    }
+    hold := Timer {
+        interval: 450ms;
+        running: false;
+        triggered => {
+            self.running = false;
+            Nav.act("select-text", root.text);
+        }
+    }
+}
+
 export component Icon inherits Text {
     in property <Glyph> glyph;
     in property <length> size: 24px;

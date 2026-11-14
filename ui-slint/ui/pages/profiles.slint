@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText } from "../kit.slint";
 
 // The expiry date on a tinted pill (SubscriptionExpireChip) and the core chip.
 component TonePill inherits Rectangle {
@@ -154,14 +154,12 @@ export component CodeEditorPage inherits Rectangle {
         if Profiles.editor-error != "": Rectangle {
             background: Theme.s.error-container;
             height: err.preferred-height + 24px;
-            err := TextInput {
+            err := SelectableText {
                 x: 12px;
                 width: parent.width - 24px;
                 height: self.preferred-height;
                 text: Profiles.editor-error;
-                read-only: true;
                 wrap: word-wrap;
-                single-line: false;
                 color: Theme.s.on-error-container;
                 font-size: Theme.size(TextRole.body);
             }
@@ -261,11 +259,9 @@ export component QrPage inherits ScrollPage {
                 stroke-width: 0;
             }
         }
-        if Profiles.qr-path == "": TextInput {
+        if Profiles.qr-path == "": SelectableText {
             text: Profiles.qr-text;
-            read-only: true;
             wrap: word-wrap;
-            single-line: false;
             horizontal-alignment: center;
             color: Theme.s.on-surface;
         }

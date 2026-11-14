@@ -62,6 +62,10 @@ struct NavState {
     menu_stack: Vec<Vec<MenuEntry>>,
     dialogs: Vec<Dialog>,
     toast_serial: u64,
+    /// The menu and dialog the host shows (native_ime::native_ui); events
+    /// for an older one are dropped.
+    menu_serial: i32,
+    dialog_serial: i32,
 }
 
 thread_local! {
@@ -347,6 +351,34 @@ fn show_menu(entries: &[MenuEntry], parent: Option<&str>) {
             submenu: !e.sub.is_empty(),
         });
     }
+    if crate::native_ime::native_ui() {
+        let id = NAV.with(|n| {
+            let mut n = n.borrow_mut();
+            n.menu_serial += 1;
+            n.menu_serial
+        });
+        let (x, y) = crate::app::window().map(|w| (w.global::<Nav>().get_menu_x(), w.global::<Nav>().get_menu_y())).unwrap_or_default();
+        let s = crate::native_ime::scale();
+        let items: Vec<serde_json::Value> = items
+            .iter()
+            .enumerate()
+            .map(|(index, i)| {
+                serde_json::json!({
+                    "label": i.label.as_str(),
+                    "section": i.section.as_str(),
+                    "divider": i.divider,
+                    "checked": i.checked,
+                    "enabled": i.enabled,
+                    "danger": i.danger,
+                    "submenu": i.submenu,
+                    // The first row of a submenu goes back to the outer menu.
+                    "back": parent.is_some() && index == 0,
+                })
+            })
+            .collect();
+        crate::native_ime::host("menuShow", serde_json::json!({ "id": id, "x": x * s, "y": y * s, "items": items }));
+        return;
+    }
     with_window(|w| {
         let nav = w.global::<Nav>();
         nav.set_menu_items(ModelRc::new(VecModel::from(items)));
@@ -359,16 +391,16 @@ pub fn open_menu_at(entries: Vec<MenuEntry>, x: f32, y: f32) {
     if entries.is_empty() {
         return;
     }
+    with_window(|w| {
+        let nav = w.global::<Nav>();
+        nav.set_menu_x(x);
+        nav.set_menu_y(y);
+    });
     show_menu(&entries, None);
     NAV.with(|n| {
         let mut n = n.borrow_mut();
         n.menu = entries;
         n.menu_stack.clear();
-    });
-    with_window(|w| {
-        let nav = w.global::<Nav>();
-        nav.set_menu_x(x);
-        nav.set_menu_y(y);
     });
 }
 
@@ -378,6 +410,9 @@ fn close_menu() {
         n.menu.clear();
         n.menu_stack.clear();
     });
+    if crate::native_ime::native_ui() {
+        crate::native_ime::host("menuHide", serde_json::json!({}));
+    }
     with_window(|w| w.global::<Nav>().set_menu_open(false));
     refocus();
 }
@@ -451,6 +486,36 @@ struct Dialog {
 }
 
 fn show_dialog() {
+    if crate::native_ime::native_ui() {
+        let spec = NAV.with(|n| {
+            let mut n = n.borrow_mut();
+            n.dialog_serial += 1;
+            let id = n.dialog_serial;
+            n.dialogs.last().map(|d| {
+                serde_json::json!({
+                    "id": id,
+                    "title": d.title,
+                    "message": d.message,
+                    "mono": d.mono,
+                    "actions": d.actions,
+                    "danger": d.danger,
+                    "options": d.options,
+                    "option": d.option,
+                    "input": d.input.as_ref().map(|(value, number, suffix, multiline)| serde_json::json!({
+                        "text": value,
+                        "number": number,
+                        "suffix": suffix,
+                        "multiline": multiline,
+                    })),
+                })
+            })
+        });
+        match spec {
+            Some(spec) => crate::native_ime::host("dialogShow", spec),
+            None => crate::native_ime::host("dialogHide", serde_json::json!({})),
+        }
+        return;
+    }
     NAV.with(|n| {
         let n = n.borrow();
         with_window(|w| {
@@ -612,7 +677,7 @@ fn dialog_action(index: i32, text: SharedString) {
             None
         });
         if let Some(error) = error {
-            with_window(|w| w.global::<Nav>().set_dialog_error(error.into()));
+            set_dialog_error(error);
             return;
         }
         if let Some(d) = take_dialog() {
@@ -648,7 +713,36 @@ fn dialog_edited(text: SharedString) {
             _ => None,
         }
     });
-    with_window(|w| w.global::<Nav>().set_dialog_error(error.unwrap_or_default().into()));
+    set_dialog_error(error.unwrap_or_default());
+}
+
+fn set_dialog_error(error: String) {
+    if crate::native_ime::native_ui() {
+        let id = NAV.with(|n| n.borrow().dialog_serial);
+        crate::native_ime::host("dialogError", serde_json::json!({ "id": id, "error": error }));
+        return;
+    }
+    with_window(|w| w.global::<Nav>().set_dialog_error(error.into()));
+}
+
+/// An event from the host's own menu or dialog (`{"kind", "id", ...}`).
+pub fn on_native_event(value: &serde_json::Value) {
+    let id = value["id"].as_i64().unwrap_or(-1) as i32;
+    let index = value["index"].as_i64().unwrap_or(-1) as i32;
+    let text = || SharedString::from(value["text"].as_str().unwrap_or(""));
+    let (menu, dialog) = NAV.with(|n| {
+        let n = n.borrow();
+        (n.menu_serial, n.dialog_serial)
+    });
+    match value["kind"].as_str().unwrap_or("") {
+        "menuPick" if id == menu => menu_pick(index),
+        "menuDismiss" if id == menu => close_menu(),
+        "dialogAction" if id == dialog => dialog_action(index, text()),
+        "dialogEdited" if id == dialog => dialog_edited(text()),
+        "dialogPick" if id == dialog => dialog_pick(index),
+        "dialogDismiss" if id == dialog => dismiss_dialog(),
+        _ => {}
+    }
 }
 
 fn dialog_pick(index: i32) {
@@ -666,6 +760,10 @@ fn dialog_pick(index: i32) {
 pub fn toast(text: &str, error: bool) {
     let text = text.trim().to_string();
     if text.is_empty() {
+        return;
+    }
+    if crate::native_ime::native_ui() {
+        crate::native_ime::host("toast", serde_json::json!({ "text": text, "long": error }));
         return;
     }
     let serial = NAV.with(|n| {

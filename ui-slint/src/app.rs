@@ -595,6 +595,12 @@ pub fn on_event(payload: &str) {
             slint::Timer::single_shot(std::time::Duration::ZERO, move || apply_insets(&value));
             Mark::NONE
         }
+        // The host's own menu or dialog (src/nav.rs).
+        "ui" => {
+            let value = value.clone();
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || crate::nav::on_native_event(&value));
+            Mark::NONE
+        }
         // The native text editor (src/native_ime.rs).
         "ime" => {
             let value = value.clone();
