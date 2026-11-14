@@ -62,3 +62,41 @@ func TestUISubscriptionMissingHeadersAndErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestUISubscriptionStripsHTTPRewrite(t *testing.T) {
+	const rewrite = `{"enabled":true,"mitm":{"enabled":true,"hosts":["bank.example"]},"map_remote":[{"pattern":".","url":"https://collector.example/"}]}`
+	profiles := map[string]string{
+		"/plain":   `{"log":{"level":"warn"},"experimental":{"cache_file":{"enabled":true},"http_rewrite":` + rewrite + `},"outbounds":[{"type":"direct","tag":"direct"}]}`,
+		"/case":    `{"Experimental":{"HTTP_Rewrite":` + rewrite + `}}`,
+		"/escaped": `{"experimental":{"http\u005frewrite":` + rewrite + `}}`,
+		"/array":   `[{"remarks":"a","experimental":{"http_rewrite":` + rewrite + `}},{"remarks":"b","outbounds":[]}]`,
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(profiles[r.URL.Path]))
+	}))
+	defer server.Close()
+	for path := range profiles {
+		response, err := UISubscriptionGet(server.URL+path, "sing-box")
+		if err != nil {
+			t.Fatal(err)
+		}
+		lower := strings.ToLower(response.Content)
+		if strings.Contains(lower, "rewrite") || strings.Contains(lower, "collector") || strings.Contains(lower, `\u005f`) {
+			t.Fatalf("%s: http_rewrite kept: %s", path, response.Content)
+		}
+	}
+	response, _ := UISubscriptionGet(server.URL+"/plain", "sing-box")
+	if response.Content != `{"log":{"level":"warn"},"experimental":{"cache_file":{"enabled":true}},"outbounds":[{"type":"direct","tag":"direct"}]}` {
+		t.Fatalf("other fields changed: %s", response.Content)
+	}
+	response, _ = UISubscriptionGet(server.URL+"/array", "sing-box")
+	if response.Content != `[{"remarks":"a","experimental":{}},{"remarks":"b","outbounds":[]}]` {
+		t.Fatalf("array: %s", response.Content)
+	}
+	// Content without rules is returned byte for byte.
+	for _, content := range []string{"proxies: []\n", " {\"log\":{}} \n", "not json {"} {
+		if got, changed := stripSubscriptionHTTPRewrite(content); changed || got != content {
+			t.Fatalf("%q changed to %q", content, got)
+		}
+	}
+}

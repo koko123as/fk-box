@@ -93,7 +93,7 @@ func binaryPreview(body []byte, truncated bool) Preview {
 
 func (s *Store) WriteHAR(output io.Writer, query string) error {
 	page := s.Page(MaxEntries, query)
-	if _, err := io.WriteString(output, `{"log":{"version":"1.2","creator":{"name":"B-box","version":"1"},"entries":[`); err != nil {
+	if _, err := io.WriteString(output, `{"log":{"version":"1.2","creator":{"name":"FK-box","version":"1"},"entries":[`); err != nil {
 		return err
 	}
 	first := true
@@ -145,7 +145,7 @@ func harEntry(d *Detail) map[string]any {
 	return map[string]any{"startedDateTime": time.UnixMilli(d.StartedAt).UTC().Format(time.RFC3339Nano), "time": d.DurationMS,
 		"request": request, "response": response, "cache": map[string]any{},
 		"timings": map[string]int64{"send": 0, "wait": d.DurationMS, "receive": 0},
-		"comment": "B-box measures total elapsed time only. HAR wait contains that total; send/receive are placeholders, not measured phases.",
+		"comment": "FK-box measures total elapsed time only. HAR wait contains that total; send/receive are placeholders, not measured phases.",
 		"_bBox": map[string]any{"metadata": d.Metadata, "complete": d.Complete, "error": d.Error, "note": d.Note, "originalUrl": d.OriginalURL,
 			"timingAccuracy": "total-only", "requestBodyComplete": d.Request.BodyComplete, "requestBodyTruncated": d.Request.BodyTruncated,
 			"requestHeadersTruncated": d.Request.HeadersTruncated, "responseHeadersTruncated": d.Response.HeadersTruncated,

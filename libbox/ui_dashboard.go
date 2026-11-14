@@ -1,6 +1,6 @@
 package libbox
 
-// B-box UI bindings for existing Go runtime statistics and sing-box routing.
+// FK-box UI bindings for existing Go runtime statistics and sing-box routing.
 // This adds no listener, routing rule, outbound or Clash implementation.
 import (
 	"bufio"

@@ -476,7 +476,7 @@ func TestCoreRoutingAppOnly(t *testing.T) {
 	}
 }
 
-func TestSingBoxIsCatchAll(t *testing.T) {
+func TestCoreRoutingSingBoxIsCatchAll(t *testing.T) {
 	for _, c := range []struct {
 		raw  string
 		want bool

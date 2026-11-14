@@ -1,6 +1,6 @@
 // Package httpdebug records routed HTTP streams and opt-in HTTPS MITM sessions.
 // Config contains private capture settings; RewriteConfig is the separate,
-// validated B-box profile extension for HTTP processing.
+// validated FK-box profile extension for HTTP processing.
 package httpdebug
 
 import (
@@ -17,6 +17,9 @@ const (
 	DefaultBodyLimit = 64 * 1024
 	MaxBodyLimit     = 1024 * 1024
 	MaxEntries       = 300
+	// Observed hostnames (domain-only records) are kept apart from HTTP
+	// exchanges so a burst of TLS/QUIC observations never evicts them.
+	MaxDomainEntries = 300
 	MaxStorageBytes  = 32 * 1024 * 1024
 	MaxHeaderBytes   = 64 * 1024
 	MaxConnections   = 32
@@ -119,23 +122,20 @@ func validHost(host string) bool {
 }
 
 type Metadata struct {
-	Host                string          `json:"host"`
-	Port                uint16          `json:"port"`
-	Protocol            string          `json:"protocol"`
-	Source              string          `json:"source"`
-	Destination         string          `json:"destination"`
-	OriginalDestination string          `json:"originalDestination,omitempty"`
-	Inbound             string          `json:"inbound"`
-	Outbound            string          `json:"outbound"`
-	Rule                string          `json:"rule"`
-	UID                 int32           `json:"uid"`
-	Packages            []string        `json:"packages"`
-	CaptureSource       string          `json:"captureSource,omitempty"`
-	PID                 uint32          `json:"pid,omitempty"`
-	CaptureID           string          `json:"captureId,omitempty"`
-	TLSAdapter          string          `json:"tlsAdapter,omitempty"`
-	Socket              *SocketMetadata `json:"socket,omitempty"`
-	TLS                 *TLSMetadata    `json:"tls,omitempty"`
+	Host                string       `json:"host"`
+	Port                uint16       `json:"port"`
+	Protocol            string       `json:"protocol"`
+	Source              string       `json:"source"`
+	Destination         string       `json:"destination"`
+	OriginalDestination string       `json:"originalDestination,omitempty"`
+	Inbound             string       `json:"inbound"`
+	Outbound            string       `json:"outbound"`
+	Rule                string       `json:"rule"`
+	UID                 int32        `json:"uid"`
+	Packages            []string     `json:"packages"`
+	CaptureSource       string       `json:"captureSource,omitempty"`
+	TLSAdapter          string       `json:"tlsAdapter,omitempty"`
+	TLS                 *TLSMetadata `json:"tls,omitempty"`
 }
 
 // Versions and ALPN are the negotiated values on each side, not estimates.
@@ -146,14 +146,6 @@ type TLSMetadata struct {
 	ALPN                string `json:"alpn"`
 	UpstreamCertificate string `json:"upstreamCertificate"`
 	UpstreamServerName  string `json:"upstreamServerName,omitempty"`
-}
-
-type SocketMetadata struct {
-	FD          int32  `json:"fd"`
-	Inode       string `json:"inode"`
-	NetNS       uint32 `json:"netns"`
-	Source      string `json:"source"`
-	Destination string `json:"destination"`
 }
 
 func (c Config) candidate(m Metadata) bool {

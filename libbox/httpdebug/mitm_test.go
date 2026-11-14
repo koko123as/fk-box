@@ -93,12 +93,12 @@ func mitmClient(t *testing.T, e *Engine, origin string, ca, roots *x509.CertPool
 			if err != nil {
 				return nil, err
 			}
-			if !e.Handle(context.Background(), inbound, Metadata{Host: "origin.test", Port: 443, Protocol: "tls",
+			if !e.HandleRouted(context.Background(), inbound, Metadata{Host: "origin.test", Port: 443, Protocol: "tls",
 				Outbound: "selected-route", Rule: "selected-rule", UID: 1234, Packages: []string{"com.test"}},
 				func(ctx context.Context) (net.Conn, error) {
 					dials.Add(1)
 					return (&net.Dialer{}).DialContext(ctx, "tcp", origin)
-				}, roots, nil) {
+				}, nil, roots, nil) {
 				client.Close()
 				inbound.Close()
 				return nil, errors.New("MITM did not accept the test connection")
@@ -401,8 +401,8 @@ func TestMITMStopCancelsAnUpstreamHandshake(t *testing.T) {
 	defer origin.Close()
 	defer clientSide.Close()
 	entered := make(chan struct{})
-	if !e.Handle(context.Background(), inbound, Metadata{Host: "origin.test", Port: 443, Protocol: "tls"},
-		func(context.Context) (net.Conn, error) { close(entered); return upstream, nil }, x509.NewCertPool(), nil) {
+	if !e.HandleRouted(context.Background(), inbound, Metadata{Host: "origin.test", Port: 443, Protocol: "tls"},
+		func(context.Context) (net.Conn, error) { close(entered); return upstream, nil }, nil, x509.NewCertPool(), nil) {
 		t.Fatal("not captured")
 	}
 	client := tls.Client(clientSide, &tls.Config{ServerName: "origin.test", RootCAs: ca})

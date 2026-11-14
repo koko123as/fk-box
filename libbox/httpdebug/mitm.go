@@ -31,7 +31,17 @@ func (e *Engine) SelectTLS(ctx context.Context, conn net.Conn, metadata Metadata
 	e.mu.Lock()
 	if e.closed || len(e.connections)+e.preparing >= MaxConnections {
 		e.skipped.Add(1)
+		rewrite := e.rewrite != nil && e.rewrite.scope.matches(metadata)
 		e.mu.Unlock()
+		if rewrite {
+			// Same as plain HTTP in HandleRouted: a connection the profile's
+			// rewrite rules cover is closed at capacity instead of passing
+			// through without them. Reporting it as selected hands it to
+			// HandleRouted, which reports the capacity error to the caller.
+			conn.Close()
+			AppendCaptureLog("warn", "HTTP rewrite connection capacity exceeded or service stopped; TLS connection to "+metadata.Host+" closed")
+			return conn, metadata, true
+		}
 		return conn, metadata, false
 	}
 	e.preparing++
@@ -238,11 +248,7 @@ func (e *Engine) recordTLSFailure(metadata Metadata, err error) {
 	}
 	request := &http.Request{Method: "TLS", Proto: "TLS", Header: make(http.Header),
 		URL: &url.URL{Scheme: "https", Host: net.JoinHostPort(metadata.Host, strconv.Itoa(int(metadata.Port)))}}
-	id := e.store.begin(metadata, request, e.config.BodyLimit)
-	e.store.domainOnly(id)
-	e.store.addNote(id, "TLS handshake failed before any HTTP request was received")
-	e.store.setError(id, err)
-	e.store.finish(id)
+	e.store.observeDomain(metadata, request, e.config.BodyLimit, "TLS handshake failed before any HTTP request was received", err)
 }
 
 func tlsVersion(version uint16) string {

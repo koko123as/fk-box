@@ -205,7 +205,7 @@ func (s *coreStartedService) SubscribeGroups(empty *emptypb.Empty, server grpc.S
 			_, groups := currentCoreChange()
 			// Send only when something changed; the periodic refresh mostly
 			// finds the same list.
-			if current := readCoreGroups(running); last == nil || !proto.Equal(current, last) {
+			if current := readCoreGroups(running); last == nil || !coreGroupsEqual(current, last) {
 				if err := send(current); err != nil {
 					return err
 				}
@@ -219,6 +219,24 @@ func (s *coreStartedService) SubscribeGroups(empty *emptypb.Empty, server grpc.S
 			}
 		}
 	})
+}
+
+// coreGroupsEqual compares two group lists ignoring UrlTestTime: mihomo's
+// per-URL delay has no measurement time, so readMihomoGroups stamps it with
+// the read time and a plain proto.Equal would resend the same list on every
+// tick.
+func coreGroupsEqual(a, b *daemon.Groups) bool {
+	return proto.Equal(coreGroupsWithoutTestTime(a), coreGroupsWithoutTestTime(b))
+}
+
+func coreGroupsWithoutTestTime(groups *daemon.Groups) *daemon.Groups {
+	clone := proto.Clone(groups).(*daemon.Groups)
+	for _, group := range clone.Group {
+		for _, item := range group.Items {
+			item.UrlTestTime = 0
+		}
+	}
+	return clone
 }
 
 func readCoreGroups(running *runningCore) *daemon.Groups {

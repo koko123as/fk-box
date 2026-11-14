@@ -22,7 +22,7 @@ const (
 	MaxScriptBytes        = 128 * 1024
 )
 
-// RewriteConfig is the B-box experimental.http_rewrite profile extension.
+// RewriteConfig is the FK-box experimental.http_rewrite profile extension.
 // It is deliberately separate from the device's private capture settings.
 // Resources are embedded in the JSON profile; validation never reads files,
 // downloads code, runs scripts, installs certificates or starts interception.

@@ -85,10 +85,6 @@ func (e *Engine) RejectQUIC(metadata Metadata) bool {
 	return true
 }
 
-func (e *Engine) Handle(ctx context.Context, conn net.Conn, metadata Metadata, dial DialFunc, roots *x509.CertPool, onClose func(error)) bool {
-	return e.HandleRouted(ctx, conn, metadata, dial, nil, roots, onClose)
-}
-
 func (e *Engine) HandleRouted(ctx context.Context, conn net.Conn, metadata Metadata, dial DialFunc, mapped RewriteDialFunc, roots *x509.CertPool, onClose func(error)) bool {
 	if !e.Matches(metadata) || metadata.Protocol == "tls" && e.ca == nil {
 		return false
@@ -324,7 +320,7 @@ func (e *Engine) handler(metadata Metadata, target *url.URL, transport http.Roun
 				if errors.Is(err, errRewriteSize) {
 					status = http.StatusRequestEntityTooLarge
 				}
-				http.Error(w, "B-box: request rewrite failed; see capture logs", status)
+				http.Error(w, "FK-box: request rewrite failed; see capture logs", status)
 				return
 			}
 			e.store.rewrittenRequest(id, request, originalURL.String())
@@ -389,7 +385,7 @@ func (e *Engine) handler(metadata Metadata, target *url.URL, transport http.Roun
 			ErrorHandler: func(w http.ResponseWriter, r *http.Request, err error) {
 				e.store.setError(id, err)
 				e.reportError("Upstream HTTP " + metadata.Host + ": " + err.Error())
-				http.Error(w, "B-box: upstream connection failed; see HTTP debugging details", http.StatusBadGateway)
+				http.Error(w, "FK-box: upstream connection failed; see HTTP debugging details", http.StatusBadGateway)
 			},
 		}
 		proxy.ServeHTTP(w, request)
@@ -403,16 +399,19 @@ func (e *Engine) Observe(metadata Metadata, protocol string) {
 	if !e.captureEnabled || !e.config.ExtractHosts || !e.config.candidate(metadata) || !validHost(normalizeHost(metadata.Host)) {
 		return
 	}
+	// The engine lock only guards the closed check: the record is written
+	// without it so a slow disk never delays new connections.
 	e.mu.Lock()
-	defer e.mu.Unlock()
 	if e.closed {
+		e.mu.Unlock()
 		return
 	}
+	e.wg.Add(1)
+	e.mu.Unlock()
+	defer e.wg.Done()
 	request := &http.Request{Method: "TLS", Proto: protocol, Header: make(http.Header),
 		URL: &url.URL{Scheme: "https", Host: net.JoinHostPort(metadata.Host, strconv.Itoa(int(metadata.Port)))}}
-	id := e.store.begin(metadata, request, e.config.BodyLimit)
-	e.store.domainOnly(id)
-	e.store.finish(id)
+	e.store.observeDomain(metadata, request, e.config.BodyLimit, "", nil)
 }
 
 type roundTripperFunc func(*http.Request) (*http.Response, error)

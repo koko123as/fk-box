@@ -440,3 +440,26 @@ func TestCoreRoutingRuleSetDownloadError(t *testing.T) {
 		t.Fatal("other error taken for a rule-set download")
 	}
 }
+
+func TestCoreRoutingStartErrorFromRules(t *testing.T) {
+	for _, message := range []string{
+		"start service: initialize rule-set: initial rule-set: fk-geosite-cn: EOF",
+		"start service: initialize router: parse rule[2]: outbound not found: Node",
+		"failed to build routing rule > ruleTag fk wechat",
+		"rules[3] [PROCESS-NAME,com.example,DIRECT] error: proxy not found",
+		"app/router: balancer fk-auto not found",
+	} {
+		if !routingStartErrorFromRules(message) {
+			t.Errorf("rule error not recognised: %s", message)
+		}
+	}
+	for _, message := range []string{
+		"start service: start inbound/tun[tun-in]: configure tun interface: operation not permitted",
+		"start service: create outbound proxy: unknown type",
+		"listen tcp 127.0.0.1:2080: bind: address already in use",
+	} {
+		if routingStartErrorFromRules(message) {
+			t.Errorf("profile error taken for a rule error: %s", message)
+		}
+	}
+}

@@ -82,8 +82,10 @@ func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
 // sing-box rule-set whose first download fails, which sing-box treats as a
 // start error in route/rule/rule_set_remote.go), the profile is started as it
 // is and the returned result carries the reason in Error (Fallback is set when
-// the core was started a second time without the rules). Only an error of the
-// profile itself is returned as an error. The app shows Error and Warnings on
+// the core was started a second time without the rules). The second start is
+// made only when the start error points at the rules
+// (routingStartErrorFromRules); any other start error, and an error of the
+// profile itself, is returned as an error. The app shows Error and Warnings on
 // the routing page and as a notice.
 func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *OverrideOptions) (*CoreRoutingResult, error) {
 	if core == "" {
@@ -107,6 +109,13 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 		return result, nil
 	}
 	if startErr := s.StartOrReloadCoreService(core, result.Content, options); startErr != nil {
+		if !routingStartErrorFromRules(startErr.Error()) {
+			// Nothing in the error points at the rules (a TUN, port, node or
+			// other profile problem): starting again without them would
+			// blame the rules and drop them, so the original error is
+			// returned as it is.
+			return nil, startErr
+		}
 		if err := s.StartOrReloadCoreService(core, configContent, options); err != nil {
 			// The profile does not start without the rules either: its own error.
 			return nil, err
@@ -131,6 +140,21 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 // rule-set whose initial download failed ("initial rule-set: <tag>: ...").
 func routingIsRuleSetDownload(message string) bool {
 	return strings.Contains(message, "initial rule-set")
+}
+
+// routingStartErrorFromRules reports whether a start error can come from the
+// routing rules this file added: a rule, rule-set or rule-provider (sing-box
+// "rule[3]", "initial rule-set"; Xray "routing rule"/"ruleTag"; mihomo
+// "rules[2]", "RULE-SET"), the geosite/geoip data they reference, an Xray
+// balancer they target, or an fk- tag they introduced.
+func routingStartErrorFromRules(message string) bool {
+	lower := strings.ToLower(message)
+	for _, marker := range []string{"rule", "geosite", "geoip", "balancer", "process-name", "package_name", "fk-", "fk "} {
+		if strings.Contains(lower, marker) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *CommandServer) writeRoutingWarnings(result *CoreRoutingResult) {
