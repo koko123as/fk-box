@@ -1420,11 +1420,3 @@ fn decode_icon(path: &std::path::Path) -> Option<slint::Image> {
     }
     Some(slint::Image::from_rgba8(buffer))
 }
-
-// ---------------------------------------------------------------------------
-// Dispatch
-// ---------------------------------------------------------------------------
-
-pub fn project(_w: &AppWindow, _m: Mark) {}
-pub fn opened(_kind: &str, _arg: &str, _id: i32) {}
-pub fn closed(_kind: &str, _arg: &str, _id: i32) {}

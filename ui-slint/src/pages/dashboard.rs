@@ -637,7 +637,7 @@ pub fn project(w: &AppWindow, m: Mark) {
                 dash.set_profile_core(crate::pages::profiles::core_chip(&core).into());
                 dash.set_profile_remote(p.get("remote").map(truthy).unwrap_or(false));
                 dash.set_profile_updated(
-                    format!("{} {}", tr("Last updated"), format::update_label(p.get("updatedAt").and_then(long).unwrap_or(0), now, crate::i18n::is_chinese())).into(),
+                    format!("{} {}", tr("Last updated"), format::update_label(p.get("updatedAt").and_then(long).unwrap_or(0), now)).into(),
                 );
                 let info = SubInfo::of(p);
                 let (days, tone) = info.as_ref().and_then(|i| i.days_label(now)).unwrap_or_default();

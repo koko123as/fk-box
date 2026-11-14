@@ -3,21 +3,16 @@ package io.nekohasekai.sfa.bridge
 import io.nekohasekai.sfa.backend.tools.TailscalePeerData
 import io.nekohasekai.sfa.backend.tools.TailscaleUserGroupData
 import io.nekohasekai.sfa.backend.tools.TailscaleEndpointData
-import io.nekohasekai.sfa.backend.tools.TailscaleStatusState
 import io.nekohasekai.sfa.backend.tools.OpenConnectAuthFormChoiceData
 import io.nekohasekai.sfa.backend.tools.OpenConnectAuthFormFieldData
 import io.nekohasekai.sfa.backend.tools.OpenConnectAuthFormData
 import io.nekohasekai.sfa.backend.tools.OpenConnectBrowserRequestData
 import io.nekohasekai.sfa.backend.tools.OpenConnectAuthChallengeData
-import io.nekohasekai.sfa.backend.tools.OpenConnectBrowserCookieData
-import io.nekohasekai.sfa.backend.tools.OpenConnectBrowserResultData
 import io.nekohasekai.sfa.backend.tools.OpenConnectTunnelInfoData
 import io.nekohasekai.sfa.backend.tools.OpenConnectEndpointData
-import io.nekohasekai.sfa.backend.tools.OpenConnectStatusState
 import io.nekohasekai.sfa.backend.tools.OpenVPNChallengeData
 import io.nekohasekai.sfa.backend.tools.OpenVPNTunnelInfoData
 import io.nekohasekai.sfa.backend.tools.OpenVPNEndpointData
-import io.nekohasekai.sfa.backend.tools.OpenVPNStatusState
 import io.nekohasekai.sfa.backend.tools.TaildropFileData
 import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
 import io.nekohasekai.sfa.backend.tools.TaildropInboxState
@@ -27,7 +22,6 @@ import io.nekohasekai.sfa.backend.tools.NetworkQualityState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
 import io.nekohasekai.sfa.backend.usbip.UsbipServerData
-import io.nekohasekai.sfa.backend.usbip.USBIPStatusState
 
 internal fun TailscalePeerData.toWire(): Map<String, Any?> = mapOf(
     "id" to id,
@@ -75,12 +69,6 @@ internal fun TailscaleEndpointData.toWire(): Map<String, Any?> = mapOf(
     "unreadFileCount" to unreadFileCount,
 )
 
-internal fun TailscaleStatusState.toWire(): Map<String, Any?> = mapOf(
-    "endpoints" to endpoints.map { it.toWire() },
-    "isSubscribed" to isSubscribed,
-    "hasUpdate" to hasUpdate,
-)
-
 internal fun OpenConnectAuthFormChoiceData.toWire(): Map<String, Any?> = mapOf(
     "value" to value,
     "label" to label,
@@ -118,16 +106,6 @@ internal fun OpenConnectAuthChallengeData.toWire(): Map<String, Any?> = mapOf(
     "browser" to browser?.toWire(),
 )
 
-internal fun OpenConnectBrowserCookieData.toWire(): Map<String, Any?> = mapOf(
-    "name" to name,
-    "value" to value,
-)
-
-internal fun OpenConnectBrowserResultData.toWire(): Map<String, Any?> = mapOf(
-    "finalURL" to finalURL,
-    "cookies" to cookies.map { it.toWire() },
-)
-
 internal fun OpenConnectTunnelInfoData.toWire(): Map<String, Any?> = mapOf(
     "server" to server,
     "flavor" to flavor,
@@ -146,11 +124,6 @@ internal fun OpenConnectEndpointData.toWire(): Map<String, Any?> = mapOf(
     "authChallenge" to authChallenge?.toWire(),
     "error" to error,
     "tunnelInfo" to tunnelInfo?.toWire(),
-)
-
-internal fun OpenConnectStatusState.toWire(): Map<String, Any?> = mapOf(
-    "endpoints" to endpoints.map { it.toWire() },
-    "isSubscribed" to isSubscribed,
 )
 
 internal fun OpenVPNChallengeData.toWire(): Map<String, Any?> = mapOf(
@@ -183,11 +156,6 @@ internal fun OpenVPNEndpointData.toWire(): Map<String, Any?> = mapOf(
     "challenge" to challenge?.toWire(),
     "error" to error,
     "tunnelInfo" to tunnelInfo?.toWire(),
-)
-
-internal fun OpenVPNStatusState.toWire(): Map<String, Any?> = mapOf(
-    "endpoints" to endpoints.map { it.toWire() },
-    "isSubscribed" to isSubscribed,
 )
 
 internal fun TaildropFileData.toWire(): Map<String, Any?> = mapOf(
@@ -287,9 +255,4 @@ internal fun UsbSharedDeviceData.toWire(): Map<String, Any?> = mapOf(
 internal fun UsbipServerData.toWire(): Map<String, Any?> = mapOf(
     "serverTag" to serverTag,
     "devices" to devices.map { it.toWire() },
-)
-
-internal fun USBIPStatusState.toWire(): Map<String, Any?> = mapOf(
-    "servers" to servers.map { it.toWire() },
-    "isSubscribed" to isSubscribed,
 )

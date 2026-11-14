@@ -187,7 +187,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     suspend fun saveTaildropFile(endpoint: String?, nameArgument: String?): Boolean {
         val name = required(nameArgument, "name")
         require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
-        val uri = activity.pickDocument(name) ?: return false
+        val uri = activity.pickDocument(TaildropFiles.safeName(name)) ?: return false
         val file = TaildropFiles.materialize(required(endpoint, "endpoint"), name)
         withContext(Dispatchers.IO) {
             activity.contentResolver.openOutputStream(uri, "wt")?.use { output -> file.inputStream().use { it.copyTo(output) } }

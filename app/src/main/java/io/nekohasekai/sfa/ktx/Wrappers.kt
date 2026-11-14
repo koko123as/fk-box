@@ -7,16 +7,9 @@ import io.nekohasekai.libbox.ConnectionIterator
 import io.nekohasekai.libbox.LogEntry
 import io.nekohasekai.libbox.LogIterator
 import io.nekohasekai.libbox.RoutePrefix
-import io.nekohasekai.libbox.StringBox
 import io.nekohasekai.libbox.StringIterator
 import java.net.InetAddress
 import io.nekohasekai.libbox.Connection as LibboxConnection
-
-val StringBox?.unwrap: String
-    get() {
-        if (this == null) return ""
-        return value
-    }
 
 fun Iterable<String>.toStringIterator(): StringIterator {
     return object : StringIterator {

@@ -33,6 +33,9 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     suspend fun read(id: Long): String = mutex.withLock { File(get(id).typed.path).readText() }
 
+    /** The revision of a profile's file now, which an edit form sends back with its save. */
+    suspend fun revisionOf(id: Long): String = mutex.withLock { revision(File(get(id).typed.path).readText()) }
+
     suspend fun config(id: Long): Map<String, Any?> = mutex.withLock { configLocked(id) }
 
     private suspend fun configLocked(id: Long): Map<String, Any?> {

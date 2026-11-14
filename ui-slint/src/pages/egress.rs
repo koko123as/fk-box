@@ -484,8 +484,10 @@ pub fn sync() {
             if settle {
                 model(|m| m.settle = true);
                 Timer::single_shot(Duration::from_millis(MOVE_SETTLE_MILLIS), || {
-                    model(|m| m.settle = false);
-                    schedule();
+                    crate::guarded("egress settle", || {
+                        model(|m| m.settle = false);
+                        schedule();
+                    })
                 });
             }
             schedule();
@@ -507,7 +509,7 @@ pub fn retry() {
 }
 
 fn schedule() {
-    Timer::single_shot(Duration::ZERO, flush);
+    crate::defer("egress", flush);
 }
 
 /// Back in the foreground: a refresh that came due in the background runs now.
@@ -578,8 +580,10 @@ fn refresh(read_ip: bool, manual: bool) {
     });
     if read_ip {
         Timer::single_shot(Duration::from_millis(THROTTLE_MILLIS), || {
-            model(|m| m.cooldown = false);
-            schedule();
+            crate::guarded("egress cooldown", || {
+                model(|m| m.cooldown = false);
+                schedule();
+            })
         });
     }
     mark(Mark::DASH);
@@ -609,9 +613,23 @@ fn refresh(read_ip: bool, manual: bool) {
             if read_ip {
                 opened();
             } else {
+                let probe = probe.clone();
                 call("openProbe", json!({ "id": probe }), move |r| match r {
                     Ok(_) => opened(),
-                    Err(_) => {}
+                    // The check could not start: stop the spinner and show the
+                    // failure, as a failed lookup does.
+                    Err(error) => {
+                        if current(generation) {
+                            let message = crate::format::clean_error(&error);
+                            model(|m| {
+                                if let Some(egress) = m.egress.as_mut() {
+                                    egress.insert("qualityError".into(), json!("IP quality unavailable"));
+                                }
+                                m.quality_error = Some(message);
+                            });
+                        }
+                        finish(generation, &probe);
+                    }
                 });
             }
         }
@@ -859,9 +877,15 @@ fn launch_wave(state: &Rc<RefCell<Lookup>>) {
         });
     }
     if state.borrow().wave < WAVES.len() {
-        let st = state.clone();
+        // Weak: the lookup owns this timer, so a strong reference here would
+        // keep both alive after the lookup is abandoned.
+        let st = Rc::downgrade(state);
         let timer = Timer::default();
-        timer.start(slint::TimerMode::SingleShot, Duration::from_millis(HEDGE_MILLIS), move || launch_wave(&st));
+        timer.start(slint::TimerMode::SingleShot, Duration::from_millis(HEDGE_MILLIS), move || {
+            if let Some(st) = st.upgrade() {
+                launch_wave(&st);
+            }
+        });
         state.borrow_mut().hedge = Some(timer);
     }
 }

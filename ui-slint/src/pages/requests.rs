@@ -62,7 +62,9 @@ fn detail_row(title: &str, value: &str, stacked: bool) -> Row {
 
 /// rememberCapturePoll: fetches every two seconds while `alive` says so and
 /// the app is in the foreground (the timer stops in the background; coming
-/// back fetches at once).
+/// back fetches at once). `alive` can turn true again (the Requests tab's
+/// home page), so a dead tick idles rather than stopping the timer; the
+/// timer goes when its owner drops it.
 fn poll(alive: Rc<dyn Fn() -> bool>, fetch: Rc<dyn Fn()>) -> Rc<slint::Timer> {
     let timer = Rc::new(slint::Timer::default());
     if crate::pages::foreground() {
@@ -572,9 +574,15 @@ fn captured_page(st: &Rc<RefCell<Captured>>, title: String, title_menu: Option<R
         return p;
     }
     if st.borrow().timer.is_none() {
-        let a = st.clone();
+        // Weak: the state owns the timer, so a strong reference in its tick
+        // would keep both (and the polling) alive after the page is gone.
+        let a = Rc::downgrade(st);
         let al = alive.clone();
-        let timer = poll(al, Rc::new(move || captured_fetch(&a)));
+        let timer = poll(al, Rc::new(move || {
+            if let Some(a) = a.upgrade() {
+                captured_fetch(&a);
+            }
+        }));
         st.borrow_mut().timer = Some(timer);
     }
     let (running, transitioning) = data(|d| (d.running(), d.transitioning()));
@@ -784,7 +792,6 @@ fn request_page(st: &Rc<RefCell<(Option<Value>, Option<String>, String, bool)>>,
     };
     let metadata = &detail["metadata"];
     let request = &detail["request"];
-    let socket = &metadata["socket"];
     let tls = &metadata["tls"];
     let response = part == "Response";
     let message = &detail[if response { "response" } else { "request" }];
@@ -807,9 +814,6 @@ fn request_page(st: &Rc<RefCell<(Option<Value>, Option<String>, String, bool)>>,
     if !metadata["captureSource"].is_null() {
         values.push(("Capture source", s(metadata, "captureSource")));
     }
-    if !metadata["pid"].is_null() {
-        values.push(("PID", s(metadata, "pid")));
-    }
     if !s(metadata, "tlsAdapter").is_empty() {
         values.push(("TLS implementation", s(metadata, "tlsAdapter")));
     }
@@ -826,10 +830,6 @@ fn request_page(st: &Rc<RefCell<(Option<Value>, Option<String>, String, bool)>>,
         let alpn = s(tls, "alpn");
         values.push(("ALPN", if alpn.is_empty() { tr("Not negotiated") } else { alpn }));
         values.push(("Upstream certificate SHA-256", s(tls, "upstreamCertificate")));
-    }
-    if socket.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
-        values.push(("Socket FD", s(socket, "fd")));
-        values.push(("Socket inode", s(socket, "inode")));
     }
     values.push(("Source", s(metadata, "source")));
     values.push(("Destination", s(metadata, "destination")));
@@ -1778,8 +1778,6 @@ fn logs_menu(st: &Rc<RefCell<Logs>>, paused: bool) -> Vec<MenuEntry> {
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
-
-pub fn project(_w: &AppWindow, _m: Mark) {}
 
 pub fn opened(kind: &str, arg: &str, id: i32) {
     match kind {

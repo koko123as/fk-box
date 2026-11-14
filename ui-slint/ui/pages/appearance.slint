@@ -274,13 +274,12 @@ export component AppearancePage inherits ScrollPage {
     }
 }
 
-// The colour thumb: white ring, the colour inside, a faint shadow.
+// The colour thumb: white ring with a hairline outline (no shadow), the colour inside.
 component Thumb inherits Rectangle {
     in property <color> fill;
     width: 28px;
     height: 28px;
-    Rectangle { y: 1px; border-radius: 15px; width: 30px; height: 30px; background: #00000033; }
-    Rectangle { border-radius: 14px; background: white; }
+    Rectangle { border-radius: 14px; background: white; border-width: 1px; border-color: Theme.s.outline-variant; }
     Rectangle { width: 22px; height: 22px; border-radius: 11px; background: root.fill; }
 }
 

@@ -126,7 +126,6 @@ fn web_page(p: &Json) -> Option<String> {
 pub fn project(w: &AppWindow, _m: Mark) {
     let g = w.global::<Profiles>();
     let now = now();
-    let chinese = crate::i18n::is_chinese();
     let (updating, updating_all) = local(|l| (l.updating.clone(), l.updating_all));
     let (rows, any_usage, remote, count, has_remote) = data(|d| {
         let selected = d.selected_profile_id();
@@ -147,7 +146,7 @@ pub fn project(w: &AppWindow, _m: Mark) {
                     core: ss(core_chip(&core)),
                     remote: is_remote(&p),
                     selected: id == selected,
-                    updated: ss(format::update_label(p.get("updatedAt").and_then(long).unwrap_or(0), now, chinese)),
+                    updated: ss(format::update_label(p.get("updatedAt").and_then(long).unwrap_or(0), now)),
                     source: ss(info.as_ref().and_then(traffic_line).unwrap_or_else(|| tr(if is_remote(&p) { "Remote" } else { "Local" }))),
                     days: ss(info.as_ref().and_then(expire_date).unwrap_or_default()),
                     days_tone: info.as_ref().map(|i| expire_tone(i, now)).unwrap_or(0),
@@ -404,6 +403,10 @@ struct Form {
     core: String,
     saving: bool,
     attempted: bool,
+    /// The file's revision when an existing profile's form opened; the save
+    /// sends it so a file changed meanwhile (another editor, a subscription
+    /// update) is not overwritten. None for new profiles or until it arrives.
+    revision: Option<String>,
 }
 
 impl Form {
@@ -459,8 +462,18 @@ pub fn open_form(initial: Json) {
         core: initial.get("core").and_then(Value::as_str).unwrap_or("auto").to_string(),
         saving: false,
         attempted: false,
+        revision: None,
         initial,
     }));
+    let existing = form.borrow().initial.get("id").and_then(long).filter(|&id| id > 0 && !form.borrow().initial.contains_key("content"));
+    if let Some(profile) = existing {
+        let f = Rc::downgrade(&form);
+        app::call("profileRevision", json!({ "id": profile }), move |r| {
+            if let (Some(f), Ok(Value::String(revision))) = (f.upgrade(), r) {
+                f.borrow_mut().revision = Some(revision);
+            }
+        });
+    }
     let f = form.clone();
     let id = rows::form(move || form_page(&f));
     let f = form.clone();
@@ -499,6 +512,9 @@ fn form_save(form: &Rc<RefCell<Form>>) {
         let edited = f.initial.get("intervalEdited").map(truthy).unwrap_or(false) || (f.remote && f.auto && f.interval != f.initial_interval);
         p.insert("intervalEdited".into(), json!(edited));
         p.insert("core".into(), json!(f.core));
+        if let Some(revision) = &f.revision {
+            p.insert("revision".into(), json!(revision));
+        }
         p
     };
     mark(Mark::ROWS);
@@ -1163,7 +1179,7 @@ pub fn opened(kind: &str, arg: &str, id: i32) {
         "profile-config" => {
             // The dashboard's "Advanced configuration" of the selected profile.
             if let Some(p) = data(|d| d.selected_profile()) {
-                slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+                crate::defer("profile config", move || {
                     nav::close(id);
                     crate::pages::config::open(p.clone(), false);
                 });

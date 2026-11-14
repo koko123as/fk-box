@@ -95,12 +95,4 @@ export global Theme {
         if (l == 2) { return s.surface-container-high; }
         return s.surface-container-highest;
     }
-
-    // delayColor
-    public pure function delay-color(tested: bool, delay: int) -> color {
-        if (!tested) { return s.on-surface-variant; }
-        if (delay <= 0) { return s.error; }
-        if (delay < 300) { return s.success; }
-        return s.warning;
-    }
 }

@@ -129,7 +129,7 @@ pub fn mark(m: Mark) {
     }
     PENDING.with(|p| p.set(p.get() | m.0));
     if !SCHEDULED.with(|s| s.replace(true)) {
-        slint::Timer::single_shot(Duration::ZERO, flush);
+        crate::defer("projection", flush);
     }
 }
 
@@ -159,15 +159,6 @@ fn flush() {
     }
     if m.has(Mark::PROFILES) || m.has(Mark::DASH) || m.has(Mark::CLOCK) {
         profiles::project(&w, m);
-    }
-    if m.has(Mark::TOOLS) || m.has(Mark::DASH) || m.has(Mark::SETTINGS) || m.has(Mark::CLOCK) {
-        tools::project(&w, m);
-    }
-    if m.has(Mark::SETTINGS) || m.has(Mark::DASH) || m.has(Mark::PROFILES) {
-        settings::project(&w, m);
-    }
-    if m.has(Mark::RECORDS) || m.has(Mark::SETTINGS) {
-        requests::project(&w, m);
     }
     if m.has(Mark::THEME) || m.has(Mark::SETTINGS) || m == Mark::ALL {
         appearance::project(&w);
@@ -221,10 +212,7 @@ pub fn sync_visibility(force: bool) {
 /// A route opened: pages prepare its state.
 pub fn opened(kind: &str, arg: &str, id: i32) {
     dashboard::opened(kind, arg, id);
-    proxies::opened(kind, arg, id);
     profiles::opened(kind, arg, id);
-    tools::opened(kind, arg, id);
-    settings::opened(kind, arg, id);
     requests::opened(kind, arg, id);
 }
 
@@ -234,8 +222,6 @@ pub fn closed(kind: &str, arg: &str, id: i32) {
     }
     appearance::closed(kind);
     profiles::closed(kind, arg, id);
-    tools::closed(kind, arg, id);
-    settings::closed(kind, arg, id);
     requests::closed(kind, arg, id);
 }
 

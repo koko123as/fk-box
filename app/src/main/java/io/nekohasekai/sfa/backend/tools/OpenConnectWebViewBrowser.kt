@@ -186,14 +186,6 @@ internal class OpenConnectWebViewBrowser(
                 }
                 return true
             }
-
-            @Suppress("DEPRECATION", "OVERRIDE_DEPRECATION")
-            override fun onReceivedError(view: WebView, errorCode: Int, description: String, failingUrl: String) {
-                super.onReceivedError(view, errorCode, description, failingUrl)
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M && navigationStates.containsKey(view)) {
-                    fail(view.context.getString(R.string.endpoint_browser_navigation_failed, description))
-                }
-            }
         }
         view.webChromeClient = object : WebChromeClient() {
             override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {

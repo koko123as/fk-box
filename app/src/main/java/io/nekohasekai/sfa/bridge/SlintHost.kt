@@ -82,6 +82,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "setLanProxy" -> setLanProxy(args.long("profileId"), args.str("revision"), args.getBoolean("enabled"), args.int("port"))
     // Profiles
     "readProfile" -> readProfile(args.long("id"))
+    "profileRevision" -> profileRevision(args.long("id"))
     "profileConfig" -> profileConfig(args.long("id"))
     "profileStats" -> profileStats(args.long("id"))
     "writeProfile" -> writeProfile(args.long("id"), args.str("content"), args.str("revision"))

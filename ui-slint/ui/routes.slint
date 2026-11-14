@@ -11,9 +11,6 @@ import { T, ScrollPage, EmptyState } from "kit.slint";
 import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage, ServicesPage, ServicesManagePage } from "pages/dashboard.slint";
 import { ProxiesPage, NodeDetailsPage } from "pages/proxies.slint";
 import { ProfileRoutes } from "pages/profiles.slint";
-import { ToolRoutes } from "pages/tools.slint";
-import { SettingRoutes } from "pages/settings.slint";
-import { RequestRoutes } from "pages/requests.slint";
 import { RowsPage } from "pages/rows.slint";
 import { AppearanceRoutes } from "pages/appearance.slint";
 import { Pages } from "data.slint";
@@ -27,7 +24,7 @@ component RoutePage inherits Rectangle {
     // A route opened from Slint by kind that a page adopted as Rust-built rows.
     property <bool> generic: k == "rows" || Pages.data[root.index].generic;
     property <bool> known: generic || k == "memory" || k == "egress" || k == "intranet" || k == "lan-add" || k == "proxies" || k == "node-details" || k == "services" || k == "services-manage"
-        || appearance.handles || profiles.handles || tools.handles || settings.handles || requests.handles;
+        || appearance.handles || profiles.handles;
     background: Theme.s.surface;
     TouchArea { }
     if generic: RowsPage { d: Pages.data[root.index]; leading: root.leading; }
@@ -41,9 +38,6 @@ component RoutePage inherits Rectangle {
     if k == "node-details": NodeDetailsPage { leading: root.leading; }
     appearance := AppearanceRoutes { kind: root.k; leading: root.leading; }
     profiles := ProfileRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
-    tools := ToolRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
-    settings := SettingRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
-    requests := RequestRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
     if !root.known: ScrollPage {
         title: root.k;
         leading: root.leading;

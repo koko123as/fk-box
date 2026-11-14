@@ -109,16 +109,6 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
         updateState { copy(endpoints = emptyList(), isSubscribed = false, hasUpdate = false) }
     }
 
-    fun logout(endpointTag: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            try {
-                CommandTarget.standaloneClient().tailscaleLogout(endpointTag)
-            } catch (e: Exception) {
-                sendErrorMessage(e.message ?: "logout failed")
-            }
-        }
-    }
-
     fun endpoint(tag: String): TailscaleEndpointData? = currentState.endpoints.firstOrNull { it.endpointTag == tag }
 
     fun peer(endpointTag: String, peerId: String): TailscalePeerData? {

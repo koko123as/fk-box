@@ -226,8 +226,6 @@ fn toggle(name: &str) {
     });
 }
 
-pub fn opened(_kind: &str, _arg: &str, _id: i32) {}
-
 pub fn act(id: &str, arg: &str) -> bool {
     match id {
         "proxies-test" | "test-group" | "test-node" => test(arg.to_string()),

@@ -583,7 +583,7 @@ pub fn on_event(payload: &str) {
         }
         "error" => {
             let message = text(&value);
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || report(&message));
+            crate::defer("error", move || report(&message));
             Mark::NONE
         }
         // The host's own view of the window's system bar insets, in physical
@@ -592,29 +592,29 @@ pub fn on_event(payload: &str) {
         // that sends none keeps Window.safe-area-insets.
         "insets" => {
             let value = value.clone();
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || apply_insets(&value));
+            crate::defer("insets", move || apply_insets(&value));
             Mark::NONE
         }
         // The host's own menu or dialog (src/nav.rs).
         "ui" => {
             let value = value.clone();
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || crate::nav::on_native_event(&value));
+            crate::defer("ui", move || crate::nav::on_native_event(&value));
             Mark::NONE
         }
         // The native text editor (src/native_ime.rs).
         "ime" => {
             let value = value.clone();
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || crate::native_ime::on_event(&value));
+            crate::defer("ime", move || crate::native_ime::on_event(&value));
             Mark::NONE
         }
         // The host went to the background (false) or came back (true).
         "foreground" => {
             let active = value.as_bool().unwrap_or(true);
-            slint::Timer::single_shot(std::time::Duration::ZERO, move || pages::set_foreground(active));
+            crate::defer("foreground", move || pages::set_foreground(active));
             Mark::NONE
         }
         "intentAvailable" => {
-            slint::Timer::single_shot(std::time::Duration::ZERO, || {
+            crate::defer("intent", || {
                 call("takeIntent", json!({}), |result| match result {
                     Ok(Value::String(uri)) => {
                         data_mut(|d| d.pending_intents.push_back(uri));

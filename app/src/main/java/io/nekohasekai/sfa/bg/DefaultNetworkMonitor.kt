@@ -29,24 +29,12 @@ object DefaultNetworkMonitor {
                 }
             }
         }
-        defaultNetwork = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            Application.connectivity.activeNetwork
-        } else {
-            DefaultNetworkListener.get()
-        }
+        defaultNetwork = Application.connectivity.activeNetwork
     }
 
     suspend fun stop() {
         DefaultNetworkListener.stop(this)
         lastNetwork = null
-    }
-
-    suspend fun require(): Network {
-        val network = defaultNetwork
-        if (network != null) {
-            return network
-        }
-        return DefaultNetworkListener.get()
     }
 
     /** mihomo (cmfa build) resolves "system" DNS with the underlying network's servers. */

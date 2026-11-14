@@ -122,15 +122,9 @@ object DefaultNetworkListener {
         ),
     )
 
-    suspend fun get(): Network = if (fallback) {
-        @TargetApi(23)
-        Application.connectivity.activeNetwork
-            ?: error("missing default network") // failed to listen, return current if available
-    } else {
-        NetworkMessage.Get().run {
-            networkActor.send(this)
-            response.await()
-        }
+    suspend fun get(): Network = NetworkMessage.Get().run {
+        networkActor.send(this)
+        response.await()
     }
 
     suspend fun stop(key: Any) = networkActor.send(NetworkMessage.Stop(key))
@@ -165,7 +159,6 @@ object DefaultNetworkListener {
         }
     }
 
-    private var fallback = false
     private val request =
         NetworkRequest.Builder().apply {
             addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
@@ -213,20 +206,8 @@ object DefaultNetworkListener {
                     Application.connectivity.registerDefaultNetworkCallback(Callback, callbackHandler)
                 }
 
-            in 24 until 26 ->
-                @TargetApi(24)
-                {
-                    Application.connectivity.registerDefaultNetworkCallback(Callback)
-                }
-
-            else ->
-                try {
-                    fallback = false
-                    Application.connectivity.requestNetwork(request, Callback)
-                } catch (e: RuntimeException) {
-                    fallback =
-                        true // known bug on API 23: https://stackoverflow.com/a/33509180/2245107
-                }
+            // 24 and 25 (minSdk 24).
+            else -> Application.connectivity.registerDefaultNetworkCallback(Callback)
         }
     }
 

@@ -6,10 +6,3 @@ import { RowsPage } from "rows.slint";
 export component ToolsPage inherits Rectangle {
     RowsPage { d: Pages.tools; leading: 0; bottom: Nav.home-bottom; }
 }
-
-export component ToolRoutes inherits Rectangle {
-    in property <string> kind;
-    in property <string> arg;
-    in property <int> leading;
-    out property <bool> handles: false;
-}

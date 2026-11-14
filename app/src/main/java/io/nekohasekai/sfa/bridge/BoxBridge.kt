@@ -308,6 +308,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun readProfile(id: Long?) = withContext(Dispatchers.IO) { profiles.read(required(id)) }
 
+    suspend fun profileRevision(id: Long?) = withContext(Dispatchers.IO) { profiles.revisionOf(required(id)) }
+
     suspend fun profileConfig(id: Long?) = withContext(Dispatchers.IO) { profiles.config(required(id)) }
 
     suspend fun profileStats(id: Long?) = withContext(Dispatchers.IO) { profiles.stats(required(id)) }

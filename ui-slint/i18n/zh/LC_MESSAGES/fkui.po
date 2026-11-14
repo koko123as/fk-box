@@ -1675,12 +1675,6 @@ msgstr "大小"
 msgid "Sliders"
 msgstr "滑块"
 
-msgid "Socket FD"
-msgstr "套接字 FD"
-
-msgid "Socket inode"
-msgstr "套接字 inode"
-
 msgid "Sort"
 msgstr "排序"
 
@@ -2136,3 +2130,21 @@ msgstr "%d 小时前检测"
 
 msgid "Checked %d d ago"
 msgstr "%d 天前检测"
+
+msgid "Just now"
+msgstr "刚刚"
+
+msgid "%dy ago"
+msgstr "%d 年前"
+
+msgid "%dmo ago"
+msgstr "%d 个月前"
+
+msgid "%dd ago"
+msgstr "%d 天前"
+
+msgid "%dh ago"
+msgstr "%d 小时前"
+
+msgid "%dm ago"
+msgstr "%d 分钟前"

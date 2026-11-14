@@ -87,25 +87,26 @@ pub fn record_time(ms: i64) -> String {
     format!("{h:02}:{mi:02}:{s:02}")
 }
 
-/// profileUpdateLabel: compact relative time.
-pub fn update_label(ms: i64, now: i64, chinese: bool) -> String {
+/// profileUpdateLabel: compact relative time, in the UI language (tr()).
+pub fn update_label(ms: i64, now: i64) -> String {
+    use crate::i18n::tr;
     if ms <= 0 {
-        return if chinese { "未知".into() } else { "Unknown".into() };
+        return tr("Unknown");
     }
     let elapsed = now - ms;
     let days = elapsed / 86_400_000;
-    for (count, en, zh) in [
-        (days / 365, "y", "年"),
-        (days / 30, "mo", "个月"),
-        (days, "d", "天"),
-        (elapsed / 3_600_000, "h", "小时"),
-        (elapsed / 60_000, "m", "分钟"),
+    for (count, key) in [
+        (days / 365, "%dy ago"),
+        (days / 30, "%dmo ago"),
+        (days, "%dd ago"),
+        (elapsed / 3_600_000, "%dh ago"),
+        (elapsed / 60_000, "%dm ago"),
     ] {
         if count > 0 {
-            return if chinese { format!("{count} {zh}前") } else { format!("{count}{en} ago") };
+            return tr(key).replace("%d", &count.to_string());
         }
     }
-    if chinese { "刚刚".into() } else { "Just now".into() }
+    tr("Just now")
 }
 
 /// cleanErrorText: drops gRPC/Go plumbing so the reason reads first.
@@ -184,7 +185,7 @@ mod tests {
         set_utc_offset_minutes(0);
         assert_eq!(local_date(0), "—");
         assert_eq!(local_date(86_400_000), "1970-01-02 00:00:00");
-        assert_eq!(update_label(1, 1 + 2 * 3_600_000, false), "2h ago");
+        assert_eq!(update_label(1, 1 + 2 * 3_600_000), "2h ago");
     }
 
     #[test]

@@ -11,10 +11,3 @@ export component RequestsPage inherits Rectangle {
 export component LogsPage inherits Rectangle {
     RowsPage { d: Pages.logs; leading: 0; bottom: Nav.home-bottom; }
 }
-
-export component RequestRoutes inherits Rectangle {
-    in property <string> kind;
-    in property <string> arg;
-    in property <int> leading;
-    out property <bool> handles: false;
-}

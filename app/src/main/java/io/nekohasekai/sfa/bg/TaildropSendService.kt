@@ -134,7 +134,7 @@ class TaildropSendService : Service() {
         private const val NOTIFICATION_ID = 3
         private const val NOTIFICATION_CHANNEL = "taildrop"
 
-        private fun pendingIntentFlags() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        private fun pendingIntentFlags() = PendingIntent.FLAG_IMMUTABLE
 
         private fun foregroundServiceType() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0
     }

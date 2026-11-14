@@ -75,13 +75,7 @@ object PerAppProxyScanner {
     }
 
     suspend fun scanAllChinaApps(): Set<String> = withContext(Dispatchers.Default) {
-        val packageManagerFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            PackageManager.MATCH_UNINSTALLED_PACKAGES
-        } else {
-            @Suppress("DEPRECATION")
-            PackageManager.GET_UNINSTALLED_PACKAGES
-        }
-        val installedPackages = PackageQueryManager.getInstalledPackages(packageManagerFlags)
+        val installedPackages = PackageQueryManager.getInstalledPackages(PackageManager.MATCH_UNINSTALLED_PACKAGES)
         val chinaApps = mutableSetOf<String>()
         // Each scan may read a whole APK and parse its dex files: a few at a
         // time, not one coroutine per installed package all at once.

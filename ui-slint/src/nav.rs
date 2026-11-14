@@ -422,7 +422,7 @@ fn menu_pick(index: i32) {
         let n = n.borrow();
         (n.menu_stack.last().cloned().unwrap_or_else(|| n.menu.clone()), !n.menu_stack.is_empty())
     });
-    let mut index = index as usize;
+    let Ok(mut index) = usize::try_from(index) else { return };
     // Item rows only: the section headers sit between them.
     let mut rows: Vec<Option<usize>> = Vec::new();
     if has_parent {
@@ -661,7 +661,8 @@ fn dismiss_dialog() {
 }
 
 fn dialog_action(index: i32, text: SharedString) {
-    let index = index as usize;
+    // -1 (no action) maps to no valid index and is handled as a cancel.
+    let index = usize::try_from(index).unwrap_or(usize::MAX);
     let is_input = NAV.with(|n| matches!(n.borrow().dialogs.last().map(|d| &d.kind), Some(DialogKind::Input { .. })));
     if is_input {
         // The last action submits after validation; the first resets or cancels.
@@ -670,7 +671,7 @@ fn dialog_action(index: i32, text: SharedString) {
             let Some(d) = n.dialogs.last_mut() else { return None };
             if let DialogKind::Input { validator, touched, .. } = &mut d.kind {
                 *touched = true;
-                if index == d.actions.len() - 1 {
+                if index.checked_add(1) == Some(d.actions.len()) {
                     return validator.as_ref().and_then(|v| v(text.as_str()));
                 }
             }
@@ -683,7 +684,7 @@ fn dialog_action(index: i32, text: SharedString) {
         if let Some(d) = take_dialog() {
             let actions = d.actions.len();
             if let DialogKind::Input { reset, done, .. } = d.kind {
-                if index == actions - 1 {
+                if index.checked_add(1) == Some(actions) {
                     done(Some(text.to_string()))
                 } else {
                     match reset {
@@ -745,10 +746,17 @@ pub fn on_native_event(value: &serde_json::Value) {
     }
 }
 
+/// An option was picked. An index outside the options (the host's -1 for "no
+/// index", or a stale one) dismisses the dialog instead of handing the page an
+/// index it would read out of bounds.
 fn dialog_pick(index: i32) {
     if let Some(d) = take_dialog() {
-        if let DialogKind::Options(done) = d.kind {
-            done(Some(index as usize));
+        let picked = usize::try_from(index).ok().filter(|&i| i < d.options.len());
+        match d.kind {
+            DialogKind::Options(done) => done(picked),
+            DialogKind::Confirm(done) => done(false),
+            DialogKind::Choice(_, done) => done(None),
+            DialogKind::Input { done, .. } => done(None),
         }
     }
 }

@@ -136,7 +136,7 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
     if quality && truthy(&state["showMeteredWarning"]) && !st.borrow().asking {
         st.borrow_mut().asking = true;
         let a = st.clone();
-        slint::Timer::single_shot(std::time::Duration::ZERO, move || {
+        crate::defer("quality confirm", move || {
             let a = a.clone();
             nav::confirm_styled("Network quality", Some("This test transfers data on a metered network. Continue?"), "Start", false, move |ok| {
                 app::act_then(if ok { "tools.confirmQuality" } else { "tools.dismissQuality" }, json!({}), move |_| a.borrow_mut().asking = false);
@@ -1169,10 +1169,6 @@ pub fn browser_complete(value: &Value) {
 // ---------------------------------------------------------------------------
 // Dispatch
 // ---------------------------------------------------------------------------
-
-pub fn project(_w: &AppWindow, _m: Mark) {}
-pub fn opened(_kind: &str, _arg: &str, _id: i32) {}
-pub fn closed(_kind: &str, _arg: &str, _id: i32) {}
 
 pub fn install(_w: &AppWindow) {
     rows::set_tools(tools_page);
