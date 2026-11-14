@@ -202,25 +202,6 @@ pub fn ago(then_ms: i64, now_ms: i64) -> String {
     }
 }
 
-pub fn core_label(core: &str) -> &str {
-    match core {
-        "sing-box" | "singbox" => "sing-box",
-        "xray" => "Xray",
-        "mihomo" => "mihomo",
-        "auto" | "" => "自动",
-        other => other,
-    }
-}
-
-pub fn status_text(status: &str) -> &'static str {
-    match status {
-        "Started" => "已连接",
-        "Starting" => "正在启动",
-        "Stopping" => "正在停止",
-        _ => "未连接",
-    }
-}
-
 /// Delay text and colour level (0 untested, 1 fast, 2 slow, 3 failed).
 pub fn delay(ms: i64) -> (String, i32) {
     if ms <= 0 {

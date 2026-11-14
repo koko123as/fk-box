@@ -80,14 +80,6 @@ pub fn top() -> Option<Route> {
     all_routes().last().cloned()
 }
 
-pub fn is_open(kind: &str) -> bool {
-    all_routes().iter().any(|r| r.kind == kind)
-}
-
-pub fn open_kinds() -> Vec<(String, String)> {
-    all_routes().iter().map(|r| (r.kind.to_string(), r.arg.to_string())).collect()
-}
-
 pub fn mobile() -> bool {
     crate::app::window().map(|w| w.global::<Nav>().get_mobile()).unwrap_or(true)
 }
@@ -539,21 +531,6 @@ pub fn choose(title: &str, message: Option<&str>, actions: Vec<(&str, Option<&st
         options: Vec::new(),
         option: -1,
         kind: DialogKind::Choice(actions.iter().map(|(_, v)| v.map(str::to_string)).collect(), Box::new(done)),
-    });
-}
-
-/// A message with a single close button (SelectionContainer text).
-pub fn show_text(title: &str, message: &str, mono: bool) {
-    push_dialog(Dialog {
-        title: title.to_string(),
-        message: message.to_string(),
-        mono,
-        actions: vec![tr("Close")],
-        danger: false,
-        input: None,
-        options: Vec::new(),
-        option: -1,
-        kind: DialogKind::Choice(vec![None], Box::new(|_| {})),
     });
 }
 
