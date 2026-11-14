@@ -418,16 +418,21 @@ class RootServer : RootService() {
         }
         Log.d("RootServer", "neighborTable updated: ${list.size} entries")
         val slice = ParceledListSlice(list)
-        val count = neighborCallbacks.beginBroadcast()
-        try {
-            repeat(count) { i ->
-                try {
-                    neighborCallbacks.getBroadcastItem(i).onNeighborTableUpdated(slice)
-                } catch (_: Exception) {
+        // The neighbor monitor and the tethering callback both broadcast, from
+        // different threads; RemoteCallbackList allows one broadcast at a time
+        // (a second beginBroadcast throws IllegalStateException).
+        synchronized(neighborCallbacks) {
+            val count = neighborCallbacks.beginBroadcast()
+            try {
+                repeat(count) { i ->
+                    try {
+                        neighborCallbacks.getBroadcastItem(i).onNeighborTableUpdated(slice)
+                    } catch (_: Exception) {
+                    }
                 }
+            } finally {
+                neighborCallbacks.finishBroadcast()
             }
-        } finally {
-            neighborCallbacks.finishBroadcast()
         }
     }
 

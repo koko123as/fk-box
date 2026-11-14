@@ -37,7 +37,8 @@ class AppChangeReceiver : BroadcastReceiver() {
                     Log.d(TAG, "managed mode disabled")
                     return@launch
                 }
-                rescanAllApps()
+                val packageName = intent.data?.schemeSpecificPart
+                if (packageName.isNullOrEmpty()) rescanAllApps() else rescanPackage(packageName)
                 Settings.dataStore.flush()
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to rescan apps", e)
@@ -48,6 +49,19 @@ class AppChangeReceiver : BroadcastReceiver() {
                 pendingResult.finish()
             }
         }
+    }
+
+    /**
+     * Only the added or replaced package can change the managed list: scan it
+     * alone instead of every installed package (which, with dex scanning,
+     * read every APK on each install).
+     */
+    private suspend fun rescanPackage(packageName: String) {
+        val matches = PerAppProxyScanner.scanPackage(packageName) ?: return
+        val current = Settings.perAppProxyManagedList
+        val next = if (matches) current + packageName else current - packageName
+        if (next != current) Settings.perAppProxyManagedList = next
+        Log.d(TAG, "rescanned $packageName: ${if (matches) "managed" else "not managed"}")
     }
 
     private suspend fun rescanAllApps() {

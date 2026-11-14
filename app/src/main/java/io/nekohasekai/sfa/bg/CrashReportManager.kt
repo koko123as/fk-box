@@ -112,7 +112,24 @@ object CrashReportManager {
         _unreadCount.value = reports.count { !it.isRead }
     }
 
+    /**
+     * Archives the crash the last process recorded. An I/O failure here (full or
+     * read-only storage, a damaged file) must not crash the starting app, which
+     * would record the same crash again and loop: the pending files are dropped
+     * instead.
+     */
     private fun archivePendingJvmCrashReport() {
+        try {
+            archivePendingJvmCrashReportOrThrow()
+        } catch (e: Exception) {
+            android.util.Log.w("CrashReportManager", "archive pending crash report", e)
+            runCatching { File(workingDir, PENDING_JVM_CRASH_FILE_NAME).delete() }
+            runCatching { File(workingDir, PENDING_JVM_METADATA_FILE_NAME).delete() }
+            runCatching { File(baseDir, CONFIG_FILE_NAME).delete() }
+        }
+    }
+
+    private fun archivePendingJvmCrashReportOrThrow() {
         val crashFile = File(workingDir, PENDING_JVM_CRASH_FILE_NAME)
         val metadataFile = File(workingDir, PENDING_JVM_METADATA_FILE_NAME)
         val configFile = File(baseDir, CONFIG_FILE_NAME)

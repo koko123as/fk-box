@@ -139,6 +139,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     private var startupJob: Job? = null
     @Volatile private var stopRequested = false
 
+    // A start that arrived while the previous run was stopping: the stop job
+    // starts the service again instead of stopping it (onStartCommand).
+    private var restartAfterStop = false
+
     private suspend fun startService() {
         try {
             val selectedProfileId = Settings.selectedProfile
@@ -394,7 +398,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             Settings.dataStore.flush()
             withContext(Dispatchers.Main) {
                 status.value = Status.Stopped
-                service.stopSelf()
+                if (restartAfterStop) {
+                    restartAfterStop = false
+                    onStartCommand()
+                } else {
+                    service.stopSelf()
+                }
             }
         }
     }
@@ -415,13 +424,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         Settings.dataStore.flush()
         val pfd = fileDescriptor
         if (pfd != null) {
-            pfd.close()
+            runCatching { pfd.close() }
             fileDescriptor = null
         }
-        DefaultNetworkMonitor.stop()
+        runCatching { DefaultNetworkMonitor.stop() }.onFailure { Log.w(TAG, "stop network monitor", it) }
         if (::commandServer.isInitialized) {
             closeService()
-            commandServer.close()
+            // A failing close must not skip the alert and stopSelf below, which
+            // would leave the service in Starting with its notification up.
+            runCatching { commandServer.close() }.onFailure { Log.w(TAG, "close command server", it) }
         }
         withContext(Dispatchers.Main) {
             if (stopRequested) return@withContext
@@ -441,7 +452,23 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("SameReturnValue")
     internal fun onStartCommand(): Int {
-        if (status.value != Status.Stopped) return Service.START_STICKY
+        when (status.value) {
+            Status.Stopped -> Unit
+            Status.Stopping -> {
+                // Started with startForegroundService while the last run is still
+                // tearing down: the system requires startForeground within seconds,
+                // so show the notification now and start again once stopped.
+                notification.show(lastProfileName, R.string.status_starting)
+                restartAfterStop = true
+                return Service.START_STICKY
+            }
+            else -> {
+                // Starting or Started: already in the foreground; repeating the
+                // call satisfies this start's startForeground requirement too.
+                notification.show(lastProfileName, if (status.value == Status.Started) R.string.status_started else R.string.status_starting)
+                return Service.START_STICKY
+            }
+        }
         stopRequested = false
         status.value = Status.Starting
         notification.show(lastProfileName, R.string.status_starting)
