@@ -230,6 +230,7 @@ func (m *routingMatch) addValue(value string) error {
 	if rest, ok := prefixed("domain:"); ok {
 		return m.addDomain(rest, false)
 	}
+	value = routingHost(value)
 	if prefix, err := netip.ParsePrefix(value); err == nil {
 		m.cidr = append(m.cidr, prefix.Masked().String())
 		return nil
@@ -241,8 +242,38 @@ func (m *routingMatch) addValue(value string) error {
 	return m.addDomain(value, false)
 }
 
+// routingHost reduces a pasted address to the host a rule can match:
+// "https://user@example.com:8443/path?q" and "example.com:443" are
+// example.com, "http://[2001:db8::1]/" is 2001:db8::1. The cores match
+// hosts only, so such an entry was rejected as an invalid domain and the
+// rule silently never matched it.
+func routingHost(value string) string {
+	value = strings.TrimSpace(value)
+	if index := strings.Index(value, "://"); index >= 0 {
+		value = value[index+3:]
+		if end := strings.IndexAny(value, "/?#"); end >= 0 {
+			value = value[:end]
+		}
+		if at := strings.LastIndex(value, "@"); at >= 0 {
+			value = value[at+1:]
+		}
+	}
+	if strings.HasPrefix(value, "[") {
+		if end := strings.Index(value, "]"); end > 0 {
+			return value[1:end]
+		}
+	}
+	// host:port, but not an IPv6 address (more than one colon).
+	if host, port, ok := strings.Cut(value, ":"); ok && host != "" && !strings.Contains(port, ":") {
+		if _, err := strconv.Atoi(port); err == nil {
+			return host
+		}
+	}
+	return value
+}
+
 func (m *routingMatch) addDomain(value string, full bool) error {
-	value = strings.ToLower(strings.TrimSpace(value))
+	value = strings.ToLower(routingHost(value))
 	for _, prefix := range []string{"+.", "*.", "."} {
 		if strings.HasPrefix(value, prefix) {
 			value = value[len(prefix):]

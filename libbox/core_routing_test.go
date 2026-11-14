@@ -93,6 +93,17 @@ func TestCoreRoutingValues(t *testing.T) {
 		match.cidr[0] != "10.0.0.1/32" || match.cidr[1] != "fd00::/8" || match.geoip[0] != "private" || match.regex[0] != "^f\\." {
 		t.Fatalf("unexpected match %+v", match)
 	}
+	// Pasted URLs and host:port entries match their host.
+	var hosts routingMatch
+	for _, value := range []string{"https://aggst.co", "http://user@Example.org:8080/path?q=1", "full:https://f.com/", "g.com:443", "http://[2001:db8::1]:80/", "2001:db8::2"} {
+		if err := hosts.addValue(value); err != nil {
+			t.Fatalf("%s: %v", value, err)
+		}
+	}
+	if strings.Join(hosts.suffix, ",") != "aggst.co,example.org,g.com" || strings.Join(hosts.full, ",") != "f.com" ||
+		strings.Join(hosts.cidr, ",") != "2001:db8::1/128,2001:db8::2/128" {
+		t.Fatalf("unexpected hosts %+v", hosts)
+	}
 	for _, value := range []string{"geosite:bad name", "regexp:(", "a b.com"} {
 		if err := match.addValue(value); err == nil {
 			t.Errorf("%s accepted", value)
