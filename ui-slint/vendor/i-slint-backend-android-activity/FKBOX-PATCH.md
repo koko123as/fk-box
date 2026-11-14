@@ -65,6 +65,21 @@ byte offsets in both directions:
 5. `java/SlintAndroidJavaHelper.java`: `SlintInputView` is not focusable and
    not a text editor until `show_keyboard` (NativeActivity only) asks for it.
 
+6. `androidwindowadapter.rs` / `javahelper.rs` / `java/SlintAndroidJavaHelper.java`:
+   before every `set_text_input_state` the selection is also written to
+   GameActivity's `EditorInfo.initialSelStart/End`
+   (`fkbox_set_initial_selection`, the getter found by reflection).
+   GameTextInput's `setState()` calls `restartInput()`, and the IME restarts
+   from that EditorInfo, whose selection only followed the IME's own edits:
+   after a tap in the middle of the text the IME still placed the cursor at
+   the old position (the end), so input and backspace only worked there.
+7. `androidwindowadapter.rs` + `fkbox_ime::commit_moved_composition`: a tap
+   that moves the cursor while the IME composes commits the composition where
+   it was typed and puts the cursor at the tap (Slint keeps the pre-edit
+   apart and would carry it along to the tap). Java gets the committed state
+   at once; Slint gets it as a `CommitComposition` in a zero-delay timer, and
+   requests in between keep the committed state.
+
 The Kotlin host adds a last guard (BoxActivity.dispatchKeyEvent orders the
 editable's selection before GameTextInput handles a key, and a remaining
 IndexOutOfBoundsException there is logged instead of closing the app).

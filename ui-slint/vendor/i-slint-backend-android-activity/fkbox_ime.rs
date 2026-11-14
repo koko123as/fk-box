@@ -151,3 +151,43 @@ pub fn from_java(text: &str, selection: (i64, i64), compose: Option<(i64, i64)>)
         None => SlintTextEdit { text: text.to_string(), preedit: String::new(), preedit_offset: 0, cursor, anchor },
     }
 }
+
+/// A tap elsewhere in the text while the IME composes. Slint keeps the
+/// pre-edit apart and draws it at the cursor, so moving the cursor would carry
+/// the unfinished word along to the tap and the IME would go on composing it
+/// there. A text field commits the composition where it was typed instead and
+/// puts the cursor where the tap landed.
+///
+/// `last` is the state GameTextInput holds (its composing region is where the
+/// pre-edit was typed); the rest is Slint's state after the tap, whose cursor
+/// and anchor Slint found in the text drawn with the pre-edit, which is the
+/// committed text. Returns the committed edit (no pre-edit) when the cursor
+/// left the composition's position, `None` when nothing moved or the states do
+/// not belong together.
+pub fn commit_moved_composition(
+    last: &JavaTextState,
+    text: &str,
+    cursor: usize,
+    anchor: Option<usize>,
+    preedit: &str,
+    preedit_offset: usize,
+) -> Option<SlintTextEdit> {
+    if preedit.is_empty() {
+        return None;
+    }
+    let (s16, e16) = last.compose?;
+    let full = last.text.as_str();
+    let (s, e) = (utf16_to_byte(full, s16), utf16_to_byte(full, e16));
+    if &full[s..e] != preedit || format!("{}{}", &full[..s], &full[e..]) != text {
+        return None;
+    }
+    if floor_char_boundary(text, preedit_offset) == s {
+        return None;
+    }
+    // Slint clamps its offsets to the text without the pre-edit: an offset at
+    // that end is the end of the committed text.
+    let place = |pos: usize| if pos >= text.len() { full.len() } else { floor_char_boundary(full, pos) };
+    let cursor = place(cursor);
+    let anchor = anchor.map_or(cursor, place);
+    Some(SlintTextEdit { text: full.to_string(), preedit: String::new(), preedit_offset: 0, cursor, anchor })
+}

@@ -58,6 +58,10 @@ pub struct AndroidWindowAdapter {
     pub(crate) keyboard_visible: Cell<bool>,
     #[allow(dead_code)]
     ime_reshow: RefCell<Option<Timer>>,
+    // FK-box patch: a composition committed in Java after a tap moved the
+    // cursor, until Slint (which still holds the pre-edit) has applied it.
+    #[allow(dead_code)]
+    ime_pending_commit: RefCell<Option<crate::fkbox_ime::JavaTextState>>,
 }
 
 impl WindowAdapter for AndroidWindowAdapter {
@@ -152,6 +156,7 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
             InputMethodRequest::Update(props) => (props, false),
             InputMethodRequest::Disable => {
                 self.ime_state.replace(None);
+                self.ime_pending_commit.replace(None);
                 self.ime_reshow.replace(None);
                 // Not implicit-only: the keyboard was shown explicitly.
                 self.app.hide_soft_input(false);
@@ -159,13 +164,55 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
             }
             _ => return,
         };
-        let state = crate::fkbox_ime::to_java(
-            props.text.as_str(),
-            props.cursor_position,
-            props.anchor_position,
-            props.preedit_text.as_str(),
-            props.preedit_offset,
-        );
+        // A tap moved the cursor away from the composition: commit it where it
+        // was typed (Slint would carry the pre-edit along to the tap) and apply
+        // the commit to Slint once this request has returned.
+        if !enable && self.ime_pending_commit.borrow().is_none() {
+            let moved = self.ime_state.borrow().as_ref().and_then(|last| {
+                crate::fkbox_ime::commit_moved_composition(
+                    last,
+                    props.text.as_str(),
+                    props.cursor_position,
+                    props.anchor_position,
+                    props.preedit_text.as_str(),
+                    props.preedit_offset,
+                )
+            });
+            if let Some(edit) = moved {
+                let anchor = (edit.anchor != edit.cursor).then_some(edit.anchor);
+                let committed = crate::fkbox_ime::to_java(&edit.text, edit.cursor, anchor, "", 0);
+                self.ime_pending_commit.replace(Some(committed));
+                Timer::single_shot(std::time::Duration::ZERO, move || {
+                    let Some(adaptor) = CURRENT_WINDOW.with_borrow(|x| x.upgrade()) else { return };
+                    if adaptor.ime_pending_commit.borrow().is_none() {
+                        return;
+                    }
+                    let mut key_event = KeyEvent::default();
+                    key_event.text = edit.text.as_str().into();
+                    adaptor.window.dispatch_event(WindowEvent::internal(InternalKeyEvent {
+                        event_type: KeyEventType::CommitComposition,
+                        replacement_range: Some(i32::MIN..i32::MAX),
+                        cursor_position: Some(edit.cursor as i32),
+                        anchor_position: Some(edit.anchor as i32),
+                        key_event,
+                        ..Default::default()
+                    }));
+                    adaptor.ime_pending_commit.replace(None);
+                });
+            }
+        }
+        // Until Slint has applied that commit, its requests still carry the
+        // pre-edit at the tap; GameTextInput keeps the committed state.
+        let state = match self.ime_pending_commit.borrow().clone() {
+            Some(committed) => committed,
+            None => crate::fkbox_ime::to_java(
+                props.text.as_str(),
+                props.cursor_position,
+                props.anchor_position,
+                props.preedit_text.as_str(),
+                props.preedit_offset,
+            ),
+        };
         if enable {
             self.app.set_ime_editor_info(
                 ime_input_type(&props, self.focused_text_input_multiline()),
@@ -178,6 +225,16 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
             );
         } else if self.ime_state.borrow().as_ref() == Some(&state) {
             return;
+        }
+        // GameTextInput's setState() restarts the input method but leaves
+        // EditorInfo.initialSelStart/End where the IME's last edit put them,
+        // so after a tap the IME restarted with the cursor at the old place
+        // (the end) and composed, replaced and deleted there.
+        if let Err(e) = self.java_helper.fkbox_set_initial_selection(
+            state.selection_start as i32,
+            state.selection_end as i32,
+        ) {
+            eprintln!("FK-box: initial IME selection not set: {e:?}");
         }
         self.app.set_text_input_state(android_activity::input::TextInputState {
             text: state.text.clone(),
@@ -240,6 +297,7 @@ impl AndroidWindowAdapter {
             ime_state: RefCell::new(None),
             keyboard_visible: Cell::new(false),
             ime_reshow: RefCell::new(None),
+            ime_pending_commit: RefCell::new(None),
         })
     }
 

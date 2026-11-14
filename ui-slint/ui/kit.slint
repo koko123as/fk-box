@@ -694,7 +694,10 @@ export component Field inherits Rectangle {
             accepted => { root.accepted(self.text); }
         }
     }
-    if root.text == "": T {
+    // Hidden while the IME composes into the empty field too: the pre-edit is
+    // drawn but not yet in `text`, and the hint showed through it. Only the
+    // TextInput's size sees the pre-edit.
+    if root.text == "" && input.preferred-width < 1px: T {
         x: flick.x;
         y: flick.y;
         width: flick.width;

@@ -116,3 +116,25 @@ fn an_echo_of_the_ime_state_matches_what_slint_would_send() {
         assert_eq!(sent, reported, "{text:?} {sel:?} {compose:?}");
     }
 }
+
+#[test]
+fn a_tap_elsewhere_commits_the_composition_where_it_was_typed() {
+    // "example.com" typed, the IME still composing "com" at the end; a tap
+    // after "exam" (byte 4 of the text drawn with the pre-edit).
+    let last = normalize_java("example.com", (11, 11), Some((8, 11)));
+    let e = commit_moved_composition(&last, "example.", 4, None, "com", 4).unwrap();
+    assert_eq!((e.text.as_str(), e.preedit.as_str(), e.cursor, e.anchor), ("example.com", "", 4, 4));
+    // The cursor still at the composition: typing, nothing to commit.
+    assert_eq!(commit_moved_composition(&last, "example.", 8, None, "com", 8), None);
+    // No composition: nothing to commit.
+    assert_eq!(commit_moved_composition(&last, "example.com", 4, None, "", 4), None);
+    // A tap at the end (Slint clamps it to the text without the pre-edit).
+    let last = normalize_java("你好shi世界", (5, 5), Some((2, 5)));
+    let e = commit_moved_composition(&last, "你好世界", 12, None, "shi", 12).unwrap();
+    assert_eq!((e.text.as_str(), e.cursor), ("你好shi世界", "你好shi世界".len()));
+    // A tap at the start, with CJK and a selection.
+    let e = commit_moved_composition(&last, "你好世界", 0, Some(3), "shi", 0).unwrap();
+    assert_eq!((e.cursor, e.anchor), (0, 3));
+    // A state from another field (text differs): left alone.
+    assert_eq!(commit_moved_composition(&last, "abc", 0, None, "shi", 0), None);
+}

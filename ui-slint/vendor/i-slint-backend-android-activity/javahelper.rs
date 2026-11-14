@@ -62,6 +62,10 @@ bind_java_type! {
             name = "get_view_rect",
             sig = () -> AndroidRect,
         },
+        fn fkbox_set_initial_selection {
+            name = "fkbox_set_initial_selection",
+            sig = (start: jint, end: jint),
+        },
         fn finish_activity {
             name = "finish_activity",
             sig = (),
@@ -536,6 +540,12 @@ impl JavaHelper {
             let bottom = rect.bottom(env)?;
             Ok(PhysicalEdges::new(top, bottom, left, right))
         })
+    }
+
+    /// FK-box patch: GameActivity's EditorInfo.initialSelStart/End, which the
+    /// input method reads when GameTextInput's setState() restarts it.
+    pub fn fkbox_set_initial_selection(&self, start: i32, end: i32) -> Result<(), jni::errors::Error> {
+        self.with_jni_env(|env, helper| helper.fkbox_set_initial_selection(env, start, end))
     }
 
     pub fn set_handle_color(&self, color: Color) -> Result<(), jni::errors::Error> {
