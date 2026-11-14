@@ -135,9 +135,9 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "connectRemoteServer" -> connectRemoteServer(args.long("id"))
     "disconnectRemoteServer" -> disconnectRemoteServer()
     // Backups and WebDAV
-    "createBackup" -> createBackup()
+    "exportBackup" -> exportBackup(args.str("name"))
     "readBackup" -> readBackup(args.str("scope"))
-    "restoreBackup" -> restoreBackup(args.map("backup"), args.str("scope"), args.str("strategy"))
+    "restoreBackup" -> restoreBackup(args.str("token"), args.str("scope"), args.str("strategy"))
     "webdavAccount" -> webdavAccount()
     "setWebdavAccount" -> setWebdavAccount(args.map("value").ifEmpty { null })
     "checkWebdav" -> checkWebdav()

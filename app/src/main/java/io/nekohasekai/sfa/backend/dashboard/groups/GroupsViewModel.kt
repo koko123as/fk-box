@@ -24,6 +24,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
     val serviceStatus = _serviceStatus.asStateFlow()
     private var lastServiceStatus: Status = Status.Stopped
+    private val updateSequence = java.util.concurrent.atomic.AtomicLong()
 
     init {
         viewModelScope.launch {
@@ -86,6 +87,8 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     override fun onDisconnected() {
         // Closing the UI subscription in the background does not change the
         // local route. Keep its snapshot until fresh groups arrive on return.
+        // Updates still converting belong to the closed subscription.
+        updateSequence.incrementAndGet()
         val keepSnapshot = !AppLifecycleObserver.isForeground.value &&
             RemoteControlManager.remoteServer.value == null && serviceStatus.value == Status.Started
         viewModelScope.launch(Dispatchers.Main) {
@@ -99,6 +102,9 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     }
 
     override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
+        // Each update converts on its own Default coroutine; a later one can
+        // finish first. Only the newest update may be applied.
+        val sequence = updateSequence.incrementAndGet()
         viewModelScope.launch(Dispatchers.Default) {
             val currentGroups = uiState.value.groups
             val currentByTag = currentGroups.associateBy { it.tag }
@@ -109,6 +115,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
             }
 
             withContext(Dispatchers.Main) {
+                if (sequence != updateSequence.get()) return@withContext
                 updateState {
                     copy(
                         groups = if (mergedGroups == groups) groups else mergedGroups,

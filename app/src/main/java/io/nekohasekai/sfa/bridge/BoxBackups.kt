@@ -58,6 +58,22 @@ internal class BoxBackups(
         backup
     }
 
+    // The backup read last, kept here until it is restored or replaced, so the
+    // UI only carries its token and summary across JNI.
+    private var stagedToken: String? = null
+    private var stagedBackup: Map<String, Any?>? = null
+
+    @Synchronized
+    fun stage(backup: Map<String, Any?>): Map<String, Any?> {
+        val token = UUID.randomUUID().toString()
+        stagedToken = token
+        stagedBackup = backup
+        return mapOf("token" to token, "profileCount" to rows(backup["profiles"]).size)
+    }
+
+    @Synchronized
+    fun staged(token: String): Map<String, Any?>? = stagedBackup.takeIf { stagedToken == token }
+
     fun encode(backup: Map<String, Any?>): ByteArray = JSONObject(backup).toString().toByteArray().also {
         require(it.size <= MAX_BYTES) { "Backup exceeds 64 MiB" }
     }
@@ -241,6 +257,12 @@ internal class BoxBackups(
             } finally { if (cleanup) workDir.deleteRecursively() }
         }
         UpdateProfileWork.reconfigureUpdater()
+        synchronized(this) {
+            if (stagedBackup === backup) {
+                stagedToken = null
+                stagedBackup = null
+            }
+        }
         return count
     }
 

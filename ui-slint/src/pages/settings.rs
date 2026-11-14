@@ -359,10 +359,8 @@ fn backup_run(st: &BackupRef, remote: bool) {
     if remote {
         app::call("uploadWebdavBackup", json!({}), move |r| finish(r.map(|v| truthy(&v))));
     } else {
-        app::call("createBackup", json!({}), move |r| match r {
-            Ok(data) => app::call("saveDocument", json!({ "name": DEFAULT_BACKUP_FILE_NAME, "content": data.to_string() }), move |r| finish(r.map(|v| truthy(&v)))),
-            Err(e) => finish(Err(e)),
-        });
+        // The backup is created and written on the Kotlin side; it never crosses JNI.
+        app::call("exportBackup", json!({ "name": DEFAULT_BACKUP_FILE_NAME }), move |r| finish(r.map(|v| truthy(&v))));
     }
 }
 
@@ -403,7 +401,9 @@ fn backup_restore(st: &BackupRef, remote: bool) {
                     return unlock();
                 }
             };
-            let count = list(&backup["profiles"]).len();
+            // The backup stays on the Kotlin side; only its token and summary come here.
+            let count = backup["profileCount"].as_u64().unwrap_or(0);
+            let token = backup["token"].as_str().unwrap_or_default().to_string();
             let override_ = strategy == "Override";
             let mut message = tr("Restore {count} profiles?").replace("{count}", &count.to_string());
             message.push_str("\n\n");
@@ -420,7 +420,7 @@ fn backup_restore(st: &BackupRef, remote: bool) {
                 c.borrow_mut().loading = true;
                 mark(Mark::ROWS);
                 let d = c.clone();
-                app::call("restoreBackup", json!({ "backup": backup, "scope": scope, "strategy": strategy }), move |r| {
+                app::call("restoreBackup", json!({ "token": token, "scope": scope, "strategy": strategy }), move |r| {
                     match r {
                         Ok(_) => {
                             if scope == "all" {

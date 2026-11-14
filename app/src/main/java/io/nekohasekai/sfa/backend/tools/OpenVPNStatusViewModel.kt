@@ -6,6 +6,7 @@ import io.nekohasekai.libbox.OpenVPNStatusHandler
 import io.nekohasekai.libbox.OpenVPNStatusSubscription
 import io.nekohasekai.libbox.OpenVPNStatusUpdate
 import io.nekohasekai.sfa.backend.base.BaseViewModel
+import io.nekohasekai.sfa.backend.base.SessionSlot
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -53,60 +54,59 @@ class OpenVPNStatusViewModel : BaseViewModel<OpenVPNStatusState>() {
         private const val MIN_API_VERSION_OPENVPN = 3
     }
 
-    private var subscription: OpenVPNStatusSubscription? = null
+    private val subscription = SessionSlot<OpenVPNStatusSubscription> { it.close() }
 
     override fun createInitialState() = OpenVPNStatusState()
 
     fun subscribe() {
         if (currentState.isSubscribed) return
         updateState { copy(isSubscribed = true) }
+        val generation = subscription.begin()
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = CommandTarget.standaloneClient()
                 if (client.getAPIVersion() < MIN_API_VERSION_OPENVPN) {
                     viewModelScope.launch {
+                        if (!subscription.isCurrent(generation)) return@launch
                         updateState { copy(endpoints = emptyList(), isSubscribed = false) }
-                        subscription = null
                     }
                     return@launch
                 }
-                subscription =
+                val session =
                     client.subscribeOpenVPNStatus(
                         object : OpenVPNStatusHandler {
                             override fun onStatusUpdate(status: OpenVPNStatusUpdate) {
                                 val endpoints = convertUpdate(status)
                                 viewModelScope.launch {
-                                    if (!currentState.isSubscribed) return@launch
+                                    if (!subscription.isCurrent(generation) || !currentState.isSubscribed) return@launch
                                     updateState { copy(endpoints = endpoints) }
                                 }
                             }
 
                             override fun onError(message: String) {
                                 viewModelScope.launch {
-                                    if (!currentState.isSubscribed) return@launch
+                                    if (!subscription.isCurrent(generation) || !currentState.isSubscribed) return@launch
                                     updateState { copy(endpoints = emptyList(), isSubscribed = false) }
-                                    subscription = null
+                                    subscription.clear(generation)
                                     sendErrorMessage(message)
                                 }
                             }
                         },
                     )
+                // Cancelled or replaced while it was opening: attach closes it.
+                subscription.attach(generation, session)
             } catch (_: Exception) {
                 viewModelScope.launch {
+                    if (!subscription.isCurrent(generation)) return@launch
                     updateState { copy(endpoints = emptyList(), isSubscribed = false) }
-                    subscription = null
                 }
             }
         }
     }
 
     fun cancel() {
-        try {
-            subscription?.close()
-        } catch (_: Exception) {
-        }
-        subscription = null
+        subscription.cancel()
         updateState { copy(endpoints = emptyList(), isSubscribed = false) }
     }
 

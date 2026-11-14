@@ -2,17 +2,32 @@ package io.nekohasekai.sfa.bridge
 
 import android.content.SharedPreferences
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.utils.SecretBox
 import org.json.JSONObject
 import java.net.URI
 
 internal class BoxWebDAV(activity: BoxActivity) {
     private val preferences: SharedPreferences = activity.getSharedPreferences("bbox_webdav", 0)
 
-    fun snapshot(): Map<String, Any?>? = preferences.getString("value", null)?.let { jsonObject(JSONObject(it)) }
+    /**
+     * The account with its password in plain text, for requests and backups.
+     * The stored copy keeps the password encrypted with a Keystore key
+     * (SecretBox); an account saved before that is encrypted on first read.
+     */
+    fun snapshot(): Map<String, Any?>? {
+        val stored = preferences.getString("value", null)?.let { jsonObject(JSONObject(it)) } ?: return null
+        val password = stored["password"] as? String ?: return stored
+        if (!SecretBox.isEncrypted(password)) {
+            runCatching { save(stored) }.onFailure { android.util.Log.w("BoxWebDAV", "encrypt stored password", it) }
+            return stored
+        }
+        return stored + ("password" to SecretBox.decrypt(password))
+    }
 
     fun save(value: Map<String, Any?>?) {
         if (value != null) validate(value)
-        check(preferences.edit().putString("value", value?.let { JSONObject(it).toString() }).commit()) { "Unable to save WebDAV account" }
+        val stored = value?.let { it + ("password" to SecretBox.encrypt(it["password"] as String)) }
+        check(preferences.edit().putString("value", stored?.let { JSONObject(it).toString() }).commit()) { "Unable to save WebDAV account" }
     }
 
     fun check(): Boolean {

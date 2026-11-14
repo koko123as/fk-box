@@ -7,6 +7,7 @@ import io.nekohasekai.libbox.USBIPServerStatusSubscription
 import io.nekohasekai.libbox.USBIPServerStatusUpdate
 import io.nekohasekai.libbox.USBSharedDevice
 import io.nekohasekai.sfa.backend.base.BaseViewModel
+import io.nekohasekai.sfa.backend.base.SessionSlot
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -56,60 +57,59 @@ class USBIPStatusViewModel : BaseViewModel<USBIPStatusState>() {
         private const val MIN_API_VERSION_USBIP = 2
     }
 
-    private var subscription: USBIPServerStatusSubscription? = null
+    private val subscription = SessionSlot<USBIPServerStatusSubscription> { it.close() }
 
     override fun createInitialState() = USBIPStatusState()
 
     fun subscribe() {
         if (currentState.isSubscribed) return
         updateState { copy(isSubscribed = true) }
+        val generation = subscription.begin()
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val client = CommandTarget.standaloneClient()
                 if (client.getAPIVersion() < MIN_API_VERSION_USBIP) {
                     viewModelScope.launch {
+                        if (!subscription.isCurrent(generation)) return@launch
                         updateState { copy(servers = emptyList(), isSubscribed = false) }
-                        subscription = null
                     }
                     return@launch
                 }
-                subscription =
+                val session =
                     client.subscribeUSBIPServerStatus(
                         object : USBIPServerStatusHandler {
                             override fun onStatusUpdate(status: USBIPServerStatusUpdate) {
                                 val servers = convertUpdate(status)
                                 viewModelScope.launch {
-                                    if (!currentState.isSubscribed) return@launch
+                                    if (!subscription.isCurrent(generation) || !currentState.isSubscribed) return@launch
                                     updateState { copy(servers = servers) }
                                 }
                             }
 
                             override fun onError(message: String) {
                                 viewModelScope.launch {
-                                    if (!currentState.isSubscribed) return@launch
+                                    if (!subscription.isCurrent(generation) || !currentState.isSubscribed) return@launch
                                     updateState { copy(servers = emptyList(), isSubscribed = false) }
-                                    subscription = null
+                                    subscription.clear(generation)
                                     sendErrorMessage(message)
                                 }
                             }
                         },
                     )
+                // Cancelled or replaced while it was opening: attach closes it.
+                subscription.attach(generation, session)
             } catch (_: Exception) {
                 viewModelScope.launch {
+                    if (!subscription.isCurrent(generation)) return@launch
                     updateState { copy(servers = emptyList(), isSubscribed = false) }
-                    subscription = null
                 }
             }
         }
     }
 
     fun cancel() {
-        try {
-            subscription?.close()
-        } catch (_: Exception) {
-        }
-        subscription = null
+        subscription.cancel()
         updateState { copy(servers = emptyList(), isSubscribed = false) }
     }
 

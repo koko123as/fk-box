@@ -7,6 +7,7 @@ import io.nekohasekai.libbox.STUNTestProgress
 import io.nekohasekai.libbox.STUNTestResult
 import io.nekohasekai.libbox.STUNTestSession
 import io.nekohasekai.sfa.backend.base.BaseViewModel
+import io.nekohasekai.sfa.backend.base.SessionSlot
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -26,7 +27,7 @@ data class STUNTestState(
 
 class STUNTestViewModel : BaseViewModel<STUNTestState>() {
     private var standaloneTest: io.nekohasekai.libbox.STUNTest? = null
-    private var stunSession: STUNTestSession? = null
+    private val stunSession = SessionSlot<STUNTestSession> { it.close() }
 
     override fun createInitialState() = STUNTestState()
 
@@ -58,19 +59,23 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
 
         val server = currentState.server
         val outboundTag = currentState.selectedOutbound
-        val handler = createHandler()
+        // A new test replaces (and closes) the previous remote session; the
+        // handler only reports for the test it was created for.
+        val generation = stunSession.begin()
+        val handler = createHandler(generation)
 
         if (vpnRunning) {
             viewModelScope.launch(Dispatchers.IO) {
                 try {
-                    stunSession =
+                    val session =
                         CommandTarget.standaloneClient()
                             .startSTUNTest(server, outboundTag, handler)
+                    // Cancelled or replaced while it was starting: attach closes it.
+                    stunSession.attach(generation, session)
                 } catch (e: Exception) {
                     withContext(Dispatchers.Main) {
-                        if (!currentState.isRunning) return@withContext
+                        if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@withContext
                         updateState { copy(isRunning = false) }
-                        stunSession = null
                         sendError(e)
                     }
                 }
@@ -96,11 +101,7 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
     }
 
     fun cancelTest() {
-        try {
-            stunSession?.close()
-        } catch (_: Exception) {
-        }
-        stunSession = null
+        stunSession.cancel()
         standaloneTest?.cancel()
         standaloneTest = null
         updateState { copy(isRunning = false) }
@@ -111,12 +112,12 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
         super.onCleared()
     }
 
-    private fun createHandler(): STUNTestHandler {
+    private fun createHandler(generation: Long): STUNTestHandler {
         return object : STUNTestHandler {
             override fun onProgress(progress: STUNTestProgress?) {
                 progress ?: return
                 viewModelScope.launch {
-                    if (!currentState.isRunning) return@launch
+                    if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@launch
                     updateState {
                         copy(
                             phase = progress.phase.toInt(),
@@ -132,7 +133,7 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
             override fun onResult(result: STUNTestResult?) {
                 result ?: return
                 viewModelScope.launch {
-                    if (!currentState.isRunning) return@launch
+                    if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@launch
                     updateState {
                         copy(
                             phase = Libbox.STUNPhaseDone.toInt(),
@@ -145,16 +146,16 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
                         )
                     }
                     standaloneTest = null
-                    stunSession = null
+                    stunSession.clear(generation)
                 }
             }
 
             override fun onError(message: String?) {
                 viewModelScope.launch {
-                    if (!currentState.isRunning) return@launch
+                    if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@launch
                     updateState { copy(isRunning = false) }
                     standaloneTest = null
-                    stunSession = null
+                    stunSession.clear(generation)
                     if (message != null) {
                         sendErrorMessage(message)
                     }
