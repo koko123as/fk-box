@@ -55,7 +55,7 @@ func uiHTTPRequest(method, link, username, password string, content []byte, limi
 	if err != nil {
 		return nil, fmt.Errorf("invalid HTTP request")
 	}
-	request.Header.Set("User-Agent", "B-box")
+	request.Header.Set("User-Agent", "FK-box")
 	if method == http.MethodPut {
 		request.Header.Set("Content-Type", "application/json; charset=utf-8")
 	}

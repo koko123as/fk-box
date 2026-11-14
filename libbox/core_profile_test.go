@@ -17,8 +17,8 @@ const (
 
 func TestDetectCoreConfig(t *testing.T) {
 	cases := map[string]string{
-		`{"outbounds":[{"type":"direct","tag":"direct"}]}`:                         CoreSingBox,
-		`{"inbounds":[],"outbounds":[{"protocol":"freedom","tag":"direct"}]}`:       CoreXray,
+		`{"outbounds":[{"type":"direct","tag":"direct"}]}`:                                                                  CoreSingBox,
+		`{"inbounds":[],"outbounds":[{"protocol":"freedom","tag":"direct"}]}`:                                               CoreXray,
 		"mixed-port: 7890\nproxies:\n  - {name: a, type: ss, server: 1.1.1.1, port: 1, cipher: aes-128-gcm, password: x}\n": CoreMihomo,
 		testVlessReality: CoreLinks,
 		base64.StdEncoding.EncodeToString([]byte(testVlessReality + "\n" + testShadowsocks)): CoreLinks,
@@ -67,7 +67,7 @@ func TestConvertLinksDefaultsToSingBox(t *testing.T) {
 }
 
 func TestConvertLinksWithXHTTPUsesXray(t *testing.T) {
-	profile, err := ConvertCoreShareLinksFor(CoreAuto, testVlessReality + "\n" + testVlessXHTTP)
+	profile, err := ConvertCoreShareLinksFor(CoreAuto, testVlessReality+"\n"+testVlessXHTTP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,5 +145,22 @@ func TestConvertLinksForMihomo(t *testing.T) {
 func TestSubscriptionURLIsNotLinks(t *testing.T) {
 	if got := DetectCoreConfig("https://example.com/sub?token=x"); got == CoreLinks {
 		t.Fatal("subscription URL detected as share links")
+	}
+}
+
+func TestCheckXrayFormatKeepsKeyOrder(t *testing.T) {
+	formatted, err := FormatCoreConfig(CoreXray, `{"outbounds":[{"tag":"proxy","protocol":"freedom"}],"log":{"loglevel":"warning"}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := formatted.Value
+	if strings.Index(text, `"outbounds"`) > strings.Index(text, `"log"`) || strings.Index(text, `"tag"`) > strings.Index(text, `"protocol"`) {
+		t.Fatalf("key order changed:\n%s", text)
+	}
+	if !strings.HasPrefix(text, "{\n  \"outbounds\": [") {
+		t.Fatalf("not indented:\n%s", text)
+	}
+	if _, err := FormatCoreConfig(CoreXray, `{"log":`); err == nil {
+		t.Fatal("invalid JSON formatted")
 	}
 }

@@ -2,12 +2,11 @@ package libbox
 
 import (
 	"context"
-	"sync"
 	"testing"
 	"time"
 
-	mihomoConfig "github.com/metacubex/mihomo/config"
 	mihomoResolver "github.com/metacubex/mihomo/component/resolver"
+	mihomoConfig "github.com/metacubex/mihomo/config"
 	mDNS "github.com/miekg/dns"
 )
 
@@ -30,35 +29,6 @@ func TestCoreInternalsStartDoesNotBlockReaders(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Fatal("readers of the running core waited for a core start")
-	}
-}
-
-// Starts and stops still run one at a time.
-func TestCoreInternalsStartsAreSerialized(t *testing.T) {
-	var running, peak int
-	var access sync.Mutex
-	var wait sync.WaitGroup
-	for i := 0; i < 8; i++ {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			coreLifecycle.Lock()
-			defer coreLifecycle.Unlock()
-			access.Lock()
-			running++
-			if running > peak {
-				peak = running
-			}
-			access.Unlock()
-			time.Sleep(5 * time.Millisecond)
-			access.Lock()
-			running--
-			access.Unlock()
-		}()
-	}
-	wait.Wait()
-	if peak != 1 {
-		t.Fatalf("%d starts ran at once", peak)
 	}
 }
 

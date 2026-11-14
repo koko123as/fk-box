@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -48,6 +49,27 @@ type Exchange struct {
 	BodyLimit   int64    `json:"bodyLimit"`
 	storedBytes int64
 	jsonBytes   int64
+	io          *recordIO
+}
+
+// recordIO serializes the file operations of one record. Writes run after the
+// store lock is released, so a slow disk never blocks other connections;
+// removed is set under the store lock and checked under mu, so a write that
+// starts after removal does not recreate a deleted file.
+type recordIO struct {
+	mu        sync.Mutex
+	removed   atomic.Bool
+	persisted uint64 // latest metadata snapshot handed out (store lock)
+	written   uint64 // latest metadata snapshot on disk (mu)
+}
+
+// storeIO is file work collected under the store lock and run after it.
+type storeIO []func()
+
+func (tasks storeIO) run() {
+	for _, task := range tasks {
+		task()
+	}
 }
 
 type Detail struct {
@@ -81,8 +103,11 @@ type Page struct {
 }
 
 // Store retains a bounded prefix of each body on disk, never a full streaming
-// response in memory. All operations share one lock; no lock is held across
-// upstream network operations or the complete duration of an HTTP transaction.
+// response in memory. All bookkeeping shares one lock; file reads and writes
+// run after it is released (recordIO), and no lock is held across upstream
+// network operations or the complete duration of an HTTP transaction.
+// Domain-only records (observed TLS/QUIC hostnames) have their own quota, so
+// they never evict recorded HTTP exchanges.
 type Store struct {
 	mu         sync.Mutex
 	directory  string
@@ -146,6 +171,7 @@ func OpenStore(directory string) (*Store, error) {
 		}
 		record.Request.BodyTruncated = record.Request.BodyTruncated || record.Request.BodyBytes > record.Request.CapturedBytes
 		record.Response.BodyTruncated = record.Response.BodyTruncated || record.Response.BodyBytes > record.Response.CapturedBytes
+		record.io = &recordIO{}
 		s.records[id] = &record
 		s.order = append(s.order, id)
 		s.totalBytes += record.storedBytes
@@ -169,7 +195,7 @@ func OpenStore(directory string) (*Store, error) {
 			}
 		}
 	}
-	s.trimLocked()
+	s.trimLocked().run()
 	return s, nil
 }
 
@@ -192,18 +218,51 @@ func (s *Store) begin(metadata Metadata, request *http.Request, bodyLimit int64)
 		ID: id, StartedAt: time.Now().UnixMilli(), Metadata: metadata, BodyLimit: bodyLimit,
 		Request: Message{Method: request.Method, URL: request.URL.String(), Protocol: request.Proto,
 			Headers: headers, HeadersTruncated: truncated, BodyComplete: request.Body == nil || request.Body == http.NoBody},
-		Response: Message{Headers: []Header{}},
+		Response: Message{Headers: []Header{}}, io: &recordIO{},
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.records[id] = record
 	s.order = append(s.order, id)
-	s.persistLocked(record)
-	s.trimLocked()
+	tasks := append(storeIO{s.persistLocked(record)}, s.trimLocked()...)
+	s.mu.Unlock()
+	tasks.run()
 	return id
 }
 
+// observeDomain records a finished domain-only entry (an observed TLS/QUIC
+// hostname or a TLS failure) with a single metadata write.
+func (s *Store) observeDomain(metadata Metadata, request *http.Request, bodyLimit int64, note string, err error) {
+	random := make([]byte, 16)
+	if _, randomErr := rand.Read(random); randomErr != nil {
+		return
+	}
+	id := hex.EncodeToString(random)
+	headers, truncated := captureHeaders(request.Header, request.Host)
+	if note != "" {
+		note = "\n" + note
+	}
+	note = "Domain only: observed TLS/QUIC hostname; HTTPS plaintext was not observed" + note
+	record := &Exchange{
+		ID: id, StartedAt: time.Now().UnixMilli(), Complete: true, Note: note, DomainOnly: true,
+		Metadata: metadata, BodyLimit: bodyLimit,
+		Request: Message{Method: request.Method, URL: request.URL.String(), Protocol: request.Proto,
+			Headers: headers, HeadersTruncated: truncated, BodyComplete: true},
+		Response: Message{Headers: []Header{}}, io: &recordIO{},
+	}
+	if err != nil {
+		record.Error = err.Error()
+	}
+	s.mu.Lock()
+	s.records[id] = record
+	s.order = append(s.order, id)
+	tasks := append(storeIO{s.persistLocked(record)}, s.trimLocked()...)
+	s.mu.Unlock()
+	tasks.run()
+}
+
 func (s *Store) response(id string, response *http.Response) {
+	var tasks storeIO
+	defer func() { tasks.run() }()
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if record := s.records[id]; record != nil {
@@ -226,8 +285,7 @@ func (s *Store) response(id string, response *http.Response) {
 			record.Note += "\nProtocol upgraded; only the HTTP handshake is recorded"
 			record.Response.BodyComplete = true
 		}
-		s.persistLocked(record)
-		s.trimLocked()
+		tasks = append(storeIO{s.persistLocked(record)}, s.trimLocked()...)
 	}
 }
 
@@ -259,25 +317,16 @@ func (s *Store) addNote(id, note string) {
 	}
 }
 
-func (s *Store) domainOnly(id string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if record := s.records[id]; record != nil {
-		record.DomainOnly = true
-		record.Note = "Domain only: observed TLS/QUIC hostname; HTTPS plaintext was not observed"
-	}
-}
-
 // Domain extraction uses all retained matching records, not only the currently
 // visible page. Historical URL hosts remain readable and are deduped.
 func (s *Store) Domains(query string) []string {
-	page := s.Page(MaxEntries, query)
+	query = strings.ToLower(strings.TrimSpace(query))
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	hosts := make(map[string]bool)
-	for _, item := range page.Items {
-		r := s.records[item.ID]
-		if r == nil {
+	for _, id := range s.order {
+		r := s.records[id]
+		if r == nil || !r.matchesQuery(query) {
 			continue
 		}
 		values := []string{r.Metadata.Host}
@@ -303,9 +352,9 @@ func (s *Store) Domains(query string) []string {
 
 func (s *Store) appendBody(id string, response bool, p []byte) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	record := s.records[id]
 	if record == nil {
+		s.mu.Unlock()
 		return
 	}
 	message, suffix := &record.Request, ".request"
@@ -314,25 +363,59 @@ func (s *Store) appendBody(id string, response bool, p []byte) {
 	}
 	message.BodyBytes += int64(len(p))
 	remaining := record.BodyLimit - message.CapturedBytes
+	var write []byte
 	if remaining > 0 && len(p) > 0 {
-		if int64(len(p)) > remaining {
-			p = p[:remaining]
-		}
-		file, err := os.OpenFile(filepath.Join(s.directory, id+suffix), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
-		if err == nil {
-			var n int
-			n, err = file.Write(p)
-			file.Close()
-			message.CapturedBytes += int64(n)
-			record.storedBytes += int64(n)
-			s.totalBytes += int64(n)
-		}
-		if err != nil {
-			s.lastError = "Cannot save capture body: " + err.Error()
-		}
+		write = p[:min(int64(len(p)), remaining)]
+		// Reserve the bytes now so concurrent appends and trimming see them;
+		// a failed write gives back what was not written.
+		message.CapturedBytes += int64(len(write))
+		record.storedBytes += int64(len(write))
+		s.totalBytes += int64(len(write))
 	}
 	message.BodyTruncated = message.BodyBytes > message.CapturedBytes
-	s.trimLocked()
+	tasks := s.trimLocked()
+	path := filepath.Join(s.directory, id+suffix)
+	s.mu.Unlock()
+	tasks.run()
+	if len(write) == 0 {
+		return
+	}
+	written, err := record.appendFile(path, write)
+	if err == nil && written == len(write) {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.records[id] == record {
+		missing := int64(len(write) - written)
+		message.CapturedBytes -= missing
+		record.storedBytes -= missing
+		s.totalBytes -= missing
+		message.BodyTruncated = message.BodyBytes > message.CapturedBytes
+	}
+	if err == nil {
+		err = io.ErrShortWrite
+	}
+	s.lastError = "Cannot save capture body: " + err.Error()
+}
+
+// appendFile appends to one of the record's body files unless the record has
+// been removed; removal deletes the files under the same lock.
+func (r *Exchange) appendFile(path string, data []byte) (int, error) {
+	r.io.mu.Lock()
+	defer r.io.mu.Unlock()
+	if r.io.removed.Load() {
+		return len(data), nil
+	}
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return 0, err
+	}
+	n, err := file.Write(data)
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	return n, err
 }
 
 func (s *Store) bodyComplete(id string, response bool) {
@@ -371,65 +454,142 @@ func (s *Store) setError(id string, err error) {
 }
 
 func (s *Store) finish(id string) {
+	var tasks storeIO
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if record := s.records[id]; record != nil {
 		record.Complete = true
 		record.DurationMS = max(0, time.Now().UnixMilli()-record.StartedAt)
-		s.persistLocked(record)
-		s.trimLocked()
+		tasks = append(storeIO{s.persistLocked(record)}, s.trimLocked()...)
 	}
+	s.mu.Unlock()
+	tasks.run()
 }
 
-func (s *Store) persistLocked(record *Exchange) {
+// persistLocked snapshots the record's metadata under the store lock and
+// returns the write to run after it. Snapshots are numbered so an older one
+// that is written late never replaces a newer one.
+func (s *Store) persistLocked(record *Exchange) func() {
 	data, err := json.Marshal(record)
-	if err == nil {
-		path := filepath.Join(s.directory, record.ID+".json")
-		err = os.WriteFile(path+".tmp", data, 0o600)
-		if err == nil {
-			err = os.Rename(path+".tmp", path)
-		}
-		if err != nil {
-			_ = os.Remove(path + ".tmp")
-		}
-	}
 	if err != nil {
 		s.lastError = "Cannot save capture metadata: " + err.Error()
+		return func() {}
+	}
+	record.io.persisted++
+	sequence := record.io.persisted
+	path := filepath.Join(s.directory, record.ID+".json")
+	return func() { s.writeMetadata(record, path, data, sequence) }
+}
+
+func (s *Store) writeMetadata(record *Exchange, path string, data []byte, sequence uint64) {
+	record.io.mu.Lock()
+	if record.io.removed.Load() || sequence <= record.io.written {
+		record.io.mu.Unlock()
 		return
 	}
-	delta := int64(len(data)) - record.jsonBytes
-	record.jsonBytes = int64(len(data))
-	record.storedBytes += delta
-	s.totalBytes += delta
+	err := os.WriteFile(path+".tmp", data, 0o600)
+	if err == nil {
+		err = os.Rename(path+".tmp", path)
+	}
+	if err != nil {
+		_ = os.Remove(path + ".tmp")
+	} else {
+		record.io.written = sequence
+	}
+	record.io.mu.Unlock()
+	s.mu.Lock()
+	if err != nil {
+		s.lastError = "Cannot save capture metadata: " + err.Error()
+		s.mu.Unlock()
+		return
+	}
+	var tasks storeIO
+	if s.records[record.ID] == record {
+		delta := int64(len(data)) - record.jsonBytes
+		record.jsonBytes = int64(len(data))
+		record.storedBytes += delta
+		s.totalBytes += delta
+		tasks = s.trimLocked()
+	}
+	s.mu.Unlock()
+	tasks.run()
 }
 
-func (s *Store) removeLocked(id string) {
-	if record := s.records[id]; record != nil {
+// removeLocked drops the record from the index and returns the deletion of
+// its files.
+func (s *Store) removeLocked(id string) func() {
+	record := s.records[id]
+	if record == nil {
+		return func() {}
+	}
+	record.io.removed.Store(true)
+	s.totalBytes -= record.storedBytes
+	delete(s.records, id)
+	return func() {
+		record.io.mu.Lock()
+		defer record.io.mu.Unlock()
 		for _, suffix := range []string{".json", ".request", ".response", ".json.tmp"} {
 			if err := os.Remove(filepath.Join(s.directory, id+suffix)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				s.mu.Lock()
 				s.lastError = "Cannot remove capture: " + err.Error()
+				s.mu.Unlock()
 			}
 		}
-		s.totalBytes -= record.storedBytes
-		delete(s.records, id)
 	}
 }
 
-func (s *Store) trimLocked() {
-	for len(s.order) > 0 && (len(s.order) > MaxEntries || s.totalBytes > MaxStorageBytes) {
-		s.removeLocked(s.order[0])
-		s.order = s.order[1:]
+// trimLocked evicts the oldest records over the storage limit, the oldest
+// HTTP exchanges over MaxEntries and the oldest domain-only records over
+// MaxDomainEntries. It returns the file deletions to run after the lock.
+func (s *Store) trimLocked() storeIO {
+	exchanges, domains := 0, 0
+	for _, id := range s.order {
+		if s.records[id].DomainOnly {
+			domains++
+		} else {
+			exchanges++
+		}
 	}
+	var tasks storeIO
+	for len(s.order) > 0 {
+		victim := -1
+		switch {
+		case s.totalBytes > MaxStorageBytes:
+			victim = 0
+		case exchanges > MaxEntries:
+			victim = slices.IndexFunc(s.order, func(id string) bool { return !s.records[id].DomainOnly })
+		case domains > MaxDomainEntries:
+			victim = slices.IndexFunc(s.order, func(id string) bool { return s.records[id].DomainOnly })
+		}
+		if victim < 0 {
+			break
+		}
+		id := s.order[victim]
+		if s.records[id].DomainOnly {
+			domains--
+		} else {
+			exchanges--
+		}
+		tasks = append(tasks, s.removeLocked(id))
+		s.order = slices.Delete(s.order, victim, victim+1)
+	}
+	return tasks
 }
 
 func (s *Store) Clear() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	s.lastError = ""
+	var tasks storeIO
 	for _, id := range s.order {
-		s.removeLocked(id)
+		tasks = append(tasks, s.removeLocked(id))
 	}
 	s.order = nil
+	s.mu.Unlock()
+	tasks.run()
+}
+
+func (r *Exchange) matchesQuery(query string) bool {
+	return query == "" || strings.Contains(strings.ToLower(r.Request.URL+" "+r.Request.Method+" "+
+		strings.Join(r.Metadata.Packages, " ")+" "+strconv.Itoa(r.Response.Status)), query)
 }
 
 func (s *Store) Page(limit int, query string) Page {
@@ -440,8 +600,7 @@ func (s *Store) Page(limit int, query string) Page {
 	page := Page{Items: make([]Summary, 0), StoredBytes: s.totalBytes, Error: s.lastError}
 	for _, id := range slices.Backward(s.order) {
 		r := s.records[id]
-		if query != "" && !strings.Contains(strings.ToLower(r.Request.URL+" "+r.Request.Method+" "+
-			strings.Join(r.Metadata.Packages, " ")+" "+strconv.Itoa(r.Response.Status)), query) {
+		if !r.matchesQuery(query) {
 			continue
 		}
 		page.Total++
@@ -461,12 +620,14 @@ func (s *Store) Page(limit int, query string) Page {
 
 func (s *Store) Detail(id string) (*Detail, error) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	record := s.records[id]
 	if record == nil {
+		s.mu.Unlock()
 		return nil, os.ErrNotExist
 	}
+	// The body files are read after the lock is released.
 	detail := &Detail{Exchange: *record}
+	s.mu.Unlock()
 	if !detail.Complete {
 		detail.DurationMS = max(0, time.Now().UnixMilli()-detail.StartedAt)
 	}
@@ -484,7 +645,7 @@ func (s *Store) Detail(id string) (*Detail, error) {
 		if err != nil {
 			return nil, err
 		}
-		data, err := io.ReadAll(io.LimitReader(file, record.BodyLimit))
+		data, err := io.ReadAll(io.LimitReader(file, detail.BodyLimit))
 		file.Close()
 		if err != nil {
 			return nil, err

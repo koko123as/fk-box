@@ -428,3 +428,88 @@ func TestRewriteLifecycleKeepsRulesWhenRecordingStops(t *testing.T) {
 		t.Fatal("service stop retained processing")
 	}
 }
+
+func TestRewriteScriptMemoryLimits(t *testing.T) {
+	for _, source := range []string{
+		"'x'.repeat(2**29); $done();",
+		"''.padEnd(2**29, 'x'); $done();",
+		"new Array(2**29).fill(0); $done();",
+		"new Array(2**29).join('x'); $done();",
+		"Array.from({length: 2**29}); $done();",
+		"new Uint8Array(2**30); $done();",
+		"new ArrayBuffer(2**30); $done();",
+		"Array(2**29); $done();",
+		"var s = 'x'.repeat(1 << 20); for (;;) { s += s; } $done();",
+		"var a = []; for (;;) { a.push('x'.repeat(1 << 20) + a.length); }",
+		"var s = 'x'.repeat(1 << 20); for (var i = 0; i < 9; i++) { s += s; } s.indexOf('y'); $done();",
+		"var s = 'x'.repeat(1 << 20); for (var i = 0; i < 9; i++) { s += s; } /y/.test(s); $done();",
+		"var s = 'x'.repeat(1 << 20); for (var i = 0; i < 9; i++) { s += s; } JSON.parse(s); $done();",
+		"var s = 'x'.repeat(1 << 20); for (var i = 0; i < 9; i++) { s += s; } $done({url: s});",
+		"var s = 'x'.repeat(1 << 20); for (var i = 0; i < 9; i++) { s += s; } $done({headers: {'X-Big': s}});",
+	} {
+		content, _ := json.Marshal(map[string]any{"scripts": []any{map[string]any{"pattern": ".", "phase": "request", "source": source, "timeout_ms": 2000}}})
+		program := rewriteProgram(t, string(content))
+		request, _ := http.NewRequest("GET", "http://example.test/", nil)
+		if _, err := program.runScript(request, nil, &program.scripts[0], "test", nil, func(string) {}); err == nil {
+			t.Errorf("oversized script unexpectedly succeeded: %s", source)
+		}
+	}
+	program := rewriteProgram(t, `{"scripts":[{"pattern":".","phase":"request","source":"var s = 'ab'.repeat(1000).padEnd(3000, '-') + [1,2,3].join(','); var b = new Uint8Array(16); if (!(b instanceof Uint8Array) || !Array.isArray(new Array(3).fill(0))) throw Error('guards broke built-ins'); $done({url: 'http://example.test/' + s.length});"}]}`)
+	request, _ := http.NewRequest("GET", "http://example.test/", nil)
+	result, err := program.runScript(request, nil, &program.scripts[0], "test", nil, func(string) {})
+	if err != nil || result.url != "http://example.test/3005" {
+		t.Fatalf("ordinary script: %q %v", result.url, err)
+	}
+}
+
+// At the connection limit a rewrite-covered HTTPS connection is closed like a
+// plain HTTP one instead of passing through without the rules.
+func TestRewriteCapacityClosesTLSLikeHTTP(t *testing.T) {
+	e, _, _ := mitmEngine(t, Config{})
+	e.captureEnabled = false
+	e.rewrite = rewriteProgram(t, `{"enabled":true,"mitm":{"enabled":true,"hosts":["origin.test"]},"map_local":[{"pattern":".","data":"local"}]}`)
+	e.mu.Lock()
+	for i := 0; i < MaxConnections; i++ {
+		placeholder, _ := net.Pipe()
+		defer placeholder.Close()
+		e.connections[placeholder] = func() {}
+	}
+	e.mu.Unlock()
+	defer func() {
+		e.mu.Lock()
+		clear(e.connections)
+		e.mu.Unlock()
+	}()
+	for _, protocol := range []string{"tls", "http"} {
+		port := uint16(443)
+		if protocol == "http" {
+			port = 80
+		}
+		metadata := Metadata{Host: "origin.test", Port: port, Protocol: protocol, UID: -1}
+		local, remote := net.Pipe()
+		var closeErr error
+		handled := false
+		if protocol == "tls" {
+			var selected bool
+			_, metadata, selected = e.SelectTLS(context.Background(), local, metadata)
+			if !selected {
+				t.Fatal("TLS connection passed through at capacity")
+			}
+		}
+		handled = e.HandleRouted(context.Background(), local, metadata, nil, nil, nil, func(err error) { closeErr = err })
+		if !handled || closeErr == nil {
+			t.Fatalf("%s connection not rejected at capacity: handled=%v err=%v", protocol, handled, closeErr)
+		}
+		_ = remote.SetReadDeadline(time.Now().Add(time.Second))
+		if _, err := remote.Read(make([]byte, 1)); err == nil {
+			t.Fatalf("%s connection left open", protocol)
+		}
+		remote.Close()
+	}
+	// Outside the rewrite scope the connection still passes through untouched.
+	local, remote := net.Pipe()
+	defer remote.Close()
+	if _, _, selected := e.SelectTLS(context.Background(), local, Metadata{Host: "other.test", Port: 443, Protocol: "tls", UID: -1}); selected {
+		t.Fatal("unrelated TLS connection selected at capacity")
+	}
+}

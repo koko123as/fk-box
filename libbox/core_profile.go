@@ -330,17 +330,13 @@ func FormatCoreConfig(core string, content string) (*StringBox, error) {
 	case CoreSingBox:
 		return FormatConfig(content)
 	case CoreXray:
-		var value any
-		if err := json.Unmarshal([]byte(normalizeCoreContent(content)), &value); err != nil {
+		// json.Indent keeps the profile's key order and literal values;
+		// decoding into a map would sort the keys alphabetically.
+		var buffer bytes.Buffer
+		if err := json.Indent(&buffer, []byte(normalizeCoreContent(content)), "", "  "); err != nil {
 			return nil, fmt.Errorf("xray: %w", err)
 		}
-		var buffer bytes.Buffer
-		encoder := json.NewEncoder(&buffer)
-		encoder.SetIndent("", "  ")
-		encoder.SetEscapeHTML(false)
-		if err := encoder.Encode(value); err != nil {
-			return nil, err
-		}
+		buffer.WriteByte('\n')
 		return wrapString(buffer.String()), nil
 	case CoreMihomo:
 		// Comments and key order are part of a Clash profile; only normalize
@@ -449,12 +445,12 @@ func convertLinksToMihomo(proxies []map[string]any) (*UICoreProfile, error) {
 		names = append(names, proxy["name"])
 	}
 	profile := map[string]any{
-		"mixed-port":  7890,
-		"allow-lan":   false,
-		"mode":        "rule",
-		"log-level":   "warning",
-		"ipv6":        true,
-		"proxies":     proxies,
+		"mixed-port": 7890,
+		"allow-lan":  false,
+		"mode":       "rule",
+		"log-level":  "warning",
+		"ipv6":       true,
+		"proxies":    proxies,
 		"proxy-groups": []any{
 			map[string]any{"name": "PROXY", "type": "select", "proxies": append([]any{"AUTO"}, names...)},
 			map[string]any{"name": "AUTO", "type": "url-test", "proxies": names, "url": "https://www.gstatic.com/generate_204", "interval": 300},

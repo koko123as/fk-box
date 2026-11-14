@@ -23,7 +23,7 @@ func (p *RewriteProgram) request(request *http.Request, id, address string, note
 		}
 		note(rule.label)
 		if rule.options.Action == "reject" {
-			return localRewriteResponse(request, http.StatusForbidden, make(http.Header), []byte("Request rejected by B-box rewrite\n")), nil
+			return localRewriteResponse(request, http.StatusForbidden, make(http.Header), []byte("Request rejected by FK-box rewrite\n")), nil
 		}
 		next, err := boundedReplace(rule.pattern, address, rule.options.Replacement, 8192)
 		if err != nil {

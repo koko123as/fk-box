@@ -58,8 +58,13 @@ func (p *RewriteProgram) runScript(request *http.Request, response *http.Respons
 	}
 	vm := goja.New()
 	vm.SetMaxCallStackSize(256)
+	if err := installScriptGuards(vm); err != nil {
+		return scriptResult{}, fmt.Errorf("%s: %w", script.label, err)
+	}
 	stop := context.AfterFunc(ctx, func() { vm.Interrupt(ctx.Err()) })
 	defer stop()
+	stopMemoryWatch := watchScriptMemory(ctx, vm)
+	defer stopMemoryWatch()
 	requestValue := map[string]any{"url": request.URL.String(), "method": request.Method,
 		"headers": scriptHeaders(vm, request.Header, request.Host, script.options.FullHeaders), "id": id}
 	if response == nil && script.options.RequiresBody {
@@ -91,7 +96,12 @@ func (p *RewriteProgram) runScript(request *http.Request, response *http.Respons
 				if message.Len() > 0 {
 					message.WriteByte(' ')
 				}
-				value := argument.String()
+				var value string
+				if scriptStringTooLong(argument, 2048) {
+					value = "[string too long]"
+				} else {
+					value = argument.String()
+				}
 				message.WriteString(value[:min(len(value), 2048-message.Len())])
 			}
 			AppendCaptureLog("info", script.label+": "+strings.ToValidUTF8(message.String(), ""))
@@ -203,7 +213,7 @@ func decodeScriptResult(vm *goja.Runtime, value goja.Value, request *http.Reques
 	}
 	for name, target := range map[string]*string{"url": &result.url, "method": &result.method} {
 		if field := object.Get(name); !missingScriptValue(field) {
-			if field.ExportType() != reflect.TypeFor[string]() {
+			if field.ExportType() != reflect.TypeFor[string]() || scriptStringTooLong(field, 8192) {
 				return result, fmt.Errorf("invalid script %s", name)
 			}
 			var valid bool
@@ -317,6 +327,11 @@ func decodeScriptBody(value goja.Value, binary bool, limit int64) ([]byte, error
 		if value.ExportType() != reflect.TypeFor[string]() {
 			return nil, errors.New("script body must be a string")
 		}
+		// Each UTF-16 unit is at least one UTF-8 byte: reject before Export
+		// flattens a long concatenation.
+		if scriptStringTooLong(value, int(limit)) {
+			return nil, errRewriteSize
+		}
 		text, ok := value.Export().(string)
 		if !ok {
 			return nil, errors.New("script body must be a string")
@@ -346,6 +361,9 @@ func decodeScriptHeaders(vm *goja.Runtime, value goja.Value, original http.Heade
 		if value.ExportType() != reflect.TypeFor[string]() {
 			return errors.New("script header value must be a string")
 		}
+		if scriptStringTooLong(value, MaxHeaderBytes) {
+			return errors.New("script headers exceed 64 KiB")
+		}
 		text, ok := value.Export().(string)
 		if !ok || !httpguts.ValidHeaderFieldName(name) || !httpguts.ValidHeaderFieldValue(text) {
 			return errors.New("invalid script header")
@@ -370,6 +388,9 @@ func decodeScriptHeaders(vm *goja.Runtime, value goja.Value, original http.Heade
 			field := entry.Get("field")
 			if missingScriptValue(field) {
 				return nil, errors.New("full_headers entry is missing field")
+			}
+			if scriptStringTooLong(field, MaxHeaderBytes) {
+				return nil, errors.New("script headers exceed 64 KiB")
 			}
 			name, ok := field.Export().(string)
 			if !ok {

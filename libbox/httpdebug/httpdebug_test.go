@@ -7,10 +7,12 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,9 +87,9 @@ func debugClient(t *testing.T, e *Engine, origin string) *http.Client {
 	metadata := Metadata{Host: "example.test", Port: 80, Protocol: "http", Outbound: "selected-proxy", Rule: "test rule", UID: 1234, Packages: []string{"com.test"}}
 	transport := &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 		client, server := net.Pipe()
-		if !e.Handle(context.Background(), server, metadata, func(ctx context.Context) (net.Conn, error) {
+		if !e.HandleRouted(context.Background(), server, metadata, func(ctx context.Context) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "tcp", origin)
-		}, nil, nil) {
+		}, nil, nil, nil) {
 			t.Error("connection not captured")
 			client.Close()
 			server.Close()
@@ -268,11 +270,11 @@ func TestTLSRequiresAuthorityAndStoppedEngineRejectsHTTP(t *testing.T) {
 	a, b := net.Pipe()
 	defer a.Close()
 	defer b.Close()
-	if e.Handle(context.Background(), a, Metadata{Host: "test.example", Port: 443, Protocol: "tls"}, nil, nil, nil) {
+	if e.HandleRouted(context.Background(), a, Metadata{Host: "test.example", Port: 443, Protocol: "tls"}, nil, nil, nil, nil) {
 		t.Fatal("TLS was intercepted")
 	}
 	e.Close()
-	if e.Handle(context.Background(), a, Metadata{Port: 80, Protocol: "http"}, nil, nil, nil) {
+	if e.HandleRouted(context.Background(), a, Metadata{Port: 80, Protocol: "http"}, nil, nil, nil, nil) {
 		t.Fatal("closed engine accepted a connection")
 	}
 }
@@ -337,10 +339,10 @@ func TestWebSocketUpgradeForwardsFramesAndStops(t *testing.T) {
 	client, inbound := net.Pipe()
 	defer client.Close()
 	client.SetDeadline(time.Now().Add(5 * time.Second))
-	if !e.Handle(context.Background(), inbound, Metadata{Host: "example.test", Port: 80, Protocol: "http"},
+	if !e.HandleRouted(context.Background(), inbound, Metadata{Host: "example.test", Port: 80, Protocol: "http"},
 		func(ctx context.Context) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "tcp", origin.Listener.Addr().String())
-		}, nil, nil) {
+		}, nil, nil, nil) {
 		t.Fatal("upgrade was not captured")
 	}
 	_, err := io.WriteString(client, "GET /socket HTTP/1.1\r\nHost: example.test\r\nConnection: Upgrade\r\nUpgrade: websocket\r\n\r\n")
@@ -388,5 +390,31 @@ func TestMissingBodyNeverExportsAsACompleteRequest(t *testing.T) {
 	detail, err := reopened.Detail(id)
 	if err != nil || !detail.Request.BodyTruncated || detail.Request.CapturedBytes != 0 {
 		t.Fatal("restart did not reconcile the missing body file", err)
+	}
+}
+
+// Observed hostnames have their own quota and never evict recorded exchanges.
+func TestStoreDomainOnlyRecordsKeepExchanges(t *testing.T) {
+	s, err := OpenStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	request, _ := http.NewRequest("GET", "http://example.test/kept", nil)
+	id := s.begin(Metadata{Host: "example.test", Port: 80}, request, DefaultBodyLimit)
+	s.finish(id)
+	for i := 0; i < MaxDomainEntries+10; i++ {
+		observed := &http.Request{Method: "TLS", Proto: "TLS", Header: make(http.Header),
+			URL: &url.URL{Scheme: "https", Host: fmt.Sprintf("host%d.test:443", i)}}
+		s.observeDomain(Metadata{Host: fmt.Sprintf("host%d.test", i), Port: 443}, observed, DefaultBodyLimit, "", nil)
+	}
+	if _, err := s.Detail(id); err != nil {
+		t.Fatalf("recorded exchange evicted by hostname observations: %v", err)
+	}
+	if page := s.Page(MaxEntries, ""); page.Total != MaxDomainEntries+1 {
+		t.Fatalf("total %d, want %d", page.Total, MaxDomainEntries+1)
+	}
+	domains := s.Domains("")
+	if len(domains) != MaxDomainEntries+1 {
+		t.Fatalf("domains %d", len(domains))
 	}
 }

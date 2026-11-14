@@ -46,6 +46,36 @@ type xrayConn struct {
 	cancel    context.CancelFunc
 	link      *transport.Link
 	up, down  atomic.Int64
+	// route is what Xray's dispatcher decided (sniffed protocol, domain,
+	// outbound tag). The dispatcher writes outbounds and content from its own
+	// goroutine without synchronization, so they are read only by
+	// settleRoute, on the first downlink write, which happens after routing;
+	// readers of the connection list load this copy instead.
+	route     atomic.Pointer[xrayRoute]
+	routeOnce sync.Once
+}
+
+type xrayRoute struct {
+	domain, outbound, protocol string
+}
+
+func (c *xrayConn) settleRoute() {
+	c.routeOnce.Do(func() {
+		route := &xrayRoute{}
+		if len(c.outbounds) > 0 {
+			outbound := c.outbounds[len(c.outbounds)-1]
+			if outbound.Target.Address != nil && outbound.Target.Address.Family().IsDomain() {
+				route.domain = outbound.Target.Address.Domain()
+			} else if outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain() {
+				route.domain = outbound.RouteTarget.Address.Domain()
+			}
+			route.outbound = outbound.Tag
+		}
+		if c.content != nil {
+			route.protocol = c.content.Protocol
+		}
+		c.route.Store(route)
+	})
 }
 
 func newXrayTracker() *xrayTracker {
@@ -117,21 +147,15 @@ func (c *xrayConn) connection(protocols map[string]string) *daemon.Connection {
 	if c.target.Address != nil && c.target.Address.Family().IsIPv6() {
 		connection.IpVersion = 6
 	}
-	if len(c.outbounds) > 0 {
-		outbound := c.outbounds[len(c.outbounds)-1]
-		if outbound.Target.Address != nil && outbound.Target.Address.Family().IsDomain() {
-			connection.Domain = outbound.Target.Address.Domain()
-		} else if outbound.RouteTarget.Address != nil && outbound.RouteTarget.Address.Family().IsDomain() {
-			connection.Domain = outbound.RouteTarget.Address.Domain()
+	// Until the first downlink write the route is not known yet.
+	if route := c.route.Load(); route != nil {
+		connection.Domain = route.domain
+		if route.outbound != "" {
+			connection.Outbound = route.outbound
+			connection.OutboundType = protocols[route.outbound]
+			connection.ChainList = []string{route.outbound}
 		}
-		if outbound.Tag != "" {
-			connection.Outbound = outbound.Tag
-			connection.OutboundType = protocols[outbound.Tag]
-			connection.ChainList = []string{outbound.Tag}
-		}
-	}
-	if c.content != nil && c.content.Protocol != "" {
-		connection.Protocol = c.content.Protocol
+		connection.Protocol = route.protocol
 	}
 	return connection
 }
@@ -174,7 +198,7 @@ func (d *trackingDispatcher) DispatchLink(ctx context.Context, destination xrayN
 	}
 	link = &transport.Link{
 		Reader: &countingReader{TimeoutReader: asTimeoutReader(link.Reader), counter: &conn.up, datagrams: datagrams},
-		Writer: &countingWriter{Writer: link.Writer, counter: &conn.down},
+		Writer: &countingWriter{Writer: link.Writer, counter: &conn.down, settle: conn.settleRoute},
 	}
 	conn.link = link
 	d.tracker.access.Lock()
@@ -225,9 +249,15 @@ func (r *countingReader) Interrupt() {
 type countingWriter struct {
 	buf.Writer
 	counter *atomic.Int64
+	// settle copies the routing result on the first write: the outbound
+	// writes the downlink only after the dispatcher routed the connection.
+	settle func()
 }
 
 func (w *countingWriter) WriteMultiBuffer(mb buf.MultiBuffer) error {
+	if w.settle != nil {
+		w.settle()
+	}
 	w.counter.Add(int64(mb.Len()))
 	return w.Writer.WriteMultiBuffer(mb)
 }

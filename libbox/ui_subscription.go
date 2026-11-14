@@ -30,7 +30,8 @@ type UISubscriptionResponse struct {
 // (upstream certificate store, Modern TLS, URL credentials as Basic auth,
 // non-200 is an error) and also returns the subscription-userinfo,
 // profile-update-interval and profile-web-page-url headers, which the upstream
-// HTTPResponse has no accessor for.
+// HTTPResponse has no accessor for. experimental.http_rewrite is removed from
+// the content: only the user may add rules that run with their MITM CA.
 func UISubscriptionGet(link string, userAgent string) (*UISubscriptionResponse, error) {
 	target, err := url.Parse(link)
 	if err != nil || target == nil || target.Hostname() == "" || (target.Scheme != "http" && target.Scheme != "https") {
@@ -75,8 +76,10 @@ func UISubscriptionGet(link string, userAgent string) (*UISubscriptionResponse, 
 	if len(body) > uiSubscriptionLimit {
 		return nil, fmt.Errorf("subscription exceeds size limit")
 	}
+	// Subscriptions never carry HTTP rewrite rules (ui_subscription_rewrite.go).
+	content, _ := stripSubscriptionHTTPRewrite(string(body))
 	return &UISubscriptionResponse{
-		Content:        string(body),
+		Content:        content,
 		UserInfo:       uiSubscriptionHeaderValue(response.Header, "subscription-userinfo"),
 		UpdateInterval: uiSubscriptionHeaderValue(response.Header, "profile-update-interval"),
 		WebPage:        uiSubscriptionHeaderValue(response.Header, "profile-web-page-url"),

@@ -434,8 +434,10 @@ func compileRules(set *routingSet, lists routingListLoader, warn func(string)) [
 			}
 			item.ports = ports
 		}
-		if item.all && routingHasConditions(rule) && len(item.apps) == 0 && item.network == "" && len(item.ports) == 0 {
-			// Its apps were all invalid: without them it would match everything.
+		if routingHasValues(rule.Apps) && len(item.apps) == 0 {
+			// The rule is scoped to apps but none of them is valid: without
+			// them it would apply to every app ("block X for Y" would block X
+			// everywhere), so the whole rule is dropped.
 			warn(label + ": no usable apps, skipped")
 			continue
 		}
