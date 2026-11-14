@@ -153,3 +153,46 @@ export global Nav {
     in property <bool> toast-error;
     callback dismiss-toast();
 }
+
+// What a native editor needs to stand in for one TextInput (NativeTextInput).
+// Lengths are logical; `frame` is where the editor goes, in window
+// coordinates. input: 0 text, 1 password, 2 number.
+export struct NativeImeSpec {
+    text: string,
+    x: length,
+    y: length,
+    width: length,
+    height: length,
+    multiline: bool,
+    wrap: bool,
+    // 0 left, 1 center, 2 right
+    align: int,
+    // 0 top, 1 center, 2 bottom
+    valign: int,
+    mono: bool,
+    font-size: length,
+    color: color,
+    input: int,
+}
+
+// The Android EditText that edits the focused NativeTextInput: the system's
+// own cursor, selection, handles and input connection, laid over the field
+// (src/native_ime.rs, bridge/NativeEditor.kt). Off Android `enabled` stays
+// false and the TextInputs edit themselves.
+export global NativeIme {
+    in property <bool> enabled;
+    // The editing field's id; 0 when the native editor is closed.
+    in property <int> active;
+    // The native editor's text, and a tick that moves with each change.
+    in property <string> text;
+    in property <int> text-tick;
+    // Moves when the keyboard's action (Done) was pressed.
+    in property <int> accept-tick;
+    // How far the native editor scrolled its text (the code editor's gutter).
+    in property <length> scroll-y;
+    callback begin(NativeImeSpec) -> int;
+    callback frame(int, length, length, length, length);
+    callback set-text(int, string);
+    callback set-selection(int, int, int);
+    callback end(int);
+}

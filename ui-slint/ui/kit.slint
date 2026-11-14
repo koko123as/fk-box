@@ -4,9 +4,99 @@
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
-import { Nav, BarAction, Keyword } from "globals.slint";
+import { Nav, BarAction, Keyword, NativeIme } from "globals.slint";
 import "fonts/MaterialIcons-Regular.ttf";
 import "fonts/MaterialIconsOutlined-Regular.otf";
+
+// A TextInput edited by the platform's own text field: on Android a native
+// EditText is laid over `frame` while it has focus, and this one only draws
+// what it shows when the editor closes (src/native_ime.rs). Set `ink` (and
+// the selection colours) instead of `color`. Read-only inputs stay Slint's.
+export component NativeTextInput inherits TextInput {
+    in property <color> ink: Theme.s.on-surface;
+    in property <length> frame-x: self.absolute-position.x;
+    in property <length> frame-y: self.absolute-position.y;
+    in property <length> frame-width: self.width;
+    in property <length> frame-height: self.height;
+    in property <bool> mono;
+    // The native editor scrolled its text (only a no-wrap multi-line editor
+    // laid over a viewport, the code editor, follows it).
+    callback native-scrolled(length);
+    property <int> native-id;
+    property <bool> native-on: NativeIme.enabled && self.has-focus && self.enabled && !self.read-only;
+    property <bool> owned: self.native-id != 0 && NativeIme.active == self.native-id;
+    property <length> native-key: self.frame-x + 3 * self.frame-y + 7 * self.frame-width + 11 * self.frame-height;
+    property <int> native-tick: self.owned ? NativeIme.text-tick : -1;
+    property <int> native-accept: self.owned ? NativeIme.accept-tick : -1;
+    property <length> native-scroll: self.owned ? NativeIme.scroll-y : 0px;
+    color: self.owned ? transparent : self.ink;
+    text-cursor-width: self.owned ? 0px : 2px;
+    selection-background-color: self.owned ? transparent : Theme.s.primary.with-alpha(0.3);
+    selection-foreground-color: self.owned ? transparent : self.ink;
+    changed native-on => {
+        if (self.native-on) {
+            self.native-id = NativeIme.begin({
+                text: self.text,
+                x: self.frame-x,
+                y: self.frame-y,
+                width: self.frame-width,
+                height: self.frame-height,
+                multiline: !self.single-line,
+                wrap: self.wrap == TextWrap.word-wrap,
+                align: self.horizontal-alignment == TextHorizontalAlignment.right ? 2 : self.horizontal-alignment == TextHorizontalAlignment.center ? 1 : 0,
+                valign: self.vertical-alignment == TextVerticalAlignment.top ? 0 : self.vertical-alignment == TextVerticalAlignment.bottom ? 2 : 1,
+                mono: self.mono,
+                font-size: self.font-size,
+                color: self.ink,
+                input: self.input-type == InputType.password ? 1 : self.input-type == InputType.number || self.input-type == InputType.decimal ? 2 : 0,
+            });
+        } else if (self.native-id != 0) {
+            NativeIme.end(self.native-id);
+            self.native-id = 0;
+        }
+    }
+    // The native editor closed (a tap outside it, Back): so does the focus.
+    changed owned => {
+        if (!self.owned && self.native-id != 0) {
+            self.native-id = 0;
+            self.clear-focus();
+        }
+    }
+    changed native-key => {
+        if (self.owned) {
+            NativeIme.frame(self.native-id, self.frame-x, self.frame-y, self.frame-width, self.frame-height);
+        }
+    }
+    changed native-tick => {
+        if (self.owned && self.text != NativeIme.text) {
+            self.text = NativeIme.text;
+            self.edited();
+        }
+    }
+    changed native-accept => {
+        if (self.owned) {
+            self.accepted();
+        }
+    }
+    // The page changed the text itself (a reset, a format): the editor follows.
+    changed text => {
+        if (self.owned && self.text != NativeIme.text) {
+            NativeIme.set-text(self.native-id, self.text);
+        }
+    }
+    changed native-scroll => {
+        if (self.owned) {
+            self.native-scrolled(self.native-scroll);
+        }
+    }
+    // Selects in the native editor too (find in the code editor).
+    public function select(start: int, end: int) {
+        self.set-selection-offsets(start, end);
+        if (self.owned) {
+            NativeIme.set-selection(self.native-id, start, end);
+        }
+    }
+}
 
 // AppIcon
 export component Icon inherits Text {
@@ -675,15 +765,19 @@ export component Field inherits Rectangle {
         width: parent.width - 2 * self.x;
         height: parent.height - 2 * self.y;
         content-height: max(self.height, input.preferred-height);
-        input := TextInput {
+        input := NativeTextInput {
             text <=> root.text;
             width: parent.width;
             height: max(flick.height, self.preferred-height);
+            // The native editor covers the visible box, not the scrolled text.
+            frame-x: flick.absolute-position.x;
+            frame-y: flick.absolute-position.y;
+            frame-width: flick.width;
+            frame-height: flick.height;
+            mono: root.mono;
             font-size: Theme.sp(16);
             font-family: root.mono ? Theme.mono : Theme.font-family;
-            color: Theme.s.on-surface;
-            selection-background-color: Theme.s.primary.with-alpha(0.3);
-            selection-foreground-color: Theme.s.on-surface;
+            ink: Theme.s.on-surface;
             single-line: !root.multiline;
             wrap: root.multiline ? word-wrap : no-wrap;
             vertical-alignment: root.multiline ? top : center;

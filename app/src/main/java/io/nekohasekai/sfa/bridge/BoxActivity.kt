@@ -50,6 +50,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     private var launching = false
     private var startGeneration = 0
     private val startResult = ServiceStartResult()
+    private var nativeEditor: NativeEditor? = null
 
     private val notificationPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (startPending && (granted || !Settings.dynamicNotification)) resumeStart() else {
@@ -116,6 +117,12 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 uiAttached = true
                 lastInsets = null
                 pushInsets()
+                return@launch
+            }
+            // The native text editor over the Slint field (NativeEditor.kt).
+            if (method.startsWith("ime")) {
+                nativeEditor?.handle(method, org.json.JSONObject(args))
+                SlintHost.nativeReply(id, true, SlintHost.wire(null))
                 return@launch
             }
             // Calls the activity answers itself (the Compose UI used the context directly).
@@ -284,6 +291,13 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
      * text with the UI (vendored backend, FKBOX-PATCH.md).
      */
     override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        // Back closes the native text editor first (the keyboard, when up,
+        // takes the first Back itself).
+        val editor = nativeEditor
+        if (event.keyCode == android.view.KeyEvent.KEYCODE_BACK && editor != null && editor.isOpen) {
+            if (event.action == android.view.KeyEvent.ACTION_UP) editor.close(notify = true)
+            return true
+        }
         normalizeTextInputSelection()
         return try {
             super.dispatchKeyEvent(event)
@@ -291,6 +305,16 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             android.util.Log.w("BoxActivity", "text input key ${event.keyCode} dropped: ${e.message}")
             true
         }
+    }
+
+    override fun dispatchTouchEvent(event: android.view.MotionEvent): Boolean {
+        nativeEditor?.onTouch(event)
+        return super.dispatchTouchEvent(event)
+    }
+
+    /** Gives the key focus back to the Slint surface once the native editor closed. */
+    fun restoreSurfaceFocus() {
+        mSurfaceView?.requestFocus()
     }
 
     private fun normalizeTextInputSelection() {
@@ -338,6 +362,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             window.isStatusBarContrastEnforced = false
         }
         attachUi()
+        nativeEditor = NativeEditor(this)
         window.decorView.viewTreeObserver.addOnGlobalLayoutListener(insetsLayout)
         lifecycleScope.launch {
             Settings.dataStore.initialize()

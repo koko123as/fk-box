@@ -595,6 +595,12 @@ pub fn on_event(payload: &str) {
             slint::Timer::single_shot(std::time::Duration::ZERO, move || apply_insets(&value));
             Mark::NONE
         }
+        // The native text editor (src/native_ime.rs).
+        "ime" => {
+            let value = value.clone();
+            slint::Timer::single_shot(std::time::Duration::ZERO, move || crate::native_ime::on_event(&value));
+            Mark::NONE
+        }
         // The host went to the background (false) or came back (true).
         "foreground" => {
             let active = value.as_bool().unwrap_or(true);
@@ -686,6 +692,7 @@ pub fn start() -> Result<(AppWindow, Rc<slint::Timer>), slint::PlatformError> {
     WINDOW.with(|w| *w.borrow_mut() = Some(window.as_weak()));
     crate::theme_apply::apply();
     crate::nav::install(&window);
+    crate::native_ime::install(&window);
     pages::install(&window);
 
     // The system language and time zone, then the bridge.

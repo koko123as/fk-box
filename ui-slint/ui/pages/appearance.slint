@@ -6,7 +6,7 @@
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav } from "../globals.slint";
-import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field } from "../kit.slint";
+import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field, NativeTextInput } from "../kit.slint";
 
 export struct Swatch {
     fill: color,
@@ -335,11 +335,11 @@ export component CustomColorPage inherits ScrollPage {
                     padding-right: 12px;
                     spacing: 4px;
                     T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
-                    hex := TextInput {
+                    hex := NativeTextInput {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                         font-size: Theme.size(TextRole.body);
-                        color: Theme.s.on-surface;
+                        ink: Theme.s.on-surface;
                         single-line: true;
                         property <int> tick: Look.hex-tick;
                         changed tick => { if (self.text != Look.hex) { self.text = Look.hex; } }

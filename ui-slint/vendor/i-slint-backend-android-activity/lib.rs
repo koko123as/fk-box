@@ -26,6 +26,12 @@ use ndk_08 as ndk;
 use ndk_09 as ndk;
 
 pub use android_activity::AndroidApp;
+
+/// FK-box patch: set when the app edits text in its own native EditText laid
+/// over the focused TextInput (ui-slint/src/native_ime.rs). GameTextInput is
+/// then never configured or shown, so the two input connections never fight
+/// over the keyboard.
+pub static FKBOX_NATIVE_IME: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 use android_activity::PollEvent;
 use androidwindowadapter::AndroidWindowAdapter;
 use core::ops::ControlFlow;

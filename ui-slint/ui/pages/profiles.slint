@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput } from "../kit.slint";
 
 // The expiry date on a tinted pill (SubscriptionExpireChip) and the core chip.
 component TonePill inherits Rectangle {
@@ -198,14 +198,22 @@ export component CodeEditorPage inherits Rectangle {
                 horizontal-stretch: 1;
                 content-height: max(self.height, editor.preferred-height + 32px);
                 content-width: max(self.width, editor.preferred-width + 28px);
-                editor := TextInput {
+                editor := NativeTextInput {
                     x: 12px;
                     y: 16px;
                     width: max(flick.width - 28px, self.preferred-width);
                     height: max(flick.height - 32px, self.preferred-height);
+                    // The native editor covers the viewport and scrolls the
+                    // text itself; the gutter follows it.
+                    frame-x: flick.absolute-position.x;
+                    frame-y: flick.absolute-position.y;
+                    frame-width: flick.width;
+                    frame-height: flick.height;
+                    mono: true;
+                    native-scrolled(y) => { flick.content-y = -y; }
                     property <int> sel-tick: Profiles.editor-select-tick;
                     changed sel-tick => {
-                        self.set-selection-offsets(Profiles.editor-select-start, Profiles.editor-select-end);
+                        self.select(Profiles.editor-select-start, Profiles.editor-select-end);
                         flick.content-y = -max(0px, min(Profiles.editor-select-line * root.line-height - flick.height / 3, flick.content-height - flick.height));
                     }
                     property <int> text-tick: Profiles.editor-text-tick;
@@ -216,9 +224,7 @@ export component CodeEditorPage inherits Rectangle {
                     read-only: Profiles.editor-busy;
                     font-family: Theme.mono;
                     font-size: Theme.sp(13);
-                    color: Theme.s.on-surface;
-                    selection-background-color: Theme.s.primary.with-alpha(0.3);
-                    selection-foreground-color: Theme.s.on-surface;
+                    ink: Theme.s.on-surface;
                     edited => { Nav.act("editor-edited", self.text); }
                 }
             }

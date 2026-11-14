@@ -151,6 +151,9 @@ impl i_slint_core::window::WindowAdapterInternal for AndroidWindowAdapter {
     // info set per field.
     #[cfg(not(feature = "native-activity"))]
     fn input_method_request(&self, request: InputMethodRequest) {
+        if crate::FKBOX_NATIVE_IME.load(std::sync::atomic::Ordering::Relaxed) {
+            return;
+        }
         let (props, enable) = match request {
             InputMethodRequest::Enable(props) => (props, true),
             InputMethodRequest::Update(props) => (props, false),

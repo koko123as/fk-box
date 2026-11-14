@@ -15,6 +15,7 @@ mod i18n;
 #[cfg(test)]
 mod ime_tests;
 mod memory;
+mod native_ime;
 mod nav;
 mod pages;
 mod records;

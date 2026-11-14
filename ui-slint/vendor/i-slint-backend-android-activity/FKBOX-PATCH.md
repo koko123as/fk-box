@@ -79,6 +79,12 @@ byte offsets in both directions:
    apart and would carry it along to the tap). Java gets the committed state
    at once; Slint gets it as a `CommitComposition` in a zero-delay timer, and
    requests in between keep the committed state.
+8. `lib.rs` `FKBOX_NATIVE_IME` + `androidwindowadapter.rs`
+   `input_method_request`: when the app sets the flag (fkui does at start,
+   `src/native_ime.rs`), every input method request is ignored and
+   GameTextInput is never configured or shown. Editable fields are then
+   edited in a native EditText the app lays over them
+   (`bridge/NativeEditor.kt`); items 1-7 stay for the case the flag is off.
 
 The Kotlin host adds a last guard (BoxActivity.dispatchKeyEvent orders the
 editable's selection before GameTextInput handles a key, and a remaining
