@@ -78,12 +78,6 @@ pub fn local_date(ms: i64) -> String {
     format!("{y:04}-{mo:02}-{d:02} {h:02}:{mi:02}:{s:02}")
 }
 
-/// "yyyy-MM-dd" in local time.
-pub fn date(ms: i64) -> String {
-    let (y, mo, d, ..) = civil(ms);
-    format!("{y:04}-{mo:02}-{d:02}")
-}
-
 /// recordTime: "HH:mm:ss", "—" when unset.
 pub fn record_time(ms: i64) -> String {
     if ms <= 0 {
@@ -91,12 +85,6 @@ pub fn record_time(ms: i64) -> String {
     }
     let (.., h, mi, s) = civil(ms);
     format!("{h:02}:{mi:02}:{s:02}")
-}
-
-/// RuntimeValue: HH:MM:SS, capped at 999:59:59.
-pub fn runtime(started_at: i64, now: i64) -> String {
-    let seconds = ((now - started_at) / 1000).clamp(0, 999 * 3600 + 59 * 60 + 59);
-    format!("{:02}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
 }
 
 /// profileUpdateLabel: compact relative time.
@@ -162,58 +150,21 @@ pub fn monogram(name: &str) -> String {
         .unwrap_or_default()
 }
 
-/// "1.5 KB/s".
-pub fn rate(value: f64) -> String {
-    format!("{}/s", bytes(value.max(0.0)))
-}
-
-/// "3 小时 12 分" style duration from milliseconds.
-pub fn duration(ms: i64) -> String {
-    if ms <= 0 {
-        return String::new();
-    }
-    let total = ms / 1000;
-    let (d, h, m, s) = (total / 86400, total % 86400 / 3600, total % 3600 / 60, total % 60);
-    if d > 0 {
-        format!("{d} 天 {h} 小时")
-    } else if h > 0 {
-        format!("{h} 小时 {m} 分")
-    } else if m > 0 {
-        format!("{m} 分 {s} 秒")
-    } else {
-        format!("{s} 秒")
-    }
-}
-
-/// How long ago `then_ms` was updated, relative to `now_ms`.
-pub fn ago(then_ms: i64, now_ms: i64) -> String {
+/// How long ago a service check ran, relative to `now_ms`, in the UI language.
+pub fn checked_ago(then_ms: i64, now_ms: i64) -> String {
+    use crate::i18n::tr;
     if then_ms <= 0 {
-        return "从未更新".into();
+        return tr("Never checked");
     }
     let minutes = (now_ms - then_ms).max(0) / 60_000;
     if minutes < 1 {
-        "刚刚更新".into()
+        tr("Checked just now")
     } else if minutes < 60 {
-        format!("{minutes} 分钟前更新")
+        tr("Checked %d min ago").replace("%d", &minutes.to_string())
     } else if minutes < 60 * 24 {
-        format!("{} 小时前更新", minutes / 60)
+        tr("Checked %d h ago").replace("%d", &(minutes / 60).to_string())
     } else {
-        format!("{} 天前更新", minutes / 60 / 24)
-    }
-}
-
-/// Delay text and colour level (0 untested, 1 fast, 2 slow, 3 failed).
-pub fn delay(ms: i64) -> (String, i32) {
-    if ms <= 0 {
-        (String::new(), 0)
-    } else if ms >= 65_535 {
-        ("超时".into(), 3)
-    } else if ms < 300 {
-        (format!("{ms} ms"), 1)
-    } else if ms < 800 {
-        (format!("{ms} ms"), 2)
-    } else {
-        (format!("{ms} ms"), 3)
+        tr("Checked %d d ago").replace("%d", &(minutes / 60 / 24).to_string())
     }
 }
 
@@ -233,8 +184,13 @@ mod tests {
         set_utc_offset_minutes(0);
         assert_eq!(local_date(0), "—");
         assert_eq!(local_date(86_400_000), "1970-01-02 00:00:00");
-        assert_eq!(runtime(0, 3_723_000), "01:02:03");
         assert_eq!(update_label(1, 1 + 2 * 3_600_000, false), "2h ago");
+    }
+
+    #[test]
+    fn checked() {
+        assert_eq!(checked_ago(0, 1), "Never checked");
+        assert_eq!(checked_ago(1, 1 + 5 * 60_000), "Checked 5 min ago");
     }
 
     #[test]

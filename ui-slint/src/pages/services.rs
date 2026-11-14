@@ -264,7 +264,7 @@ fn view_of(index: usize, e: &Entry, enabled: bool, on_card: bool, now: i64) -> V
         parts.push(format!("{} {}", tr("Region"), e.region));
     }
     if e.checked_at > 0 {
-        parts.push(crate::format::ago(e.checked_at, now).replace("更新", "检测"));
+        parts.push(crate::format::checked_ago(e.checked_at, now));
     }
     View {
         id,

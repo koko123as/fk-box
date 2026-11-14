@@ -52,7 +52,8 @@ component RoutePage inherits Rectangle {
 }
 
 export component RouteHost inherits Rectangle {
-    property <length> pane-x: Nav.mobile ? 0px : 81px;
+    // The content pane starts where the rail ends (88 px, or 220 px with labels).
+    property <length> pane-x: Nav.mobile ? 0px : Nav.rail-width;
     for r[i] in Nav.routes: Rectangle {
         property <bool> card: r.form && !Nav.mobile;
         // A page of another destination stays hidden in its pane.

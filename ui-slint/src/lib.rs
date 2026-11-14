@@ -44,6 +44,7 @@ fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
     if let Err(error) = app::run() {
         log::error!("UI stopped: {error}");
     }
+    host::release();
 }
 
 /// Every UI panic goes to logcat (tag FKui) with its backtrace and to
@@ -63,10 +64,4 @@ fn install_panic_hook(files_dir: Option<std::path::PathBuf>) {
             let _ = std::fs::write(path, &text);
         }
     }));
-}
-
-/// Desktop type-check entry; the host build has no Kotlin bridge.
-#[cfg(not(target_os = "android"))]
-pub fn run_without_host() -> Result<(), slint::PlatformError> {
-    app::run()
 }

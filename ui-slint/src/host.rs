@@ -28,22 +28,40 @@ mod android {
         Ok(())
     }
 
+    /// Drops the activity reference when the activity's native main returns
+    /// (the activity finished or was destroyed), so the finished Activity is
+    /// not kept alive by a JNI global reference. A later `init` (a new
+    /// activity in the same process) installs the new one.
+    pub fn release() {
+        let host = HOST.lock().unwrap_or_else(|e| e.into_inner()).take();
+        drop(host);
+    }
+
     pub fn invoke(id: i64, method: &str, args: &str) -> Result<(), String> {
-        let guard = HOST.lock().unwrap();
-        let host = guard.as_ref().ok_or("界面尚未连接到应用")?;
+        let guard = HOST.lock().unwrap_or_else(|e| e.into_inner());
+        let host = guard.as_ref().ok_or_else(|| crate::i18n::tr("The interface is not connected to the app"))?;
         let mut env = host.vm.attach_current_thread_permanently().map_err(|e| e.to_string())?;
-        let method = env.new_string(method).map_err(|e| e.to_string())?;
-        let args = env.new_string(args).map_err(|e| e.to_string())?;
-        let result = env.call_method(
-            host.activity.as_obj(),
-            "slintCall",
-            "(JLjava/lang/String;Ljava/lang/String;)V",
-            &[JValue::Long(id), JValue::Object(method.as_ref()), JValue::Object(args.as_ref())],
-        );
+        // The thread is attached permanently, so local references made here are
+        // only freed with a frame: without one, two JStrings per call filled the
+        // local reference table (512 entries, 256 calls) and aborted the process.
+        let activity = host.activity.as_obj();
+        let result: Result<(), jni::errors::Error> = env.with_local_frame(4, |env| {
+            let method = env.new_string(method)?;
+            let args = env.new_string(args)?;
+            env.call_method(
+                activity,
+                "slintCall",
+                "(JLjava/lang/String;Ljava/lang/String;)V",
+                &[JValue::Long(id), JValue::Object(method.as_ref()), JValue::Object(args.as_ref())],
+            )?;
+            Ok(())
+        });
         if result.is_err() {
-            let _ = env.exception_describe();
-            let _ = env.exception_clear();
-            return Err("调用应用失败".into());
+            if env.exception_check().unwrap_or(false) {
+                let _ = env.exception_describe();
+                let _ = env.exception_clear();
+            }
+            return Err(crate::i18n::tr("Calling the app failed"));
         }
         Ok(())
     }
@@ -89,7 +107,7 @@ mod android {
 }
 
 #[cfg(target_os = "android")]
-pub use android::{init, invoke};
+pub use android::{init, invoke, release};
 
 /// Off Android there is no Kotlin host; calls fail and the window shows the error.
 #[cfg(all(not(target_os = "android"), not(feature = "shot")))]

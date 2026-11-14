@@ -171,7 +171,7 @@ Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm6
 | `ALIAS_NAME` | 发布密钥 alias |
 | `ALIAS_PASS` | 对应密钥密码 |
 
-工作流将已有密钥解码至 `app/release.keystore`，结束时清理，不上传密钥。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
+工作流将已有密钥解码至检出目录之外的 `$RUNNER_TEMP/release.keystore`，以 `KEYSTORE_FILE` 告知 Gradle（未设置时回退未入库的本地 `app/release.keystore`），结束时清理，不上传密钥。仓库不再跟踪任何发布密钥文件。Gradle 属性优先读取直接环境变量，再回退 `LOCAL_PROPERTIES` 和 `local.properties`。本地签名文件不入库，不重新生成发布密钥。
 
 Release 构建开启 R8 与 `isShrinkResources`（[keep.xml](app/src/main/res/raw/keep.xml) 保留系统可见的图标；代码中没有按名称查找资源）；`useLegacyPackaging` 保持原样。
 

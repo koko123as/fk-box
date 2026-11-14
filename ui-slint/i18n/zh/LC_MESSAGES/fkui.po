@@ -2115,3 +2115,24 @@ msgstr "不选择时，抓取经过本地服务的所有应用。归属未知的
 
 msgid "Reconnect target applications to capture their new connections."
 msgstr "请让目标应用重新连接，以抓取其新连接。"
+
+msgid "The interface is not connected to the app"
+msgstr "界面尚未连接到应用"
+
+msgid "Calling the app failed"
+msgstr "调用应用失败"
+
+msgid "Never checked"
+msgstr "从未检测"
+
+msgid "Checked just now"
+msgstr "刚刚检测"
+
+msgid "Checked %d min ago"
+msgstr "%d 分钟前检测"
+
+msgid "Checked %d h ago"
+msgstr "%d 小时前检测"
+
+msgid "Checked %d d ago"
+msgstr "%d 天前检测"
