@@ -1669,7 +1669,6 @@ export component DashboardPage inherits Rectangle {
         content-height: body.preferred-height;
         // A dragged card (the editor) moves instead of the page.
         interactive: !Motion.card-dragging;
-        changed content-y => { Motion.scrolled("Dashboard", self.content-y); }
         body := VerticalLayout {
             property <length> side: Dash.editing || Nav.mobile ? Nav.side(root.width) : root.grid-side;
             padding-left: side;

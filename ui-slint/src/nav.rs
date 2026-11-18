@@ -161,6 +161,7 @@ fn remove_at(index: usize) {
         n.on_closed.remove(&route.id)
     });
     crate::pages::closed(&route.kind, &route.arg, route.id);
+    crate::memory::release_when_idle();
     if let Some(closed) = closed {
         closed();
     }

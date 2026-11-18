@@ -85,3 +85,13 @@ To update Slint: copy the new crate version over this directory (without
 and this file, and re-apply the hunks marked "FK-box patch" (a three-way merge
 against the previous upstream crate does it: `git merge-file NEW OLD_UPSTREAM
 THIS_COPY` per file).
+
+## Touch observer
+
+`lib.rs` `fkbox_set_touch_observer(f)`: `f(phase, x, y)` sees the primary
+touch pointer (logical coordinates; 0 down, 1 move, 2 up, 3 cancel) before
+`androidwindowadapter.rs` dispatches the Down, Move, Up and Cancel/Outside
+touch events. FK-box decides each touch's axis there (ui-slint/src/gesture.rs)
+so a slightly diagonal scroll locks the home pager's SwipeGestureHandler out
+before Slint's 8 px swipe threshold lets it take the touch from the page's
+Flickable.

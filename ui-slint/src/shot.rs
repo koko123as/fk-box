@@ -697,6 +697,15 @@ pub fn run(args: Vec<String>) {
                 let (x, y) = rest.split_once(',').unwrap_or(("0", "0"));
                 let position = LogicalPosition::new(x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
                 let button = slint::platform::PointerEventButton::Left;
+                crate::gesture::touch(
+                    match cmd {
+                        "down" => crate::gesture::Phase::Down,
+                        "move" => crate::gesture::Phase::Move,
+                        _ => crate::gesture::Phase::Up,
+                    },
+                    position.x,
+                    position.y,
+                );
                 let event = match cmd {
                     "down" => {
                         h.window.window().dispatch_event(WindowEvent::PointerMoved { position });
@@ -717,6 +726,14 @@ pub fn run(args: Vec<String>) {
                 h.frame(&mut Vec::new());
             }
             "rest" => h.expect_rest(rest),
+            // While a finger is down: the page scrolls, the pager stays out.
+            "scrolling" => {
+                let motion = h.app.global::<Motion>();
+                let (offset, swiping, lock) = (motion.get_home_offset(), motion.get_swiping(), motion.get_vertical_lock());
+                eprintln!("scrolling ({rest}): offset {offset} swiping {swiping} vertical-lock {lock}");
+                assert!(lock, "{rest}: a diagonal scroll did not lock the pager out");
+                assert!(!swiping && offset.abs() < 0.01, "{rest}: the pager took a scroll (offset {offset}, swiping {swiping})");
+            }
             "textscale" => {
                 h.app.global::<Theme>().set_text_scale(rest.parse().unwrap_or(1.0));
                 h.settle();
@@ -882,6 +899,21 @@ mod tests {
             "down:200,300", "move:204,302", "ms:40", "up:204,302", "rest:tools last page tap",
             // A swipe still turns the page: from Tools (the last page) right to Profiles.
             "down:60,500", "move:100,500", "move:180,500", "move:260,500", "move:320,500", "up:320,500", "rest:after the swipe",
+        ]);
+    }
+
+    /// A slightly diagonal scroll (more than half as far across as down, which
+    /// Slint's swipe handler takes on its own) stays with the page's list:
+    /// the pager is locked out until the finger lifts (src/gesture.rs), and a
+    /// clear swipe afterwards still turns the page.
+    #[test]
+    fn diagonal_scroll_stays_with_the_list() {
+        steps("fkui-shot-diagonal", &[
+            "tab:Tools", "rest:tools",
+            "down:200,600", "move:203,597", "move:209,588", "move:216,560", "move:224,500", "move:230,440",
+            "scrolling:diagonal scroll up", "up:230,440", "rest:after the diagonal scroll",
+            "down:150,300", "move:160,312", "move:172,340", "move:180,380", "scrolling:diagonal scroll down", "up:180,380", "rest:after the scroll down",
+            "down:60,500", "move:100,502", "move:180,505", "move:260,505", "move:320,505", "up:320,505", "rest:a swipe still turns the page",
         ]);
     }
 

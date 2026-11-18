@@ -204,43 +204,10 @@ export global NativeIme {
 // Motion state shared by the home pages, the navigation bar and the route
 // host (UI-only, not part of the Rust interface; tokens in theme.slint).
 export global Motion {
-    // The floating navigation bar (phones) slides away while the home page
-    // under it scrolls down and comes back when it scrolls up or reaches the
-    // top. Pages report their scroll offset (a Flickable's viewport-y, ≤ 0)
-    // with `scrolled(page, y)`; the rail is not affected.
-    in-out property <bool> bar-hidden;
-    property <string> scroll-page;
-    property <length> last-y;
-    property <length> travel;
-    public function scrolled(page: string, y: length) {
-        if (page != self.scroll-page) {
-            self.scroll-page = page;
-            self.last-y = y;
-            self.travel = 0px;
-            return;
-        }
-        if (y > -8px) {
-            self.bar-hidden = false;
-            self.travel = 0px;
-            self.last-y = y;
-            return;
-        }
-        let d = y - self.last-y;
-        self.last-y = y;
-        if ((d < 0px && self.travel > 0px) || (d > 0px && self.travel < 0px)) {
-            self.travel = 0px;
-        }
-        self.travel += d;
-        if (self.travel < -24px) {
-            self.bar-hidden = true;
-        } else if (self.travel > 24px) {
-            self.bar-hidden = false;
-        }
-    }
-    public function show-bar() {
-        self.bar-hidden = false;
-        self.travel = 0px;
-    }
+    // A vertical gesture took the touch (src/gesture.rs, decided before
+    // Slint's swipe threshold): the home pages' swipe handler stays off until
+    // the finger lifts, so the page's own scrolling keeps the touch.
+    in-out property <bool> vertical-lock;
     // A home destination is moving (slide or fade-through): glass over the
     // moving pages keeps its tint but drops the blur until it settles, so the
     // backdrop is not re-blurred under a moving layer every frame.

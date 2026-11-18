@@ -39,6 +39,24 @@ use std::sync::{Arc, Mutex};
 
 thread_local! {
     static CURRENT_WINDOW: RefCell<Weak<AndroidWindowAdapter>> = RefCell::new(Default::default());
+    // FK-box patch: see fkbox_set_touch_observer.
+    pub(crate) static FKBOX_TOUCH_OBSERVER: RefCell<Option<Box<dyn Fn(u8, f32, f32)>>> = RefCell::new(None);
+}
+
+/// FK-box patch: `f(phase, x, y)` sees the primary touch pointer before each
+/// touch event is dispatched to the window, in logical coordinates; phase is
+/// 0 down, 1 move, 2 up, 3 cancel. FK-box decides the gesture axis there
+/// (ui-slint/src/gesture.rs) before Slint's swipe handler can take a scroll.
+pub fn fkbox_set_touch_observer(f: impl Fn(u8, f32, f32) + 'static) {
+    FKBOX_TOUCH_OBSERVER.with(|o| *o.borrow_mut() = Some(Box::new(f)));
+}
+
+pub(crate) fn fkbox_observe_touch(phase: u8, x: f32, y: f32) {
+    FKBOX_TOUCH_OBSERVER.with(|o| {
+        if let Some(f) = o.borrow().as_ref() {
+            f(phase, x, y);
+        }
+    });
 }
 
 pub struct AndroidPlatform {

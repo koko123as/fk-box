@@ -529,7 +529,6 @@ export component RowsBody inherits Rectangle {
     in property <string> home;
     flick := Flickable {
         content-height: body.preferred-height;
-        changed content-y => { if (root.home != "") { Motion.scrolled(root.home, self.content-y); } }
         // A list read bottom up (logs) starts at its end; scrolling away stops following.
         property <length> end: min(0px, self.height - body.preferred-height);
         changed end => { if (root.d.reverse && self.content-y <= 0px && self.content-y >= self.end - 120px) { self.content-y = self.end; } }

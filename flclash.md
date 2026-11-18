@@ -48,7 +48,8 @@
 - 减少动画：Android 宿主（`BoxActivity`）读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，随 `locale` 回复（`animatorScale`）及回到前台时的 `motion` 事件传入；Rust 端 `theme_apply::set_motion_scale` 写入 `Theme.motion-scale`，除周期类令牌外所有时长都乘以该系数；为 0（开发者选项关闭动画或无障碍“移除动画”）时所有变化立即完成，`Theme.motion-on` 为假时不画水波纹、编辑晃动和容器变换。不依赖 Slint 自带的减少动画查询。
 - 状态过渡：状态层、按钮、图标按钮、开关（滑块位置与尺寸）、单选/复选、筛选纸片、分段按钮、卡片和导航项的颜色与尺寸按 `motion-short`/`motion-medium` 过渡；导航指示器选中时从中心展开，导航图标在描边/填充两图标间交叉淡化并放大（填充图标用 ease-out-back）。
 - 水波纹：`kit.slint` 的 `Ripple` 在 TouchArea 的 pointer-event 按下时从按下点扩散（`centered` 时从中心），剪裁到表面圆角，松开后淡出；只在存在时读取 `animation-tick()`。用于按钮、图标按钮、卡片、仪表盘面板、可点击列表项、筛选纸片、分段按钮、导航项、菜单项和启停按钮。
-- 底栏：手机首页内容向下滚动（累计 24 px）时悬浮玻璃底栏滑出窗口，向上滚动或回到顶部时滑回（`globals.slint` 的 `Motion.scrolled`，首页各页面的 Flickable 上报）；消息条随之下移。切换目的地时底栏复位；侧栏不受影响。
+- 底栏：手机首页的悬浮玻璃底栏固定在手势区上方，滚动时不再隐藏（用户要求固定）；消息条始终位于底栏上方。
+- 手势方向：每次触摸在分发给 Slint 之前先判定方向（`src/gesture.rs`，Android 后端的触摸观察器调用）：手指移动 6 px 后，横向位移不超过纵向 1.5 倍的触摸视为滚动，设置 `Motion.vertical-lock`，首页翻页的 SwipeGestureHandler 在手指抬起前保持禁用。Slint 1.19 的 SwipeGestureHandler 在横向 8 px 且横向大于纵向一半时就接管触摸（约 63° 以内都算横向），稍斜的上下滑动会被翻页抢走而页面不动（“划不动”）。
 - 首页切换：手机默认滑动分页（类似 PageView）：点按目的地时旧页滑出、新页滑入（跨多个目的地时只移动这两页），水平拖动带入相邻页，松手超过四分之一宽度即切换，否则回弹，首尾页拖动有阻尼；仪表盘编辑中和代理页的分组标签模式下不响应水平拖动。外观页可改为淡入（fade-through：旧页淡出 90 ms，新页淡入并自 0.92 放大 210 ms）；侧栏窗口总是淡入。核心页面常驻，只有当前页与正在移动的页可见；移动期间顶部应用栏的玻璃保留色调、暂停模糊（`Motion.pages-moving`），避免每帧在移动层下重算模糊。
 - 状态切换：空状态、启动错误、首页、代理/配置/行页面内容出现时淡入并轻微放大（`kit.slint` 的 `Appear`）。Slint 的 `if` 移除是瞬间的，被替换的内容不做淡出（首页分页常驻，两半都有）。
 - 页面推入/返回（FlClash `FadePageRoute`，200 ms）：普通页面推入时在 `motion-route` 内淡入；手机上表单的首页作为底部表单自底部升起（`motion-sheet` 300 ms，减速），宽屏的表单卡片与遮罩一起淡入并自 `motion-enter-scale` 放大。Slint 关闭路由是瞬间的，返回时在原页面位置以 surface 表面淡出（底部表单则下沉），表面上不显示页面内容；容器变换打开的页面仍按容器变换收回。

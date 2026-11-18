@@ -378,6 +378,9 @@ impl AndroidWindowAdapter {
                             );
                             self.long_press.replace(Some(LongPressDetection { position, _timer }));
                             if let Some(p) = motion_event.pointers().next() {
+                                // FK-box patch: touch observer.
+                                let at = touch_pos_pointer(&p);
+                                crate::fkbox_observe_touch(0, at.x as f32, at.y as f32);
                                 self.window.dispatch_event(WindowEvent::internal(
                                     InternalEvent::Touch {
                                         id: p.pointer_id(),
@@ -396,6 +399,9 @@ impl AndroidWindowAdapter {
                         MotionAction::Up => {
                             self.long_press.take();
                             if let Some(p) = motion_event.pointers().next() {
+                                // FK-box patch: touch observer.
+                                let at = touch_pos_pointer(&p);
+                                crate::fkbox_observe_touch(2, at.x as f32, at.y as f32);
                                 self.window.dispatch_event(WindowEvent::internal(
                                     InternalEvent::Touch {
                                         id: p.pointer_id(),
@@ -430,6 +436,11 @@ impl AndroidWindowAdapter {
                             }
                             drop(lp);
 
+                            // FK-box patch: touch observer (the primary pointer).
+                            if let Some(p) = motion_event.pointers().next() {
+                                let at = touch_pos_pointer(&p);
+                                crate::fkbox_observe_touch(1, at.x as f32, at.y as f32);
+                            }
                             // Get high frequency move samples
                             let now_event_time = motion_event.event_time();
                             for p in motion_event.pointers() {
@@ -515,6 +526,8 @@ impl AndroidWindowAdapter {
                         MotionAction::Cancel | MotionAction::Outside => {
                             self.long_press.take();
                             self.cancel_menu_on_release();
+                            // FK-box patch: touch observer.
+                            crate::fkbox_observe_touch(3, 0.0, 0.0);
                             for p in motion_event.pointers() {
                                 self.window.dispatch_event(WindowEvent::internal(
                                     InternalEvent::Touch {

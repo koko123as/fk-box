@@ -353,7 +353,6 @@ component Pages inherits Rectangle {
     }
     // Starts a transition from `leave` to the current page.
     function begin(leave: string, direction: float, progress: float) {
-        Motion.show-bar();
         root.leaving = leave;
         root.shown = root.current;
         root.dir = direction;
@@ -403,7 +402,7 @@ component Pages inherits Rectangle {
     // page's own horizontal gestures need it: the dashboard editor (cards are
     // dragged) and the proxies' scrolling group tabs.
     SwipeGestureHandler {
-        enabled: root.slide && !Dash.editing && !(root.current == "Proxies" && !Proxies.list && Proxies.groups.length > 0);
+        enabled: root.slide && !Motion.vertical-lock && !Dash.editing && !(root.current == "Proxies" && !Proxies.list && Proxies.groups.length > 0);
         handle-swipe-left: true;
         handle-swipe-right: true;
         moved => {
@@ -412,9 +411,11 @@ component Pages inherits Rectangle {
             // tap), so only a gesture it took over (`swiping`) may drag.
             if (!self.swiping) { return; }
             let dx = self.current-position.x - self.pressed-position.x;
-            let dy = self.current-position.y - self.pressed-position.y;
             if (!root.dragging) {
-                if (abs(dx) <= Theme.touch-slop || abs(dx) <= Theme.touch-axis-ratio * abs(dy)) { return; }
+                // The axis was decided before the handler took the touch
+                // (src/gesture.rs: a scroll locks it out, Motion.vertical-lock);
+                // what remains is the slop.
+                if (abs(dx) <= Theme.touch-slop) { return; }
                 root.dragging = true;
                 root.moving = false;
                 root.springing = false;
@@ -518,10 +519,8 @@ export component HomePage inherits Rectangle {
             width: min(parent.width - 2 * Nav.bar-side, 480px);
             x: (parent.width - self.width) / 2;
             height: Nav.bar-height;
-            // Slides below the window while the page scrolls down (Motion.bar-hidden).
-            y: parent.height - self.height - Nav.bar-margin - Nav.inset-bottom
-                + (Motion.bar-hidden ? self.height + Nav.bar-margin + Nav.inset-bottom + Theme.space-4 : 0px);
-            animate y { duration: Theme.motion-medium; easing: Motion.bar-hidden ? Theme.easing-accelerate : Theme.easing-decelerate; }
+            // Fixed above the gesture inset; it does not hide while scrolling.
+            y: parent.height - self.height - Nav.bar-margin - Nav.inset-bottom;
             border-radius: self.height / 2;
             accessible-role: tab-list;
             // Taps between the items stay on the bar.

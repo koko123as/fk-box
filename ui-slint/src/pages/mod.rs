@@ -132,6 +132,7 @@ pub fn reset_gestures() {
         let motion = w.global::<crate::Motion>();
         motion.set_gesture_resets(motion.get_gesture_resets().wrapping_add(1));
     }
+    crate::gesture::touch(crate::gesture::Phase::Cancel, 0.0, 0.0);
 }
 
 /// Schedules a projection of the marked pages on the next turn of the event loop.

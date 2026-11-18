@@ -322,7 +322,6 @@ export component ProxiesPage inherits Rectangle {
         grid-flick := Flickable {
             property <int> tick: root.scroll-tick;
             changed tick => { self.content-y = max(root.scroll-target, self.height - self.content-height); }
-            changed content-y => { if (!root.form) { Motion.scrolled("Proxies", self.content-y); } }
             vertical-stretch: 1;
             content-height: grid.height + 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             grid := NodeGrid {
@@ -341,7 +340,6 @@ export component ProxiesPage inherits Rectangle {
         content-height: list.preferred-height;
         changed content-y => {
             root.scrolled = self.content-y < 0;
-            if (!root.form) { Motion.scrolled("Proxies", self.content-y); }
         }
         list := VerticalLayout {
             padding-left: 16px;

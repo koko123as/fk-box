@@ -30,6 +30,18 @@ pub fn release() {
     slint::Timer::single_shot(Duration::from_millis(600), trim);
 }
 
+thread_local! {
+    static IDLE_RELEASE: slint::Timer = slint::Timer::default();
+}
+
+/// [release] once no route has closed for a while (1.5 s): every page the
+/// user leaves (a rule list, a log, a form) gave its models and images back,
+/// and the renderer's caches and the allocator's free pages follow while the
+/// user is looking at the page underneath, not during the way back.
+pub fn release_when_idle() {
+    IDLE_RELEASE.with(|t| t.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), release));
+}
+
 /// Gives the native heap's free pages back to the system: bionic's
 /// M_PURGE_ALL (API 34) or M_PURGE (API 28), glibc's malloc_trim on a host.
 pub fn trim() {
