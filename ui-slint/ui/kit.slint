@@ -7,7 +7,7 @@
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
-import { Nav, BarAction, Keyword, NativeIme } from "globals.slint";
+import { Nav, BarAction, Keyword, NativeIme, Motion } from "globals.slint";
 import "fonts/MaterialIcons-Regular.ttf";
 import "fonts/MaterialIconsOutlined-Regular.otf";
 
@@ -181,6 +181,74 @@ export component StateLayer inherits Rectangle {
     in property <bool> focused;
     in property <bool> enabled: true;
     background: enabled ? Theme.state(ink, pressed, hover, focused) : transparent;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+}
+
+// The M3 press ripple: a circle of the content color spreads from where the
+// press landed over its surface, clipped to the surface's corners, and fades
+// once the press ends. Placed like StateLayer (it fills its parent; give it
+// the parent's corners). The owner's TouchArea calls `down(x, y)` (in this
+// element's coordinates) from its pointer-event on a press, before any
+// delayed `pressed`, so a quick tap still ripples, and `up()` on release or
+// cancel. Drawn from animation-tick() only while a ripple is alive; nothing
+// when motion is off (Theme.motion-on), where the state layer alone shows
+// the press.
+export component Ripple inherits Rectangle {
+    in property <color> ink: Theme.s.on-surface;
+    in property <bool> enabled: true;
+    // Spread from the centre whatever the press position (icon buttons,
+    // navigation destinations).
+    in property <bool> centered;
+    property <bool> live;
+    property <bool> held;
+    property <duration> start;
+    property <duration> fade-from;
+    property <length> cx;
+    property <length> cy;
+    property <length> reach: sqrt(pow(max(self.cx, self.width - self.cx) / 1px, 2) + pow(max(self.cy, self.height - self.cy) / 1px, 2)) * 1px;
+    clip: true;
+    accessible-role: none;
+    public function down(x: length, y: length) {
+        if (!self.enabled || !Theme.motion-on) {
+            return;
+        }
+        self.cx = self.centered ? self.width / 2 : clamp(x, 0px, self.width);
+        self.cy = self.centered ? self.height / 2 : clamp(y, 0px, self.height);
+        self.start = animation-tick();
+        self.held = true;
+        self.live = true;
+        end.stop();
+    }
+    public function up() {
+        if (!self.live || !self.held) {
+            return;
+        }
+        self.held = false;
+        // A ripple shows at least half its spread before it fades.
+        self.fade-from = max(animation-tick(), self.start + Theme.motion-ripple * 0.5);
+        end.interval = self.fade-from - animation-tick() + Theme.motion-ripple-fade + 16ms;
+        end.restart();
+    }
+    end := Timer {
+        running: false;
+        interval: Theme.motion-ripple-fade;
+        triggered => {
+            self.stop();
+            root.live = false;
+        }
+    }
+    if root.live: Rectangle {
+        property <duration> now: animation-tick();
+        property <float> grow: Theme.ease-out(Theme.progress(self.now, root.start, Theme.motion-ripple));
+        property <float> fade: root.held ? 1 : 1 - Theme.progress(self.now, root.fade-from, Theme.motion-ripple-fade);
+        property <length> r: root.reach * (0.25 + 0.75 * self.grow);
+        x: root.cx - self.r;
+        y: root.cy - self.r;
+        width: 2 * self.r;
+        height: 2 * self.r;
+        border-radius: self.r;
+        background: root.ink.with-alpha(Theme.state-pressed * self.fade);
+    }
 }
 
 // Glass: a translucent tonal surface that blurs what scrolls under it
@@ -198,8 +266,12 @@ export component Glass inherits Rectangle {
     in property <bool> soft;
     in property <bool> edge: true;
     in property <int> elevation: 0;
+    // Glass that moves with the home pages (their top app bars) keeps its
+    // tint but not its blur while they slide or fade (Motion.pages-moving),
+    // so no blurred layer is redrawn under a moving page every frame.
+    in property <bool> moves-with-pages;
     background: root.active ? Theme.glass(root.level) : Theme.level(root.level);
-    backdrop-blur: root.active ? (root.soft ? Theme.glass-blur-soft : Theme.glass-blur) : 0px;
+    backdrop-blur: root.active && !(root.moves-with-pages && Motion.pages-moving) ? (root.soft ? Theme.glass-blur-soft : Theme.glass-blur) : 0px;
     border-width: root.edge && root.active ? 1px : 0px;
     border-color: Theme.dark ? Theme.glass-edge : Theme.glass-outline;
     drop-shadow-blur: Theme.shadow-blur(root.elevation);
@@ -219,6 +291,21 @@ export component Glass inherits Rectangle {
         border-width: 1px;
         border-color: Theme.glass-edge;
     }
+    @children
+}
+
+// Content that fades in when it takes another's place (empty, loading and
+// loaded states, the splash and the home page): the incoming half of the
+// fade-through, fading in while it grows from Theme.motion-enter-scale.
+// Slint removes the content an `if` drops at once, so the outgoing half is
+// instant there; the home pager (home.slint) keeps its pages and fades both.
+export component Appear inherits Rectangle {
+    in property <duration> delay: 0ms;
+    property <bool> shown;
+    init => { self.shown = true; }
+    opacity: self.shown ? 1 : 0;
+    transform-scale: self.shown ? 1 : Theme.motion-enter-scale;
+    animate opacity, transform-scale { duration: Theme.motion-enter; delay: root.delay; easing: Theme.easing-decelerate; }
     @children
 }
 
@@ -256,7 +343,7 @@ export component Spinner inherits Rectangle {
         fill: transparent;
         commands: "M 50 6 A 44 44 0 1 1 6 50";
         transform-origin: { x: root.size / 2, y: root.size / 2 };
-        transform-rotation: mod(animation-tick() / 3ms, 360) * 1deg;
+        transform-rotation: mod(animation-tick() / Theme.motion-spin-period, 1) * 360deg;
     }
 }
 
@@ -272,8 +359,10 @@ export component ProgressBar inherits Rectangle {
     accessible-role: progress-indicator;
     accessible-value: root.value < 0 ? "" : round(clamp(root.value, 0, 1) * 100) + "%";
     Rectangle {
-        x: root.value < 0 ? (mod(animation-tick() / 2ms, 1400) / 1000 - 0.4) * root.width : 0;
+        x: root.value < 0 ? (mod(animation-tick() / Theme.motion-sweep-period, 1) * 1.4 - 0.4) * root.width : 0;
         width: root.value < 0 ? root.width * 0.4 : root.width * clamp(root.value, 0, 1);
+        // A determinate value moves to its new length (usage, quotas).
+        animate width { duration: root.value < 0 ? 0ms : Theme.motion-medium; easing: Theme.easing-standard; }
         border-radius: 2px;
         background: root.tint;
     }
@@ -297,10 +386,12 @@ export component IconButton inherits Rectangle {
     accessible-enabled: enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
     StateLayer { border-radius: root.border-radius; ink: root.tint; enabled: root.enabled; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.tint; enabled: root.enabled; centered: true; }
     Icon {
         glyph: root.glyph;
         size: root.icon-size;
         color: root.enabled ? root.tint : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+        animate color { duration: Theme.motion-short; easing: Theme.easing-standard; }
     }
     FocusRing { shown: fs.has-focus; corner: root.border-radius; }
     fs := FocusScope {
@@ -316,6 +407,10 @@ export component IconButton inherits Rectangle {
         height: max(root.height, Theme.min-target);
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
     }
 }
 
@@ -330,6 +425,8 @@ export component TonalIconButton inherits Rectangle {
     in property <bool> grouped;
     in property <bool> loading;
     in property <string> tooltip;
+    // Turns the icon (animated): an expand arrow pointing the other way.
+    in property <angle> icon-rotation;
     callback clicked();
     property <color> ink: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content)
         : root.selected ? Theme.s.on-primary : root.grouped ? Theme.s.on-surface-variant : Theme.s.on-secondary-container;
@@ -338,17 +435,21 @@ export component TonalIconButton inherits Rectangle {
     border-radius: size / 2;
     background: selected ? Theme.s.primary : grouped ? transparent
         : (enabled ? Theme.s.secondary-container : Theme.s.on-surface.with-alpha(Theme.disabled-container));
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     accessible-role: button;
     accessible-label: tooltip;
     accessible-enabled: enabled && !loading;
     accessible-checked: selected;
     accessible-action-default => { if (root.enabled && !root.loading) { root.clicked(); } }
     StateLayer { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled && !root.loading; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled && !root.loading; centered: true; }
     if root.loading: Spinner { size: root.icon-size - 4px; tint: root.ink; }
     if !root.loading: Icon {
         glyph: root.glyph;
         size: root.icon-size;
         color: root.ink;
+        transform-rotation: root.icon-rotation;
+        animate transform-rotation { duration: Theme.motion-medium; easing: Theme.easing-standard; }
     }
     FocusRing { shown: fs.has-focus; corner: root.border-radius; }
     fs := FocusScope {
@@ -364,6 +465,10 @@ export component TonalIconButton inherits Rectangle {
         height: max(root.height, Theme.min-target);
         enabled: root.enabled && !root.loading;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
     }
 }
 
@@ -389,6 +494,7 @@ export component Button inherits Rectangle {
     border-color: enabled ? Theme.s.outline-variant : Theme.s.on-surface.with-alpha(Theme.disabled-container);
     background: !enabled ? (kind == 2 || kind == 3 ? transparent : Theme.s.on-surface.with-alpha(Theme.disabled-container))
         : kind == 1 ? Theme.s.primary : kind == 0 ? Theme.s.secondary-container : kind == 4 ? Theme.s.surface-container-low : transparent;
+    animate background, border-color { duration: Theme.motion-short; easing: Theme.easing-standard; }
     drop-shadow-blur: kind == 4 && enabled ? Theme.shadow-blur(1) : 0px;
     drop-shadow-offset-y: kind == 4 && enabled ? Theme.shadow-offset(1) : 0px;
     drop-shadow-color: kind == 4 && enabled ? Theme.shadow-color(1) : transparent;
@@ -397,6 +503,7 @@ export component Button inherits Rectangle {
     accessible-enabled: enabled;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
     StateLayer { border-radius: root.border-radius; ink: root.text-color; enabled: root.enabled; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.text-color; enabled: root.enabled; }
     row := HorizontalLayout {
         padding-left: root.kind == 2 ? 12px : root.has-glyph ? 16px : 24px;
         padding-right: root.kind == 2 ? (root.has-glyph ? 16px : 12px) : 24px;
@@ -427,6 +534,10 @@ export component Button inherits Rectangle {
         height: max(root.height, Theme.min-target);
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
     }
 }
 
@@ -443,6 +554,7 @@ export component Switch inherits Rectangle {
     border-radius: 16px;
     background: !enabled ? (checked ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : Theme.s.surface-container-highest.with-alpha(Theme.disabled-container))
         : checked ? Theme.s.primary : Theme.s.surface-container-highest;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     border-width: checked ? 0 : 2px;
     border-color: enabled ? Theme.s.outline : Theme.s.on-surface.with-alpha(Theme.disabled-container);
     accessible-role: switch;
@@ -458,12 +570,18 @@ export component Switch inherits Rectangle {
         y: (parent.height - self.height) / 2;
         background: !root.enabled ? (root.checked ? Theme.s.surface : Theme.s.on-surface.with-alpha(Theme.disabled-content))
             : root.checked ? Theme.s.on-primary : Theme.s.outline;
+        // The handle slides and grows with the M3 standard curve.
+        animate x, y, width, height, border-radius { duration: Theme.motion-medium; easing: Theme.easing-standard; }
+        animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
         // The 40 dp state layer around the handle.
         Rectangle {
             width: 40px;
             height: 40px;
             border-radius: 20px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
             background: root.enabled ? Theme.state(root.checked ? Theme.s.primary : Theme.s.on-surface, touch.pressed, touch.has-hover, fs.has-focus) : transparent;
+            animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
         }
         if root.checked: Icon {
             glyph: Icons.check;
@@ -503,10 +621,11 @@ export component Radio inherits Rectangle {
         border-width: 2px;
         border-color: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : root.selected ? Theme.s.primary : Theme.s.on-surface-variant;
         Rectangle {
-            width: 10px;
-            height: 10px;
-            border-radius: 5px;
+            width: root.selected ? 10px : 0px;
+            height: self.width;
+            border-radius: self.width / 2;
             background: !root.selected ? transparent : root.enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+            animate width { duration: Theme.motion-short; easing: Theme.easing-standard; }
         }
     }
 }
@@ -526,6 +645,7 @@ export component CheckBox inherits Rectangle {
         border-width: root.checked ? 0 : 2px;
         border-color: root.enabled ? Theme.s.on-surface-variant : Theme.s.on-surface.with-alpha(Theme.disabled-content);
         background: !root.checked ? transparent : root.enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+        animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
         if root.checked: Icon { glyph: Icons.check; size: 16px; color: root.enabled ? Theme.s.on-primary : Theme.s.surface; }
     }
 }
@@ -626,11 +746,13 @@ export component FilterChip inherits Rectangle {
     border-width: selected ? 0 : 1px;
     border-color: Theme.s.outline-variant;
     background: selected ? Theme.s.secondary-container : transparent;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     accessible-role: button;
     accessible-label: label;
     accessible-checked: selected;
     accessible-action-default => { root.clicked(); }
     StateLayer { border-radius: root.border-radius; ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; enabled: root.enabled; }
     lay := HorizontalLayout {
         padding-left: root.selected && !root.removable ? 8px : 16px;
         padding-right: root.removable ? 8px : 16px;
@@ -652,6 +774,10 @@ export component FilterChip inherits Rectangle {
         height: Theme.min-target;
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
     }
 }
 
@@ -669,6 +795,7 @@ export component SegmentedButton inherits Rectangle {
         for l[i] in root.labels: seg := Rectangle {
             property <bool> on: i == root.selected;
             background: on ? Theme.s.secondary-container : transparent;
+            animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
             // Equal widths; the ends carry the row's rounded corners.
             horizontal-stretch: 1;
             preferred-width: 0px;
@@ -691,6 +818,14 @@ export component SegmentedButton inherits Rectangle {
                 pressed: sta.pressed;
                 hover: sta.has-hover;
             }
+            srip := Ripple {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                enabled: root.enabled;
+            }
             if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
             HorizontalLayout {
                 alignment: center;
@@ -710,6 +845,10 @@ export component SegmentedButton inherits Rectangle {
                 height: max(parent.height, Theme.min-target);
                 enabled: root.enabled;
                 clicked => { if (!seg.on) { root.picked(i); } }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) { srip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+                    else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { srip.up(); }
+                }
             }
         }
     }
@@ -744,6 +883,7 @@ export component Card inherits Rectangle {
     background: error ? Theme.s.error-container : (selected && fills) ? Theme.s.secondary-container
         : level >= 0 ? Theme.level(level)
         : variant == 1 ? Theme.s.surface-container-low : variant == 2 ? Theme.s.surface : Theme.s.surface-container-highest;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     border-width: variant == 2 && !(selected && fills) && !error ? 1px : 0px;
     border-color: Theme.s.outline-variant;
     drop-shadow-blur: variant == 1 ? Theme.shadow-blur(touch.pressed ? 1 : touch.has-hover ? 2 : 1) : 0px;
@@ -758,8 +898,10 @@ export component Card inherits Rectangle {
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = root.long-press-menu;
+                rip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                rip.up();
             }
         }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
@@ -779,6 +921,11 @@ export component Card inherits Rectangle {
         pressed: touch.pressed;
         hover: touch.has-hover;
     }
+    rip := Ripple {
+        border-radius: root.border-radius;
+        ink: (root.selected && root.fills) ? Theme.s.on-secondary-container : Theme.s.on-surface;
+        enabled: root.enabled && root.interactive;
+    }
     @children
 }
 
@@ -797,9 +944,21 @@ export component Panel inherits Rectangle {
     accessible-action-default => { if (root.clickable) { root.clicked(); } }
     ta := TouchArea {
         enabled: root.clickable;
-        clicked => { root.clicked(); }
+        // A card that opened a page grows into it (Motion container transform).
+        clicked => {
+            let before = Nav.routes.length;
+            root.clicked();
+            if (Nav.routes.length > before) {
+                Motion.open-from(Nav.routes.length, root.absolute-position.x, root.absolute-position.y, root.width, root.height, Theme.radius, Theme.s.surface-container-highest);
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { prip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { prip.up(); }
+        }
     }
     StateLayer { enabled: root.clickable; pressed: ta.pressed; hover: ta.has-hover; }
+    prip := Ripple { border-radius: root.border-radius; enabled: root.clickable; }
     VerticalLayout {
         padding: root.pad;
         padding-top: max(0px, root.pad - 4px);
@@ -878,14 +1037,32 @@ export component ListItem inherits Rectangle {
     accessible-enabled: root.enabled;
     accessible-action-default => { if (root.clickable && root.enabled) { root.clicked(); } }
     StateLayer { enabled: root.clickable && root.enabled; pressed: touch.pressed; hover: touch.has-hover; }
+    rip := Ripple {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        enabled: root.clickable && root.enabled;
+    }
     touch := TouchArea {
         enabled: (root.clickable || root.long-press-menu) && root.enabled;
-        clicked => { if (root.clickable) { root.clicked(); } }
+        clicked => {
+            if (root.clickable) {
+                let before = Nav.routes.length;
+                root.clicked();
+                // A row that opened a page (its chevron says it does) grows into it.
+                if (root.chevron && Nav.routes.length > before) {
+                    Motion.open-from(Nav.routes.length, root.absolute-position.x, root.absolute-position.y, root.width, root.height, Theme.corner-large, Theme.level(root.level));
+                }
+            }
+        }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = root.long-press-menu;
+                rip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                rip.up();
             }
         }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
@@ -1216,6 +1393,7 @@ export component TopBar inherits Glass {
     level: 2;
     active: root.scrolled;
     edge: false;
+    moves-with-pages: true;
     background: root.scrolled ? Theme.glass(2) : root.bar-color;
     Rectangle {
         y: root.height - 1px;

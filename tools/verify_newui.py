@@ -92,6 +92,49 @@ if not re.search(r"bar := Glass \{", home) or "Nav.bar-margin" not in home:
 if "bar-margin + bar-height" not in (slint_ui / "globals.slint").read_text():
     errors.append("ui-slint/ui/globals.slint: home-bottom must clear the floating bar")
 
+# Motion (flclash.md "动效"): every animation takes its duration and curve
+# from the Theme motion tokens, which theme.slint multiplies by the system's
+# animator duration scale (Android's ANIMATOR_DURATION_SCALE, sent by the host;
+# 0 turns motion off); presses ripple through kit.slint's Ripple.
+for path in slint_ui.rglob("*.slint"):
+    rel = path.relative_to(ROOT)
+    source = path.read_text()
+    if path.name == "theme.slint":
+        continue
+    for block in re.finditer(r"animate\s+[\w\-,\s]+\{([^}]*)\}", source):
+        body = block.group(1)
+        for key, value in re.findall(r"(duration|delay)\s*:\s*([^;]+);", body):
+            if re.search(r"(?<![\w.-])(?!0ms\b)\d+(?:\.\d+)?ms\b", value):
+                errors.append(f"{rel}: animation {key} hard-coded ({value.strip()}); use a Theme.motion-* token")
+            if key == "duration" and "Theme.motion-" not in value:
+                errors.append(f"{rel}: animation duration without a Theme.motion-* token: {value.strip()}")
+        for value in re.findall(r"easing\s*:\s*([^;]+);", body):
+            if "Theme.easing-" not in value or re.search(r"cubic-bezier|\bease(?:-in|-out|-in-out)?\b|\blinear\b", value):
+                errors.append(f"{rel}: animation easing outside the Theme.easing-* tokens: {value.strip()}")
+    if re.search(r"cubic-bezier\(", source):
+        errors.append(f"{rel}: cubic-bezier curve outside theme.slint; use a Theme.easing-* token")
+    for match in re.finditer(r"animation-tick\(\)\s*/\s*([^,;)]+)", source):
+        if "Theme.motion-" not in match.group(1):
+            errors.append(f"{rel}: animation-tick() period hard-coded ({match.group(1).strip()}); use a Theme.motion-* token")
+if not re.search(r"in property <float> motion-scale", theme):
+    errors.append("ui-slint/ui/theme.slint: missing the motion-scale token (animator duration scale)")
+for name, value in re.findall(r"out property <duration> (motion-[\w-]+):\s*([^;]+);", theme):
+    if not name.endswith("-period") and "* motion-scale" not in value:
+        errors.append(f"ui-slint/ui/theme.slint: {name} is not multiplied by motion-scale")
+for token in ("motion-short", "motion-medium", "motion-long", "easing-standard", "easing-emphasized", "easing-decelerate", "easing-back", "motion-on"):
+    if not re.search(rf"\b{token}\b\s*:", theme):
+        errors.append(f"ui-slint/ui/theme.slint: missing motion token {token}")
+if not re.search(r"export component Ripple\b", kit):
+    errors.append("ui-slint/ui/kit.slint: missing the Ripple component")
+for component in ("IconButton", "Button", "Card", "ListItem"):
+    span = next(((start, end) for name, start, end in component_spans(kit) if name == component), None)
+    if span and "Ripple {" not in kit[span[0]:span[1]]:
+        errors.append(f"ui-slint/ui/kit.slint: {component} has no Ripple")
+if "set_motion_scale" not in (ROOT / "ui-slint/src/theme_apply.rs").read_text():
+    errors.append("ui-slint/src/theme_apply.rs: the motion scale does not reach Theme")
+if "ANIMATOR_DURATION_SCALE" not in (native / "bridge/BoxActivity.kt").read_text():
+    errors.append("BoxActivity.kt: the host must send Settings.Global.ANIMATOR_DURATION_SCALE")
+
 # backdrop-blur needs Slint 1.19+; the vendored Skia renderer and Android
 # backend are the same release as the slint crate (FKBOX-PATCH.md).
 cargo = (ROOT / "ui-slint/Cargo.toml").read_text()
@@ -148,4 +191,4 @@ for license_file in ("LICENSE",):
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, glass and capture removal guards passed")
+print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, glass, motion and capture removal guards passed")

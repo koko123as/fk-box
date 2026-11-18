@@ -595,6 +595,13 @@ pub fn on_event(payload: &str) {
             crate::defer("insets", move || apply_insets(&value));
             Mark::NONE
         }
+        // The system's animator duration scale changed (developer options or
+        // Remove animations in accessibility; resent on resume).
+        "motion" => {
+            let scale = crate::theme_apply::motion_scale(value["scale"].as_f64().unwrap_or(1.0));
+            crate::defer("motion", move || crate::theme_apply::set_motion_scale(scale));
+            Mark::NONE
+        }
         // The host's own menu or dialog (src/nav.rs).
         "ui" => {
             let value = value.clone();
@@ -708,6 +715,9 @@ pub fn start() -> Result<(AppWindow, Rc<slint::Timer>), slint::PlatformError> {
             format::set_utc_offset_minutes(long(&value["utcOffsetMinutes"]).unwrap_or(0));
             let scale = value["fontScale"].as_f64().unwrap_or(1.0) as f32;
             crate::theme_apply::SYSTEM_FONT_SCALE.with(|s| s.set(scale));
+            // Absent from hosts without the setting: motion stays at full scale.
+            let motion = crate::theme_apply::motion_scale(value["animatorScale"].as_f64().unwrap_or(1.0));
+            crate::theme_apply::set_motion_scale(motion);
         }
         pages::mark(Mark::ALL);
         initialize();
