@@ -1,9 +1,14 @@
-// The app theme (compose/theme/Theme.kt, Color.kt, Shape.kt, Type.kt): the
-// seeded Material 3 scheme computed in Rust (src/theme.rs, Material Color
-// Utilities), surface levels, the 12 dp corner and the M3 type scale.
+// The Material Design 3 design tokens of the app (ui/m3-rewrite, after the
+// Material Design 3 UI skill): the seeded color roles computed in Rust
+// (src/theme.rs, Material Color Utilities' dynamic scheme, light and dark),
+// the M3 type scale, the shape scale, the 4 dp spacing grid, the state-layer
+// opacities and the elevation levels. Screens use these semantic tokens, not
+// literal colors, radii or font sizes.
 
 import { Palette } from "std-widgets.slint";
 
+// The M3 color roles (plus FK-box's harmonized success and warning custom
+// colors, which M3 leaves to the product).
 export struct Scheme {
     primary: color,
     on-primary: color,
@@ -15,6 +20,8 @@ export struct Scheme {
     on-secondary-container: color,
     tertiary: color,
     on-tertiary: color,
+    tertiary-container: color,
+    on-tertiary-container: color,
     error: color,
     on-error: color,
     error-container: color,
@@ -27,7 +34,11 @@ export struct Scheme {
     on-inverse-surface: color,
     inverse-primary: color,
     scrim: color,
+    shadow: color,
     surface: color,
+    surface-dim: color,
+    surface-bright: color,
+    surface-container-lowest: color,
     surface-container-low: color,
     surface-container: color,
     surface-container-high: color,
@@ -40,8 +51,26 @@ export struct Scheme {
     on-warning-container: color,
 }
 
-// AppTextStyle: size and line height in sp; the weight is chosen at the use site.
-export enum TextRole { display, large-title, title1, page-title, title2, title3, headline, body, callout, subheadline, footnote, caption1, caption2 }
+// The M3 type scale: five semantic groups, each Large, Medium and Small.
+// Pick the role by purpose (a screen title is title-large, a list item's
+// headline body-large, a button label label-large), not by the size that fits.
+export enum TextRole {
+    body-large,
+    body-medium,
+    body-small,
+    display-large,
+    display-medium,
+    display-small,
+    headline-large,
+    headline-medium,
+    headline-small,
+    title-large,
+    title-medium,
+    title-small,
+    label-large,
+    label-medium,
+    label-small,
+}
 
 export global Theme {
     // "system" | "light" | "dark" (the theme preference).
@@ -56,43 +85,138 @@ export global Theme {
     in property <string> font-family;
     // The system monospace family (src/fonts.rs); "monospace" until it is known.
     in property <string> mono: "monospace";
-    out property <length> radius: 12px;
+
+    // Shape scale (M3 corner tokens). Components with the same role share a
+    // corner: menus, snackbars and text fields extra-small; chips and
+    // segmented ends small; cards medium; grouped lists, FABs and the nav
+    // drawer items large; dialogs and sheets extra-large; buttons, the
+    // navigation indicator and the search bar full (height / 2).
+    out property <length> corner-none: 0px;
+    out property <length> corner-extra-small: 4px;
+    out property <length> corner-small: 8px;
+    out property <length> corner-medium: 12px;
+    out property <length> corner-large: 16px;
+    out property <length> corner-extra-large: 28px;
+    // The card corner, kept under its old name for the pages.
+    out property <length> radius: corner-medium;
+
+    // The 4 dp spacing grid.
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+
+    // The minimum touch target; visible icons may be smaller.
+    out property <length> min-target: 48px;
+
+    // State layers: the content color over the container at these opacities.
+    out property <float> state-hover: 0.08;
+    out property <float> state-focus: 0.10;
+    out property <float> state-pressed: 0.10;
+    out property <float> state-dragged: 0.16;
+    // Disabled: content at 38 %, container at 12 % of on-surface.
+    out property <float> disabled-content: 0.38;
+    out property <float> disabled-container: 0.12;
+
+    // Motion (M3 easing and duration tokens), used only where a change of
+    // state needs it: short for small utility changes, medium for the rail.
+    out property <duration> motion-short: 150ms;
+    out property <duration> motion-medium: 300ms;
 
     public pure function sp(v: float) -> length {
         return v * text-scale * 1px;
     }
 
     public pure function size(role: TextRole) -> length {
-        if (role == TextRole.display) { return sp(36); }
-        if (role == TextRole.large-title) { return sp(32); }
-        if (role == TextRole.title1) { return sp(28); }
-        if (role == TextRole.page-title) { return sp(22); }
-        if (role == TextRole.title2) { return sp(24); }
-        if (role == TextRole.title3) { return sp(22); }
-        if (role == TextRole.subheadline) { return sp(14); }
-        if (role == TextRole.footnote) { return sp(12); }
-        if (role == TextRole.caption1) { return sp(12); }
-        if (role == TextRole.caption2) { return sp(11); }
+        if (role == TextRole.display-large) { return sp(57); }
+        if (role == TextRole.display-medium) { return sp(45); }
+        if (role == TextRole.display-small) { return sp(36); }
+        if (role == TextRole.headline-large) { return sp(32); }
+        if (role == TextRole.headline-medium) { return sp(28); }
+        if (role == TextRole.headline-small) { return sp(24); }
+        if (role == TextRole.title-large) { return sp(22); }
+        if (role == TextRole.title-medium) { return sp(16); }
+        if (role == TextRole.title-small) { return sp(14); }
+        if (role == TextRole.body-medium) { return sp(14); }
+        if (role == TextRole.body-small) { return sp(12); }
+        if (role == TextRole.label-large) { return sp(14); }
+        if (role == TextRole.label-medium) { return sp(12); }
+        if (role == TextRole.label-small) { return sp(11); }
         return sp(16);
     }
 
     public pure function leading(role: TextRole) -> length {
-        if (role == TextRole.display) { return sp(44); }
-        if (role == TextRole.large-title) { return sp(40); }
-        if (role == TextRole.title1) { return sp(36); }
-        if (role == TextRole.page-title) { return sp(28); }
-        if (role == TextRole.title2) { return sp(32); }
-        if (role == TextRole.title3) { return sp(28); }
-        if (role == TextRole.subheadline) { return sp(20); }
-        if (role == TextRole.footnote || role == TextRole.caption1 || role == TextRole.caption2) { return sp(16); }
+        if (role == TextRole.display-large) { return sp(64); }
+        if (role == TextRole.display-medium) { return sp(52); }
+        if (role == TextRole.display-small) { return sp(44); }
+        if (role == TextRole.headline-large) { return sp(40); }
+        if (role == TextRole.headline-medium) { return sp(36); }
+        if (role == TextRole.headline-small) { return sp(32); }
+        if (role == TextRole.title-large) { return sp(28); }
+        if (role == TextRole.title-small || role == TextRole.body-medium || role == TextRole.label-large) { return sp(20); }
+        if (role == TextRole.body-small || role == TextRole.label-medium || role == TextRole.label-small) { return sp(16); }
         return sp(24);
     }
 
-    // SurfaceLevel: 0 page, 1 card, 2 block, 3 inset.
+    // Titles (medium, small) and labels are medium weight; the rest regular.
+    public pure function weight(role: TextRole) -> int {
+        if (role == TextRole.title-medium || role == TextRole.title-small
+            || role == TextRole.label-large || role == TextRole.label-medium || role == TextRole.label-small) {
+            return 500;
+        }
+        return 400;
+    }
+
+    // Tracking in sp.
+    public pure function tracking(role: TextRole) -> length {
+        if (role == TextRole.display-large) { return sp(-0.25); }
+        if (role == TextRole.title-medium) { return sp(0.15); }
+        if (role == TextRole.title-small || role == TextRole.label-large) { return sp(0.1); }
+        if (role == TextRole.body-large) { return sp(0.5); }
+        if (role == TextRole.body-medium) { return sp(0.25); }
+        if (role == TextRole.body-small) { return sp(0.4); }
+        if (role == TextRole.label-medium || role == TextRole.label-small) { return sp(0.5); }
+        return 0px;
+    }
+
+    // The state layer over a container: `ink` (the content color) at the
+    // pressed, focus or hover opacity, transparent at rest.
+    public pure function state(ink: color, pressed: bool, hover: bool, focused: bool) -> color {
+        if (pressed) { return ink.with-alpha(state-pressed); }
+        if (focused) { return ink.with-alpha(state-focus); }
+        if (hover) { return ink.with-alpha(state-hover); }
+        return transparent;
+    }
+
+    // Tonal surface levels: 0 surface, 1 container-low, 2 container,
+    // 3 container-high, 4 container-highest.
     public pure function level(l: int) -> color {
         if (l <= 0) { return s.surface; }
-        if (l == 1) { return s.surface-container; }
-        if (l == 2) { return s.surface-container-high; }
+        if (l == 1) { return s.surface-container-low; }
+        if (l == 2) { return s.surface-container; }
+        if (l == 3) { return s.surface-container-high; }
         return s.surface-container-highest;
+    }
+
+    // Shadow elevation, only for surfaces that overlap content (menus,
+    // snackbars, FABs, elevated cards and buttons): levels 1–3 as blur and
+    // offset. Routine hierarchy uses the tonal surface roles instead.
+    public pure function shadow-blur(l: int) -> length {
+        if (l <= 0) { return 0px; }
+        if (l == 1) { return 2px; }
+        if (l == 2) { return 6px; }
+        return 10px;
+    }
+    public pure function shadow-offset(l: int) -> length {
+        if (l <= 0) { return 0px; }
+        if (l == 1) { return 1px; }
+        if (l == 2) { return 2px; }
+        return 4px;
+    }
+    public pure function shadow-color(l: int) -> color {
+        return l <= 0 ? transparent : s.shadow.with-alpha(dark ? 0.5 : 0.2);
     }
 }
