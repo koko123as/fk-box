@@ -349,7 +349,7 @@ component Pages inherits Rectangle {
         root.moving = true;
         Motion.pages-moving = true;
         done.interval = root.span + 16ms;
-        done.restart();
+        if (done.running) { done.restart(); } else { done.start(); }
     }
     init => { root.shown = root.current; }
     changed current => {
@@ -419,7 +419,7 @@ component Pages inherits Rectangle {
             root.start = animation-tick();
             root.moving = true;
             done.interval = root.span + 16ms;
-            done.restart();
+            if (done.running) { done.restart(); } else { done.start(); }
         } else {
             Motion.pages-moving = false;
         }

@@ -91,7 +91,7 @@ export component RouteHost inherits Rectangle {
         root.closing = false;
         root.opening = true;
         root.start = animation-tick();
-        finish.restart();
+        if (finish.running) { finish.restart(); } else { finish.start(); }
     }
     changed count => {
         if (root.depth > 0 && root.count < root.depth) {
@@ -100,7 +100,7 @@ export component RouteHost inherits Rectangle {
                 root.opening = false;
                 root.closing = true;
                 root.start = animation-tick();
-                finish.restart();
+                if (finish.running) { finish.restart(); } else { finish.start(); }
             }
         }
     }

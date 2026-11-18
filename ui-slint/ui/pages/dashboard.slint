@@ -121,7 +121,7 @@ component CountryBadge inherits Rectangle {
             self.pop-start = animation-tick();
             self.popping = true;
             pop-end.interval = Theme.motion-long + 16ms;
-            pop-end.restart();
+            if (pop-end.running) { pop-end.restart(); } else { pop-end.start(); }
         }
     }
     pop-end := Timer {
@@ -1371,7 +1371,7 @@ component DashboardEditor inherits VerticalLayout {
     property <bool> snap;
     // After the first frame: cards created from now on make an entrance.
     property <bool> ready;
-    init => { ready-next.restart(); }
+    init => { if (ready-next.running) { ready-next.restart(); } else { ready-next.start(); } }
     ready-next := Timer {
         running: false;
         interval: 1ms;
@@ -1399,7 +1399,7 @@ component DashboardEditor inherits VerticalLayout {
             : root.target < root.from ? root.target-top - root.from-top : 0px;
         root.settling = true;
         settle-end.interval = Theme.motion-yield + 16ms;
-        settle-end.restart();
+        if (settle-end.running) { settle-end.restart(); } else { settle-end.start(); }
     }
     // The cards changed under the slots (moved, removed, added): drop the
     // drag offsets at once, without animating them.
@@ -1409,7 +1409,7 @@ component DashboardEditor inherits VerticalLayout {
         root.target = -1;
         root.settling = false;
         root.pending = false;
-        snap-end.restart();
+        if (snap-end.running) { snap-end.restart(); } else { snap-end.start(); }
     }
     settle-end := Timer {
         running: false;
@@ -1418,7 +1418,7 @@ component DashboardEditor inherits VerticalLayout {
             self.stop();
             if (root.target != root.from && root.target >= 0) {
                 root.pending = true;
-                give-up.restart();
+                if (give-up.running) { give-up.restart(); } else { give-up.start(); }
                 Nav.act2("dash-move", root.from-key, root.target - root.from);
             } else {
                 root.reflow();
@@ -1469,13 +1469,18 @@ component DashboardEditor inherits VerticalLayout {
         property <length> shift: root.from < 0 || self.lifted ? 0px
             : root.target > root.from && i > root.from && i <= root.target ? -root.drag-h
             : root.target < root.from && i >= root.target && i < root.from ? root.drag-h : 0px;
-        height: self.entered && !self.removing ? holder.preferred-height + root.gap : 0px;
-        animate height {
+        // How open the slot's room is. Only this factor animates: an animated
+        // height would keep the content height it had when its animation
+        // started, so a card arriving in a reused slot (a move, a removal)
+        // would sit in a room sized for the previous card.
+        property <float> room: self.entered && !self.removing ? 1 : 0;
+        animate room {
             duration: root.snap ? 0ms : Theme.motion-yield;
             delay: self.removing ? Theme.motion-appear : 0ms;
             easing: Theme.easing-standard;
         }
-        clip: self.height < holder.preferred-height + root.gap - 0.5px;
+        height: self.room * (holder.preferred-height + root.gap);
+        clip: self.room < 0.999;
         z: self.lifted ? 1 : 0;
         accessible-role: list-item;
         accessible-label: c.value;
@@ -1512,7 +1517,7 @@ component DashboardEditor inherits VerticalLayout {
                 TouchArea {
                     pointer-event(e) => {
                         if (e.kind == PointerEventKind.down) {
-                            hold.restart();
+                            if (hold.running) { hold.restart(); } else { hold.start(); }
                         } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                             hold.stop();
                             if (slot.lifted) { root.drop(); }
@@ -1547,7 +1552,7 @@ component DashboardEditor inherits VerticalLayout {
                     drop-shadow-color: Theme.shadow-color(1);
                     accessible-role: button;
                     accessible-label: @tr("Remove");
-                    accessible-action-default => { remove-now.restart(); slot.removing = true; }
+                    accessible-action-default => { if (remove-now.running) { remove-now.restart(); } else { remove-now.start(); } slot.removing = true; }
                     Icon { glyph: Icons.remove; size: 18px; color: Theme.s.on-error-container; }
                     TouchArea {
                         width: Theme.min-target;
@@ -1556,7 +1561,7 @@ component DashboardEditor inherits VerticalLayout {
                         clicked => {
                             slot.removing = true;
                             remove-now.interval = Theme.motion-appear + Theme.motion-yield + 16ms;
-                            remove-now.restart();
+                            if (remove-now.running) { remove-now.restart(); } else { remove-now.start(); }
                         }
                     }
                 }

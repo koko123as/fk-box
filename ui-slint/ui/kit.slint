@@ -206,6 +206,13 @@ export component Ripple inherits Rectangle {
     property <length> cx;
     property <length> cy;
     property <length> reach: sqrt(pow(max(self.cx, self.width - self.cx) / 1px, 2) + pow(max(self.cy, self.height - self.cy) / 1px, 2)) * 1px;
+    // The clip takes its corners from bindings declared here: the compiler
+    // builds it from this component alone, so radii set only where a Ripple
+    // is used would leave it square and the ink would show past round shapes.
+    border-top-left-radius: self.border-radius;
+    border-top-right-radius: self.border-radius;
+    border-bottom-left-radius: self.border-radius;
+    border-bottom-right-radius: self.border-radius;
     clip: true;
     accessible-role: none;
     public function down(x: length, y: length) {
@@ -227,7 +234,7 @@ export component Ripple inherits Rectangle {
         // A ripple shows at least half its spread before it fades.
         self.fade-from = max(animation-tick(), self.start + Theme.motion-ripple * 0.5);
         end.interval = self.fade-from - animation-tick() + Theme.motion-ripple-fade + 16ms;
-        end.restart();
+        if (end.running) { end.restart(); } else { end.start(); }
     }
     end := Timer {
         running: false;

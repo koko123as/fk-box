@@ -367,7 +367,7 @@ export component ProxiesPage inherits Rectangle {
                     init => { self.reveal = self.open; }
                     changed open => {
                         self.reveal = false;
-                        if (self.open) { reveal-next.restart(); }
+                        if (self.open) { if (reveal-next.running) { reveal-next.restart(); } else { reveal-next.start(); } }
                     }
                     reveal-next := Timer {
                         running: false;

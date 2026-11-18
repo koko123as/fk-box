@@ -116,6 +116,14 @@ for path in slint_ui.rglob("*.slint"):
     for match in re.finditer(r"animation-tick\(\)\s*/\s*([^,;)]+)", source):
         if "Theme.motion-" not in match.group(1):
             errors.append(f"{rel}: animation-tick() period hard-coded ({match.group(1).strip()}); use a Theme.motion-* token")
+    # Slint's Timer.restart() does nothing on a timer that never ran (running: false
+    # until now), so a restart must fall back to start().
+    for match in re.finditer(r"([\w-]+)\.restart\(\)", source):
+        name = re.escape(match.group(1))
+        guard = rf"if \({name}\.running\) \{{ {name}\.restart\(\); \}} else \{{ {name}\.start\(\); \}}"
+        if not re.match(guard, source[source.rfind("if (", 0, match.start()):]):
+            errors.append(f"{rel}: {match.group(1)}.restart() without the start() fallback "
+                          f"(`if ({match.group(1)}.running) {{ ….restart(); }} else {{ ….start(); }}`)")
 if not re.search(r"in property <float> motion-scale", theme):
     errors.append("ui-slint/ui/theme.slint: missing the motion-scale token (animator duration scale)")
 for name, value in re.findall(r"out property <duration> (motion-[\w-]+):\s*([^;]+);", theme):

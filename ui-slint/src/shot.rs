@@ -678,6 +678,9 @@ pub fn run(args: Vec<String>) {
                 };
                 h.window.window().dispatch_event(event);
                 h.pump_now();
+                // A device draws the frame the event changed before the next
+                // tick, so what it creates starts from its first state.
+                h.frame(&mut Vec::new());
             }
             "tab" => {
                 h.app.global::<Nav>().invoke_select_tab(rest.into());
