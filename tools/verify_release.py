@@ -15,6 +15,38 @@ REQUIRED_LIBRARIES = ('libbox.so', 'libfkui.so')
 ELF_MACHINES = {'arm64-v8a': 183, 'armeabi-v7a': 40, 'x86_64': 62, 'x86': 3}
 
 
+def undefined_cxx_symbols(data):
+    """Undefined, non-weak C++ standard library symbols in a 64-bit little-endian
+    ELF shared object's dynamic symbol table. libfkui.so links libc++ statically
+    and needs no libc++_shared.so, so any such symbol is left unresolved at load
+    time: System.loadLibrary fails and the app closes at launch (Slint 1.19's
+    prebuilt Skia linked with an NDK older than r30 left
+    std::__ndk1::__hash_memory undefined)."""
+    if data[:4] != b'\x7fELF' or data[4] != 2 or data[5] != 1:
+        return []
+    u16 = lambda o: int.from_bytes(data[o:o + 2], 'little')
+    u32 = lambda o: int.from_bytes(data[o:o + 4], 'little')
+    u64 = lambda o: int.from_bytes(data[o:o + 8], 'little')
+    shoff, shentsize, shnum = u64(0x28), u16(0x3A), u16(0x3C)
+    sections = [(u32(shoff + i * shentsize + 4), u64(shoff + i * shentsize + 0x18),
+                 u64(shoff + i * shentsize + 0x20), u32(shoff + i * shentsize + 0x28))
+                for i in range(shnum)]
+    found = []
+    for sh_type, offset, size, link in sections:
+        if sh_type != 11:  # SHT_DYNSYM
+            continue
+        strtab = sections[link][1]
+        for entry in range(offset, offset + size, 24):
+            name_offset, info, shndx = u32(entry), data[entry + 4], u16(entry + 6)
+            if shndx != 0 or name_offset == 0 or info >> 4 == 2:  # defined, unnamed or weak
+                continue
+            end = data.index(b'\0', strtab + name_offset)
+            name = data[strtab + name_offset:end].decode('ascii', 'replace')
+            if name.startswith(('_ZNSt', '_ZNKSt', '_ZSt', '_ZTVNSt', '_ZTINSt', '_ZTSNSt')):
+                found.append(name)
+    return found
+
+
 def verify_native_libraries(apk_path, abis):
     with ZipFile(apk_path) as apk:
         names = set(apk.namelist())
@@ -35,7 +67,12 @@ def verify_native_libraries(apk_path, abis):
                 expected_class = 1 if abi in ('armeabi-v7a', 'x86') else 2
                 if elf_class != expected_class or elf_type != 3 or machine != ELF_MACHINES.get(abi):
                     raise SystemExit(f'{name}: class {elf_class}, type {elf_type}, machine {machine} do not match {abi}')
-    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI')
+                if name.endswith('/libfkui.so'):
+                    missing = undefined_cxx_symbols(apk.read(name))
+                    if missing:
+                        raise SystemExit(f'{name}: unresolved C++ library symbols {missing[:5]} '
+                                         '(Slint\'s prebuilt Skia needs the NDK it was built with, see FKUI_NDK_HOME)')
+    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI, libfkui.so without unresolved C++ library symbols')
 
 
 def main():

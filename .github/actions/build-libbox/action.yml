@@ -32,6 +32,7 @@ runs:
           build-tools;37.0.0
           ndk;28.0.13004108
           ndk;28.2.13676358
+          ndk;30.0.16248370
     - name: Build Android libbox
       shell: bash
       working-directory: .core
@@ -58,3 +59,13 @@ runs:
           echo "- libbox.aar: $size bytes"
           echo "- libbox.so (arm64-v8a): $so bytes"
         } >> "$GITHUB_STEP_SUMMARY"
+    # The Rust + Slint UI (libfkui.so) links Slint 1.19's prebuilt Skia, which
+    # is built with NDK r30 and needs its static libc++ (std::__ndk1::__hash_memory
+    # is missing from r28's, and the library then fails to load on the device).
+    # app/build.gradle.kts gives FKUI_NDK_HOME to cargo-ndk; the core and the
+    # app's own native packaging keep NDK 28.
+    - name: Select the NDK for the Slint UI
+      shell: bash
+      run: |
+        test -d "$ANDROID_HOME/ndk/30.0.16248370"
+        echo "FKUI_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
