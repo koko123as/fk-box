@@ -31,8 +31,8 @@
 //!
 //! With the `shot-skia` feature and `SHOT_RENDERER=skia`, the frames are drawn
 //! by the Skia renderer (the one Android uses) rasterized on the CPU instead of
-//! Slint's software renderer, so effects only Skia draws (the glass surfaces'
-//! backdrop-blur) show in the screenshots.
+//! Slint's software renderer, so the screenshots show what Skia draws on the
+//! device (shadows, anti-aliasing, text shaping).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -603,7 +603,7 @@ impl Harness {
     }
 
     /// `rest:NAME`: after everything settles the home pager is at rest (the
-    /// shown page at x = 0, no drag or slide, the top bars' blur back on) and
+    /// shown page at x = 0, no drag or slide in progress) and
     /// no ripple or other animation is left running.
     fn expect_rest(&self, name: &str) {
         self.settle();
@@ -619,7 +619,7 @@ impl Harness {
         let animating = self.window.has_active_animations();
         eprintln!("rest ({name}): offset {offset} pages-moving {moving} swiping {swiping} animating {animating}");
         assert!(offset.abs() < 0.01, "{name}: the home page stays shifted by {offset} px");
-        assert!(!moving, "{name}: Motion.pages-moving stuck (the top bar loses its blur)");
+        assert!(!moving, "{name}: Motion.pages-moving stuck");
         assert!(!swiping, "{name}: Motion.swiping stuck");
         assert!(!animating, "{name}: an animation (a press ripple) never ends");
     }
@@ -939,7 +939,7 @@ mod tests {
     /// A tap with a few pixels of jitter (press, move 5 px, release) on the
     /// dashboard, on a row of the tools page and on the last page: Slint's
     /// swipe handler reports such moves but never the release, which left
-    /// the pager dragging (the page shifted left, the top bar unblurred) and
+    /// the pager dragging (the page shifted left) and
     /// the row's ripple and pressed layer on (Meizu 20 Pro). Then a real
     /// swipe to the next page and back still works and ends at rest.
     #[test]

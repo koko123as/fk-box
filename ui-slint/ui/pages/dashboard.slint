@@ -8,7 +8,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Dash, ModeItem, KeyValue, ServiceItem } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field, StateLayer, Ripple, FocusRing, Appear } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field, StateLayer, Ripple, Tap, FocusRing, Appear } from "../kit.slint";
 
 // Figures that count to their new value (rates, memory, counts). The texts
 // Rust formats (src/format.rs bytes() and count()) are read back into a
@@ -186,7 +186,10 @@ component CountryBadge inherits Rectangle {
         horizontal-alignment: center;
     }
     if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
-    TouchArea {
+    Tap {
+        border-radius: root.border-radius;
+        ink: Theme.s.on-secondary-container;
+        centered: true;
         enabled: root.can-retry;
         clicked => { root.retry(); }
     }
@@ -282,7 +285,7 @@ export component StatusPanel inherits Rectangle {
                             emphasized: true;
                             font-size: clamp(Theme.size(parent.ip-role) * parent.width / max(1px, ip-measure.preferred-width), Theme.size(parent.ip-role) * 0.75, Theme.size(parent.ip-role));
                             color: App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
-                            TouchArea { clicked => { Nav.form("egress", ""); } }
+                            Tap { border-radius: Theme.corner-small; clicked => { Nav.form("egress", ""); } }
                         }
                         if Dash.egress-ip == "" && Dash.egress-skeleton: Skeleton {
                             x: 0;
@@ -579,6 +582,13 @@ component ModeSegments inherits Rectangle {
                 pressed: mta.pressed;
                 hover: mta.has-hover;
             }
+            mrip := Ripple {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+            }
             if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
             HorizontalLayout {
                 alignment: center;
@@ -596,6 +606,12 @@ component ModeSegments inherits Rectangle {
             mta := TouchArea {
                 height: max(parent.height, Theme.min-target);
                 clicked => { if (!seg.on) { Nav.act("set-mode", m.mode); } }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) { mrip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+                    else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { mrip.up(); }
+                }
+                changed pressed => { if (!self.pressed) { mrip.up(); } }
+                changed has-hover => { if (!self.has-hover) { mrip.up(); } }
             }
         }
     }
@@ -881,11 +897,11 @@ export component LanProxyRow inherits Rectangle {
     accessible-role: switch;
     accessible-label: @tr("LAN proxy");
     accessible-checked: root.value;
-    lta := TouchArea {
+    Tap {
+        border-radius: root.border-radius;
         enabled: root.enabled;
         clicked => { Nav.act("lan-toggle", root.value ? "0" : "1"); }
     }
-    StateLayer { enabled: root.enabled; pressed: lta.pressed; hover: lta.has-hover; }
     lay := HorizontalLayout {
         padding-left: 10px;
         padding-right: 12px;
@@ -940,7 +956,7 @@ export component IntranetPanel inherits Panel {
             color: Dash.lan-address == "" ? Theme.s.on-surface-variant : Theme.s.on-surface;
             font-size: self.text.character-count > 18 ? Theme.size(TextRole.headline-medium) * 0.7 : Theme.size(TextRole.headline-medium);
         }
-        TouchArea { clicked => { Nav.form("intranet", ""); } }
+        Tap { border-radius: Theme.corner-small; clicked => { Nav.form("intranet", ""); } }
     }
     Rectangle { height: 14px; }
     if App.remote: ListItem {
@@ -1161,8 +1177,11 @@ component ServiceRow inherits Rectangle {
     clip: true;
     accessible-role: button;
     accessible-label: root.s.label + " " + root.s.status;
-    StateLayer { enabled: root.clickable; pressed: touch.pressed; hover: touch.has-hover; }
-    touch := TouchArea {
+    Tap {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
         enabled: root.clickable;
         clicked => { root.clicked(); }
     }
@@ -1618,10 +1637,17 @@ component DashboardEditor inherits VerticalLayout {
                     accessible-label: @tr("Remove");
                     accessible-action-default => { if (remove-now.running) { remove-now.restart(); } else { remove-now.start(); } slot.removing = true; }
                     Icon { glyph: Icons.remove; size: 18px; color: Theme.s.on-error-container; }
+                    xrip := Ripple { border-radius: parent.border-radius; ink: Theme.s.on-error-container; centered: true; }
                     TouchArea {
                         width: Theme.min-target;
                         height: Theme.min-target;
                         enabled: !slot.removing && root.from < 0;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) { xrip.down(0px, 0px); }
+                            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { xrip.up(); }
+                        }
+                        changed pressed => { if (!self.pressed) { xrip.up(); } }
+                        changed has-hover => { if (!self.has-hover) { xrip.up(); } }
                         clicked => {
                             slot.removing = true;
                             remove-now.interval = Theme.motion-appear + Theme.motion-yield + 16ms;
@@ -1662,7 +1688,7 @@ export component DashboardPage inherits Rectangle {
     property <length> grid-width: root.width - 2 * grid-side;
     property <int> columns: Nav.mobile ? 1 : clamp(floor((grid-width + Nav.gap) / (260px + Nav.gap)), 2, 4);
     property <length> unit: (grid-width - (columns - 1) * Nav.gap) / columns;
-    // The cards scroll under the glass top app bar and the floating navigation bar.
+    // The cards scroll under the top app bar and the floating navigation bar.
     flick := Flickable {
         y: 0;
         height: parent.height;

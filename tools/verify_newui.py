@@ -34,9 +34,11 @@ if re.search(r"androidx\.compose|kotlin\.plugin\.compose|compose\s*=\s*true|grap
     errors.append("app/build.gradle.kts: Compose or retired shape dependency")
 
 # The Material Design 3 UI (ui/m3-rewrite, flclash.md "Material Design 3 界面约定"):
-# no shaders, liquid glass or blur filters in the Slint sources; the one blur
-# is Slint's backdrop-blur, only inside kit.slint's Glass component and only
-# with the theme's glass tokens.
+# opaque tonal surfaces only. No shaders, liquid glass, blur filters or
+# backdrop blur anywhere in the Slint sources: a surface that blurs what
+# scrolls under it re-reads and filters that content every frame. Floating
+# surfaces are kit.slint's opaque Surface (surface-container roles plus an
+# elevation shadow from the theme tokens).
 slint_ui = ROOT / "ui-slint/ui"
 for path in list(slint_ui.rglob("*.slint")) + list((ROOT / "ui-slint/src").rglob("*.rs")):
     if re.search(r"LiquidGlass|RuntimeShader|AGSL|(?<![-\w])blur\(", path.read_text()):
@@ -52,15 +54,12 @@ def component_spans(source):
 for path in slint_ui.rglob("*.slint"):
     rel = path.relative_to(ROOT)
     source = path.read_text()
-    # Blur only through the Glass component and the glass tokens.
-    for match in re.finditer(r"backdrop-blur\s*:\s*([^;]+);", source):
-        owner = next((name for name, start, end in component_spans(source) if start <= match.start() < end), None)
-        if path.name != "kit.slint" or owner != "Glass":
-            errors.append(f"{rel}: backdrop-blur outside kit.slint's Glass component; use Glass")
-        elif re.search(r"\d+(?:\.\d+)?px", match.group(1).replace("0px", "")) or "Theme.glass-blur" not in match.group(1):
-            errors.append(f"{rel}: backdrop-blur must use the Theme.glass-blur* tokens: {match.group(1).strip()}")
-    if path.name != "theme.slint" and re.search(r"glass-opacity\s*:", source):
-        errors.append(f"{rel}: glass opacity outside the theme tokens")
+    # No backdrop blur and no translucent "glass" surfaces (the retired Glass
+    # component and its tokens): floating surfaces are opaque.
+    if re.search(r"backdrop-blur\s*:", source):
+        errors.append(f"{rel}: backdrop-blur is not allowed; use kit.slint's opaque Surface")
+    if re.search(r"\bGlass\b|glass-(?:opacity|blur|edge|outline)|Theme\.glass\(", source):
+        errors.append(f"{rel}: the glass surface was retired; use kit.slint's opaque Surface")
     # Elevation shadows only through the theme's tokens (overlapping surfaces).
     for value in re.findall(r"drop-shadow-(?:blur|offset-x|offset-y|color)\s*:\s*([^;]+);", source):
         if "Theme.shadow-" not in value and not re.fullmatch(r"\s*(?:0px|transparent)\s*", value):
@@ -75,20 +74,20 @@ for token in ("surface-container-lowest", "surface-container-highest", "outline-
               "display-large", "headline-small", "title-medium", "body-small", "label-large"):
     if token not in theme:
         errors.append(f"ui-slint/ui/theme.slint: missing M3 token {token}")
-for token in ("glass-opacity-light", "glass-opacity-dark", "glass-blur", "glass-blur-soft", "glass-edge", "glass-outline",
-              "function glass("):
-    if token not in theme:
-        errors.append(f"ui-slint/ui/theme.slint: missing glass token {token}")
 kit = (slint_ui / "kit.slint").read_text()
 for component in ("StateLayer", "FocusRing", "Button", "IconButton", "Switch", "FilterChip", "SegmentedButton",
-                  "Card", "ListItem", "Field", "SearchField", "TopBar", "Glass"):
+                  "Card", "ListItem", "Field", "SearchField", "TopBar", "Surface"):
     if not re.search(rf"export component {component}\b", kit):
         errors.append(f"ui-slint/ui/kit.slint: missing M3 component {component}")
-if not re.search(r"export component TopBar inherits Glass\b", kit):
-    errors.append("ui-slint/ui/kit.slint: the top app bar must be a Glass surface (scrolled content under it)")
+surface = next(((start, end) for name, start, end in component_spans(kit) if name == "Surface"), None)
+if surface and "background: Theme.level(root.level);" not in kit[surface[0]:surface[1]]:
+    errors.append("ui-slint/ui/kit.slint: Surface must be the opaque tonal surface role (Theme.level)")
+if not re.search(r"export component TopBar inherits Surface\b", kit):
+    errors.append("ui-slint/ui/kit.slint: the top app bar must be an opaque Surface (scrolled content under it)")
 home = (slint_ui / "home.slint").read_text()
-if not re.search(r"bar := Glass \{", home) or "Nav.bar-margin" not in home:
-    errors.append("ui-slint/ui/home.slint: the phone navigation bar must be the floating Glass bar")
+bar = re.search(r"bar := Surface \{(.*?)\n        \}", home, re.S)
+if not bar or "Nav.bar-margin" not in home or not re.search(r"elevation:\s*[1-3];", bar.group(1)):
+    errors.append("ui-slint/ui/home.slint: the phone navigation bar must be the floating opaque Surface with an elevation shadow")
 if "bar-margin + bar-height" not in (slint_ui / "globals.slint").read_text():
     errors.append("ui-slint/ui/globals.slint: home-bottom must clear the floating bar")
 
@@ -134,21 +133,60 @@ for token in ("motion-short", "motion-medium", "motion-long", "easing-standard",
         errors.append(f"ui-slint/ui/theme.slint: missing motion token {token}")
 if not re.search(r"export component Ripple\b", kit):
     errors.append("ui-slint/ui/kit.slint: missing the Ripple component")
-for component in ("IconButton", "Button", "Card", "ListItem"):
+for component in ("IconButton", "Button", "Card", "ListItem", "Tap"):
     span = next(((start, end) for name, start, end in component_spans(kit) if name == component), None)
     if span and "Ripple {" not in kit[span[0]:span[1]]:
         errors.append(f"ui-slint/ui/kit.slint: {component} has no Ripple")
+# Every tappable surface ripples: a TouchArea with a `clicked` handler in the
+# pages either sits next to a Ripple it drives (rip.down / rip.up) or is a
+# kit.slint Tap; the exceptions are the scrims and the snackbar that dismiss
+# (no surface of their own) and a form row's tap that focuses its field,
+# listed here by their action.
+plain_taps = {"Nav.menu-dismiss()", "Nav.dialog-dismiss()", "Nav.dismiss-toast()", "Nav.dismiss-form(r.id)",
+              "ff.focus-end()"}
+for path in slint_ui.rglob("*.slint"):
+    if path.name == "kit.slint":
+        continue
+    source = path.read_text()
+    for match in re.finditer(r"TouchArea \{", source):
+        body = source[match.end():match.end() + 900]
+        depth, end = 1, 0
+        for i, ch in enumerate(body):
+            depth += ch == "{"
+            depth -= ch == "}"
+            if depth == 0:
+                end = i
+                break
+        body = body[:end]
+        clicked = re.search(r"clicked => \{\s*(.*?);?\s*\}", body, re.S)
+        if not clicked or ".down(" in body:
+            continue
+        action = clicked.group(1).strip().rstrip(";")
+        if not any(action.startswith(p.rstrip(";")) for p in plain_taps):
+            line = source.count("\n", 0, match.start()) + 1
+            errors.append(f"{path.relative_to(ROOT)}:{line}: a tappable TouchArea without a ripple; use kit.slint Tap ({action})")
+# List motion and the sheet's drag (flclash.md "动效").
+for component in ("ListMotion", "Entrance"):
+    if not re.search(rf"export component {component}\b", kit):
+        errors.append(f"ui-slint/ui/kit.slint: missing the list motion component {component}")
+for page in ("pages/rows.slint", "pages/profiles.slint", "pages/proxies.slint"):
+    if "ListMotion {" not in (slint_ui / page).read_text():
+        errors.append(f"ui-slint/ui/{page}: the list does not animate added and removed items (ListMotion)")
+routes = (slint_ui / "routes.slint").read_text()
+for token in ("Theme.sheet-close-fraction", "Theme.sheet-fling-velocity", "Theme.sheet-handle"):
+    if token not in routes:
+        errors.append(f"ui-slint/ui/routes.slint: the phone sheet's drag does not use {token}")
 if "set_motion_scale" not in (ROOT / "ui-slint/src/theme_apply.rs").read_text():
     errors.append("ui-slint/src/theme_apply.rs: the motion scale does not reach Theme")
 if "ANIMATOR_DURATION_SCALE" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity.kt: the host must send Settings.Global.ANIMATOR_DURATION_SCALE")
 
-# backdrop-blur needs Slint 1.19+; the vendored Skia renderer and Android
-# backend are the same release as the slint crate (FKBOX-PATCH.md).
+# Slint 1.19+; the vendored Skia renderer and Android backend are the same
+# release as the slint crate (FKBOX-PATCH.md).
 cargo = (ROOT / "ui-slint/Cargo.toml").read_text()
 slint_version = re.search(r'^slint = \{ version = "=(\d+)\.(\d+)\.(\d+)"', cargo, re.M)
 if not slint_version or (int(slint_version.group(1)), int(slint_version.group(2))) < (1, 19):
-    errors.append("ui-slint/Cargo.toml: Slint 1.19 or newer is required (backdrop-blur)")
+    errors.append("ui-slint/Cargo.toml: Slint 1.19 or newer is required")
 else:
     version = ".".join(slint_version.groups())
     for crate in ("i-slint-renderer-skia", "i-slint-backend-android-activity", "i-slint-core"):
@@ -199,4 +237,4 @@ for license_file in ("LICENSE",):
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, glass, motion and capture removal guards passed")
+print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, opaque surfaces (no blur), motion and capture removal guards passed")

@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText, Appear } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText, ListMotion, Entrance, Appear } from "../kit.slint";
 
 // A small status label (expiry, core): 0 neutral on secondary-container,
 // 1 warning, 2 error on their container roles; the text names the state.
@@ -90,6 +90,7 @@ export component ProfilesPage inherits Rectangle {
     property <length> card-height: Theme.leading(TextRole.title-medium) + 4px + Theme.leading(TextRole.body-small) + (Profiles.any-usage ? 10px : 0px) + 20px;
     background: Theme.s.surface;
     property <bool> scrolled;
+    profiles-motion := ListMotion { count: Profiles.rows.length; }
     if App.remote: Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         glyph: Icons.profiles;
         title: @tr("Disconnect remote session to edit local profiles");
@@ -101,7 +102,7 @@ export component ProfilesPage inherits Rectangle {
         action-label: @tr("Add profile");
         action => { Nav.open-menu("add-profile", root.width / 2, root.height / 2); }
     } }
-    // The cards scroll under the glass top app bar (and the floating navigation bar).
+    // The cards scroll under the top app bar (and the floating navigation bar).
     if !App.remote && Profiles.rows.length > 0: Appear { Flickable {
         y: 0;
         height: parent.height;
@@ -113,9 +114,36 @@ export component ProfilesPage inherits Rectangle {
             property <length> cell: (root.width - 32px - (root.columns - 1) * root.gap) / root.columns;
             y: bar.height + 8px;
             height: ceil(Profiles.rows.length / root.columns) * (root.card-height + root.gap);
-            for p[i] in Profiles.rows: ProfileCard {
-                x: 16px + mod(i, root.columns) * (grid.cell + root.gap);
-                y: floor(i / root.columns) * (root.card-height + root.gap);
+            // List motion (kit.slint ListMotion): an added card fades in and
+            // settles from just above its cell; when a profile is removed the
+            // cards after it move into the cells before them (a card whose
+            // cell now shows a later profile, the model updating in place,
+            // or whose index fell, slides there from that profile's old cell).
+            for p[i] in Profiles.rows: card := ProfileCard {
+                property <string> pid: p.id;
+                property <int> index: i;
+                property <int> seen-index;
+                property <length> from-x;
+                property <length> from-y;
+                enter := Entrance { enter: profiles-motion.adding; }
+                slide := Entrance { }
+                init => { self.seen-index = self.index; }
+                // The cell `j` places a card at, relative to this card's.
+                function slide-from(j: int) {
+                    self.from-x = (mod(j, root.columns) - mod(i, root.columns)) * (grid.cell + root.gap);
+                    self.from-y = (floor(j / root.columns) - floor(i / root.columns)) * (root.card-height + root.gap);
+                    slide.play();
+                }
+                changed pid => {
+                    if (profiles-motion.removing) { self.slide-from(i - profiles-motion.delta); }
+                }
+                changed index => {
+                    if (profiles-motion.removing && self.index < self.seen-index) { self.slide-from(self.seen-index); }
+                    self.seen-index = self.index;
+                }
+                x: 16px + mod(i, root.columns) * (grid.cell + root.gap) + self.from-x * (1 - slide.t);
+                y: floor(i / root.columns) * (root.card-height + root.gap) + self.from-y * (1 - slide.t) - Theme.motion-list-rise * (1 - enter.t);
+                opacity: enter.t;
                 width: grid.cell;
                 height: root.card-height;
                 p: p;

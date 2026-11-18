@@ -7,7 +7,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Proxies, GroupRow, NodeRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem, StateLayer, Appear } from "../kit.slint";
+import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem, StateLayer, Tap, ListMotion, Entrance, Appear } from "../kit.slint";
 
 // ProxyCardMetrics
 global Metrics {
@@ -114,7 +114,8 @@ export component NodeCard inherits Card {
                     horizontal-alignment: Proxies.loose ? left : right;
                     width: parent.width;
                 }
-                TouchArea {
+                Tap {
+                    border-radius: Theme.corner-extra-small;
                     enabled: App.running && !root.node.testing;
                     clicked => { Nav.act("test-node", root.node.tag); }
                 }
@@ -171,7 +172,7 @@ component GroupTabs inherits Rectangle {
                 accessible-label: g.tag;
                 accessible-checked: on;
                 accessible-action-default => { root.selected = i; }
-                StateLayer { ink: tb.on ? Theme.s.primary : Theme.s.on-surface; pressed: tta.pressed; hover: tta.has-hover; }
+                Tap { ink: tb.on ? Theme.s.primary : Theme.s.on-surface; clicked => { root.selected = i; } }
                 tab-label := T {
                     text: g.tag;
                     role: TextRole.title-small;
@@ -186,7 +187,6 @@ component GroupTabs inherits Rectangle {
                     border-top-right-radius: 3px;
                     background: Theme.s.primary;
                 }
-                tta := TouchArea { clicked => { root.selected = i; } }
             }
         }
     }
@@ -295,6 +295,8 @@ export component ProxiesPage inherits Rectangle {
     property <int> scroll-tick;
     background: Theme.s.surface;
     property <bool> scrolled;
+    // The groups of the list view come and go with the configuration.
+    groups-motion := ListMotion { count: Proxies.groups.length; }
     if Proxies.groups.length == 0: Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         glyph: Icons.proxies;
         title: App.running ? @tr("No proxy groups in this configuration") : @tr("Start the service to view proxy groups");
@@ -333,7 +335,7 @@ export component ProxiesPage inherits Rectangle {
             }
         }
     } }
-    // The list view scrolls under the glass top app bar.
+    // The list view scrolls under the top app bar.
     if Proxies.groups.length > 0 && Proxies.list: Appear { Flickable {
         y: 0;
         height: parent.height;
@@ -347,44 +349,71 @@ export component ProxiesPage inherits Rectangle {
             padding-top: bar.height + 8px;
             padding-bottom: 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             spacing: 0px;
-            for g in Proxies.groups: VerticalLayout {
-                spacing: 0px;
-                GroupHeader { group: g; joined: fold.open || fold.height > 0.5px; }
-                // The nodes unfold: the box grows to the grid's height (it
-                // clips the grid meanwhile) while the cards fade in one after
-                // another; folding shrinks it and the grid goes once it is shut.
-                fold := Rectangle {
-                    property <bool> open: g.expanded && g.items.length > 0;
-                    property <bool> reveal;
-                    background: Theme.level(1);
-                    border-bottom-left-radius: Theme.corner-large;
-                    border-bottom-right-radius: Theme.corner-large;
-                    clip: true;
-                    height: self.open ? ceil(g.items.length / root.columns) * Metrics.row-extent + 2px : 0px;
-                    animate height { duration: Theme.motion-medium; easing: Theme.easing-emphasized; }
-                    init => { self.reveal = self.open; }
-                    changed open => {
-                        self.reveal = false;
-                        if (self.open) { if (reveal-next.running) { reveal-next.restart(); } else { reveal-next.start(); } }
+            // A group added to the list grows into its place as it fades in; a
+            // slot that now shows another group (the model updates rows in
+            // place) fades back in with a short rise; a group moved up by a
+            // removal above it slides up from where it was.
+            for g[gi] in Proxies.groups: gslot := Rectangle {
+                property <string> tag: g.tag;
+                property <int> index: gi;
+                property <int> seen-index;
+                property <length> slide-from;
+                grow := Entrance { enter: groups-motion.adding; }
+                swap := Entrance { }
+                slide := Entrance { }
+                init => { self.seen-index = self.index; }
+                changed tag => { if (groups-motion.on) { swap.play(); } }
+                changed index => {
+                    if (groups-motion.removing && self.index < self.seen-index) {
+                        self.slide-from = (self.seen-index - self.index) * self.height;
+                        slide.play();
                     }
-                    reveal-next := Timer {
-                        running: false;
-                        interval: 1ms;
-                        triggered => {
-                            self.stop();
-                            fold.reveal = true;
+                    self.seen-index = self.index;
+                }
+                height: group-lay.preferred-height * grow.t;
+                clip: grow.t < 1;
+                opacity: min(grow.t, swap.t);
+                group-lay := VerticalLayout {
+                    y: Theme.motion-list-rise * (1 - swap.t) + gslot.slide-from * (1 - slide.t);
+                    height: self.preferred-height;
+                    spacing: 0px;
+                    GroupHeader { group: g; joined: fold.open || fold.height > 0.5px; }
+                    // The nodes unfold: the box grows to the grid's height (it
+                    // clips the grid meanwhile) while the cards fade in one after
+                    // another; folding shrinks it and the grid goes once it is shut.
+                    fold := Rectangle {
+                        property <bool> open: g.expanded && g.items.length > 0;
+                        property <bool> reveal;
+                        background: Theme.level(1);
+                        border-bottom-left-radius: Theme.corner-large;
+                        border-bottom-right-radius: Theme.corner-large;
+                        clip: true;
+                        height: self.open ? ceil(g.items.length / root.columns) * Metrics.row-extent + 2px : 0px;
+                        animate height { duration: Theme.motion-medium; easing: Theme.easing-emphasized; }
+                        init => { self.reveal = self.open; }
+                        changed open => {
+                            self.reveal = false;
+                            if (self.open) { if (reveal-next.running) { reveal-next.restart(); } else { reveal-next.start(); } }
+                        }
+                        reveal-next := Timer {
+                            running: false;
+                            interval: 1ms;
+                            triggered => {
+                                self.stop();
+                                fold.reveal = true;
+                            }
+                        }
+                        if fold.open || fold.height > 0.5px: NodeGrid {
+                            y: 0;
+                            width: parent.width;
+                            inset: 10px;
+                            columns: root.columns;
+                            group: g;
+                            revealed: fold.reveal;
                         }
                     }
-                    if fold.open || fold.height > 0.5px: NodeGrid {
-                        y: 0;
-                        width: parent.width;
-                        inset: 10px;
-                        columns: root.columns;
-                        group: g;
-                        revealed: fold.reveal;
-                    }
+                    Rectangle { height: Nav.gap; }
                 }
-                Rectangle { height: Nav.gap; }
             }
         }
     } }

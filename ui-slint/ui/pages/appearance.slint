@@ -6,7 +6,7 @@
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav } from "../globals.slint";
-import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field, NativeTextInput, SegmentedButton } from "../kit.slint";
+import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field, NativeTextInput, SegmentedButton, Tap, Ripple } from "../kit.slint";
 
 export struct Swatch {
     fill: color,
@@ -91,15 +91,20 @@ component SwatchView inherits Rectangle {
         }
     }
     if s.selected: Icon { glyph: Icons.check; size: 18px; color: s.light-check ? white : black; }
+    srip := Ripple { border-radius: 24px; centered: true; }
     touch := TouchArea {
         clicked => { Nav.act("look-select", root.s.value); }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = !root.s.system;
+                srip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                srip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { srip.up(); } }
+        changed has-hover => { if (!self.has-hover) { srip.up(); } }
     }
     hold := Timer {
         interval: 450ms;
@@ -163,7 +168,7 @@ export component AppearancePage inherits ScrollPage {
                 background: Theme.s.surface-container-highest;
                 Icon { glyph: Icons.add; size: 20px; color: Theme.s.on-surface-variant; }
             }
-            TouchArea { clicked => { Nav.act("look-add", ""); } }
+            Tap { border-radius: 24px; centered: true; ink: Theme.s.on-surface-variant; clicked => { Nav.act("look-add", ""); } }
         }
     }
     Rectangle { height: 8px; }

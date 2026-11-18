@@ -27,7 +27,7 @@
 ## fk-box（本仓库 main）
 
 - 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `fk-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `fk-box-*` 发布资产，同时接受改名前的 `FK-box-*`（见 [关于页更新检查](#已移除能力与兼容入口)）。
-- 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/m3-rewrite` 上界面为 Material Design 3，基于 Slint 1.19，手机端为悬浮玻璃导航栏，浮在滚动内容之上的表面用 `backdrop-blur` 玻璃（Android 的 Skia 渲染器绘制），见 [flclash.md](flclash.md#material-design-3-界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
+- 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/m3-rewrite` 上界面为 Material Design 3，基于 Slint 1.19，手机端为悬浮导航栏，浮在滚动内容之上的表面为不透明的 M3 色调表面（不使用 `backdrop-blur`），见 [flclash.md](flclash.md#material-design-3-界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
 - [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Slint 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行界面源码检查。
 
 ## 界面替换与 Android 桥接
@@ -196,7 +196,7 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、Material Design 3 界面约束（禁止着色器/`blur()` 滤镜，`backdrop-blur` 只在 `Glass` 组件中经玻璃令牌使用，悬浮玻璃导航栏与玻璃顶部应用栏，Slint ≥ 1.19 且 vendored crate 同版本；阴影只经 `Theme.shadow-*` 令牌；页面不写十六进制颜色，取色器与二维码除外；M3 令牌与组件存在）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、Material Design 3 界面约束（禁止着色器/`blur()` 滤镜与 `backdrop-blur`，悬浮导航栏与顶部应用栏为不透明 `Surface`，可点按表面带水波纹，列表增删与底部表单拖动的动效接入，Slint ≥ 1.19 且 vendored crate 同版本；阴影只经 `Theme.shadow-*` 令牌；页面不写十六进制颜色，取色器与二维码除外；M3 令牌与组件存在）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
 | [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及界面源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
 | [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `fk-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |

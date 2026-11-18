@@ -305,47 +305,158 @@ export component Ripple inherits Rectangle {
     }
 }
 
-// Glass: a translucent tonal surface that blurs what scrolls under it
-// (Slint 1.19 `backdrop-blur`, Skia renderer; other renderers draw the tint
-// alone). The only component that may blur (tools/verify_newui.py); tokens in
-// theme.slint. `level` picks the tonal role of the tint, `soft` the smaller
-// blur for small surfaces, `elevation` the shadow level (0–3) for a surface
-// that floats, `active: false` turns it back into the opaque tonal surface
-// (the top app bar before content is under it). A 1 dp edge separates it from
-// the content: a white highlight inside an outline-variant hairline in light
-// mode, a faint on-surface edge in dark mode.
-export component Glass inherits Rectangle {
+// Surface: an opaque M3 surface for what floats over scrolling content
+// (the floating navigation bar, the top app bar once content is under it,
+// menus, dialogs, the rows' foot bar). `level` picks its tonal
+// surface-container role (Theme.level) and `elevation` (0–3) the shadow
+// where M3 gives the component one (Theme.shadow-*). No blur: nothing in
+// the UI reads back what lies under a surface (no backdrop-blur,
+// tools/verify_newui.py), so content scrolling under it costs no per-frame
+// filter, and moving or scaling it is cheap.
+export component Surface inherits Rectangle {
     in property <int> level: 2;
-    in property <bool> active: true;
-    in property <bool> soft;
-    in property <bool> edge: true;
     in property <int> elevation: 0;
-    // Glass that moves with the home pages (their top app bars) keeps its
-    // tint but not its blur while they slide or fade (Motion.pages-moving),
-    // so no blurred layer is redrawn under a moving page every frame.
-    in property <bool> moves-with-pages;
-    background: root.active ? Theme.glass(root.level) : Theme.level(root.level);
-    backdrop-blur: root.active && !(root.moves-with-pages && Motion.pages-moving) ? (root.soft ? Theme.glass-blur-soft : Theme.glass-blur) : 0px;
-    border-width: root.edge && root.active ? 1px : 0px;
-    border-color: Theme.dark ? Theme.glass-edge : Theme.glass-outline;
+    background: Theme.level(root.level);
     drop-shadow-blur: Theme.shadow-blur(root.elevation);
     drop-shadow-offset-y: Theme.shadow-offset(root.elevation);
     drop-shadow-color: Theme.shadow-color(root.elevation);
-    // Set here so the corners follow a `border-radius` given where Glass is used.
+    // Set here so the corners follow a `border-radius` given where Surface is used.
     border-top-left-radius: root.border-radius;
     border-top-right-radius: root.border-radius;
     border-bottom-left-radius: root.border-radius;
     border-bottom-right-radius: root.border-radius;
-    if root.edge && root.active && !Theme.dark: Rectangle {
-        x: 1px;
-        y: 1px;
-        width: root.width - 2px;
-        height: root.height - 2px;
-        border-radius: max(0px, root.border-radius - 1px);
-        border-width: 1px;
-        border-color: Theme.glass-edge;
-    }
     @children
+}
+
+// Tap: the press feedback of a tappable surface in one piece: the M3 state
+// layer, the press ripple and the TouchArea that drives both. Fills its
+// parent (give it the parent's corners; per-corner radii work too); place
+// it where the parent's TouchArea would go. `centered` spreads the ripple
+// from the centre (round targets such as swatches and badges).
+export component Tap inherits Rectangle {
+    in property <color> ink: Theme.s.on-surface;
+    in property <bool> enabled: true;
+    in property <bool> centered;
+    in property <bool> focused;
+    out property <bool> pressed: touch.pressed;
+    out property <bool> has-hover: touch.has-hover;
+    out property <length> mouse-x: touch.mouse-x;
+    out property <length> mouse-y: touch.mouse-y;
+    callback clicked();
+    border-top-left-radius: root.border-radius;
+    border-top-right-radius: root.border-radius;
+    border-bottom-left-radius: root.border-radius;
+    border-bottom-right-radius: root.border-radius;
+    accessible-role: none;
+    StateLayer {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        ink: root.ink;
+        enabled: root.enabled;
+        pressed: touch.pressed;
+        hover: touch.has-hover;
+        focused: root.focused;
+    }
+    rip := Ripple {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        ink: root.ink;
+        enabled: root.enabled;
+        centered: root.centered;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
+    }
+}
+
+// List motion (FlClash's list feel, flclash.md "动效"): ListMotion watches a
+// list's length and says whether its items may move now, Entrance plays an
+// item's way in, and the lists use them like this: an item created while
+// `adding` grows into its place (height or a short rise) as it fades in; the
+// items after a removed one slide up from where they were while `removing`
+// (their content, since a layout's y cannot be animated); an item whose slot
+// now shows another entry (a model updated in place by position) replays a
+// short fade or slides in from the slot that entry had. Nothing moves until
+// the list has been shown for Theme.motion-medium (its first items arrive
+// still) or when more than Theme.motion-list-batch items come or go at once
+// (a reload, a search), and nothing at all when motion is off.
+export component ListMotion {
+    in property <int> count;
+    // The length before the latest change, kept until that change has been
+    // laid out and drawn (the items built for it read `adding` with it).
+    out property <int> before;
+    out property <int> delta: root.count - root.before;
+    out property <bool> on: root.settled && Theme.motion-on && root.delta != 0 && abs(root.delta) <= Theme.motion-list-batch;
+    out property <bool> adding: root.on && root.delta > 0;
+    out property <bool> removing: root.on && root.delta < 0;
+    property <bool> settled;
+    init => {
+        root.before = root.count;
+        warm.interval = Theme.motion-medium;
+        warm.start();
+    }
+    changed count => {
+        if (commit.running) { commit.restart(); } else { commit.start(); }
+    }
+    // A debounce, not motion: changes closer together than this count as one
+    // (a list changing all the time keeps a large delta and stays still).
+    commit := Timer {
+        running: false;
+        interval: 120ms;
+        triggered => {
+            self.stop();
+            root.before = root.count;
+        }
+    }
+    warm := Timer {
+        running: false;
+        interval: Theme.motion-medium;
+        triggered => {
+            self.stop();
+            root.settled = true;
+        }
+    }
+}
+
+// An item's way in: `t` goes 0 → 1 (ease-out) over Theme.motion-appear when
+// the item is created with `enter` set, or when `play()` is called; 1 at
+// rest and when motion is off. Read from animation-tick() only while it runs.
+export component Entrance {
+    in property <bool> enter;
+    out property <float> t: root.running ? Theme.ease-out(Theme.progress(animation-tick(), root.start, Theme.motion-appear)) : 1;
+    property <bool> running;
+    property <duration> start;
+    init => {
+        if (root.enter) { root.play(); }
+    }
+    public function play() {
+        if (!Theme.motion-on) {
+            return;
+        }
+        root.start = animation-tick();
+        root.running = true;
+        done.interval = Theme.motion-appear + 16ms;
+        if (done.running) { done.restart(); } else { done.start(); }
+    }
+    done := Timer {
+        running: false;
+        interval: Theme.motion-appear;
+        triggered => {
+            self.stop();
+            root.running = false;
+        }
+    }
 }
 
 // Content that fades in when it takes another's place (empty, loading and
@@ -1439,8 +1550,9 @@ export component SearchField inherits Rectangle {
 // action icons and the overflow menu. Rust folds actions into the overflow
 // (foldBarActions). Filter chips (keywords) sit under the bar. Pages draw
 // their scrolling content under the bar (padded by its height); once it is
-// scrolled under (`scrolled`), the bar turns into glass over it.
-export component TopBar inherits Glass {
+// scrolled under (`scrolled`), the bar turns to the opaque surface-container
+// role over it (M3's on-scroll container color).
+export component TopBar inherits Surface {
     in property <string> title;
     // 0 none, 1 back, 2 close
     in property <int> leading;
@@ -1455,22 +1567,15 @@ export component TopBar inherits Glass {
     in property <bool> loading;
     in property <[Keyword]> keywords;
     in property <color> bar-color: Theme.s.surface;
-    // Content is scrolled under the bar: glass tint and blur, a hairline below.
+    // Content is scrolled under the bar: the surface-container role.
     in property <bool> scrolled;
     callback action(string);
     callback search(string);
     callback keyword(string, bool);
     height: lay.preferred-height;
     level: 2;
-    active: root.scrolled;
-    edge: false;
-    moves-with-pages: true;
-    background: root.scrolled ? Theme.glass(2) : root.bar-color;
-    Rectangle {
-        y: root.height - 1px;
-        height: 1px;
-        background: root.scrolled ? (Theme.dark ? Theme.glass-edge : Theme.glass-outline) : transparent;
-    }
+    background: root.scrolled ? Theme.level(2) : root.bar-color;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     lay := VerticalLayout {
         HorizontalLayout {
             height: 64px;
@@ -1586,7 +1691,7 @@ export component ScrollPage inherits Rectangle {
     in property <length> side: Nav.side(self.width);
     callback action(string);
     background: Theme.s.surface;
-    // The column scrolls under the glass top app bar.
+    // The column scrolls under the top app bar.
     flick := Flickable {
         y: 0;
         height: parent.height;

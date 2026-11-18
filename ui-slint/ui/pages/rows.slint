@@ -8,7 +8,7 @@ import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction, Motion } from "../globals.slint";
 import { SettingRow, PageData } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Glass, Appear } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Surface, Tap, ListMotion, Entrance, Appear } from "../kit.slint";
 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
@@ -31,6 +31,33 @@ export component RowView inherits Rectangle {
     in property <int> index;
     in property <length> top-pad;
     in property <length> lazy-height: 72px;
+    // List motion (kit.slint ListMotion): a row added to a settled list
+    // grows to its height as it fades in; a row moved up by a removal above
+    // it (its index fell) slides up from where it was; a row whose slot now
+    // shows another entry (a model that updates rows in place) fades back in.
+    // Not for lazy rows (the app lists) or records (connections and logs
+    // come all the time). The list's layout places the rows (their y cannot
+    // be animated), so the slide moves the row's content.
+    in property <bool> enter;
+    in property <bool> list-moving;
+    in property <bool> list-removing;
+    property <bool> animated: !root.entry.lazy && root.entry.kind != "record";
+    grow := Entrance { enter: root.enter && root.animated; }
+    swap := Entrance { }
+    slide := Entrance { }
+    property <length> slide-from;
+    property <int> seen-index;
+    init => { root.seen-index = root.index; }
+    changed key => { if (root.list-moving && root.animated) { swap.play(); } }
+    changed index => {
+        if (root.list-removing && root.animated && root.index < root.seen-index) {
+            root.slide-from = (root.seen-index - root.index) * root.height;
+            slide.play();
+        }
+        root.seen-index = root.index;
+    }
+    opacity: min(grow.t, swap.t);
+    clip: grow.t < 1;
     property <length> estimated-y: root.top-pad + root.index * root.lazy-height;
     property <bool> near: root.estimated-y + root.lazy-height > root.view-top - 600px && root.estimated-y < root.view-bottom + 600px;
     property <bool> realized: !root.entry.lazy || root.near;
@@ -48,8 +75,10 @@ export component RowView inherits Rectangle {
             Nav.act2("row-image", root.entry.image-key, "");
         }
     }
-    height: root.entry.lazy ? root.lazy-height : lay.preferred-height;
+    height: root.entry.lazy ? root.lazy-height : lay.preferred-height * grow.t;
     lay := VerticalLayout {
+        y: root.slide-from * (1 - slide.t);
+        height: root.entry.lazy ? root.lazy-height : self.preferred-height;
         if root.realized: VerticalLayout {
             if entry.kind == "section": SectionTitle { text: root.entry.title; first: root.entry.checked; }
             if entry.kind == "gap": SectionGap { }
@@ -252,8 +281,7 @@ export component RowView inherits Rectangle {
                     height: rec.preferred-height;
                     accessible-role: list-item;
                     accessible-label: root.entry.title;
-                    rt := TouchArea { clicked => { Nav.act2("row", root.key, ""); } }
-                    StateLayer { border-radius: Theme.corner-small; pressed: rt.pressed; hover: rt.has-hover; }
+                    Tap { border-radius: Theme.corner-small; clicked => { Nav.act2("row", root.key, ""); } }
                     rec := VerticalLayout {
                         padding-left: 16px;
                         padding-right: 16px;
@@ -271,7 +299,7 @@ export component RowView inherits Rectangle {
                                 background: root.entry.lines == 2 && i == 0 ? Theme.s.error-container : root.entry.lines == 1 && i == 0 ? Theme.s.warning-container : Theme.s.surface-container-highest;
                                 lt := T { text: l; role: TextRole.label-medium; horizontal-stretch: 0;
                                     color: root.entry.lines == 2 && i == 0 ? Theme.s.on-error-container : root.entry.lines == 1 && i == 0 ? Theme.s.on-warning-container : Theme.s.on-surface-variant; }
-                                TouchArea { clicked => { Nav.act2("row-edit", root.key, "l" + i); } }
+                                Tap { border-radius: Theme.corner-extra-small; clicked => { Nav.act2("row-edit", root.key, "l" + i); } }
                             } }
                             Rectangle { horizontal-stretch: 1; }
                             if root.entry.has-trailing: Mid { IconButton {
@@ -301,7 +329,7 @@ export component RowView inherits Rectangle {
                                 color: Theme.s.on-surface-variant;
                                 horizontal-stretch: 0;
                                 vertical-alignment: center;
-                                TouchArea { clicked => { Nav.act2("row-edit", root.key, "r"); } }
+                                Tap { border-radius: Theme.corner-extra-small; ink: Theme.s.on-surface-variant; clicked => { Nav.act2("row-edit", root.key, "r"); } }
                             }
                             if root.entry.detail != "": Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant;  } }
                             for c[i] in root.entry.chain: HorizontalLayout {
@@ -315,7 +343,7 @@ export component RowView inherits Rectangle {
                                     background: i == root.entry.chain.length - 1 ? Theme.s.secondary-container : Theme.s.surface-container-highest;
                                     cl := T { text: c; role: TextRole.label-medium; horizontal-stretch: 0;
                                         color: i == root.entry.chain.length - 1 ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; }
-                                    TouchArea { clicked => { Nav.act2("row-edit", root.key, "c" + i); } }
+                                    Tap { border-radius: Theme.corner-extra-small; clicked => { Nav.act2("row-edit", root.key, "c" + i); } }
                                 } }
                             }
                         }
@@ -327,7 +355,7 @@ export component RowView inherits Rectangle {
             // CollapsibleHeader: label (count), the expand icon.
             if entry.kind == "group": Rectangle {
                 height: gh.preferred-height + 12px;
-                gt := TouchArea { y: 12px; height: parent.height - 12px; clicked => { Nav.act2("row", root.key, ""); } }
+                Tap { y: 12px; height: parent.height - 12px; border-radius: Theme.corner-small; clicked => { Nav.act2("row", root.key, ""); } }
                 gh := HorizontalLayout {
                     y: 12px;
                     padding: 8px;
@@ -523,10 +551,11 @@ export component RowsBody inherits Rectangle {
     in property <length> top-pad: 8px;
     // The room under the last row: the gesture inset, or the floating bar on home pages.
     in property <length> bottom: Nav.inset-bottom;
-    // Content is scrolled up from its start (the top app bar turns to glass).
+    // Content is scrolled up from its start (the top app bar takes the surface-container role).
     out property <bool> scrolled: flick.content-y < 0;
     // A home destination's rows report their scrolling (the floating bar slides away).
     in property <string> home;
+    rows-motion := ListMotion { count: root.d.rows.length; }
     flick := Flickable {
         content-height: body.preferred-height;
         // A list read bottom up (logs) starts at its end; scrolling away stops following.
@@ -541,6 +570,9 @@ export component RowsBody inherits Rectangle {
             for r[i] in root.d.rows: RowView {
                 entry: r;
                 index: i;
+                enter: rows-motion.adding && !root.d.reverse;
+                list-moving: rows-motion.on && !root.d.reverse;
+                list-removing: rows-motion.removing && !root.d.reverse;
                 top-pad: root.top-pad;
                 lazy-height: root.lazy-height;
                 page: root.d.id;
@@ -567,7 +599,7 @@ export component RowsPage inherits Rectangle {
         action-label: root.d.empty-action;
         action => { Nav.act2("empty", root.d.id, ""); }
     } }
-    // The rows scroll under the glass top app bar.
+    // The rows scroll under the top app bar.
     if root.d.rows.length > 0: Appear { RowsBody {
         y: 0;
         height: parent.height;
@@ -593,15 +625,15 @@ export component RowsPage inherits Rectangle {
         search(q) => { Nav.act2("search", root.d.id, q); }
         keyword(k, removable) => { Nav.act2("keyword", root.d.id, k); }
     }
-    // The foot bar floats over the rows as glass.
-    if root.d.foot-text != "": Glass {
+    // The foot bar floats over the rows: an opaque surface-container-high
+    // surface with a level 2 shadow.
+    if root.d.foot-text != "": Surface {
         x: 16px;
         width: parent.width - 32px;
         height: foot.preferred-height;
         y: parent.height - self.height - 12px - max(Nav.keyboard-height, root.bottom);
         border-radius: Theme.corner-large;
         level: 3;
-        soft: true;
         elevation: 2;
         foot := HorizontalLayout {
             padding-left: 16px;

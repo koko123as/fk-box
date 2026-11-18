@@ -75,7 +75,7 @@ export global Nav {
     in-out property <length> inset-left;
     in-out property <length> inset-right;
     in-out property <length> keyboard-height;
-    // The floating glass navigation bar (phones): a 72 dp pill inset
+    // The floating navigation bar (phones): a 72 dp pill inset
     // `bar-side` from the window's sides and `bar-margin` above the gesture
     // inset. The home pages scroll their content under it and leave
     // `home-bottom` under their last item so it can scroll clear of the bar.
@@ -210,9 +210,8 @@ export global Motion {
     // Slint's swipe threshold): the home pages' swipe handler stays off until
     // the finger lifts, so the page's own scrolling keeps the touch.
     in-out property <bool> vertical-lock;
-    // A home destination is moving (slide or fade-through): glass over the
-    // moving pages keeps its tint but drops the blur until it settles, so the
-    // backdrop is not re-blurred under a moving layer every frame.
+    // A home destination is moving (slide or fade-through), until it settles
+    // (the screenshot harness checks that it always comes back to rest).
     in-out property <bool> pages-moving;
     // A horizontal drag between home destinations is in progress (cards and
     // lists under it ignore the gesture).

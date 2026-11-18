@@ -244,6 +244,11 @@ mod tests {
                             ("error-container", s.on_error_container, s.error_container),
                             ("surface", s.on_surface, s.surface),
                             ("surface-variant", s.on_surface_variant, s.surface_container_highest),
+                            // The opaque floating surfaces: the navigation bar,
+                            // the scrolled top app bar and menus (container),
+                            // dialogs and the foot bar (container-high).
+                            ("surface-container", s.on_surface_variant, s.surface_container),
+                            ("surface-container-high", s.on_surface_variant, s.surface_container_high),
                             ("inverse", s.on_inverse_surface, s.inverse_surface),
                             ("success-container", s.on_success_container, s.success_container),
                             ("warning-container", s.on_warning_container, s.warning_container),
@@ -257,69 +262,6 @@ mod tests {
                     }
                 }
             }
-        }
-    }
-
-    /// The glass tokens (ui/theme.slint `glass-opacity-light/-dark`, read
-    /// from that file): text on a glass surface (the floating navigation bar,
-    /// the scrolled top app bar, menus, dialogs, the foot bar; tonal levels
-    /// 2 and 3) keeps 4.5:1 over every backdrop the app scrolls under it (the
-    /// surface and container roles, the accent roles and blurred text, taken
-    /// as on-surface half over the surface; the snackbar's inverse surface
-    /// floats above the glass, never under it), for a spread of seeds and styles.
-    #[test]
-    fn glass_text_meets_contrast() {
-        let theme = include_str!("../ui/theme.slint");
-        let token = |name: &str| -> f64 {
-            let line = theme.lines().find(|l| l.contains(&format!("property <float> {name}:"))).unwrap_or_else(|| panic!("{name} missing"));
-            line.rsplit(':').next().unwrap().trim().trim_end_matches(';').parse().unwrap()
-        };
-        let (light, dark_alpha) = (token("glass-opacity-light"), token("glass-opacity-dark"));
-        let over = |top: u32, alpha: f64, bottom: u32| -> u32 {
-            let ch = |shift: u32| {
-                let (a, b) = (((top >> shift) & 0xff) as f64, ((bottom >> shift) & 0xff) as f64);
-                ((a * alpha + b * (1.0 - alpha)).round() as u32) << shift
-            };
-            0xff00_0000 | ch(16) | ch(8) | ch(0)
-        };
-        let seeds = [0xff007aff, 0xffe53935, 0xff43a047, 0xfffdd835, 0xff8e24aa, 0xff795548, 0xff9e9e9e];
-        let styles = [ColorStyle::Vivid, ColorStyle::Tinted, ColorStyle::Soft, ColorStyle::Monochrome];
-        // The worst text contrast on glass of opacity `alpha`, light or dark,
-        // and the case it happens in.
-        let worst = |dark: bool, alpha: f64| -> (f64, String) {
-            let mut worst = (f64::MAX, String::new());
-            for seed in seeds {
-                for style in styles {
-                    for pure in [false, true] {
-                        let s = seeded_color_scheme(seed, dark, style).to_pure_black(pure);
-                        let backdrops = [
-                            s.surface, s.surface_container_lowest, s.surface_container_low, s.surface_container,
-                            s.surface_container_high, s.surface_container_highest, s.primary, s.primary_container,
-                            s.secondary_container, s.tertiary_container, s.error_container, s.success_container,
-                            s.warning_container, over(s.on_surface, 0.5, s.surface),
-                        ];
-                        for tint in [s.surface_container, s.surface_container_high] {
-                            for backdrop in backdrops {
-                                let glass = over(tint, alpha, backdrop);
-                                for (name, fg) in [("on-surface", s.on_surface), ("on-surface-variant", s.on_surface_variant)] {
-                                    let ratio = contrast(fg, glass);
-                                    if ratio < worst.0 {
-                                        worst = (ratio, format!("{name} over {backdrop:08x}, seed {seed:08x} {style:?} pure={pure}"));
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            worst
-        };
-        for (dark, alpha) in [(false, light), (true, dark_alpha)] {
-            let (ratio, case) = worst(dark, alpha);
-            // The lowest opacity that would still pass, to tune the token.
-            let lowest = (0..=100).map(|i| i as f64 / 100.0).find(|&a| worst(dark, a).0 >= 4.5).unwrap_or(1.0);
-            eprintln!("glass dark={dark} opacity {alpha}: worst {ratio:.2} ({case}); lowest passing opacity {lowest:.2}");
-            assert!(ratio >= 4.5, "glass dark={dark} opacity {alpha}: {ratio:.2} for {case}");
         }
     }
 }

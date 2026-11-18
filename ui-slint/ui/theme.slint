@@ -125,6 +125,15 @@ export global Theme {
     out property <float> touch-axis-ratio: 1.5;
     out property <duration> touch-drag-idle: 1200ms;
     out property <duration> touch-press-max: 3000ms;
+    // A phone form sheet dragged down by its handle (FlClash's modal sheet,
+    // after Flutter's BottomSheet): released past `sheet-close-fraction` of
+    // its height, or flung down faster than `sheet-fling-velocity` (dp per
+    // second), it closes; otherwise it springs back up in `motion-sheet`.
+    // `sheet-handle` is the strip above the sheet's page that carries the
+    // M3 drag handle (32 × 4 dp) and takes the drag.
+    out property <float> sheet-close-fraction: 0.5;
+    out property <float> sheet-fling-velocity: 700;
+    out property <length> sheet-handle: 24px;
 
     // Status chips (kit.slint Chip): the M3 24 / 32 dp heights, taller when
     // the label's line height grows with the font scale, so a container
@@ -187,6 +196,14 @@ export global Theme {
     // stops it).
     out property <duration> motion-yield: 260ms * motion-scale;
     out property <duration> motion-appear: 200ms * motion-scale;
+    // Lists (profiles, proxy groups, Rust-built rows such as rules): an
+    // added item fades in and grows into its place (or settles from
+    // `motion-list-rise` above it) in `motion-appear`, and the items after a
+    // removed one slide to their new places in the same time (kit.slint
+    // ListMotion, Entrance). A change of more than `motion-list-batch` items
+    // at once (a reload, a search) moves nothing.
+    out property <length> motion-list-rise: 8px;
+    out property <int> motion-list-batch: 3;
     out property <duration> motion-sway-period: 3600ms;
     out property <angle> motion-sway-turn: 0.7deg;
     out property <length> motion-sway-bob: 1.25px;
@@ -299,8 +316,12 @@ export global Theme {
     }
 
     // Shadow elevation, only for surfaces that overlap content (menus,
-    // snackbars, FABs, elevated cards and buttons): levels 1–3 as blur and
-    // offset. Routine hierarchy uses the tonal surface roles instead.
+    // snackbars, FABs, elevated cards and buttons, the floating navigation
+    // bar, the rows' foot bar): levels 1–3 as blur and offset. Routine
+    // hierarchy uses the tonal surface roles instead. Surfaces are opaque:
+    // nothing in the UI blurs or reads back what lies under it (no
+    // backdrop-blur; tools/verify_newui.py), so scrolling content under a
+    // floating surface costs no per-frame filter.
     public pure function shadow-blur(l: int) -> length {
         if (l <= 0) { return 0px; }
         if (l == 1) { return 2px; }
@@ -316,29 +337,4 @@ export global Theme {
     public pure function shadow-color(l: int) -> color {
         return l <= 0 ? transparent : s.shadow.with-alpha(dark ? 0.5 : 0.2);
     }
-
-    // Glass (Slint 1.19 `backdrop-blur`, drawn by the Skia renderer on
-    // Android; other renderers show the tint alone): the only blur in the UI,
-    // used through kit.slint's `Glass` for surfaces that float over scrolling
-    // content (the floating navigation bar, the top app bar once content is
-    // under it, menus, dialogs, the rows' foot bar). The tint is a tonal
-    // surface role at `glass-opacity`, high enough that text on it keeps
-    // 4.5:1 over any backdrop (src/theme.rs `glass_text_meets_contrast` reads
-    // these values from this file). `glass-blur` is the Gaussian standard
-    // deviation; `glass-blur-soft` for small surfaces (menus, the foot bar).
-    out property <float> glass-opacity-light: 0.78;
-    out property <float> glass-opacity-dark: 0.82;
-    out property <float> glass-opacity: dark ? glass-opacity-dark : glass-opacity-light;
-    out property <length> glass-blur: 24px;
-    out property <length> glass-blur-soft: 12px;
-    // The tint of a glass surface at tonal level `l` (see `level`).
-    public pure function glass(l: int) -> color {
-        return level(l).with-alpha(glass-opacity);
-    }
-    // A 1 dp edge that catches the light: brighter than the tint in both
-    // schemes, so the floating surface separates from content of any color.
-    out property <color> glass-edge: dark ? s.on-surface.with-alpha(0.14) : #ffffff.with-alpha(0.70);
-    // A second, darker hairline under the edge in light mode, where white on a
-    // light backdrop alone would vanish.
-    out property <color> glass-outline: dark ? transparent : s.outline-variant.with-alpha(0.55);
 }

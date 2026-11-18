@@ -80,11 +80,12 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 
 ## Deliberate departures from the Compose UI (2026-11-13)
 
-- Phones get a floating glass navigation bar (branch `ui/m3-rewrite`, Slint 1.19): a 72 dp pill
-  16 dp from the sides and 12 dp above the gesture inset, translucent surface-container with
-  `backdrop-blur`, an edge and a level 2 shadow; home pages scroll their content under it and pad
-  its end by `Nav.home-bottom`. The top app bar turns to glass once content scrolls under it; menus,
-  dialogs and the rows' foot bar are glass too (`ui/kit.slint` `Glass`, tokens in `ui/theme.slint`).
+- Phones get a floating navigation bar (branch `ui/m3-rewrite`, Slint 1.19): a 72 dp pill
+  16 dp from the sides and 12 dp above the gesture inset, an opaque surface-container with a
+  level 2 shadow; home pages scroll their content under it and pad its end by `Nav.home-bottom`.
+  The top app bar turns to the opaque surface-container role once content scrolls under it; menus,
+  dialogs and the rows' foot bar are opaque tonal surfaces too (`ui/kit.slint` `Surface`). Nothing
+  uses `backdrop-blur` (the earlier glass surfaces were removed for scrolling cost).
   The visual layer otherwise follows Material Design 3 (see flclash.md "Material Design 3 界面约定").
 - Routing rule editor: the Apps field opens the installed-app list used by Access control
   (search, system apps toggle, selected first) instead of a package-name text box; hidden for
@@ -105,9 +106,8 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
 - Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).
-  1.19 brings `backdrop-blur`, drawn by the Skia renderer (Android) and FemtoVG; the software renderer
-  draws the tint without the blur. Edition / project-file support is not adopted (the crate keeps the
-  default edition).
+  The UI does not use 1.19's `backdrop-blur` (tools/verify_newui.py forbids it). Edition /
+  project-file support is not adopted (the crate keeps the default edition).
 - `ui-slint/vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
   the purge hook. The font-data patch of the 1.18.1 copy is retired: upstream 1.19 builds typefaces
   from the font blob without copying it (`Data::new_with_owner`).
@@ -124,7 +124,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   held press was dropped when the pager locked out, and the list stayed still).
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
   fixture data; never part of the Android build). `--features shot-skia` with `SHOT_RENDERER=skia`
-  draws with the vendored Skia renderer on the CPU instead, which shows the glass blur. Its software renderer measures wrapped Chinese
+  draws with the vendored Skia renderer on the CPU instead. Its software renderer measures wrapped Chinese
   text with one font, so wrapped CJK footers show one line there; the Skia renderer on Android
   measures with the same font fallback it draws with.
 

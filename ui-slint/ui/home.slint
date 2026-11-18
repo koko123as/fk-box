@@ -1,5 +1,5 @@
 // The home page: Dashboard, Proxies, Profiles and Tools on the floating
-// glass navigation bar in compact windows (< 600 dp); in medium and wider windows the M3
+// navigation bar in compact windows (< 600 dp); in medium and wider windows the M3
 // navigation rail, which adds Requests and Logs (destination order is the
 // same in both). On phones the pages slide like a pager (FlClash's PageView:
 // a tap slides the new page in, a horizontal drag pulls the neighbour in and
@@ -13,7 +13,7 @@
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, Motion } from "globals.slint";
-import { Icon, IconButton, T, StateLayer, Ripple, FocusRing, Glass } from "kit.slint";
+import { Icon, IconButton, T, StateLayer, Ripple, FocusRing, Surface } from "kit.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { ProxiesPage } from "pages/proxies.slint";
 import { ProfilesPage } from "pages/profiles.slint";
@@ -507,13 +507,14 @@ component Pages inherits Rectangle {
 
 export component HomePage inherits Rectangle {
     background: Theme.s.surface;
-    // Compact windows: the floating glass navigation bar, a pill inset from
-    // the sides and above the gesture inset; the pages scroll under it (they
-    // pad their ends by Nav.home-bottom), and its tint and blur keep the
-    // destinations readable over them.
+    // Compact windows: the floating navigation bar, a pill inset from the
+    // sides and above the gesture inset; the pages scroll under it (they pad
+    // their ends by Nav.home-bottom). It is an opaque surface-container with
+    // a level 2 shadow (M3's navigation bar role, lifted off the content),
+    // so nothing under it is blurred or read back while the pages scroll.
     if Nav.mobile: Rectangle {
         Pages { }
-        bar := Glass {
+        bar := Surface {
             level: 2;
             elevation: 2;
             width: min(parent.width - 2 * Nav.bar-side, 480px);

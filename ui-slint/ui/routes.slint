@@ -207,7 +207,8 @@ export component RouteHost inherits Rectangle {
             return;
         } else {
             root.go-kind = !r.sheet-root ? 1 : Nav.mobile ? 2 : 3;
-            root.go-span = root.go-kind == 2 ? Theme.motion-sheet : Theme.motion-route;
+            // A sheet let go part of the way down covers the rest in its share of the time.
+            root.go-span = root.go-kind == 2 ? max(Theme.motion-short, Theme.motion-sheet * (1 - root.sink-from / max(1px, root.height))) : Theme.motion-route;
         }
         root.out-id = Motion.leaving-id;
         root.go-start = animation-tick();
@@ -215,12 +216,135 @@ export component RouteHost inherits Rectangle {
         gone.interval = root.go-span + 16ms;
         if (gone.running) { gone.restart(); } else { gone.start(); }
     }
+    // The phone sheet's drag (FlClash's modal sheet, after Flutter's
+    // BottomSheet): the handle strip above a form's first page follows the
+    // finger down (never above its place); released past
+    // Theme.sheet-close-fraction of the height, or flung down faster than
+    // Theme.sheet-fling-velocity, the form is dismissed (its guard may ask
+    // first) and sinks on from where it was let go; otherwise it springs
+    // back up. `drag-id` is the route under the finger (or held at its
+    // offset while it starts to leave), `drag-y` how far it is pulled.
+    property <int> drag-id: -1;
+    property <bool> dragging;
+    property <length> drag-y;
+    property <length> drag-press;
+    property <length> drag-last;
+    property <duration> drag-time;
+    // Downward speed in dp per second, smoothed over the last moves.
+    property <float> drag-speed;
+    // The spring back: from `snap-from` to 0 over motion-sheet.
+    property <int> snap-id: -1;
+    property <length> snap-from;
+    property <duration> snap-start;
+    property <length> snap-y: root.snap-id >= 0 ? root.snap-from * (1 - Theme.ease-out(Theme.progress(animation-tick(), root.snap-start, Theme.motion-sheet))) : 0px;
+    // Where a sheet let go past the threshold sinks on from (0 for a close
+    // by the close button or Back).
+    property <length> sink-from;
+    // How far the sheet of route `id` is off its place by a drag or a spring back.
+    pure function sheet-offset(id: int) -> length {
+        return id == root.drag-id ? root.drag-y : id == root.snap-id ? root.snap-y : 0px;
+    }
+    function drag-begin(id: int, y: length) {
+        snapped.stop();
+        root.drag-y = id == root.snap-id ? root.snap-y : 0px;
+        root.snap-id = -1;
+        root.drag-id = id;
+        root.dragging = true;
+        root.drag-press = y - root.drag-y;
+        root.drag-last = y;
+        root.drag-time = animation-tick();
+        root.drag-speed = 0;
+        drag-idle.interval = Theme.touch-drag-idle;
+        if (drag-idle.running) { drag-idle.restart(); } else { drag-idle.start(); }
+    }
+    function drag-move(id: int, y: length) {
+        if (!root.dragging || id != root.drag-id) {
+            return;
+        }
+        root.drag-y = max(0px, y - root.drag-press);
+        let now = animation-tick();
+        // Moves within one frame share its tick: they count together.
+        if (now - root.drag-time >= 1ms) {
+            let speed = (y - root.drag-last) / 1px * 1000 / ((now - root.drag-time) / 1ms);
+            root.drag-speed = 0.6 * speed + 0.4 * root.drag-speed;
+            root.drag-last = y;
+            root.drag-time = now;
+        }
+        if (drag-idle.running) { drag-idle.restart(); } else { drag-idle.start(); }
+    }
+    function drag-end(id: int) {
+        if (!root.dragging || id != root.drag-id) {
+            return;
+        }
+        drag-idle.stop();
+        root.dragging = false;
+        // A finger that stopped before lifting flings nothing.
+        let speed = animation-tick() - root.drag-time > 100ms ? 0 : root.drag-speed;
+        if (root.drag-y > 0px && (root.drag-y > root.height * Theme.sheet-close-fraction || speed > Theme.sheet-fling-velocity)) {
+            root.sink-from = root.drag-y;
+            Nav.dismiss-form(id);
+            // Leaving (Motion.leaving-id names it): the sheet stays where it
+            // was let go until the way out takes over from there.
+            if (Motion.leaving-id == id) {
+                return;
+            }
+            root.sink-from = 0px;
+            // Gone at once (motion off): nothing to hold.
+            if (root.count == 0 || Nav.routes[root.count - 1].id != id) {
+                root.drag-id = -1;
+                root.drag-y = 0px;
+                return;
+            }
+            // A guard that asks first leaves the sheet open: it springs back.
+        }
+        root.snap-back();
+    }
+    // The sheet under the finger goes back to its place.
+    function snap-back() {
+        drag-idle.stop();
+        root.dragging = false;
+        if (root.drag-id < 0) {
+            return;
+        }
+        root.snap-from = root.drag-y;
+        root.snap-id = root.drag-id;
+        root.snap-start = animation-tick();
+        root.drag-id = -1;
+        root.drag-y = 0px;
+        snapped.interval = Theme.motion-sheet + 16ms;
+        if (snapped.running) { snapped.restart(); } else { snapped.start(); }
+    }
+    snapped := Timer {
+        running: false;
+        interval: Theme.motion-sheet;
+        triggered => {
+            self.stop();
+            root.snap-id = -1;
+        }
+    }
+    // A drag whose release never arrives (no move for Theme.touch-drag-idle),
+    // or the host resetting gestures, springs the sheet back.
+    drag-idle := Timer {
+        running: false;
+        interval: Theme.touch-drag-idle;
+        triggered => {
+            self.stop();
+            if (root.dragging) { root.snap-back(); }
+        }
+    }
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { if (root.dragging) { root.snap-back(); } }
     gone := Timer {
         running: false;
         interval: Theme.motion-long + 16ms;
         triggered => {
             self.stop();
             root.going = false;
+            root.sink-from = 0px;
+            if (root.drag-id == root.out-id) {
+                root.drag-id = -1;
+                root.drag-y = 0px;
+            }
             Nav.route-left(root.out-id);
         }
     }
@@ -251,13 +375,22 @@ export component RouteHost inherits Rectangle {
     }
     for r[i] in Nav.routes: Rectangle {
         property <bool> card: r.form && !Nav.mobile;
+        // A form's first page on a phone: a sheet with a drag handle above it.
+        property <bool> sheet: r.sheet-root && Nav.mobile;
         // This route is the one fading (or rising) in.
         property <bool> arriving: root.entering && i == root.enter-depth - 1;
         // This route is on its way out (Motion.leaving-id).
         property <bool> out: root.going && r.id == root.out-id;
+        // Where the sheet's top edge is: rising in, sinking out (on from where
+        // a drag let it go), or pulled down by its handle.
+        property <length> sheet-y: arriving ? root.height * (1 - Theme.ease-out(root.et))
+            : out && root.go-kind == 2 ? root.sink-from + (root.height - root.sink-from) * (1 - Theme.ease-out(1 - root.gt))
+            : root.sheet-offset(r.id);
         // A page fading in over the page under it gets an opaque surface
-        // first, so the two never show through each other (fade-through).
-        background: arriving && Nav.mobile && !r.sheet-root ? Theme.s.surface.with-alpha(clamp(root.et * 3, 0, 1)) : transparent;
+        // first, so the two never show through each other (fade-through). A
+        // phone sheet has the M3 32 % scrim under it, fading as it moves away.
+        background: sheet ? Theme.s.scrim.with-alpha(0.32 * clamp(1 - self.sheet-y / max(1px, root.height), 0, 1))
+            : arriving && Nav.mobile && !r.sheet-root ? Theme.s.surface.with-alpha(clamp(root.et * 3, 0, 1)) : transparent;
         // A page opened from a container draws over the growing surface (it
         // fades in on an opaque surface) and over the shrinking one on the
         // way back.
@@ -273,17 +406,25 @@ export component RouteHost inherits Rectangle {
             opacity: arriving ? root.et : 1;
             TouchArea { clicked => { Nav.dismiss-form(r.id); } }
         }
+        // The sheet's container: extra-large top corners above its page.
+        if sheet: Rectangle {
+            visible: shown;
+            y: parent.sheet-y;
+            height: root.height;
+            border-top-left-radius: Theme.corner-extra-large;
+            border-top-right-radius: Theme.corner-extra-large;
+            background: Theme.s.surface;
+        }
         RoutePage {
             visible: shown;
             route: r;
             index: i;
             width: card ? min(580px, root.width * 0.9) : r.form || r.pane < 0 ? root.width : root.width - root.pane-x;
-            height: card ? min(720px, (root.height - Nav.keyboard-height) * 0.85) : root.height;
+            height: card ? min(720px, (root.height - Nav.keyboard-height) * 0.85) : sheet ? root.height - Theme.sheet-handle : root.height;
             x: card ? (root.width - self.width) / 2 : r.form || r.pane < 0 ? 0px : root.pane-x;
-            // A phone form rises from the bottom edge as a sheet.
+            // A phone form rises from the bottom edge as a sheet, under its handle.
             y: card ? (root.height - Nav.keyboard-height - self.height) / 2
-                : arriving && r.sheet-root ? root.height * (1 - Theme.ease-out(root.et))
-                : out && root.go-kind == 2 ? root.height * (1 - Theme.ease-out(1 - root.gt)) : 0px;
+                : sheet ? parent.sheet-y + Theme.sheet-handle : 0px;
             border-radius: card ? Theme.corner-extra-large : 0px;
             clip: card;
             transform-scale: card && r.sheet-root && arriving ? Theme.motion-enter-scale + (1 - Theme.motion-enter-scale) * Theme.ease-out(root.et) : 1;
@@ -292,6 +433,37 @@ export component RouteHost inherits Rectangle {
             opacity: i == root.count - 1 && root.pending ? 0
                 : i == root.depth - 1 && root.opening ? clamp((root.t - 0.6) / 0.4, 0, 1)
                 : arriving && (card || !r.sheet-root) ? root.et : 1;
+        }
+        // The M3 drag handle (32 × 4 dp, on-surface-variant at 40 %) in the
+        // strip above the sheet's page; the whole strip takes the drag.
+        if sheet: Rectangle {
+            visible: shown;
+            y: parent.sheet-y;
+            height: Theme.sheet-handle;
+            accessible-role: button;
+            accessible-label: @tr("Close");
+            accessible-action-default => { Nav.dismiss-form(r.id); }
+            Rectangle {
+                width: 32px;
+                height: 4px;
+                border-radius: 2px;
+                background: Theme.s.on-surface-variant.with-alpha(0.4);
+            }
+            TouchArea {
+                enabled: i == root.count - 1 && !out && !arriving;
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) {
+                        root.drag-begin(r.id, self.absolute-position.y + self.mouse-y);
+                    } else if (e.kind == PointerEventKind.up) {
+                        root.drag-end(r.id);
+                    } else if (e.kind == PointerEventKind.cancel) {
+                        if (root.drag-id == r.id) { root.snap-back(); }
+                    }
+                }
+                moved => {
+                    if (self.pressed) { root.drag-move(r.id, self.absolute-position.y + self.mouse-y); }
+                }
+            }
         }
         // A page on its way out takes no input.
         if out: TouchArea { }
