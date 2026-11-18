@@ -10,23 +10,23 @@
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
 | FlClash 布局参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（仅页面布局；控件为 Material 3），见 [flclash.md](flclash.md#参考版本与来源清单) |
-| FK-box 版本 / versionCode | `1.15.5-beta.1` / `755`，以 [version.properties](version.properties) 为准 |
-| 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
+| fk-box 版本 / versionCode | `1.15.5-beta.1` / `755`，以 [version.properties](version.properties) 为准 |
+| 应用名 / Gradle 根项目名 / APK 前缀 | `fk-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
 | 源码 namespace / 包路径 | `io.nekohasekai.sfa` |
 | Android / flavor | API 24（Android 7.0）起，`play` / `other` |
 
-应用基线与核心标签、FlClash 参考提交分别维护；FK-box 的 versionCode 不必等于上游基线的值。以上描述当前源码，不表示已有 Release 包含全部改动。
+应用基线与核心标签、FlClash 参考提交分别维护；fk-box 的 versionCode 不必等于上游基线的值。以上描述当前源码，不表示已有 Release 包含全部改动。
 
 品牌、安装身份及组件约定：
 
-- 应用标签、Gradle 根项目名和 APK 前缀统一使用 FK-box。应用图标为白底蓝色笔刷字母 S；自适应图标的主题单色层（`ic_launcher_monochrome`）与通知/快捷开关小图标（`ic_menu`，24dp 画布内 20dp 高）都是去掉白底的 S 剪影。保留上游许可和非官方分支说明，不改写真实来源名称。
+- 应用标签、Gradle 根项目名和 APK 前缀统一使用 fk-box。应用图标为白底蓝色笔刷字母 S；自适应图标的主题单色层（`ic_launcher_monochrome`）与通知/快捷开关小图标（`ic_menu`，24dp 画布内 20dp 高）都是去掉白底的 S 剪影。保留上游许可和非官方分支说明，不改写真实来源名称。
 - namespace、Kotlin/Java 类路径、AIDL 描述符及 RootServer 反射类名继续使用 `io.nekohasekai.sfa`。Provider authorities 使用 `${applicationId}`，服务控制和 USB/Taildrop 等广播使用 `BuildConfig.APPLICATION_ID` 或运行时包名。
 - 可与原版 SFA 并行安装，私有配置和数据相互独立；原版数据需导出/导入。Flutter 迁移沿用 B-box 既有安装身份、数据库及配置，不以换 UI 为由清空数据。
 
-## FK-box（本仓库 main）
+## fk-box（本仓库 main）
 
-- 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产。
+- 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `fk-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `fk-box-*` 发布资产，同时接受改名前的 `FK-box-*`（见 [关于页更新检查](#已移除能力与兼容入口)）。
 - 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/m3-rewrite` 上界面为 Material Design 3，基于 Slint 1.19，手机端为悬浮玻璃导航栏，浮在滚动内容之上的表面用 `backdrop-blur` 玻璃（Android 的 Skia 渲染器绘制），见 [flclash.md](flclash.md#material-design-3-界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
 - [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Slint 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行界面源码检查。
 
@@ -139,7 +139,7 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 - **旧任务兼容：** 启动时取消 WorkManager 的 `AutoUpdate`。原 `UpdateWorker` 占位类已删除：残留任务若在取消前被调度，WorkManager 找不到该类，只会把它记为失败，不会崩溃，也不会下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
 - **Binder/设置兼容：** Root/Shizuku 已退役的安装事务编号 2 不复用；Root 的模块专用编号 3 与采集器编号 10 也保持空缺，其余编号不重排。删除功能的历史设置不再读取，不清空无关设置和数据库。
 
-关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `FK-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `FK-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
+关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `fk-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `fk-box-<版本>-<ABI>.apk`。改名前的 Release 使用 `FK-box-version-metadata.json` 与 `FK-box-<版本>-<ABI>.apk`，两种前缀都接受（新前缀优先）：REST 列表按 Release 实际列出的资产选 APK，`latest/download` 在新名称返回 404 时再取旧名称的元数据，并按其前缀拼 APK 名。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
 
 ## 地理数据资源
 
@@ -177,9 +177,9 @@ Release 构建开启 R8 与 `isShrinkResources`（[keep.xml](app/src/main/res/ra
 
 应用自身的 Baseline Profile 位于 [baseline-prof.txt](app/src/main/baseline-prof.txt)，AGP 将其与库的配置合并进 `assets/dexopt/baseline.prof`，由 `profileinstaller` 在旁加载安装时编译。当前文件为手写的启动/常用页面规则（CI 模拟器为 x86_64，arm64 libbox 无法运行，不能在 CI 中采集）。[baselineprofile](baselineprofile/) 模块提供 Macrobenchmark `BaselineProfileRule` 生成器，仅在 `-PbaselineProfile=true` 时加入构建（同时定义应用的 `benchmark` 构建类型：Release 代码、不混淆、`profileable`、CI 调试签名），常规与 Release 构建不受影响。在 API 33+ 的 ARM64 设备上运行 `./gradlew -PbaselineProfile=true -Parm64Only=true :baselineprofile:connectedOtherBenchmarkAndroidTest`，再把输出的 `*-baseline-prof.txt` 替换到 `app/src/main/baseline-prof.txt`。
 
-Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及界面源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
+Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及界面源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `fk-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `fk-box`），所在 Artifact 名为 `fk-box-<版本>-arm64-v8a-release`，保留 30 天。
 
-`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
+`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `fk-box-version-metadata.json`，alpha/beta/rc 标为预发布；另以单独、失败不阻断的上传附带同内容的 `FK-box-version-metadata.json`，让改名前的安装仍能发现新版本（它们只认 `FK-box-*` APK，因此只会看到“有更新”并打开 Release 页面，不会直接下载）。
 
 ## 验证与历史记录
 
@@ -188,12 +188,12 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 | [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、Material Design 3 界面约束（禁止着色器/`blur()` 滤镜，`backdrop-blur` 只在 `Glass` 组件中经玻璃令牌使用，悬浮玻璃导航栏与玻璃顶部应用栏，Slint ≥ 1.19 且 vendored crate 同版本；阴影只经 `Theme.shadow-*` 令牌；页面不写十六进制颜色，取色器与二维码除外；M3 令牌与组件存在）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
 | [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及界面源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
-| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
+| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `fk-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
 | [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用 newui.yml 的核心/源码验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
 
 JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界和 QRS；[ServiceSettingsChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/ServiceSettingsChangeTest.kt) 覆盖服务开关保存后的启动确认、失败/超时/取消恢复及恢复错误保留；[ProfileChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/database/ProfileChangeTest.kt) 覆盖配置持久化失败、应用超时/取消、恢复确认及恢复错误保留。[ProfileRecoveryTest.kt](app/src/androidTest/java/io/nekohasekai/sfa/bridge/ProfileRecoveryTest.kt) 覆盖实际 libbox 二进制导入、查询策略持久化、端口占用导致的 JSON 编辑/配置切换/手动与自动订阅/完整备份恢复失败，以及停服和未选中配置更新的服务状态。界面验证范围见 [flclash.md](flclash.md)。
 
-模拟器统一入口为 [android_smoke.py](tools/android_smoke.py)：安装应用和仪器测试 APK，分别重置应用数据后运行 UI smoke 与原生回归，前一组失败不跳过后一组。UI 覆盖首次启动、远程 JSON 导入、VPN 授权、启停、实际内核分组及进程重启后配置保留；原生组运行全部仪器测试并拒绝零测试结果。`build/android-smoke/` 保存截图、logcat、失败堆栈、仪器测试输出及带源码 SHA 的 `results.json`，超时也保留日志。启动阶段允许截图后关闭一次 Google APIs 模拟器的 Pixel Launcher ANR 弹窗，再重新打开 FK-box；不关闭 FK-box 自身的 ANR 或其他错误。脚本仅用于 CI 模拟器，不能对保有用户数据的设备执行。
+模拟器统一入口为 [android_smoke.py](tools/android_smoke.py)：安装应用和仪器测试 APK，分别重置应用数据后运行 UI smoke 与原生回归，前一组失败不跳过后一组。UI 覆盖首次启动、远程 JSON 导入、VPN 授权、启停、实际内核分组及进程重启后配置保留；原生组运行全部仪器测试并拒绝零测试结果。`build/android-smoke/` 保存截图、logcat、失败堆栈、仪器测试输出及带源码 SHA 的 `results.json`，超时也保留日志。启动阶段允许截图后关闭一次 Google APIs 模拟器的 Pixel Launcher ANR 弹窗，再重新打开 fk-box；不关闭 fk-box 自身的 ANR 或其他错误。脚本仅用于 CI 模拟器，不能对保有用户数据的设备执行。
 
 查询策略回归在每次切换 Root/Shizuku 并刷盘后重新打开 Room 数据库读取持久值，同时核对状态流，不以读取同一内存缓存代替持久化验证。
 

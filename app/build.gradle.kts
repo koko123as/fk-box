@@ -91,7 +91,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
-        base.archivesName.set("FK-box-${versionName}")
+        base.archivesName.set("fk-box-${versionName}")
     }
 
     signingConfigs {

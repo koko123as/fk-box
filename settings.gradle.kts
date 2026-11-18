@@ -18,7 +18,7 @@ dependencyResolutionManagement {
         }
     }
 }
-rootProject.name = "FK-box"
+rootProject.name = "fk-box"
 include(":app")
 // Baseline Profile generator, only with -PbaselineProfile=true (see app.md).
 if (providers.gradleProperty("baselineProfile").orNull.toBoolean()) {

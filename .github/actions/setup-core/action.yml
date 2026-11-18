@@ -1,5 +1,5 @@
-name: Prepare FK-box core
-description: Check out the matching sing-box version and install all FK-box patches and bindings.
+name: Prepare fk-box core
+description: Check out the matching sing-box version and install all fk-box patches and bindings.
 
 outputs:
   version:

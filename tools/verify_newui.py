@@ -9,7 +9,7 @@ native = ROOT / "app/src/main/java/io/nekohasekai/sfa"
 compose = native / "compose"
 errors = []
 
-# FK-box: the app UI is Rust + Slint (ui-slint/, libfkui.so) hosted by
+# fk-box: the app UI is Rust + Slint (ui-slint/, libfkui.so) hosted by
 # BoxActivity (GameActivity). compose/ keeps only the stable entry points and
 # the QR camera analyzer; the Jetpack Compose UI and the Flutter module are gone.
 if (ROOT / "flutter").exists():

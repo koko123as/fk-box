@@ -82,7 +82,7 @@ def main():
         if line.strip() and not line.lstrip().startswith('#') and '=' in line
     )
     apks = list(Path('app/build/outputs/apk/other/release').glob('*.apk'))
-    expected_name = f"FK-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
+    expected_name = f"fk-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
     if len(apks) != 1 or apks[0].name != expected_name:
         raise SystemExit(f'Expected exactly one {expected_name}, found: {apks}')
     with ZipFile(apks[0]) as apk:

@@ -38,7 +38,7 @@ def adb(*args, binary=False, timeout=45):
 # MRS reads of the ARM ID registers
 # (0xd538xxxx, e.g. MIDR_EL1) that the Go runtime inside libbox.so issues at
 # start-up, so every process that loads libbox dies with SIGILL before any app
-# code runs. That is a property of the emulator, not of FK-box; it is reported
+# code runs. That is a property of the emulator, not of fk-box; it is reported
 # as an environment skip, never as a pass, and any other failure still fails.
 TRANSLATION_SIGILL = re.compile(r"(?:berberis|ndk_translation)\s*:\s*Undefined instruction 0xd538[0-9a-f]{4}")
 
@@ -96,7 +96,7 @@ def launched(label, settle=15):
         time.sleep(1)
     else:
         check_translation()
-        raise AssertionError(f"{label}: FK-box never reached the resumed state (pid {pid})")
+        raise AssertionError(f"{label}: fk-box never reached the resumed state (pid {pid})")
     end = time.monotonic() + settle
     while time.monotonic() < end:
         current = app_pid()
@@ -107,11 +107,11 @@ def launched(label, settle=15):
     found = crashes()
     if found:
         check_translation()
-        raise AssertionError(f"{label}: crash buffer has FK-box entries: {found[:3]}")
+        raise AssertionError(f"{label}: crash buffer has fk-box entries: {found[:3]}")
     found = panics()
     if found:
         raise AssertionError(f"{label}: the UI library panicked: {found[:3]}")
-    assert resumed(), f"{label}: FK-box is no longer the resumed activity"
+    assert resumed(), f"{label}: fk-box is no longer the resumed activity"
     capture(label)
     return pid
 
@@ -179,7 +179,7 @@ def mitm_origin():
         root = Path(directory)
         commands = [
             ["openssl", "req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
-             "-sha256", "-days", "1", "-subj", "/CN=FK-box independent CI origin root", "-keyout", "root.key", "-out", "root.pem",
+             "-sha256", "-days", "1", "-subj", "/CN=fk-box independent CI origin root", "-keyout", "root.key", "-out", "root.pem",
              "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign"],
             ["openssl", "req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes",
              "-subj", "/CN=origin.test", "-keyout", "origin.key", "-out", "origin.csr"],
