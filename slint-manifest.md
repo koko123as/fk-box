@@ -80,10 +80,12 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 
 ## Deliberate departures from the Compose UI (2026-11-13)
 
-- Phones get the M3 navigation bar (branch `ui/m3-rewrite`; the floating FlClash bar before it):
-  docked at the bottom, 80 dp above the gesture inset; home pages pad their content by
-  `Nav.home-bottom`. The visual layer follows Material Design 3 (tokens in `ui/theme.slint`,
-  components in `ui/kit.slint`, see flclash.md "Material Design 3 界面约定").
+- Phones get a floating glass navigation bar (branch `ui/m3-rewrite`, Slint 1.19): a 72 dp pill
+  16 dp from the sides and 12 dp above the gesture inset, translucent surface-container with
+  `backdrop-blur`, an edge and a level 2 shadow; home pages scroll their content under it and pad
+  its end by `Nav.home-bottom`. The top app bar turns to glass once content scrolls under it; menus,
+  dialogs and the rows' foot bar are glass too (`ui/kit.slint` `Glass`, tokens in `ui/theme.slint`).
+  The visual layer otherwise follows Material Design 3 (see flclash.md "Material Design 3 界面约定").
 - Routing rule editor: the Apps field opens the installed-app list used by Access control
   (search, system apps toggle, selected first) instead of a package-name text box; hidden for
   Xray rules, which cannot match apps.
@@ -102,9 +104,15 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 - JetBrains Mono is no longer bundled (neither in `ui-slint/ui/fonts` nor `res/font`); code and
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
-- `ui-slint/vendor/i-slint-renderer-skia` (1.18.1 + FKBOX-PATCH.md): font data shared without
-  copies and a 32 MB GPU resource cache.
-- `ui-slint/vendor/i-slint-backend-android-activity` (1.18.1 + FKBOX-PATCH.md): the GameActivity
+- Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).
+  1.19 brings `backdrop-blur`, drawn by the Skia renderer (Android) and FemtoVG; the software renderer
+  draws the tint without the blur. Edition / project-file support is not adopted (the crate keeps the
+  default edition).
+- `ui-slint/vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
+  the purge hook. The font-data patch of the 1.18.1 copy is retired: upstream 1.19 builds typefaces
+  from the font blob without copying it (`Data::new_with_owner`).
+- `ui-slint/vendor/i-slint-backend-android-activity` (1.19.0 + FKBOX-PATCH.md, rebased by a
+  three-way merge; the Java helper hunk re-applied by hand to 1.19's rewritten helper): the GameActivity
   IME path exchanges text state with GameTextInput in UTF-16 with an ordered selection (upstream
   sent UTF-8 byte offsets, which crashed GameTextInput's backspace with Chinese text and panicked
   on composing regions), does not echo the IME's own state back (each echo restarted the IME and
@@ -112,7 +120,8 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   Host tests: `src/ime_tests.rs`. `BoxActivity.dispatchKeyEvent` orders the editable's selection
   and drops a key that still throws IndexOutOfBoundsException.
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
-  fixture data; never part of the Android build). Its software renderer measures wrapped Chinese
+  fixture data; never part of the Android build). `--features shot-skia` with `SHOT_RENDERER=skia`
+  draws with the vendored Skia renderer on the CPU instead, which shows the glass blur. Its software renderer measures wrapped Chinese
   text with one font, so wrapped CJK footers show one line there; the Skia renderer on Android
   measures with the same font fallback it draws with.
 

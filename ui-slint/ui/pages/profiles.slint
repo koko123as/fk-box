@@ -89,13 +89,7 @@ export component ProfilesPage inherits Rectangle {
     property <int> columns: clamp(floor((self.width - 32px + gap) / (300px + gap)), 1, 3);
     property <length> card-height: Theme.leading(TextRole.title-medium) + 4px + Theme.leading(TextRole.body-small) + (Profiles.any-usage ? 10px : 0px) + 20px;
     background: Theme.s.surface;
-    bar := TopBar {
-        y: 0;
-        title: @tr("Profiles");
-        leading: root.leading;
-        actions: root.picker ? [] : Profiles.bar-actions;
-        action(id) => { Nav.act("profiles-bar", id); }
-    }
+    property <bool> scrolled;
     if App.remote: EmptyState {
         y: bar.height;
         height: parent.height - bar.height;
@@ -111,13 +105,15 @@ export component ProfilesPage inherits Rectangle {
         action-label: @tr("Add profile");
         action => { Nav.open-menu("add-profile", root.width / 2, root.height / 2); }
     }
+    // The cards scroll under the glass top app bar (and the floating navigation bar).
     if !App.remote && Profiles.rows.length > 0: Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
-        content-height: grid.height + 8px + 16px + (root.picker ? Nav.inset-bottom : Nav.home-bottom);
+        y: 0;
+        height: parent.height;
+        content-height: bar.height + grid.height + 8px + 16px + (root.picker ? Nav.inset-bottom : Nav.home-bottom);
+        changed content-y => { root.scrolled = self.content-y < 0; }
         grid := Rectangle {
             property <length> cell: (root.width - 32px - (root.columns - 1) * root.gap) / root.columns;
-            y: 8px;
+            y: bar.height + 8px;
             height: ceil(Profiles.rows.length / root.columns) * (root.card-height + root.gap);
             for p[i] in Profiles.rows: ProfileCard {
                 x: 16px + mod(i, root.columns) * (grid.cell + root.gap);
@@ -128,6 +124,14 @@ export component ProfilesPage inherits Rectangle {
                 picker: root.picker;
             }
         }
+    }
+    bar := TopBar {
+        y: 0;
+        title: @tr("Profiles");
+        leading: root.leading;
+        actions: root.picker ? [] : Profiles.bar-actions;
+        scrolled: root.scrolled && !App.remote && Profiles.rows.length > 0;
+        action(id) => { Nav.act("profiles-bar", id); }
     }
 }
 

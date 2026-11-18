@@ -272,28 +272,7 @@ export component ProxiesPage inherits Rectangle {
     property <length> scroll-target;
     property <int> scroll-tick;
     background: Theme.s.surface;
-    bar := TopBar {
-        y: 0;
-        title: @tr("Proxies");
-        leading: root.form ? 2 : 0;
-        searchable: true;
-        menu-key: "proxies";
-        actions: Proxies.list ? [] : [
-            { id: "proxies-test", glyph: Icons.bolt, tooltip: @tr("Test latency"), enabled: App.running && Proxies.groups.length > 0, loading: root.current.testing },
-            { id: "proxies-locate", glyph: Icons.locate, tooltip: @tr("Scroll to selected"), enabled: Proxies.groups.length > 0 },
-        ];
-        action(id) => {
-            if (id == "proxies-locate") {
-                if (root.current.selected-index >= 0) {
-                    root.scroll-target = -floor(root.current.selected-index / root.columns) * Metrics.row-extent;
-                    root.scroll-tick += 1;
-                }
-            } else {
-                Nav.act(id, root.current.tag);
-            }
-        }
-        search(q) => { Nav.act("proxies-search", q); }
-    }
+    property <bool> scrolled;
     if Proxies.groups.length == 0: EmptyState {
         y: bar.height;
         height: parent.height - bar.height;
@@ -337,14 +316,16 @@ export component ProxiesPage inherits Rectangle {
             }
         }
     }
+    // The list view scrolls under the glass top app bar.
     if Proxies.groups.length > 0 && Proxies.list: Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
+        y: 0;
+        height: parent.height;
         content-height: list.preferred-height;
+        changed content-y => { root.scrolled = self.content-y < 0; }
         list := VerticalLayout {
             padding-left: 16px;
             padding-right: 16px;
-            padding-top: 8px;
+            padding-top: bar.height + 8px;
             padding-bottom: 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             spacing: 0px;
             for g in Proxies.groups: VerticalLayout {
@@ -366,6 +347,29 @@ export component ProxiesPage inherits Rectangle {
                 Rectangle { height: Nav.gap; }
             }
         }
+    }
+    bar := TopBar {
+        y: 0;
+        title: @tr("Proxies");
+        leading: root.form ? 2 : 0;
+        searchable: true;
+        menu-key: "proxies";
+        actions: Proxies.list ? [] : [
+            { id: "proxies-test", glyph: Icons.bolt, tooltip: @tr("Test latency"), enabled: App.running && Proxies.groups.length > 0, loading: root.current.testing },
+            { id: "proxies-locate", glyph: Icons.locate, tooltip: @tr("Scroll to selected"), enabled: Proxies.groups.length > 0 },
+        ];
+        action(id) => {
+            if (id == "proxies-locate") {
+                if (root.current.selected-index >= 0) {
+                    root.scroll-target = -floor(root.current.selected-index / root.columns) * Metrics.row-extent;
+                    root.scroll-tick += 1;
+                }
+            } else {
+                Nav.act(id, root.current.tag);
+            }
+        }
+        scrolled: root.scrolled && Proxies.groups.length > 0 && Proxies.list;
+        search(q) => { Nav.act("proxies-search", q); }
     }
 }
 

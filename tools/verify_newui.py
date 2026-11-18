@@ -34,14 +34,33 @@ if re.search(r"androidx\.compose|kotlin\.plugin\.compose|compose\s*=\s*true|grap
     errors.append("app/build.gradle.kts: Compose or retired shape dependency")
 
 # The Material Design 3 UI (ui/m3-rewrite, flclash.md "Material Design 3 界面约定"):
-# no glass, shaders or blur filters in the Slint sources.
+# no shaders, liquid glass or blur filters in the Slint sources; the one blur
+# is Slint's backdrop-blur, only inside kit.slint's Glass component and only
+# with the theme's glass tokens.
 slint_ui = ROOT / "ui-slint/ui"
 for path in list(slint_ui.rglob("*.slint")) + list((ROOT / "ui-slint/src").rglob("*.rs")):
     if re.search(r"LiquidGlass|RuntimeShader|AGSL|(?<![-\w])blur\(", path.read_text()):
-        errors.append(f"{path.relative_to(ROOT)}: glass, shader or blur effect")
+        errors.append(f"{path.relative_to(ROOT)}: shader, liquid glass or blur filter")
+
+
+def component_spans(source):
+    """(name, start, end) of each top-level component in a .slint source."""
+    starts = [(m.group(1), m.start()) for m in re.finditer(r"^(?:export )?component (\w[\w-]*)", source, re.M)]
+    return [(name, start, starts[i + 1][1] if i + 1 < len(starts) else len(source)) for i, (name, start) in enumerate(starts)]
+
+
 for path in slint_ui.rglob("*.slint"):
     rel = path.relative_to(ROOT)
     source = path.read_text()
+    # Blur only through the Glass component and the glass tokens.
+    for match in re.finditer(r"backdrop-blur\s*:\s*([^;]+);", source):
+        owner = next((name for name, start, end in component_spans(source) if start <= match.start() < end), None)
+        if path.name != "kit.slint" or owner != "Glass":
+            errors.append(f"{rel}: backdrop-blur outside kit.slint's Glass component; use Glass")
+        elif re.search(r"\d+(?:\.\d+)?px", match.group(1).replace("0px", "")) or "Theme.glass-blur" not in match.group(1):
+            errors.append(f"{rel}: backdrop-blur must use the Theme.glass-blur* tokens: {match.group(1).strip()}")
+    if path.name != "theme.slint" and re.search(r"glass-opacity\s*:", source):
+        errors.append(f"{rel}: glass opacity outside the theme tokens")
     # Elevation shadows only through the theme's tokens (overlapping surfaces).
     for value in re.findall(r"drop-shadow-(?:blur|offset-x|offset-y|color)\s*:\s*([^;]+);", source):
         if "Theme.shadow-" not in value and not re.fullmatch(r"\s*(?:0px|transparent)\s*", value):
@@ -56,11 +75,37 @@ for token in ("surface-container-lowest", "surface-container-highest", "outline-
               "display-large", "headline-small", "title-medium", "body-small", "label-large"):
     if token not in theme:
         errors.append(f"ui-slint/ui/theme.slint: missing M3 token {token}")
+for token in ("glass-opacity-light", "glass-opacity-dark", "glass-blur", "glass-blur-soft", "glass-edge", "glass-outline",
+              "function glass("):
+    if token not in theme:
+        errors.append(f"ui-slint/ui/theme.slint: missing glass token {token}")
 kit = (slint_ui / "kit.slint").read_text()
 for component in ("StateLayer", "FocusRing", "Button", "IconButton", "Switch", "FilterChip", "SegmentedButton",
-                  "Card", "ListItem", "Field", "SearchField", "TopBar"):
+                  "Card", "ListItem", "Field", "SearchField", "TopBar", "Glass"):
     if not re.search(rf"export component {component}\b", kit):
         errors.append(f"ui-slint/ui/kit.slint: missing M3 component {component}")
+if not re.search(r"export component TopBar inherits Glass\b", kit):
+    errors.append("ui-slint/ui/kit.slint: the top app bar must be a Glass surface (scrolled content under it)")
+home = (slint_ui / "home.slint").read_text()
+if not re.search(r"bar := Glass \{", home) or "Nav.bar-margin" not in home:
+    errors.append("ui-slint/ui/home.slint: the phone navigation bar must be the floating Glass bar")
+if "bar-margin + bar-height" not in (slint_ui / "globals.slint").read_text():
+    errors.append("ui-slint/ui/globals.slint: home-bottom must clear the floating bar")
+
+# backdrop-blur needs Slint 1.19+; the vendored Skia renderer and Android
+# backend are the same release as the slint crate (FKBOX-PATCH.md).
+cargo = (ROOT / "ui-slint/Cargo.toml").read_text()
+slint_version = re.search(r'^slint = \{ version = "=(\d+)\.(\d+)\.(\d+)"', cargo, re.M)
+if not slint_version or (int(slint_version.group(1)), int(slint_version.group(2))) < (1, 19):
+    errors.append("ui-slint/Cargo.toml: Slint 1.19 or newer is required (backdrop-blur)")
+else:
+    version = ".".join(slint_version.groups())
+    for crate in ("i-slint-renderer-skia", "i-slint-backend-android-activity"):
+        vendored = ROOT / "ui-slint/vendor" / crate
+        if f'version = "{version}"' not in (vendored / "Cargo.toml").read_text():
+            errors.append(f"ui-slint/vendor/{crate}: not rebased on Slint {version}")
+        if not (vendored / "FKBOX-PATCH.md").read_text().startswith(f"# {crate} {version},"):
+            errors.append(f"ui-slint/vendor/{crate}/FKBOX-PATCH.md: does not describe {version}")
 
 for path in (ROOT / "app/src").rglob("*.kt"):
     source = path.read_text()
@@ -103,4 +148,4 @@ for license_file in ("LICENSE",):
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI and capture removal guards passed")
+print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, glass and capture removal guards passed")

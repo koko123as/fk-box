@@ -1,6 +1,6 @@
-# i-slint-backend-android-activity 1.18.1, patched for FK-box
+# i-slint-backend-android-activity 1.19.0, patched for FK-box
 
-Unmodified crates.io source of `i-slint-backend-android-activity` 1.18.1
+Unmodified crates.io source of `i-slint-backend-android-activity` 1.19.0
 (GPL-3.0-only OR the Slint licenses, see LICENSES/; `Cargo.toml.orig` and the
 registry's `.cargo_vcs_info.json`/`Cargo.lock` left out) with the changes
 below, used through `[patch.crates-io]` in ui-slint/Cargo.toml. FK-box builds
@@ -74,6 +74,14 @@ The Kotlin host adds a last guard (BoxActivity.dispatchKeyEvent orders the
 editable's selection before GameTextInput handles a key, and a remaining
 IndexOutOfBoundsException there is logged instead of closing the app).
 
+Rebased on 1.19.0 (2026-11-18) by a three-way merge of the 1.18.1 patches.
+Upstream 1.19 rewrote the Java helper (package `dev.slint.android`, lambdas,
+cursor-handle ids); hunk 4 was re-applied by hand to the new `SlintInputView`
+constructor, `onCheckIsTextEditor` and `show_keyboard`. The other hunks applied
+unchanged.
+
 To update Slint: copy the new crate version over this directory (without
 `Cargo.toml.orig`, `.cargo_vcs_info.json`, `Cargo.lock`), keep `fkbox_ime.rs`
-and this file, and re-apply the hunks marked "FK-box patch".
+and this file, and re-apply the hunks marked "FK-box patch" (a three-way merge
+against the previous upstream crate does it: `git merge-file NEW OLD_UPSTREAM
+THIS_COPY` per file).

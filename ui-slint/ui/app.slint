@@ -1,5 +1,5 @@
 // FK-box main window (Rust + Slint, Material Design 3): the splash and
-// startup error, the home destinations on the M3 navigation bar (compact) or
+// startup error, the home destinations on the floating glass navigation bar (compact) or
 // rail (medium and wider), the routes over them, the M3 menu, the basic
 // dialog and the snackbar.
 // Rust (src/app.rs, src/nav.rs, src/pages/*.rs) owns all state.
@@ -8,7 +8,7 @@ import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec } from "globals.slint";
 import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, StateLayer } from "kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, StateLayer, Glass } from "kit.slint";
 import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
@@ -40,22 +40,21 @@ component Splash inherits Rectangle {
 }
 
 // The M3 menu: at the pressed point, kept inside the window; a tap outside
-// closes it. Extra-small corners on surface-container with a level 2
-// shadow (it overlaps the page), 8 dp vertical padding, 48 dp items with a
+// closes it. Extra-small corners on glass (surface-container tint, the soft
+// blur) with a level 2 shadow (it overlaps the page), 8 dp vertical padding, 48 dp items with a
 // 24 dp leading icon and the label in label-large, and a state layer.
 component MenuLayer inherits Rectangle {
     TouchArea { clicked => { Nav.menu-dismiss(); } }
     property <length> menu-width: min(280px, root.width - 16px);
-    menu := Rectangle {
+    menu := Glass {
         width: root.menu-width;
         height: min(lay.preferred-height, root.height - Nav.inset-top - Nav.inset-bottom - 16px);
         x: clamp(Nav.menu-x - (Nav.menu-x > root.width / 2 ? self.width : 0px), 8px, root.width - self.width - 8px);
         y: clamp(Nav.menu-y, Nav.inset-top + 8px, root.height - self.height - Nav.inset-bottom - 8px);
         border-radius: Theme.corner-extra-small;
-        background: Theme.s.surface-container;
-        drop-shadow-blur: Theme.shadow-blur(2);
-        drop-shadow-offset-y: Theme.shadow-offset(2);
-        drop-shadow-color: Theme.shadow-color(2);
+        level: 2;
+        soft: true;
+        elevation: 2;
         accessible-role: list;
         TouchArea { }
         Flickable {
@@ -106,21 +105,21 @@ component MenuLayer inherits Rectangle {
     }
 }
 
-// The M3 basic dialog: extra-large corners on surface-container-high over a
-// 32 % scrim, 24 dp padding, the headline in headline-small, supporting text
+// The M3 basic dialog: extra-large corners on glass (surface-container-high
+// tint) over a 32 % scrim, 24 dp padding, the headline in headline-small, supporting text
 // in body-medium, choices as radio rows, an outlined text field, and text
 // buttons at the end (the last confirms; `dialog-danger` paints it in error).
 component DialogLayer inherits Rectangle {
     background: Theme.s.scrim.with-alpha(0.32);
     TouchArea { clicked => { Nav.dialog-dismiss(); } }
     property <length> bottom: Nav.keyboard-height > 0 ? Nav.keyboard-height : Nav.inset-bottom;
-    card := Rectangle {
+    card := Glass {
         width: clamp(root.width - 48px, min(280px, root.width - 16px), 560px);
         height: min(lay.preferred-height, root.height - Nav.inset-top - root.bottom - 48px);
         x: (root.width - self.width) / 2;
         y: max(Nav.inset-top + 24px, (root.height - root.bottom - self.height) / 2);
         border-radius: Theme.corner-extra-large;
-        background: Theme.s.surface-container-high;
+        level: 3;
         accessible-role: groupbox;
         accessible-label: Nav.dialog-title;
         TouchArea { }
@@ -204,7 +203,7 @@ component DialogLayer inherits Rectangle {
 }
 
 // The M3 snackbar: inverse-surface, extra-small corners, body-medium, a
-// level 3 shadow; above the navigation bar. A tap dismisses it.
+// level 3 shadow; above the floating navigation bar. A tap dismisses it.
 component Snackbar inherits Rectangle {
     border-radius: Theme.corner-extra-small;
     background: Theme.s.inverse-surface;
@@ -283,7 +282,7 @@ export component AppWindow inherits Window {
         if Nav.toast != "": Snackbar {
             x: 16px + Nav.inset-left;
             width: min(560px, parent.width - 32px - Nav.inset-left - Nav.inset-right);
-            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.inset-bottom + (Nav.mobile ? Nav.bar-height : 0px));
+            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.mobile ? Nav.home-bottom : Nav.inset-bottom);
         }
     }
 }

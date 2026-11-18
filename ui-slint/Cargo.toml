@@ -12,7 +12,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # No default backends: on Android the platform is the GameActivity backend below.
-slint = { version = "=1.18.1", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-011"] }
+slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # QrCodeView (ui/QrCode.kt), ZXing Encoder at level L.
 qrcodegen = "1.8"
@@ -24,34 +24,38 @@ memmap2 = "0.9"
 # process-wide path cache kept up to 5 MB of icons after the app list closed.
 png = "0.18"
 # The harness loads fontconfig at run time (no headers needed to build it).
-i-slint-common = { version = "=1.18.1", optional = true, features = ["fontconfig-dlopen"] }
+i-slint-common = { version = "=1.19.0", optional = true, features = ["fontconfig-dlopen"] }
 
 [features]
 # Host-only screenshot harness (src/shot.rs, examples/shot.rs): the software renderer
 # draws the pages at phone size from fixture data, for visual checks without a device.
 shot = ["slint/renderer-software", "dep:i-slint-common"]
+# The harness drawing with the (vendored) Skia renderer instead, rasterized on the CPU: the
+# renderer Android uses, so the glass surfaces' backdrop-blur shows (SHOT_RENDERER=skia).
+shot-skia = ["shot", "dep:i-slint-renderer-skia"]
 
 [[example]]
 name = "shot"
 required-features = ["shot"]
 
 [target.'cfg(target_os = "android")'.dependencies]
-i-slint-backend-android-activity = { version = "=1.18.1", features = ["aa-06", "game-activity"] }
+i-slint-backend-android-activity = { version = "=1.19.0", features = ["aa-06", "game-activity"] }
 jni = "0.22"
 log = "0.4"
 android_logger = "0.15"
 # The Skia renderer the backend draws with (vendored, see [patch.crates-io]):
 # its FK-box purge hook releases caches when an image-heavy page closes.
-i-slint-renderer-skia = { version = "=1.18.1", default-features = false }
+i-slint-renderer-skia = { version = "=1.19.0", default-features = false }
 # PNG decoding for app icons (PackageIcon) rendered by the native side.
-i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "shared-parley"] }
+i-slint-core = { version = "=1.19.0", default-features = false, features = ["std", "image-decoders", "shared-parley"] }
 
 # Host builds (unit tests) need the same image support the Android backend enables.
 [target.'cfg(not(target_os = "android"))'.dependencies]
-i-slint-core = { version = "=1.18.1", default-features = false, features = ["std", "image-decoders", "svg", "shared-parley"] }
+i-slint-core = { version = "=1.19.0", default-features = false, features = ["std", "image-decoders", "svg", "shared-parley"] }
+i-slint-renderer-skia = { version = "=1.19.0", default-features = false, optional = true }
 
 [build-dependencies]
-slint-build = "=1.18.1"
+slint-build = "=1.19.0"
 
 [profile.release]
 opt-level = "s"

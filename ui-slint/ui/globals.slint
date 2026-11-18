@@ -75,13 +75,14 @@ export global Nav {
     in-out property <length> inset-left;
     in-out property <length> inset-right;
     in-out property <length> keyboard-height;
-    // The M3 navigation bar (phones): docked at the bottom, 80 dp above the
-    // gesture inset; the home pages leave this room under their content.
-    // (bar-margin stays for the snackbar and the screenshot harness; the
-    // docked bar has none.)
-    out property <length> bar-height: 80px;
-    out property <length> bar-margin: 0px;
-    out property <length> home-bottom: mobile ? inset-bottom + bar-height : inset-bottom;
+    // The floating glass navigation bar (phones): a 72 dp pill inset
+    // `bar-side` from the window's sides and `bar-margin` above the gesture
+    // inset. The home pages scroll their content under it and leave
+    // `home-bottom` under their last item so it can scroll clear of the bar.
+    out property <length> bar-height: 72px;
+    out property <length> bar-margin: 12px;
+    out property <length> bar-side: 16px;
+    out property <length> home-bottom: mobile ? inset-bottom + bar-margin + bar-height : inset-bottom;
     // The M3 navigation rail on wider windows (80 dp); expanded (220 dp) it
     // shows its labels beside the icons (saved as the railExtended preference).
     in-out property <bool> rail-extended;

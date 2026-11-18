@@ -1,5 +1,5 @@
-// The home page: Dashboard, Proxies, Profiles and Tools on the M3 navigation
-// bar in compact windows (< 600 dp); in medium and wider windows the M3
+// The home page: Dashboard, Proxies, Profiles and Tools on the floating
+// glass navigation bar in compact windows (< 600 dp); in medium and wider windows the M3
 // navigation rail, which adds Requests and Logs (destination order is the
 // same in both). A destination change is instant; the core
 // pages stay instantiated behind the shown one, Requests and Logs only while shown.
@@ -7,7 +7,7 @@
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav } from "globals.slint";
-import { Icon, IconButton, T, StateLayer, FocusRing } from "kit.slint";
+import { Icon, IconButton, T, StateLayer, FocusRing, Glass } from "kit.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { ProxiesPage } from "pages/proxies.slint";
 import { ProfilesPage } from "pages/profiles.slint";
@@ -220,25 +220,27 @@ component Pages inherits Rectangle {
 
 export component HomePage inherits Rectangle {
     background: Theme.s.surface;
-    // Compact windows: the M3 navigation bar docked at the bottom
-    // (surface-container, 80 dp, extended under the gesture inset).
+    // Compact windows: the floating glass navigation bar, a pill inset from
+    // the sides and above the gesture inset; the pages scroll under it (they
+    // pad their ends by Nav.home-bottom), and its tint and blur keep the
+    // destinations readable over them.
     if Nav.mobile: Rectangle {
         Pages { }
-        bar := Rectangle {
-            x: 0;
-            width: parent.width;
-            height: Nav.bar-height + Nav.inset-bottom;
-            y: parent.height - self.height;
-            background: Theme.s.surface-container;
+        bar := Glass {
+            level: 2;
+            elevation: 2;
+            width: min(parent.width - 2 * Nav.bar-side, 480px);
+            x: (parent.width - self.width) / 2;
+            height: Nav.bar-height;
+            y: parent.height - self.height - Nav.bar-margin - Nav.inset-bottom;
+            border-radius: self.height / 2;
             accessible-role: tab-list;
             // Taps between the items stay on the bar.
             TouchArea { }
             HorizontalLayout {
-                y: 0;
-                height: Nav.bar-height;
                 padding-left: 8px;
                 padding-right: 8px;
-                spacing: 8px;
+                spacing: 4px;
                 for d in Nav.destinations: DestinationItem {
                     key: d;
                     horizontal-stretch: 1;

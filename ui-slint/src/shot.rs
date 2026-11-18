@@ -14,6 +14,11 @@
 //! `insets:T,B,L,R` (the host's insets, physical px), `nav` (print the insets
 //! the UI uses and the scale factor), `fling:COUNT,DY` (COUNT fast drags of DY
 //! px with icons arriving on reused rows and a frame drawn every 16 ms).
+//!
+//! With the `shot-skia` feature and `SHOT_RENDERER=skia`, the frames are drawn
+//! by the Skia renderer (the one Android uses) rasterized on the CPU instead of
+//! Slint's software renderer, so effects only Skia draws (the glass surfaces'
+//! backdrop-blur) show in the screenshots.
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -58,14 +63,161 @@ fn answer_call(id: i64, method: &str, args: &str) {
     crate::app::on_reply(id, ok, &json!({ "v": value }).to_string());
 }
 
+/// The window the harness draws: Slint's software renderer, or (feature
+/// `shot-skia`, `SHOT_RENDERER=skia`) the Skia renderer on the CPU.
+#[derive(Clone)]
+enum ShotWindow {
+    Software(Rc<MinimalSoftwareWindow>),
+    #[cfg(feature = "shot-skia")]
+    Skia(Rc<skia::SkiaShotWindow>),
+}
+
+impl ShotWindow {
+    fn new() -> Self {
+        #[cfg(feature = "shot-skia")]
+        if std::env::var("SHOT_RENDERER").as_deref() == Ok("skia") {
+            return Self::Skia(skia::SkiaShotWindow::new());
+        }
+        Self::Software(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
+    }
+
+    fn adapter(&self) -> Rc<dyn WindowAdapter> {
+        match self {
+            Self::Software(w) => w.clone(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.clone(),
+        }
+    }
+
+    fn window(&self) -> &slint::Window {
+        match self {
+            Self::Software(w) => w.window(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.window(),
+        }
+    }
+
+    fn has_active_animations(&self) -> bool {
+        match self {
+            Self::Software(w) => w.has_active_animations(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.window().has_active_animations(),
+        }
+    }
+
+    fn request_redraw(&self) {
+        match self {
+            Self::Software(w) => w.request_redraw(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.request_redraw(),
+        }
+    }
+
+    fn set_size(&self, size: PhysicalSize) {
+        match self {
+            Self::Software(w) => w.set_size(size),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.set_size(size),
+        }
+    }
+
+    /// Draws the window into `buffer` (w × h).
+    fn render(&self, buffer: &mut [Rgb8Pixel], w: usize) {
+        match self {
+            Self::Software(win) => {
+                win.draw_if_needed(|renderer| {
+                    renderer.render(buffer, w);
+                });
+            }
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(win) => {
+                let snapshot = win.window().take_snapshot().expect("skia snapshot");
+                for (dst, src) in buffer.iter_mut().zip(snapshot.as_slice()) {
+                    *dst = Rgb8Pixel::new(src.r, src.g, src.b);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "shot-skia")]
+mod skia {
+    use std::cell::Cell;
+    use std::rc::{Rc, Weak};
+
+    use i_slint_renderer_skia::software_surface::{RenderBuffer, SoftwareSurface};
+    use i_slint_renderer_skia::{SkiaRenderer, SkiaSharedContext};
+    use slint::platform::{Renderer, WindowAdapter, WindowEvent};
+    use slint::{PhysicalSize, Window};
+
+    /// Never presented: the harness reads frames with Window::take_snapshot,
+    /// which Skia renders into a CPU raster surface of its own.
+    struct NoBuffer;
+
+    impl RenderBuffer for NoBuffer {
+        fn with_buffer(
+            &self,
+            _window: &Window,
+            _size: PhysicalSize,
+            _render: &mut dyn FnMut(
+                std::num::NonZeroU32,
+                std::num::NonZeroU32,
+                i_slint_renderer_skia::skia_safe::ColorType,
+                u8,
+                &mut [u8],
+            ) -> Result<Option<i_slint_core::partial_renderer::DirtyRegion>, slint::PlatformError>,
+        ) -> Result<(), slint::PlatformError> {
+            Ok(())
+        }
+    }
+
+    pub struct SkiaShotWindow {
+        window: Window,
+        renderer: SkiaRenderer,
+        size: Cell<PhysicalSize>,
+    }
+
+    impl SkiaShotWindow {
+        pub fn new() -> Rc<Self> {
+            Rc::new_cyclic(|weak: &Weak<Self>| SkiaShotWindow {
+                window: Window::new(weak.clone() as Weak<dyn WindowAdapter>),
+                renderer: SkiaRenderer::new_with_surface(&SkiaSharedContext::default(), Box::new(SoftwareSurface::from(NoBuffer))),
+                size: Cell::new(PhysicalSize::new(1, 1)),
+            })
+        }
+
+        pub fn request_redraw(&self) {}
+
+        pub fn set_size(&self, size: PhysicalSize) {
+            self.size.set(size);
+            self.window.dispatch_event(WindowEvent::Resized { size: size.to_logical(self.window.scale_factor()) });
+        }
+    }
+
+    impl WindowAdapter for SkiaShotWindow {
+        fn window(&self) -> &Window {
+            &self.window
+        }
+        fn size(&self) -> PhysicalSize {
+            self.size.get()
+        }
+        fn set_size(&self, size: slint::WindowSize) {
+            SkiaShotWindow::set_size(self, size.to_physical(self.window.scale_factor()));
+        }
+        fn renderer(&self) -> &dyn Renderer {
+            &self.renderer
+        }
+    }
+}
+
 struct ShotPlatform {
-    window: Rc<MinimalSoftwareWindow>,
+    window: ShotWindow,
     clock: Rc<Cell<Duration>>,
 }
 
 impl Platform for ShotPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        Ok(self.window.clone())
+        Ok(self.window.adapter())
     }
     fn duration_since_start(&self) -> Duration {
         self.clock.get()
@@ -219,7 +371,7 @@ fn event(kind: &str, value: Value) {
 }
 
 struct Harness {
-    window: Rc<MinimalSoftwareWindow>,
+    window: ShotWindow,
     clock: Rc<Cell<Duration>>,
     app: AppWindow,
     _timer: Rc<slint::Timer>,
@@ -285,9 +437,7 @@ impl Harness {
         self.window.request_redraw();
         let (w, h) = (self.width as usize, self.height as usize);
         let mut buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
-        self.window.draw_if_needed(|renderer| {
-            renderer.render(&mut buffer, w);
-        });
+        self.window.render(&mut buffer, w);
         let file = std::fs::File::create(path).expect("create png");
         let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
         encoder.set_color(png::ColorType::Rgb);
@@ -306,9 +456,7 @@ impl Harness {
             *buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
         }
         self.window.request_redraw();
-        self.window.draw_if_needed(|renderer| {
-            renderer.render(buffer, w);
-        });
+        self.window.render(buffer, w);
     }
 
     /// One 16 ms frame of a fling: timers and animations advance, up to
@@ -410,7 +558,7 @@ pub fn main() {
 pub fn run(args: Vec<String>) {
     let out = args.first().cloned().unwrap_or_else(|| ".".into());
     std::fs::create_dir_all(&out).ok();
-    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let window = ShotWindow::new();
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(ShotPlatform { window: window.clone(), clock: clock.clone() })).unwrap();
     crate::fonts::install();

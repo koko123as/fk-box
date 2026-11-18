@@ -183,6 +183,45 @@ export component StateLayer inherits Rectangle {
     background: enabled ? Theme.state(ink, pressed, hover, focused) : transparent;
 }
 
+// Glass: a translucent tonal surface that blurs what scrolls under it
+// (Slint 1.19 `backdrop-blur`, Skia renderer; other renderers draw the tint
+// alone). The only component that may blur (tools/verify_newui.py); tokens in
+// theme.slint. `level` picks the tonal role of the tint, `soft` the smaller
+// blur for small surfaces, `elevation` the shadow level (0–3) for a surface
+// that floats, `active: false` turns it back into the opaque tonal surface
+// (the top app bar before content is under it). A 1 dp edge separates it from
+// the content: a white highlight inside an outline-variant hairline in light
+// mode, a faint on-surface edge in dark mode.
+export component Glass inherits Rectangle {
+    in property <int> level: 2;
+    in property <bool> active: true;
+    in property <bool> soft;
+    in property <bool> edge: true;
+    in property <int> elevation: 0;
+    background: root.active ? Theme.glass(root.level) : Theme.level(root.level);
+    backdrop-blur: root.active ? (root.soft ? Theme.glass-blur-soft : Theme.glass-blur) : 0px;
+    border-width: root.edge && root.active ? 1px : 0px;
+    border-color: Theme.dark ? Theme.glass-edge : Theme.glass-outline;
+    drop-shadow-blur: Theme.shadow-blur(root.elevation);
+    drop-shadow-offset-y: Theme.shadow-offset(root.elevation);
+    drop-shadow-color: Theme.shadow-color(root.elevation);
+    // Set here so the corners follow a `border-radius` given where Glass is used.
+    border-top-left-radius: root.border-radius;
+    border-top-right-radius: root.border-radius;
+    border-bottom-left-radius: root.border-radius;
+    border-bottom-right-radius: root.border-radius;
+    if root.edge && root.active && !Theme.dark: Rectangle {
+        x: 1px;
+        y: 1px;
+        width: root.width - 2px;
+        height: root.height - 2px;
+        border-radius: max(0px, root.border-radius - 1px);
+        border-width: 1px;
+        border-color: Theme.glass-edge;
+    }
+    @children
+}
+
 // The M3 focus indicator: a 3 dp secondary ring 2 dp outside the control,
 // shown only while the control has keyboard focus.
 export component FocusRing inherits Rectangle {
@@ -1150,8 +1189,10 @@ export component SearchField inherits Rectangle {
 // The M3 small top app bar: 64 dp, the navigation icon (back or close), the
 // title in title-large (or the title menu, or the search bar), at most three
 // action icons and the overflow menu. Rust folds actions into the overflow
-// (foldBarActions). Filter chips (keywords) sit under the bar.
-export component TopBar inherits Rectangle {
+// (foldBarActions). Filter chips (keywords) sit under the bar. Pages draw
+// their scrolling content under the bar (padded by its height); once it is
+// scrolled under (`scrolled`), the bar turns into glass over it.
+export component TopBar inherits Glass {
     in property <string> title;
     // 0 none, 1 back, 2 close
     in property <int> leading;
@@ -1166,11 +1207,21 @@ export component TopBar inherits Rectangle {
     in property <bool> loading;
     in property <[Keyword]> keywords;
     in property <color> bar-color: Theme.s.surface;
+    // Content is scrolled under the bar: glass tint and blur, a hairline below.
+    in property <bool> scrolled;
     callback action(string);
     callback search(string);
     callback keyword(string, bool);
     height: lay.preferred-height;
-    background: bar-color;
+    level: 2;
+    active: root.scrolled;
+    edge: false;
+    background: root.scrolled ? Theme.glass(2) : root.bar-color;
+    Rectangle {
+        y: root.height - 1px;
+        height: 1px;
+        background: root.scrolled ? (Theme.dark ? Theme.glass-edge : Theme.glass-outline) : transparent;
+    }
     lay := VerticalLayout {
         HorizontalLayout {
             height: 64px;
@@ -1286,6 +1337,19 @@ export component ScrollPage inherits Rectangle {
     in property <length> side: Nav.side(self.width);
     callback action(string);
     background: Theme.s.surface;
+    // The column scrolls under the glass top app bar.
+    flick := Flickable {
+        y: 0;
+        height: parent.height;
+        content-height: body.preferred-height;
+        body := VerticalLayout {
+            padding-left: root.side;
+            padding-right: root.side;
+            padding-top: bar.height + 8px;
+            padding-bottom: 24px + Nav.inset-bottom;
+            @children
+        }
+    }
     bar := TopBar {
         y: 0;
         title: root.title;
@@ -1293,18 +1357,7 @@ export component ScrollPage inherits Rectangle {
         actions: root.actions;
         menu-key: root.menu-key;
         loading: root.loading;
+        scrolled: flick.content-y < 0;
         action(id) => { root.action(id); }
-    }
-    Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
-        content-height: body.preferred-height;
-        body := VerticalLayout {
-            padding-left: root.side;
-            padding-right: root.side;
-            padding-top: 8px;
-            padding-bottom: 24px + Nav.inset-bottom;
-            @children
-        }
     }
 }

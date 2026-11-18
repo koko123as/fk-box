@@ -219,4 +219,29 @@ export global Theme {
     public pure function shadow-color(l: int) -> color {
         return l <= 0 ? transparent : s.shadow.with-alpha(dark ? 0.5 : 0.2);
     }
+
+    // Glass (Slint 1.19 `backdrop-blur`, drawn by the Skia renderer on
+    // Android; other renderers show the tint alone): the only blur in the UI,
+    // used through kit.slint's `Glass` for surfaces that float over scrolling
+    // content (the floating navigation bar, the top app bar once content is
+    // under it, menus, dialogs, the rows' foot bar). The tint is a tonal
+    // surface role at `glass-opacity`, high enough that text on it keeps
+    // 4.5:1 over any backdrop (src/theme.rs `glass_text_meets_contrast` reads
+    // these values from this file). `glass-blur` is the Gaussian standard
+    // deviation; `glass-blur-soft` for small surfaces (menus, the foot bar).
+    out property <float> glass-opacity-light: 0.78;
+    out property <float> glass-opacity-dark: 0.82;
+    out property <float> glass-opacity: dark ? glass-opacity-dark : glass-opacity-light;
+    out property <length> glass-blur: 24px;
+    out property <length> glass-blur-soft: 12px;
+    // The tint of a glass surface at tonal level `l` (see `level`).
+    public pure function glass(l: int) -> color {
+        return level(l).with-alpha(glass-opacity);
+    }
+    // A 1 dp edge that catches the light: brighter than the tint in both
+    // schemes, so the floating surface separates from content of any color.
+    out property <color> glass-edge: dark ? s.on-surface.with-alpha(0.14) : #ffffff.with-alpha(0.70);
+    // A second, darker hairline under the edge in light mode, where white on a
+    // light backdrop alone would vanish.
+    out property <color> glass-outline: dark ? transparent : s.outline-variant.with-alpha(0.55);
 }

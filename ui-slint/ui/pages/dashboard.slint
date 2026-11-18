@@ -1302,15 +1302,6 @@ component DashboardEditor inherits VerticalLayout {
 
 export component DashboardPage inherits Rectangle {
     background: Theme.s.surface;
-    bar := TopBar {
-        y: 0;
-        title: Dash.editing ? @tr("Edit dashboard") : @tr("Dashboard");
-        loading: Dash.saving;
-        actions: Dash.editing
-            ? [{ id: "dash-done", glyph: Icons.check, tooltip: @tr("Done"), enabled: !Dash.saving }]
-            : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
-        action(id) => { Nav.act(id, ""); }
-    }
     // Phones: one column. Wider windows: a grid of 2 to 4 columns at least
     // 260 dp wide (FlClash's dashboard grid), the cards packed into rows by
     // dashboard.rs pack(). The editor keeps a reading width.
@@ -1318,15 +1309,16 @@ export component DashboardPage inherits Rectangle {
     property <length> grid-width: root.width - 2 * grid-side;
     property <int> columns: Nav.mobile ? 1 : clamp(floor((grid-width + Nav.gap) / (260px + Nav.gap)), 2, 4);
     property <length> unit: (grid-width - (columns - 1) * Nav.gap) / columns;
-    Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
+    // The cards scroll under the glass top app bar and the floating navigation bar.
+    flick := Flickable {
+        y: 0;
+        height: parent.height;
         content-height: body.preferred-height;
         body := VerticalLayout {
             property <length> side: Dash.editing || Nav.mobile ? Nav.side(root.width) : root.grid-side;
             padding-left: side;
             padding-right: side;
-            padding-top: 8px;
+            padding-top: bar.height + 8px;
             padding-bottom: 16px + Nav.home-bottom;
             spacing: Dash.editing ? 0px : Nav.gap;
             if Dash.editing: DashboardEditor { }
@@ -1348,6 +1340,16 @@ export component DashboardPage inherits Rectangle {
             }
             if !Dash.editing && Dash.deprecated.length > 0: Banners { top: false; }
         }
+    }
+    bar := TopBar {
+        y: 0;
+        title: Dash.editing ? @tr("Edit dashboard") : @tr("Dashboard");
+        loading: Dash.saving;
+        actions: Dash.editing
+            ? [{ id: "dash-done", glyph: Icons.check, tooltip: @tr("Done"), enabled: !Dash.saving }]
+            : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
+        scrolled: flick.content-y < 0;
+        action(id) => { Nav.act(id, ""); }
     }
 }
 

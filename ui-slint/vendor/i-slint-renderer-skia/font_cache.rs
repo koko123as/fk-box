@@ -17,22 +17,11 @@ pub struct FontCache {
     // preventing eviction from fontique's shared cache (see commit 30a03cf).
     // The u64 is a hash of variation settings (0 for base typefaces).
     fonts: CLruCache<(HashedBlob, u32, u64), Option<skia_safe::Typeface>>,
-    // FK-box patch: one skia Data per font blob, shared by every face index and
-    // variation of it and pointing at the blob's own bytes (system fonts are
-    // memory-mapped files) instead of a heap copy per (face, variation). Before,
-    // each weight of a 20-30 MB CJK collection was copied into the heap again.
-    // The blobs stay here for the life of the thread so the bytes outlive every
-    // typeface Skia created from them.
-    shared: std::collections::HashMap<u64, (fontique::Blob<u8>, skia_safe::Data)>,
 }
 
 impl Default for FontCache {
     fn default() -> Self {
-        Self {
-            font_mgr: skia_safe::FontMgr::new(),
-            fonts: CLruCache::new(FONT_CACHE_CAPACITY),
-            shared: Default::default(),
-        }
+        Self { font_mgr: skia_safe::FontMgr::new(), fonts: CLruCache::new(FONT_CACHE_CAPACITY) }
     }
 }
 
@@ -87,21 +76,9 @@ impl FontCache {
         typeface
     }
 
-    fn load_typeface_internal(&mut self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
-        let data = self
-            .shared
-            .entry(font.data.id())
-            .or_insert_with(|| {
-                let blob = font.data.clone();
-                // SAFETY: the blob is kept alive in `shared` as long as the cache (the
-                // thread) lives, and fontique blobs are immutable.
-                let data = unsafe { skia_safe::Data::new_bytes(blob.as_ref()) };
-                (blob, data)
-            })
-            .1
-            .clone();
+    fn load_typeface_internal(&self, font: &parley::FontData) -> Option<skia_safe::Typeface> {
         let typeface = self.font_mgr.new_from_data(
-            data,
+            skia_safe::Data::new_with_owner(font.data.clone()),
             if font.index > 0 { Some(font.index as _) } else { None },
         );
 
@@ -116,7 +93,7 @@ impl FontCache {
                 .and_then(|ttc| ttc.get(font.index).ok())
                 .map(|ttf| write_fonts::FontBuilder::new().copy_missing_tables(ttf).build())
                 .and_then(|new_ttf| {
-                    self.font_mgr.new_from_data(skia_safe::Data::new_copy(&new_ttf), None)
+                    self.font_mgr.new_from_data(skia_safe::Data::new_with_owner(new_ttf), None)
                 })
         {
             return Some(typeface);
