@@ -1,14 +1,14 @@
-// FK-box main window (Rust + Slint), after compose/BoxApp.kt, ui/Navigator.kt,
-// pages/HomePage.kt, ui/Popup.kt and ui/Dialog.kt: the splash and startup
-// error, the home destinations on a navigation bar (phone) or rail (wider),
-// the routes over them, the popup menu, the dialog and the snackbar.
+// FK-box main window (Rust + Slint, Material Design 3): the splash and
+// startup error, the home destinations on the M3 navigation bar (compact) or
+// rail (medium and wider), the routes over them, the M3 menu, the basic
+// dialog and the snackbar.
 // Rust (src/app.rs, src/nav.rs, src/pages/*.rs) owns all state.
 
 import { Theme, TextRole, Scheme } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec } from "globals.slint";
 import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState } from "kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, StateLayer } from "kit.slint";
 import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
@@ -30,7 +30,7 @@ component Splash inherits Rectangle {
                 height: 96px;
             }
         }
-        T { text: "FK-box"; role: TextRole.title3; horizontal-alignment: center; }
+        T { text: "FK-box"; role: TextRole.headline-small; horizontal-alignment: center; }
         Rectangle { height: 16px; }
         HorizontalLayout {
             alignment: center;
@@ -39,8 +39,10 @@ component Splash inherits Rectangle {
     }
 }
 
-// The popup menu (CommonPopupBox's DropdownMenu): at the pressed point,
-// kept inside the window; a tap outside closes it.
+// The M3 menu: at the pressed point, kept inside the window; a tap outside
+// closes it. Extra-small corners on surface-container with a level 2
+// shadow (it overlaps the page), 8 dp vertical padding, 48 dp items with a
+// 24 dp leading icon and the label in label-large, and a state layer.
 component MenuLayer inherits Rectangle {
     TouchArea { clicked => { Nav.menu-dismiss(); } }
     property <length> menu-width: min(280px, root.width - 16px);
@@ -49,11 +51,12 @@ component MenuLayer inherits Rectangle {
         height: min(lay.preferred-height, root.height - Nav.inset-top - Nav.inset-bottom - 16px);
         x: clamp(Nav.menu-x - (Nav.menu-x > root.width / 2 ? self.width : 0px), 8px, root.width - self.width - 8px);
         y: clamp(Nav.menu-y, Nav.inset-top + 8px, root.height - self.height - Nav.inset-bottom - 8px);
-        border-radius: 4px;
+        border-radius: Theme.corner-extra-small;
         background: Theme.s.surface-container;
-        // No shadow (flclash.md): a hairline outline separates the menu.
-        border-width: 1px;
-        border-color: Theme.s.outline-variant;
+        drop-shadow-blur: Theme.shadow-blur(2);
+        drop-shadow-offset-y: Theme.shadow-offset(2);
+        drop-shadow-color: Theme.shadow-color(2);
+        accessible-role: list;
         TouchArea { }
         Flickable {
             content-height: lay.preferred-height;
@@ -67,8 +70,7 @@ component MenuLayer inherits Rectangle {
                     }
                     if item.section != "" && item.label == "": T {
                         text: item.section;
-                        role: TextRole.caption1;
-                        emphasized: true;
+                        role: TextRole.title-small;
                         color: Theme.s.primary;
                         x: 12px;
                         height: self.preferred-height + 12px;
@@ -76,16 +78,22 @@ component MenuLayer inherits Rectangle {
                     }
                     if item.label != "": Rectangle {
                         height: 48px;
-                        property <color> fg: !item.enabled ? Theme.s.on-surface.with-alpha(0.38) : item.danger ? Theme.s.error : Theme.s.on-surface;
-                        Rectangle { background: ta.pressed ? Theme.s.on-surface.with-alpha(0.1) : transparent; }
+                        property <color> fg: !item.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : item.danger ? Theme.s.error : Theme.s.on-surface;
+                        property <color> icon-fg: !item.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : item.danger ? Theme.s.error : Theme.s.on-surface-variant;
+                        accessible-role: list-item;
+                        accessible-label: item.label;
+                        accessible-checked: item.checked;
+                        accessible-enabled: item.enabled;
+                        accessible-action-default => { if (item.enabled) { Nav.menu-pick(i); } }
+                        StateLayer { enabled: item.enabled; ink: parent.fg; pressed: ta.pressed; hover: ta.has-hover; }
                         HorizontalLayout {
                             padding-left: 12px;
                             padding-right: 12px;
                             spacing: 12px;
-                            if item.has-glyph: Icon { glyph: item.glyph; size: 20px; color: fg; y: (parent.height - 20px) / 2; }
-                            T { text: item.label; color: fg; horizontal-stretch: 1; }
-                            if item.submenu: Icon { glyph: Icons.chevron-forward; size: 20px; color: fg; y: (parent.height - 20px) / 2; }
-                            if !item.submenu && item.checked: Icon { glyph: Icons.check; size: 20px; color: Theme.s.primary; y: (parent.height - 20px) / 2; }
+                            if item.has-glyph: Icon { glyph: item.glyph; size: 24px; color: icon-fg; y: (parent.height - 24px) / 2; }
+                            T { text: item.label; role: TextRole.label-large; color: fg; horizontal-stretch: 1; }
+                            if item.submenu: Icon { glyph: Icons.chevron-forward; size: 24px; color: icon-fg; y: (parent.height - 24px) / 2; }
+                            if !item.submenu && item.checked: Icon { glyph: Icons.check; size: 24px; color: Theme.s.primary; y: (parent.height - 24px) / 2; }
                         }
                         ta := TouchArea {
                             enabled: item.enabled;
@@ -98,23 +106,28 @@ component MenuLayer inherits Rectangle {
     }
 }
 
-// CommonDialog / InputDialog: a Material 3 AlertDialog.
+// The M3 basic dialog: extra-large corners on surface-container-high over a
+// 32 % scrim, 24 dp padding, the headline in headline-small, supporting text
+// in body-medium, choices as radio rows, an outlined text field, and text
+// buttons at the end (the last confirms; `dialog-danger` paints it in error).
 component DialogLayer inherits Rectangle {
     background: Theme.s.scrim.with-alpha(0.32);
     TouchArea { clicked => { Nav.dialog-dismiss(); } }
     property <length> bottom: Nav.keyboard-height > 0 ? Nav.keyboard-height : Nav.inset-bottom;
     card := Rectangle {
-        width: min(560px, root.width - 48px);
+        width: clamp(root.width - 48px, min(280px, root.width - 16px), 560px);
         height: min(lay.preferred-height, root.height - Nav.inset-top - root.bottom - 48px);
         x: (root.width - self.width) / 2;
         y: max(Nav.inset-top + 24px, (root.height - root.bottom - self.height) / 2);
-        border-radius: 28px;
+        border-radius: Theme.corner-extra-large;
         background: Theme.s.surface-container-high;
+        accessible-role: groupbox;
+        accessible-label: Nav.dialog-title;
         TouchArea { }
         lay := VerticalLayout {
             padding: 24px;
             spacing: 16px;
-            T { text: Nav.dialog-title; role: TextRole.title3; wrap: word-wrap; overflow: clip; }
+            T { text: Nav.dialog-title; role: TextRole.headline-small; wrap: word-wrap; overflow: clip; }
             if Nav.dialog-message != "" || Nav.dialog-options.length > 0: Flickable {
                 vertical-stretch: 1;
                 min-height: min(body.preferred-height, 80px);
@@ -127,29 +140,37 @@ component DialogLayer inherits Rectangle {
                         read-only: true;
                         wrap: word-wrap;
                         single-line: false;
-                        font-size: Theme.size(TextRole.subheadline);
+                        font-size: Theme.size(TextRole.body-medium);
+                        letter-spacing: Theme.tracking(TextRole.body-medium);
                         font-family: Nav.dialog-mono ? Theme.mono : Theme.font-family;
                         color: Theme.s.on-surface-variant;
                     }
                     for o[i] in Nav.dialog-options: Rectangle {
-                        height: 48px;
+                        height: 56px;
+                        accessible-role: radio-button;
+                        accessible-label: o;
+                        accessible-checked: i == Nav.dialog-option;
+                        accessible-action-default => { Nav.dialog-pick(i); }
+                        StateLayer { border-radius: Theme.corner-small; pressed: ota.pressed; hover: ota.has-hover; }
                         HorizontalLayout {
-                            spacing: 16px;
-                            Mid { Radio { selected: i == Nav.dialog-option;  } }
-                            T { text: o; horizontal-stretch: 1; }
+                            spacing: 8px;
+                            Mid { Radio { selected: i == Nav.dialog-option; } }
+                            T { text: o; role: TextRole.body-large; horizontal-stretch: 1; }
                         }
-                        TouchArea { clicked => { Nav.dialog-pick(i); } }
+                        ota := TouchArea { clicked => { Nav.dialog-pick(i); } }
                     }
                 }
             }
             if Nav.dialog-input: VerticalLayout {
                 spacing: 4px;
+                padding-top: 8px;
                 HorizontalLayout {
                     spacing: 8px;
                     f := Field {
                         text <=> Nav.dialog-text;
                         invalid: Nav.dialog-error != "";
                         multiline: Nav.dialog-multiline;
+                        container: Theme.s.surface-container-high;
                         field-min: Nav.dialog-multiline ? 160px : 56px;
                         input-type: Nav.dialog-number ? InputType.number : InputType.text;
                         horizontal-stretch: 1;
@@ -159,11 +180,18 @@ component DialogLayer inherits Rectangle {
                     }
                     if Nav.dialog-suffix != "": T { text: Nav.dialog-suffix; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
                 }
-                if Nav.dialog-error != "": T { text: Nav.dialog-error; role: TextRole.caption1; color: Theme.s.error; x: 16px; wrap: word-wrap; }
+                // Supporting text: the error names the problem (not color alone).
+                if Nav.dialog-error != "": HorizontalLayout {
+                    padding-left: 16px;
+                    spacing: 4px;
+                    Mid { Icon { glyph: Icons.info; size: 16px; color: Theme.s.error; } }
+                    T { text: Nav.dialog-error; role: TextRole.body-small; color: Theme.s.error; wrap: word-wrap; horizontal-stretch: 1; }
+                }
             }
             HorizontalLayout {
                 alignment: end;
                 spacing: 8px;
+                padding-top: 8px;
                 for a[i] in Nav.dialog-actions: Button {
                     label: a;
                     kind: 2;
@@ -175,16 +203,22 @@ component DialogLayer inherits Rectangle {
     }
 }
 
-// The snackbar, above the navigation bar.
+// The M3 snackbar: inverse-surface, extra-small corners, body-medium, a
+// level 3 shadow; above the navigation bar. A tap dismisses it.
 component Snackbar inherits Rectangle {
-    border-radius: 4px;
+    border-radius: Theme.corner-extra-small;
     background: Theme.s.inverse-surface;
-    height: txt.preferred-height + 28px;
+    drop-shadow-blur: Theme.shadow-blur(3);
+    drop-shadow-offset-y: Theme.shadow-offset(3);
+    drop-shadow-color: Theme.shadow-color(3);
+    height: max(48px, txt.preferred-height + 28px);
+    accessible-role: AccessibleRole.text;
+    accessible-label: Nav.toast;
     txt := T {
         x: 16px;
         width: parent.width - 32px;
         text: Nav.toast;
-        role: TextRole.subheadline;
+        role: TextRole.body-medium;
         color: Theme.s.on-inverse-surface;
         wrap: word-wrap;
         overflow: clip;
@@ -249,7 +283,7 @@ export component AppWindow inherits Window {
         if Nav.toast != "": Snackbar {
             x: 16px + Nav.inset-left;
             width: min(560px, parent.width - 32px - Nav.inset-left - Nav.inset-right);
-            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.inset-bottom + (Nav.mobile ? Nav.bar-height + 2 * Nav.bar-margin : 0px));
+            y: parent.height - self.height - 16px - max(Nav.keyboard-height, Nav.inset-bottom + (Nav.mobile ? Nav.bar-height : 0px));
         }
     }
 }

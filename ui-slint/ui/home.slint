@@ -1,12 +1,13 @@
-// The home page (pages/HomePage.kt): Dashboard, Proxies, Profiles and Tools
-// on a Material 3 navigation bar on phones; on wider windows a navigation
-// rail that adds Requests and Logs. A destination change is instant; the core
+// The home page: Dashboard, Proxies, Profiles and Tools on the M3 navigation
+// bar in compact windows (< 600 dp); in medium and wider windows the M3
+// navigation rail, which adds Requests and Logs (destination order is the
+// same in both). A destination change is instant; the core
 // pages stay instantiated behind the shown one, Requests and Logs only while shown.
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
 import { Nav } from "globals.slint";
-import { Icon, IconButton, T } from "kit.slint";
+import { Icon, IconButton, T, StateLayer, FocusRing } from "kit.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { ProxiesPage } from "pages/proxies.slint";
 import { ProfilesPage } from "pages/profiles.slint";
@@ -33,9 +34,12 @@ global Destinations {
     }
 }
 
-// NavigationBarItem / NavigationRailItem: a 64 × 32 indicator pill (56 × 32 on
-// the rail) behind a 24 dp icon, the label 4 dp below; the pair is centred in
-// the item. Positioned without layouts so an item takes its full share of the bar.
+// The M3 navigation bar / rail destination: a 64 × 32 active indicator
+// (56 × 32 on the rail) in secondary-container behind a 24 dp icon — filled
+// when selected, outlined otherwise, so selection is not shown by color
+// alone — and the label in label-medium 4 dp below. Unselected items show a
+// state layer on the indicator area. Positioned without layouts so an item
+// takes its full share of the bar.
 component DestinationItem inherits Rectangle {
     in property <string> key;
     in property <bool> selected;
@@ -43,19 +47,30 @@ component DestinationItem inherits Rectangle {
     callback clicked();
     accessible-role: tab;
     accessible-label: Destinations.label(key);
+    accessible-checked: selected;
+    accessible-action-default => { root.clicked(); }
     property <length> pill-width: rail ? 56px : 64px;
     property <length> block: 32px + 4px + label.preferred-height;
+    property <Glyph> g: Destinations.glyph(root.key);
     pill := Rectangle {
         width: root.pill-width;
         height: 32px;
         x: (root.width - self.width) / 2;
         y: (root.height - root.block) / 2;
-        border-radius: 16px;
-        background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+        border-radius: self.height / 2;
+        background: root.selected ? Theme.s.secondary-container : transparent;
+        StateLayer {
+            border-radius: parent.border-radius;
+            ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            pressed: ta.pressed;
+            hover: ta.has-hover;
+            focused: fs.has-focus;
+        }
         Icon {
-            glyph: Destinations.glyph(root.key);
+            glyph: { code: root.g.code, outlined: !root.selected };
             color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
         }
+        FocusRing { shown: fs.has-focus; corner: parent.border-radius; }
     }
     label := T {
         x: 2px;
@@ -63,60 +78,89 @@ component DestinationItem inherits Rectangle {
         y: pill.y + 32px + 4px;
         height: self.preferred-height;
         text: Destinations.label(root.key);
-        role: TextRole.caption1;
-        emphasized: true;
+        role: TextRole.label-medium;
+        emphasized: root.selected;
         color: root.selected ? Theme.s.on-surface : Theme.s.on-surface-variant;
         horizontal-alignment: center;
+    }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
     }
     ta := TouchArea { clicked => { root.clicked(); } }
 }
 
-// An extended rail item: the icon and the label in one 56 dp pill.
+// An expanded rail item: a 56 dp full-width indicator with the icon and
+// the label in label-large.
 component ExtendedItem inherits Rectangle {
     in property <string> key;
     in property <bool> selected;
     callback clicked();
     accessible-role: tab;
     accessible-label: Destinations.label(key);
-    height: 52px;
+    accessible-checked: selected;
+    accessible-action-default => { root.clicked(); }
+    property <Glyph> g: Destinations.glyph(root.key);
+    height: 56px;
     border-radius: self.height / 2;
-    background: root.selected ? Theme.s.secondary-container : ta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+    background: root.selected ? Theme.s.secondary-container : transparent;
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+        pressed: ta.pressed;
+        hover: ta.has-hover;
+        focused: fs.has-focus;
+    }
     HorizontalLayout {
         padding-left: 16px;
-        padding-right: 16px;
+        padding-right: 24px;
         spacing: 12px;
         Icon {
-            glyph: Destinations.glyph(root.key);
+            glyph: { code: root.g.code, outlined: !root.selected };
             color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
             y: (parent.height - self.height) / 2;
         }
         T {
             text: Destinations.label(root.key);
-            role: TextRole.subheadline;
-            emphasized: root.selected;
+            role: TextRole.label-large;
             color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
             vertical-alignment: center;
             horizontal-stretch: 1;
             overflow: elide;
         }
     }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
+    }
     ta := TouchArea { clicked => { root.clicked(); } }
 }
 
-// The navigation rail (FlClash's tablet and desktop layout): the app icon,
-// the destinations, and at the foot a button that shows or hides the labels.
-// A tinted surface separates it from the pages instead of a divider.
+// The M3 navigation rail (medium and wider windows): 80 dp on the surface,
+// the app mark at the top, the destinations in the same order as the
+// phone's bar, and at the foot a button that expands it to 220 dp with
+// labels beside the icons. A 1 dp outline-variant edge separates it from
+// the pages.
 component Rail inherits Rectangle {
     width: Nav.rail-width;
-    background: Theme.s.surface-container-low;
-    animate width { duration: 180ms; easing: ease-out; }
+    background: Theme.s.surface;
+    animate width { duration: Theme.motion-medium; easing: cubic-bezier(0.2, 0, 0, 1); }
     clip: true;
+    accessible-role: tab-list;
+    Rectangle { x: parent.width - 1px; width: 1px; background: Theme.s.outline-variant; }
     VerticalLayout {
         padding-top: 12px;
         padding-bottom: 12px + Nav.inset-bottom;
         padding-left: Nav.rail-extended ? 12px : 0px;
         padding-right: Nav.rail-extended ? 12px : 0px;
-        spacing: 8px;
+        spacing: Nav.rail-extended ? 0px : 12px;
         HorizontalLayout {
             height: 56px;
             alignment: Nav.rail-extended ? start : center;
@@ -127,17 +171,17 @@ component Rail inherits Rectangle {
                 width: 40px;
                 height: 40px;
                 y: (parent.height - self.height) / 2;
+                accessible-role: none;
             }
             if Nav.rail-extended: T {
                 text: "FK-box";
-                role: TextRole.headline;
-                emphasized: true;
+                role: TextRole.title-large;
                 vertical-alignment: center;
             }
         }
-        Rectangle { height: 8px; }
+        Rectangle { height: Nav.rail-extended ? 12px : 4px; }
         for d in Nav.destinations: Rectangle {
-            height: Nav.rail-extended ? 52px : 64px;
+            height: Nav.rail-extended ? 56px : 56px;
             if !Nav.rail-extended: DestinationItem {
                 key: d;
                 rail: true;
@@ -176,22 +220,25 @@ component Pages inherits Rectangle {
 
 export component HomePage inherits Rectangle {
     background: Theme.s.surface;
-    // Phones: the pages run under a floating navigation bar (FlClash's mobile
-    // layout), a rounded bar inset from the edges and above the gesture inset.
+    // Compact windows: the M3 navigation bar docked at the bottom
+    // (surface-container, 80 dp, extended under the gesture inset).
     if Nav.mobile: Rectangle {
         Pages { }
         bar := Rectangle {
-            x: 16px;
-            width: parent.width - 32px;
-            height: Nav.bar-height;
-            y: parent.height - self.height - Nav.inset-bottom - Nav.bar-margin;
-            border-radius: self.height / 2;
-            background: Theme.s.surface-container-high;
+            x: 0;
+            width: parent.width;
+            height: Nav.bar-height + Nav.inset-bottom;
+            y: parent.height - self.height;
+            background: Theme.s.surface-container;
+            accessible-role: tab-list;
             // Taps between the items stay on the bar.
             TouchArea { }
             HorizontalLayout {
+                y: 0;
+                height: Nav.bar-height;
                 padding-left: 8px;
                 padding-right: 8px;
+                spacing: 8px;
                 for d in Nav.destinations: DestinationItem {
                     key: d;
                     horizontal-stretch: 1;

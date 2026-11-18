@@ -46,7 +46,7 @@ component RoutePage inherits Rectangle {
 }
 
 export component RouteHost inherits Rectangle {
-    // The content pane starts where the rail ends (88 px, or 220 px with labels).
+    // The content pane starts where the rail ends (80 dp, or 220 dp expanded).
     property <length> pane-x: Nav.mobile ? 0px : Nav.rail-width;
     for r[i] in Nav.routes: Rectangle {
         property <bool> card: r.form && !Nav.mobile;
@@ -64,7 +64,7 @@ export component RouteHost inherits Rectangle {
             height: card ? min(720px, (root.height - Nav.keyboard-height) * 0.85) : root.height;
             x: card ? (root.width - self.width) / 2 : r.form || r.pane < 0 ? 0px : root.pane-x;
             y: card ? (root.height - Nav.keyboard-height - self.height) / 2 : 0px;
-            border-radius: card ? Theme.radius : 0px;
+            border-radius: card ? Theme.corner-extra-large : 0px;
             clip: card;
         }
     }
