@@ -151,7 +151,7 @@ if not slint_version or (int(slint_version.group(1)), int(slint_version.group(2)
     errors.append("ui-slint/Cargo.toml: Slint 1.19 or newer is required (backdrop-blur)")
 else:
     version = ".".join(slint_version.groups())
-    for crate in ("i-slint-renderer-skia", "i-slint-backend-android-activity"):
+    for crate in ("i-slint-renderer-skia", "i-slint-backend-android-activity", "i-slint-core"):
         vendored = ROOT / "ui-slint/vendor" / crate
         if f'version = "{version}"' not in (vendored / "Cargo.toml").read_text():
             errors.append(f"ui-slint/vendor/{crate}: not rebased on Slint {version}")

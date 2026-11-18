@@ -55,6 +55,10 @@ thread_local! {
     /// While a fling runs, icon answers wait here and arrive a few per frame,
     /// out of order, as the host's IO thread answers them on a phone.
     static ICONS_LATER: RefCell<Option<VecDeque<(i64, String, String)>>> = const { RefCell::new(None) };
+    /// Row actions (`Nav.act2`) seen since `watchtaps`.
+    static TAPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// The frame `mark` drew, for `moved`.
+    static MARK: RefCell<Vec<Rgb8Pixel>> = const { RefCell::new(Vec::new()) };
 }
 
 pub fn queue(id: i64, method: &str, args: &str) {
@@ -726,6 +730,55 @@ pub fn run(args: Vec<String>) {
                 h.frame(&mut Vec::new());
             }
             "rest" => h.expect_rest(rest),
+            // Row actions are counted from here on instead of run.
+            "watchtaps" => {
+                h.app.global::<Nav>().on_act2(|_, _, _| TAPS.with(|t| t.set(t.get() + 1)));
+            }
+            // Remembers the settled frame; `moved:why` then asserts the
+            // content below the top bar changed (the list scrolled).
+            "mark" | "moved" => {
+                h.settle();
+                let mut buffer = Vec::new();
+                h.frame(&mut buffer);
+                if cmd == "mark" {
+                    MARK.with(|m| *m.borrow_mut() = buffer);
+                } else {
+                    let skip = (h.width as usize) * (h.height as usize) / 8;
+                    let same = MARK.with(|m| m.borrow()[skip..] == buffer[skip..]);
+                    eprintln!("moved ({rest}): {}", !same);
+                    assert!(!same, "{rest}: the list did not scroll");
+                }
+            }
+            // Exactly N row actions since `watchtaps`.
+            "taps" => {
+                let count = TAPS.with(|t| t.get());
+                eprintln!("taps ({rest}): {count}");
+                let (n, why) = rest.split_once(':').unwrap_or((rest, ""));
+                assert_eq!(count, n.parse::<usize>().unwrap_or(0), "{why}: wrong number of row taps");
+            }
+            // The route stack holds exactly N routes.
+            "routes" => {
+                let count = slint::Model::row_count(&h.app.global::<Nav>().get_routes());
+                eprintln!("routes ({rest}): {count}");
+                let (n, why) = rest.split_once(':').unwrap_or((rest, ""));
+                assert_eq!(count, n.parse::<usize>().unwrap_or(0), "{why}: wrong number of routes");
+            }
+            // System back as the Android backend sends it (press and release):
+            // both halves must be accepted while a route is open, or the host
+            // finishes the activity (back to the launcher).
+            "back" => {
+                let text: slint::SharedString = slint::platform::Key::Back.into();
+                let pressed = h.window.window().dispatch_event_with_result(WindowEvent::KeyPressed { text: text.clone() });
+                let released = h.window.window().dispatch_event_with_result(WindowEvent::KeyReleased { text });
+                let accepted = |r: &Result<slint::platform::WindowEventDispatchResult, slint::PlatformError>| {
+                    matches!(r, Ok(slint::platform::WindowEventDispatchResult::Accepted))
+                };
+                eprintln!("back ({rest}): pressed {} released {}", accepted(&pressed), accepted(&released));
+                let expect = rest != "exit";
+                assert_eq!(accepted(&pressed), expect, "back press ({rest})");
+                assert_eq!(accepted(&released), expect, "back release ({rest})");
+                h.settle();
+            }
             // While a finger is down: the page scrolls, the pager stays out.
             "scrolling" => {
                 let motion = h.app.global::<Motion>();
@@ -914,6 +967,36 @@ mod tests {
             "scrolling:diagonal scroll up", "up:230,440", "rest:after the diagonal scroll",
             "down:150,300", "move:160,312", "move:172,340", "move:180,380", "scrolling:diagonal scroll down", "up:180,380", "rest:after the scroll down",
             "down:60,500", "move:100,502", "move:180,505", "move:260,505", "move:320,505", "up:320,505", "rest:a swipe still turns the page",
+        ]);
+    }
+
+    /// Steps from FKUI_SHOT_STEPS (space separated), for trying a gesture
+    /// without rebuilding; does nothing when unset.
+    #[test]
+    fn steps_from_env() {
+        let Ok(list) = std::env::var("FKUI_SHOT_STEPS") else { return };
+        let list: Vec<&str> = list.split_whitespace().collect();
+        steps("fkui-shot-env", &list);
+    }
+
+    /// A fast flick (down, a few large moves and up before Slint's 100 ms
+    /// press delay ends) scrolls the list. Upstream, the pager's
+    /// SwipeGestureHandler held the press back, the first move locked the
+    /// pager out (src/gesture.rs) and dropped the held press, so the page's
+    /// Flickable never saw a press and the list stayed still; only a drag that
+    /// waited out the delay scrolled. The flick must not tap a row either. Back closes the page it would have opened and
+    /// leaves the app only from the home pages.
+    #[test]
+    fn fast_flick_is_not_a_tap() {
+        steps("fkui-shot-flick", &[
+            "tab:Tools", "rest:tools", "routes:0:start", "watchtaps",
+            "down:200,300", "up:200,300", "rest:after a tap", "taps:1:a plain tap on a row did not reach it",
+            "mark", "down:200,420", "move:200,400", "move:201,340", "move:202,260", "up:202,250", "rest:after a fast flick up",
+            "taps:1:a fast flick up tapped a row", "moved:a fast flick up",
+            "mark", "down:200,300", "move:200,330", "move:199,420", "up:199,430", "rest:after a fast flick down",
+            "taps:1:a fast flick down tapped a row", "moved:a fast flick down",
+            "push:memory:", "routes:1:pushed", "back:page", "rest:back from the page", "routes:0:back did not close the page",
+            "back:exit",
         ]);
     }
 

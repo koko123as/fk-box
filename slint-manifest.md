@@ -119,6 +119,9 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   broke Chinese composition), sets the EditorInfo per field and shows the keyboard explicitly.
   Host tests: `src/ime_tests.rs`. `BoxActivity.dispatchKeyEvent` orders the editable's selection
   and drops a key that still throws IndexOutOfBoundsException.
+- `ui-slint/vendor/i-slint-core` (1.19.0 + FKBOX-PATCH.md): `SwipeGestureHandler` forwards the press
+  at once instead of delaying it, so a fast flick reaches the home pages' `Flickable` and scrolls (upstream the
+  held press was dropped when the pager locked out, and the list stayed still).
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
   fixture data; never part of the Android build). `--features shot-skia` with `SHOT_RENDERER=skia`
   draws with the vendored Skia renderer on the CPU instead, which shows the glass blur. Its software renderer measures wrapped Chinese

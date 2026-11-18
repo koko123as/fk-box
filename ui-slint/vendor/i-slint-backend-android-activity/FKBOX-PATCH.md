@@ -95,3 +95,13 @@ touch events. FK-box decides each touch's axis there (ui-slint/src/gesture.rs)
 so a slightly diagonal scroll locks the home pager's SwipeGestureHandler out
 before Slint's 8 px swipe threshold lets it take the touch from the page's
 Flickable.
+
+## Back release
+
+`androidwindowadapter.rs`, the `InputEvent::KeyEvent` arm: when the UI
+accepted a Back key press (`FKBOX_BACK_TAKEN`), the matching Back release is
+reported `Handled` too, whatever the UI answers for it. GameActivity passes an
+unhandled key to `super.onKeyUp`, which takes a Back release as the system
+Back and finishes the activity: a Back that closed a page also left the app
+for the launcher. The UI accepts the release itself as well (`ui/app.slint`,
+`back-taken`); this keeps it from depending on where key focus is.

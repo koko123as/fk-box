@@ -111,6 +111,8 @@ export global Nav {
     callback pop();
     // System back; false lets the activity handle it.
     callback back() -> bool;
+    // The route host finished animating route `id` out (Motion.leaving-id).
+    callback route-left(int);
     // Closes the form a scrim tap dismisses.
     callback dismiss-form(int);
     // Page actions, dispatched by name in Rust.
@@ -239,6 +241,12 @@ export global Motion {
     in-out property <color> container-color;
     // Moves when a container opens (the route host starts the transform).
     in-out property <int> container-tick;
+    // The top route on its way out (src/nav.rs `close`): it stays in
+    // Nav.routes, drawn fading, sinking or shrinking into its card, until the
+    // route host calls Nav.route-left; -1 when none.
+    in-out property <int> leaving-id: -1;
+    // Bumped by Rust when it drops a route that already animated out.
+    in-out property <int> left-count;
     public function open-from(depth: int, x: length, y: length, w: length, h: length, radius: length, fill: color) {
         self.container-depth = depth;
         self.container-x = x;

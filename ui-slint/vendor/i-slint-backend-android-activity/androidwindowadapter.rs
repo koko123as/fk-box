@@ -9,6 +9,11 @@ use android_activity::input::{
     ButtonState, InputEvent, KeyAction, KeyMapChar, Keycode, MotionAction, MotionEvent,
 };
 use android_activity::{InputStatus, MainEvent, PollEvent};
+
+std::thread_local! {
+    // FK-box patch: whether the UI took the last Back press.
+    static FKBOX_BACK_TAKEN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 use i_slint_core::SharedString;
 use i_slint_core::api::{
     LogicalPosition, LogicalSize, PhysicalPosition, PhysicalSize, PlatformError, Window,
@@ -302,9 +307,28 @@ impl AndroidWindowAdapter {
                         Ok(WindowEventDispatchResult::Accepted) => {
                             // Like an input method's edits, keys hide the handles.
                             self.show_cursor_handles.set(false);
+                            if key_event.key_code() == Keycode::Back {
+                                // FK-box patch: see the Back release below.
+                                FKBOX_BACK_TAKEN.set(key_event.action() != KeyAction::Up);
+                            }
                             InputStatus::Handled
                         }
-                        Ok(_) => InputStatus::Unhandled,
+                        // FK-box patch: a Back release whose press the UI took
+                        // (a route closed) is handled too, whatever the UI says
+                        // of the release; NativeActivity would otherwise treat
+                        // the unhandled release as Back and finish the activity.
+                        Ok(_) if key_event.key_code() == Keycode::Back
+                            && key_event.action() == KeyAction::Up
+                            && FKBOX_BACK_TAKEN.replace(false) =>
+                        {
+                            InputStatus::Handled
+                        }
+                        Ok(_) => {
+                            if key_event.key_code() == Keycode::Back && key_event.action() != KeyAction::Up {
+                                FKBOX_BACK_TAKEN.set(false);
+                            }
+                            InputStatus::Unhandled
+                        }
                         Err(e) => {
                             result = Err(e);
                             InputStatus::Unhandled

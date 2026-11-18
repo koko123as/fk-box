@@ -69,10 +69,14 @@ panic = "unwind"
 # instead of copied per face and weight, and a 32 MB GPU resource budget.
 # The Android backend is vendored too (vendor/i-slint-backend-android-activity/
 # FKBOX-PATCH.md): GameTextInput text state in UTF-16 with an ordered
-# selection, no IME restart on echoes, explicit keyboard requests.
+# selection, no IME restart on echoes, explicit keyboard requests, the touch
+# observer and the Back release. i-slint-core is vendored for one change
+# (vendor/i-slint-core/FKBOX-PATCH.md): SwipeGestureHandler forwards a press
+# at once, so a fast flick reaches the page's Flickable and scrolls.
 [workspace]
-exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity"]
+exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity", "vendor/i-slint-core"]
 
 [patch.crates-io]
 i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
 i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
+i-slint-core = { path = "vendor/i-slint-core" }

@@ -124,6 +124,12 @@ export component RouteHost inherits Rectangle {
         root.top-form = root.count > 0 ? Nav.routes[root.count - 1].form : false;
         root.top-pane = root.count > 0 ? Nav.routes[root.count - 1].pane : -1;
         root.top-root = root.count > 0 ? Nav.routes[root.count - 1].sheet-root : false;
+        if (Motion.left-count != root.left-seen) {
+            root.left-seen = Motion.left-count;
+            if (!grew) {
+                return;
+            }
+        }
         if (root.depth > 0 && root.count < root.depth) {
             root.depth = -1;
             if (Nav.mobile && Theme.motion-on) {
@@ -162,6 +168,62 @@ export component RouteHost inherits Rectangle {
             if (left.running) { left.restart(); } else { left.start(); }
         }
     }
+    // The way back with the page still drawn (src/nav.rs `close` keeps the
+    // top route in Nav.routes while Motion.leaving-id names it): the page
+    // fades out over the one under it (1), a phone sheet sinks (2), a form
+    // card fades with its scrim (3), and a page opened from a card fades
+    // out over the surface shrinking back into that card (4). Then the host
+    // calls Nav.route-left and Rust drops the route.
+    property <int> leaving-id: Motion.leaving-id;
+    property <int> out-id: -1;
+    property <bool> going;
+    property <int> go-kind: 0;
+    property <duration> go-start;
+    property <duration> go-span;
+    property <float> gt: root.going ? Theme.progress(animation-tick(), root.go-start, root.go-span) : 1;
+    // Routes dropped after their own way out (Motion.left-count): the drop
+    // itself starts no second transition.
+    property <int> left-seen: 0;
+    changed leaving-id => {
+        if (Motion.leaving-id < 0) {
+            return;
+        }
+        if (root.count == 0 || Nav.routes[root.count - 1].id != Motion.leaving-id) {
+            Nav.route-left(Motion.leaving-id);
+            return;
+        }
+        let r = Nav.routes[root.count - 1];
+        if (root.depth > 0 && root.depth == root.count && Nav.mobile) {
+            root.depth = -1;
+            root.opening = false;
+            root.closing = true;
+            root.start = animation-tick();
+            if (finish.running) { finish.restart(); } else { finish.start(); }
+            root.go-kind = 4;
+            root.go-span = Theme.motion-long;
+        } else if (r.form && !r.sheet-root && !Nav.mobile) {
+            // A page inside a form card leaves the card where it is.
+            Nav.route-left(Motion.leaving-id);
+            return;
+        } else {
+            root.go-kind = !r.sheet-root ? 1 : Nav.mobile ? 2 : 3;
+            root.go-span = root.go-kind == 2 ? Theme.motion-sheet : Theme.motion-route;
+        }
+        root.out-id = Motion.leaving-id;
+        root.go-start = animation-tick();
+        root.going = true;
+        gone.interval = root.go-span + 16ms;
+        if (gone.running) { gone.restart(); } else { gone.start(); }
+    }
+    gone := Timer {
+        running: false;
+        interval: Theme.motion-long + 16ms;
+        triggered => {
+            self.stop();
+            root.going = false;
+            Nav.route-left(root.out-id);
+        }
+    }
     entered := Timer {
         running: false;
         interval: Theme.motion-sheet + 16ms;
@@ -191,6 +253,19 @@ export component RouteHost inherits Rectangle {
         property <bool> card: r.form && !Nav.mobile;
         // This route is the one fading (or rising) in.
         property <bool> arriving: root.entering && i == root.enter-depth - 1;
+        // This route is on its way out (Motion.leaving-id).
+        property <bool> out: root.going && r.id == root.out-id;
+        // A page fading in over the page under it gets an opaque surface
+        // first, so the two never show through each other (fade-through).
+        background: arriving && Nav.mobile && !r.sheet-root ? Theme.s.surface.with-alpha(clamp(root.et * 3, 0, 1)) : transparent;
+        // A page opened from a container draws over the growing surface (it
+        // fades in on an opaque surface) and over the shrinking one on the
+        // way back.
+        z: (i == root.depth - 1 && root.opening) || (out && root.go-kind == 4) ? 2 : 0;
+        opacity: !out ? 1
+            : root.go-kind == 4 ? 1 - clamp(root.t / 0.3, 0, 1)
+            : root.go-kind == 2 ? 1
+            : 1 - Theme.ease-out(root.gt);
         // A page of another destination stays hidden in its pane.
         property <bool> shown: r.form || Nav.mobile || r.pane < 0 || Nav.destinations[r.pane] == Nav.tab;
         if card && r.sheet-root: Rectangle {
@@ -207,7 +282,8 @@ export component RouteHost inherits Rectangle {
             x: card ? (root.width - self.width) / 2 : r.form || r.pane < 0 ? 0px : root.pane-x;
             // A phone form rises from the bottom edge as a sheet.
             y: card ? (root.height - Nav.keyboard-height - self.height) / 2
-                : arriving && r.sheet-root ? root.height * (1 - Theme.ease-out(root.et)) : 0px;
+                : arriving && r.sheet-root ? root.height * (1 - Theme.ease-out(root.et))
+                : out && root.go-kind == 2 ? root.height * (1 - Theme.ease-out(1 - root.gt)) : 0px;
             border-radius: card ? Theme.corner-extra-large : 0px;
             clip: card;
             transform-scale: card && r.sheet-root && arriving ? Theme.motion-enter-scale + (1 - Theme.motion-enter-scale) * Theme.ease-out(root.et) : 1;
@@ -217,6 +293,8 @@ export component RouteHost inherits Rectangle {
                 : i == root.depth - 1 && root.opening ? clamp((root.t - 0.6) / 0.4, 0, 1)
                 : arriving && (card || !r.sheet-root) ? root.et : 1;
         }
+        // A page on its way out takes no input.
+        if out: TouchArea { }
     }
     // The way back: a page's surface fades out where it was, a phone sheet
     // sinks out of the window (accelerating), a form card fades with its scrim.
@@ -242,6 +320,7 @@ export component RouteHost inherits Rectangle {
         }
     }
     if root.opening || root.closing: Rectangle {
+        z: 1;
         x: root.ox * (1 - root.grown);
         y: root.oy * (1 - root.grown);
         width: root.ow + (root.width - root.ow) * root.grown;
@@ -250,7 +329,9 @@ export component RouteHost inherits Rectangle {
         background: Theme.s.surface.mix(root.ocolor, root.grown);
         // Hands over to the page at the end of the way in, and to the card at
         // the end of the way back.
-        opacity: root.opening ? 1 - clamp((root.t - 0.6) / 0.4, 0, 1) : 1 - clamp((root.t - 0.8) / 0.2, 0, 1);
+        // Opaque under the page fading in (the page above it takes over at
+        // the end); on the way back it fades into the card at the end.
+        opacity: root.opening ? 1 : 1 - clamp((root.t - 0.8) / 0.2, 0, 1);
         drop-shadow-blur: Theme.shadow-blur(2);
         drop-shadow-offset-y: Theme.shadow-offset(2);
         drop-shadow-color: Theme.shadow-color(2);

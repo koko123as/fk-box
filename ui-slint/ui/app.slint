@@ -30,7 +30,7 @@ component Splash inherits Rectangle {
                 height: 96px;
             }
         }
-        T { text: "FK-box"; role: TextRole.headline-small; horizontal-alignment: center; }
+        T { text: "fk-box"; role: TextRole.headline-small; horizontal-alignment: center; }
         Rectangle { height: 16px; }
         HorizontalLayout {
             alignment: center;
@@ -262,7 +262,7 @@ component Snackbar inherits Rectangle {
 }
 
 export component AppWindow inherits Window {
-    title: "FK-box";
+    title: "fk-box";
     background: Theme.s.surface;
     default-font-family: Theme.font-family;
 
@@ -305,10 +305,23 @@ export component AppWindow inherits Window {
     property <int> focus-tick: Nav.focus-tick;
     changed focus-tick => { fs.focus(); }
 
+    // Whether the last Back press closed something: its release is accepted
+    // too, or Android's NativeActivity takes the unhandled release as its own
+    // Back and finishes the activity (back to the launcher).
+    property <bool> back-taken;
     fs := FocusScope {
         key-pressed(event) => {
             if (event.text == Key.Back || event.text == Key.Escape) {
-                return Nav.back() ? EventResult.accept : EventResult.reject;
+                root.back-taken = Nav.back();
+                return root.back-taken ? EventResult.accept : EventResult.reject;
+            }
+            EventResult.reject
+        }
+        key-released(event) => {
+            if (event.text == Key.Back || event.text == Key.Escape) {
+                let taken = root.back-taken;
+                root.back-taken = false;
+                return taken ? EventResult.accept : EventResult.reject;
             }
             EventResult.reject
         }
