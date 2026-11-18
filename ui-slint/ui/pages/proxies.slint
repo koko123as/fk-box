@@ -5,9 +5,9 @@
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction } from "../globals.slint";
+import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Proxies, GroupRow, NodeRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem, StateLayer } from "../kit.slint";
+import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem, StateLayer, Appear } from "../kit.slint";
 
 // ProxyCardMetrics
 global Metrics {
@@ -27,6 +27,21 @@ global Metrics {
 export component NodeCard inherits Card {
     in property <GroupRow> group;
     in property <NodeRow> node;
+    // Unfolding (a group opening in the list view): the cards fade in and
+    // grow into place one after another, `order` steps of Theme.motion-stagger
+    // apart (only the first Theme.motion-stagger-items are staggered).
+    in property <bool> revealed: true;
+    in property <int> order;
+    opacity: root.revealed ? 1 : 0;
+    transform-scale: root.revealed ? 1 : Theme.motion-enter-scale;
+    animate opacity, transform-scale {
+        duration: Theme.motion-short;
+        delay: root.revealed ? min(root.order, Theme.motion-stagger-items) * Theme.motion-stagger : 0ms;
+        easing: Theme.easing-decelerate;
+    }
+    // A new latency counts to its value.
+    property <float> delay-shown: root.node.delay-ms;
+    animate delay-shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     property <color> delay-color: !node.tested ? Theme.s.on-surface-variant : node.delay-ms <= 0 ? Theme.s.error : node.delay-ms < 300 ? Theme.s.success : Theme.s.warning;
     // Outlined; the selected node fills with secondary-container and shows
     // the check badge.
@@ -92,7 +107,7 @@ export component NodeCard inherits Card {
                 }
                 delay-label := T {
                     visible: !root.node.testing && root.node.tested;
-                    text: root.node.delay;
+                    text: root.node.delay-ms > 0 && root.node.delay == root.node.delay-ms + " ms" ? round(root.delay-shown) + " ms" : root.node.delay;
                     role: TextRole.label-small;
                     emphasized: true;
                     color: root.delay-color;
@@ -114,6 +129,7 @@ component NodeGrid inherits Rectangle {
     in property <GroupRow> group;
     in property <int> columns: 2;
     in property <length> inset: 0px;
+    in property <bool> revealed: true;
     property <length> cell-width: (self.width - 2 * inset - (columns - 1) * 8px) / columns;
     property <int> rows: ceil(group.items.length / columns);
     height: rows * Metrics.row-extent;
@@ -124,6 +140,8 @@ component NodeGrid inherits Rectangle {
         height: Metrics.extent;
         group: root.group;
         node: n;
+        revealed: root.revealed;
+        order: i;
     }
 }
 
@@ -207,12 +225,14 @@ component GroupIcon inherits Rectangle {
 // ProxyGroupHeader
 component GroupHeader inherits Rectangle {
     in property <GroupRow> group;
+    // The node grid under it is (partly) open: the header joins it.
+    in property <bool> joined: group.expanded;
     property <bool> expanded: group.expanded;
     height: 20px + Theme.leading(TextRole.body-large) + 2px + Theme.leading(TextRole.body-small) + 2px;
     border-top-left-radius: Theme.corner-large;
     border-top-right-radius: Theme.corner-large;
-    border-bottom-left-radius: expanded ? 0 : Theme.corner-large;
-    border-bottom-right-radius: expanded ? 0 : Theme.corner-large;
+    border-bottom-left-radius: joined ? 0 : Theme.corner-large;
+    border-bottom-right-radius: joined ? 0 : Theme.corner-large;
     background: Theme.level(1);
     Card {
         x: 4px;
@@ -254,7 +274,9 @@ component GroupHeader inherits Rectangle {
             }
             Rectangle { width: 6px; }
             Mid { TonalIconButton {
-                glyph: root.expanded ? Icons.arrow-up : Icons.caret-down;
+                // One arrow that turns over as the group folds and unfolds.
+                glyph: Icons.caret-down;
+                icon-rotation: root.expanded ? 180deg : 0deg;
                 tooltip: root.expanded ? @tr("Show less") : @tr("Show more");
                 size: 36px;
                 icon-size: 20px;
@@ -273,16 +295,11 @@ export component ProxiesPage inherits Rectangle {
     property <int> scroll-tick;
     background: Theme.s.surface;
     property <bool> scrolled;
-    if Proxies.groups.length == 0: EmptyState {
-        y: bar.height;
-        height: parent.height - bar.height;
-        width: parent.width;
+    if Proxies.groups.length == 0: Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         glyph: Icons.proxies;
         title: App.running ? @tr("No proxy groups in this configuration") : @tr("Start the service to view proxy groups");
-    }
-    if Proxies.groups.length > 0 && !Proxies.list: VerticalLayout {
-        y: bar.height;
-        height: parent.height - bar.height;
+    } }
+    if Proxies.groups.length > 0 && !Proxies.list: Appear { y: bar.height; height: parent.height - bar.height; VerticalLayout {
         padding-top: 8px;
         spacing: 0px;
         Rectangle {
@@ -305,6 +322,7 @@ export component ProxiesPage inherits Rectangle {
         grid-flick := Flickable {
             property <int> tick: root.scroll-tick;
             changed tick => { self.content-y = max(root.scroll-target, self.height - self.content-height); }
+            changed content-y => { if (!root.form) { Motion.scrolled("Proxies", self.content-y); } }
             vertical-stretch: 1;
             content-height: grid.height + 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
             grid := NodeGrid {
@@ -315,13 +333,16 @@ export component ProxiesPage inherits Rectangle {
                 group: root.current;
             }
         }
-    }
+    } }
     // The list view scrolls under the glass top app bar.
-    if Proxies.groups.length > 0 && Proxies.list: Flickable {
+    if Proxies.groups.length > 0 && Proxies.list: Appear { Flickable {
         y: 0;
         height: parent.height;
         content-height: list.preferred-height;
-        changed content-y => { root.scrolled = self.content-y < 0; }
+        changed content-y => {
+            root.scrolled = self.content-y < 0;
+            if (!root.form) { Motion.scrolled("Proxies", self.content-y); }
+        }
         list := VerticalLayout {
             padding-left: 16px;
             padding-right: 16px;
@@ -330,24 +351,45 @@ export component ProxiesPage inherits Rectangle {
             spacing: 0px;
             for g in Proxies.groups: VerticalLayout {
                 spacing: 0px;
-                GroupHeader { group: g; }
-                if g.expanded && g.items.length > 0: Rectangle {
+                GroupHeader { group: g; joined: fold.open || fold.height > 0.5px; }
+                // The nodes unfold: the box grows to the grid's height (it
+                // clips the grid meanwhile) while the cards fade in one after
+                // another; folding shrinks it and the grid goes once it is shut.
+                fold := Rectangle {
+                    property <bool> open: g.expanded && g.items.length > 0;
+                    property <bool> reveal;
                     background: Theme.level(1);
                     border-bottom-left-radius: Theme.corner-large;
                     border-bottom-right-radius: Theme.corner-large;
-                    height: rows.height + 2px;
-                    rows := NodeGrid {
+                    clip: true;
+                    height: self.open ? ceil(g.items.length / root.columns) * Metrics.row-extent + 2px : 0px;
+                    animate height { duration: Theme.motion-medium; easing: Theme.easing-emphasized; }
+                    init => { self.reveal = self.open; }
+                    changed open => {
+                        self.reveal = false;
+                        if (self.open) { reveal-next.restart(); }
+                    }
+                    reveal-next := Timer {
+                        running: false;
+                        interval: 1ms;
+                        triggered => {
+                            self.stop();
+                            fold.reveal = true;
+                        }
+                    }
+                    if fold.open || fold.height > 0.5px: NodeGrid {
                         y: 0;
                         width: parent.width;
                         inset: 10px;
                         columns: root.columns;
                         group: g;
+                        revealed: fold.reveal;
                     }
                 }
                 Rectangle { height: Nav.gap; }
             }
         }
-    }
+    } }
     bar := TopBar {
         y: 0;
         title: @tr("Proxies");

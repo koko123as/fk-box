@@ -5,9 +5,9 @@
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction } from "../globals.slint";
+import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText, Appear } from "../kit.slint";
 
 // A small status label (expiry, core): 0 neutral on secondary-container,
 // 1 warning, 2 error on their container roles; the text names the state.
@@ -90,27 +90,26 @@ export component ProfilesPage inherits Rectangle {
     property <length> card-height: Theme.leading(TextRole.title-medium) + 4px + Theme.leading(TextRole.body-small) + (Profiles.any-usage ? 10px : 0px) + 20px;
     background: Theme.s.surface;
     property <bool> scrolled;
-    if App.remote: EmptyState {
-        y: bar.height;
-        height: parent.height - bar.height;
+    if App.remote: Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         glyph: Icons.profiles;
         title: @tr("Disconnect remote session to edit local profiles");
-    }
-    if !App.remote && Profiles.rows.length == 0: EmptyState {
-        y: bar.height;
-        height: parent.height - bar.height;
+    } }
+    if !App.remote && Profiles.rows.length == 0: Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         glyph: Icons.profiles;
         title: @tr("No profiles yet");
         message: @tr("Import a sing-box JSON configuration to get started.");
         action-label: @tr("Add profile");
         action => { Nav.open-menu("add-profile", root.width / 2, root.height / 2); }
-    }
+    } }
     // The cards scroll under the glass top app bar (and the floating navigation bar).
-    if !App.remote && Profiles.rows.length > 0: Flickable {
+    if !App.remote && Profiles.rows.length > 0: Appear { Flickable {
         y: 0;
         height: parent.height;
         content-height: bar.height + grid.height + 8px + 16px + (root.picker ? Nav.inset-bottom : Nav.home-bottom);
-        changed content-y => { root.scrolled = self.content-y < 0; }
+        changed content-y => {
+            root.scrolled = self.content-y < 0;
+            if (!root.picker) { Motion.scrolled("Profiles", self.content-y); }
+        }
         grid := Rectangle {
             property <length> cell: (root.width - 32px - (root.columns - 1) * root.gap) / root.columns;
             y: bar.height + 8px;
@@ -124,7 +123,7 @@ export component ProfilesPage inherits Rectangle {
                 picker: root.picker;
             }
         }
-    }
+    } }
     bar := TopBar {
         y: 0;
         title: @tr("Profiles");

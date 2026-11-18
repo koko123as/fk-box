@@ -1,18 +1,26 @@
 // The home page: Dashboard, Proxies, Profiles and Tools on the floating
 // glass navigation bar in compact windows (< 600 dp); in medium and wider windows the M3
 // navigation rail, which adds Requests and Logs (destination order is the
-// same in both). A destination change is instant; the core
-// pages stay instantiated behind the shown one, Requests and Logs only while shown.
+// same in both). On phones the pages slide like a pager (FlClash's PageView:
+// a tap slides the new page in, a horizontal drag pulls the neighbour in and
+// settles on release), or fade through when the appearance setting asks for
+// it (Look.tab-motion "fade"); the rail's pages always fade through (the old
+// page fades out, the new one fades in growing slightly). The core pages
+// stay instantiated behind the shown one, only the shown and the moving ones
+// visible; Requests and Logs exist only while shown. On phones the floating
+// bar slides away while the page scrolls down.
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
-import { Nav } from "globals.slint";
-import { Icon, IconButton, T, StateLayer, FocusRing, Glass } from "kit.slint";
+import { Nav, Motion } from "globals.slint";
+import { Icon, IconButton, T, StateLayer, Ripple, FocusRing, Glass } from "kit.slint";
 import { DashboardPage } from "pages/dashboard.slint";
 import { ProxiesPage } from "pages/proxies.slint";
 import { ProfilesPage } from "pages/profiles.slint";
 import { ToolsPage } from "pages/tools.slint";
 import { RequestsPage, LogsPage } from "pages/requests.slint";
+import { Look } from "pages/appearance.slint";
+import { Dash, Proxies } from "data.slint";
 
 global Destinations {
     public pure function glyph(label: string) -> Glyph {
@@ -37,7 +45,8 @@ global Destinations {
 // The M3 navigation bar / rail destination: a 64 × 32 active indicator
 // (56 × 32 on the rail) in secondary-container behind a 24 dp icon — filled
 // when selected, outlined otherwise, so selection is not shown by color
-// alone — and the label in label-medium 4 dp below. Unselected items show a
+// alone — and the label in label-medium 4 dp below. The indicator grows from
+// its centre when the destination is selected. Unselected items show a
 // state layer on the indicator area. Positioned without layouts so an item
 // takes its full share of the bar.
 component DestinationItem inherits Rectangle {
@@ -58,7 +67,16 @@ component DestinationItem inherits Rectangle {
         x: (root.width - self.width) / 2;
         y: (root.height - root.block) / 2;
         border-radius: self.height / 2;
-        background: root.selected ? Theme.s.secondary-container : transparent;
+        // The active indicator, expanding from the centre.
+        Rectangle {
+            width: root.selected ? parent.width : 0px;
+            x: (parent.width - self.width) / 2;
+            border-radius: parent.border-radius;
+            background: Theme.s.secondary-container;
+            opacity: root.selected ? 1 : 0;
+            animate width { duration: Theme.motion-medium; easing: Theme.easing-emphasized; }
+            animate opacity { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        }
         StateLayer {
             border-radius: parent.border-radius;
             ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
@@ -66,9 +84,26 @@ component DestinationItem inherits Rectangle {
             hover: ta.has-hover;
             focused: fs.has-focus;
         }
+        rip := Ripple {
+            border-radius: parent.border-radius;
+            ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            centered: true;
+        }
+        // The outlined and the filled icon cross-fade; the filled one grows in.
         Icon {
-            glyph: { code: root.g.code, outlined: !root.selected };
-            color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
+            glyph: { code: root.g.code, outlined: true };
+            color: Theme.s.on-surface-variant;
+            opacity: root.selected ? 0 : 1;
+            transform-scale: root.selected ? 0.8 : 1;
+            animate opacity, transform-scale { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        }
+        Icon {
+            glyph: { code: root.g.code, outlined: false };
+            color: Theme.s.on-secondary-container;
+            opacity: root.selected ? 1 : 0;
+            transform-scale: root.selected ? 1 : 0.8;
+            animate opacity { duration: Theme.motion-short; easing: Theme.easing-standard; }
+            animate transform-scale { duration: Theme.motion-medium; easing: Theme.easing-back; }
         }
         FocusRing { shown: fs.has-focus; corner: parent.border-radius; }
     }
@@ -90,7 +125,13 @@ component DestinationItem inherits Rectangle {
             EventResult.reject
         }
     }
-    ta := TouchArea { clicked => { root.clicked(); } }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(0px, 0px); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+    }
 }
 
 // An expanded rail item: a 56 dp full-width indicator with the icon and
@@ -107,12 +148,17 @@ component ExtendedItem inherits Rectangle {
     height: 56px;
     border-radius: self.height / 2;
     background: root.selected ? Theme.s.secondary-container : transparent;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     StateLayer {
         border-radius: root.border-radius;
         ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
         pressed: ta.pressed;
         hover: ta.has-hover;
         focused: fs.has-focus;
+    }
+    rip := Ripple {
+        border-radius: root.border-radius;
+        ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
     }
     HorizontalLayout {
         padding-left: 16px;
@@ -140,7 +186,13 @@ component ExtendedItem inherits Rectangle {
             EventResult.reject
         }
     }
-    ta := TouchArea { clicked => { root.clicked(); } }
+    ta := TouchArea {
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+    }
 }
 
 // The M3 navigation rail (medium and wider windows): 80 dp on the surface,
@@ -151,7 +203,7 @@ component ExtendedItem inherits Rectangle {
 component Rail inherits Rectangle {
     width: Nav.rail-width;
     background: Theme.s.surface;
-    animate width { duration: Theme.motion-medium; easing: cubic-bezier(0.2, 0, 0, 1); }
+    animate width { duration: Theme.motion-medium; easing: Theme.easing-emphasized; }
     clip: true;
     accessible-role: tab-list;
     Rectangle { x: parent.width - 1px; width: 1px; background: Theme.s.outline-variant; }
@@ -207,15 +259,171 @@ component Rail inherits Rectangle {
     }
 }
 
+// One home destination's page in the pager, placed by Pages: `offset`
+// (slide), `fade` and `grow` (fade-through); hidden unless shown or moving.
+component HomeSlot inherits Rectangle {
+    in property <bool> shown;
+    in property <length> offset;
+    in property <float> fade: 1;
+    in property <float> grow: 1;
+    visible: root.shown;
+    x: root.offset;
+    opacity: root.fade;
+    transform-scale: root.grow;
+    @children
+}
+
 component Pages inherits Rectangle {
     property <string> current: Nav.tab;
+    // Slide like a pager on phones (unless the fade setting is on); fade
+    // through on the rail.
+    property <bool> slide: Nav.mobile && Look.tab-motion != "fade";
+    // The transition: the page being left, the direction (+1: the new page
+    // comes from the right), where it starts (a drag hands over its
+    // progress) and when (animation-tick()).
+    property <string> shown;
+    property <string> leaving;
+    property <float> dir: 1;
+    property <float> from: 0;
+    property <duration> start;
+    property <bool> moving;
+    property <duration> span: root.slide ? Theme.motion-tab : Theme.motion-exit + Theme.motion-enter;
+    // Read only while a transition runs, so an idle home page draws no frames.
+    property <float> t: root.moving ? Theme.progress(animation-tick(), root.start, root.span) : 1;
+    property <float> e: root.from + (1 - root.from) * Theme.ease-out(root.t);
+    // Fade-through shares (fade mode).
+    property <float> exit-share: Theme.motion-exit / max(1ms, root.span);
+    property <float> enter: Theme.ease-out((root.t - root.exit-share) / max(0.001, 1 - root.exit-share));
+    // A horizontal drag (slide mode): the neighbour it pulls in, from which
+    // side, and how far (0–1 of the width).
+    property <bool> dragging;
+    property <string> drag-to;
+    property <float> drag-dir: 1;
+    property <float> drag-p;
+    property <length> rubber;
+
+    pure function index(key: string) -> int {
+        if (key == "Dashboard") { return 0; }
+        if (key == "Proxies") { return 1; }
+        if (key == "Profiles") { return 2; }
+        if (Nav.mobile) { return key == "Tools" ? 3 : -1; }
+        if (key == "Requests") { return 3; }
+        if (key == "Logs") { return 4; }
+        return 5;
+    }
+    pure function visible-of(key: string) -> bool {
+        return key == root.current || (root.moving && key == root.leaving) || (root.dragging && key == root.drag-to);
+    }
+    pure function offset-of(key: string) -> length {
+        if (!root.slide) { return 0px; }
+        if (root.dragging) {
+            if (key == root.current) { return root.drag-to == "" ? root.rubber : -root.drag-dir * root.drag-p * root.width; }
+            return root.drag-dir * (1 - root.drag-p) * root.width;
+        }
+        if (!root.moving) { return 0px; }
+        if (key == root.leaving) { return -root.dir * root.e * root.width; }
+        return root.dir * (1 - root.e) * root.width;
+    }
+    pure function fade-of(key: string) -> float {
+        if (root.slide || !root.moving) { return 1; }
+        if (key == root.leaving) { return 1 - clamp(root.t / max(0.001, root.exit-share), 0, 1); }
+        return root.enter;
+    }
+    pure function grow-of(key: string) -> float {
+        if (root.slide || !root.moving || key != root.current) { return 1; }
+        return Theme.motion-enter-scale + (1 - Theme.motion-enter-scale) * root.enter;
+    }
+    // Starts a transition from `leave` to the current page.
+    function begin(leave: string, direction: float, progress: float) {
+        Motion.show-bar();
+        root.leaving = leave;
+        root.shown = root.current;
+        root.dir = direction;
+        root.from = progress;
+        if (leave == "" || leave == root.current) {
+            root.moving = false;
+            Motion.pages-moving = false;
+            return;
+        }
+        root.start = animation-tick();
+        root.moving = true;
+        Motion.pages-moving = true;
+        done.interval = root.span + 16ms;
+        done.restart();
+    }
+    init => { root.shown = root.current; }
+    changed current => {
+        // A drag that settled on this page already started its transition.
+        if (root.current != root.shown) {
+            root.begin(root.shown, root.index(root.current) >= root.index(root.shown) ? 1 : -1, 0);
+        }
+    }
+    done := Timer {
+        running: false;
+        interval: Theme.motion-medium;
+        triggered => {
+            self.stop();
+            root.moving = false;
+            Motion.pages-moving = root.dragging;
+        }
+    }
     clip: true;
-    DashboardPage { visible: current == "Dashboard"; }
-    ProxiesPage { visible: current == "Proxies"; }
-    ProfilesPage { visible: current == "Profiles"; }
-    ToolsPage { visible: current == "Tools"; }
-    if current == "Requests": RequestsPage { }
-    if current == "Logs": LogsPage { }
+    // A horizontal drag pulls in the neighbouring destination. Off where the
+    // page's own horizontal gestures need it: the dashboard editor (cards are
+    // dragged) and the proxies' scrolling group tabs.
+    SwipeGestureHandler {
+        enabled: root.slide && !Dash.editing && !(root.current == "Proxies" && !Proxies.list && Proxies.groups.length > 0);
+        handle-swipe-left: true;
+        handle-swipe-right: true;
+        moved => {
+            let dx = self.current-position.x - self.pressed-position.x;
+            let i = root.index(root.current) + (dx < 0 ? 1 : -1);
+            root.dragging = true;
+            root.moving = false;
+            Motion.swiping = true;
+            Motion.pages-moving = true;
+            root.drag-dir = dx < 0 ? 1 : -1;
+            root.drag-to = i >= 0 && i < Nav.destinations.length ? Nav.destinations[i] : "";
+            root.drag-p = clamp(abs(dx) / max(1px, root.width), 0, 1);
+            // Past the first or last page the page follows a third of the drag.
+            root.rubber = dx / 3;
+        }
+        swiped => { root.settle(); }
+        cancelled => { root.settle(); }
+        HomeSlot { shown: root.visible-of("Dashboard"); offset: root.offset-of("Dashboard"); fade: root.fade-of("Dashboard"); grow: root.grow-of("Dashboard"); DashboardPage { } }
+        HomeSlot { shown: root.visible-of("Proxies"); offset: root.offset-of("Proxies"); fade: root.fade-of("Proxies"); grow: root.grow-of("Proxies"); ProxiesPage { } }
+        HomeSlot { shown: root.visible-of("Profiles"); offset: root.offset-of("Profiles"); fade: root.fade-of("Profiles"); grow: root.grow-of("Profiles"); ProfilesPage { } }
+        HomeSlot { shown: root.visible-of("Tools"); offset: root.offset-of("Tools"); fade: root.fade-of("Tools"); grow: root.grow-of("Tools"); ToolsPage { } }
+        if root.visible-of("Requests"): HomeSlot { shown: true; offset: root.offset-of("Requests"); fade: root.fade-of("Requests"); grow: root.grow-of("Requests"); RequestsPage { } }
+        if root.visible-of("Logs"): HomeSlot { shown: true; offset: root.offset-of("Logs"); fade: root.fade-of("Logs"); grow: root.grow-of("Logs"); LogsPage { } }
+    }
+    // The drag ends: past a quarter of the width it carries on to the
+    // neighbour, otherwise it slides back.
+    function settle() {
+        if (!root.dragging) { return; }
+        root.dragging = false;
+        Motion.swiping = false;
+        if (root.drag-to != "" && root.drag-p > 0.25) {
+            let next = root.drag-to;
+            let leave = root.current;
+            root.shown = next;
+            Nav.select-tab(next);
+            root.begin(leave, root.drag-dir, root.drag-p);
+        } else if (root.drag-to != "") {
+            // Back: the neighbour leaves the way it came.
+            let back = root.drag-to;
+            root.drag-to = "";
+            root.leaving = back;
+            root.dir = -root.drag-dir;
+            root.from = 1 - root.drag-p;
+            root.start = animation-tick();
+            root.moving = true;
+            done.interval = root.span + 16ms;
+            done.restart();
+        } else {
+            Motion.pages-moving = false;
+        }
+    }
 }
 
 export component HomePage inherits Rectangle {
@@ -232,7 +440,10 @@ export component HomePage inherits Rectangle {
             width: min(parent.width - 2 * Nav.bar-side, 480px);
             x: (parent.width - self.width) / 2;
             height: Nav.bar-height;
-            y: parent.height - self.height - Nav.bar-margin - Nav.inset-bottom;
+            // Slides below the window while the page scrolls down (Motion.bar-hidden).
+            y: parent.height - self.height - Nav.bar-margin - Nav.inset-bottom
+                + (Motion.bar-hidden ? self.height + Nav.bar-margin + Nav.inset-bottom + Theme.space-4 : 0px);
+            animate y { duration: Theme.motion-medium; easing: Motion.bar-hidden ? Theme.easing-accelerate : Theme.easing-decelerate; }
             border-radius: self.height / 2;
             accessible-role: tab-list;
             // Taps between the items stay on the bar.

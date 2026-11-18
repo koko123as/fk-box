@@ -2148,3 +2148,15 @@ msgstr "%d 小时前"
 
 msgid "%dm ago"
 msgstr "%d 分钟前"
+
+msgid "Page switching"
+msgstr "页面切换"
+
+msgid "Slide"
+msgstr "滑动"
+
+msgid "Fade"
+msgstr "淡入"
+
+msgid "Long-press a card to drag it"
+msgstr "长按卡片后拖动排序"

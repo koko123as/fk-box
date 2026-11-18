@@ -6,9 +6,9 @@
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction } from "../globals.slint";
+import { Nav, BarAction, Motion } from "../globals.slint";
 import { SettingRow, PageData } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Glass } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Glass, Appear } from "../kit.slint";
 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
@@ -525,8 +525,11 @@ export component RowsBody inherits Rectangle {
     in property <length> bottom: Nav.inset-bottom;
     // Content is scrolled up from its start (the top app bar turns to glass).
     out property <bool> scrolled: flick.content-y < 0;
+    // A home destination's rows report their scrolling (the floating bar slides away).
+    in property <string> home;
     flick := Flickable {
         content-height: body.preferred-height;
+        changed content-y => { if (root.home != "") { Motion.scrolled(root.home, self.content-y); } }
         // A list read bottom up (logs) starts at its end; scrolling away stops following.
         property <length> end: min(0px, self.height - body.preferred-height);
         changed end => { if (root.d.reverse && self.content-y <= 0px && self.content-y >= self.end - 120px) { self.content-y = self.end; } }
@@ -554,27 +557,28 @@ export component RowsPage inherits Rectangle {
     in property <PageData> d;
     in property <int> leading: 1;
     in property <length> bottom: Nav.inset-bottom;
+    // The home destination this page is ("" for a pushed page).
+    in property <string> home;
     background: Theme.s.surface;
     property <bool> scrolled;
-    if root.d.rows.length == 0 && root.d.empty-title != "": EmptyState {
-        y: bar.height;
-        height: parent.height - bar.height;
+    if root.d.rows.length == 0 && root.d.empty-title != "": Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
         title: root.d.empty-title;
         message: root.d.empty-message;
         glyph: root.d.empty-glyph;
         action-label: root.d.empty-action;
         action => { Nav.act2("empty", root.d.id, ""); }
-    }
+    } }
     // The rows scroll under the glass top app bar.
-    if root.d.rows.length > 0: RowsBody {
+    if root.d.rows.length > 0: Appear { RowsBody {
         y: 0;
         height: parent.height;
         d: root.d;
+        home: root.home;
         top-pad: bar.height + 8px;
         bottom: root.bottom;
         changed scrolled => { root.scrolled = self.scrolled; }
         init => { root.scrolled = self.scrolled; }
-    }
+    } }
     bar := TopBar {
         y: 0;
         title: root.d.title;
