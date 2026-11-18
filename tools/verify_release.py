@@ -140,7 +140,7 @@ def main():
     if launcher.get('name') != 'io.nekohasekai.sfa.compose.MainActivity':
         raise SystemExit(f'Unexpected launcher activity: {launcher.get("name")!r}')
     labels = dict(re.findall(r"^(application-label(?:-[^:]+)?):'(.*)'$", badging, re.MULTILINE))
-    if 'application-label' not in labels or any(label != 'FK-box' for label in labels.values()):
+    if 'application-label' not in labels or any(label != 'fk-box' for label in labels.values()):
         raise SystemExit(f'Unexpected application labels: {labels}')
     print(f'Verified ARM64 APK identity, minimum SDK 24 and {len(labels)} application labels: {apks[0]}')
     subprocess.run([str(aapt2.with_name('apksigner')), 'verify', '--verbose', str(apks[0])], check=True)
