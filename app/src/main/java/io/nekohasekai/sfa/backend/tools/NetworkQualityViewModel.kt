@@ -8,16 +8,15 @@ import io.nekohasekai.libbox.NetworkQualityProgress
 import io.nekohasekai.libbox.NetworkQualityResult
 import io.nekohasekai.libbox.NetworkQualityTestHandler
 import io.nekohasekai.libbox.NetworkQualityTestSession
-import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-enum class MaxRuntimeOption(val seconds: Int, val labelRes: Int) {
-    THIRTY(30, R.string.network_quality_max_runtime_30s),
-    SIXTY(60, R.string.network_quality_max_runtime_60s),
+enum class MaxRuntimeOption(val seconds: Int) {
+    THIRTY(30),
+    SIXTY(60),
 }
 
 data class NetworkQualityState(
@@ -27,10 +26,6 @@ data class NetworkQualityState(
     val uploadCapacity: Long = 0,
     val downloadRPM: Int = 0,
     val uploadRPM: Int = 0,
-    val downloadCapacityAccuracy: Int = 0,
-    val uploadCapacityAccuracy: Int = 0,
-    val downloadRPMAccuracy: Int = 0,
-    val uploadRPMAccuracy: Int = 0,
     val isRunning: Boolean = false,
     val configURL: String = Libbox.NetworkQualityDefaultConfigURL,
     val serial: Boolean = false,
@@ -99,10 +94,6 @@ class NetworkQualityViewModel : BaseViewModel<NetworkQualityState>() {
                 uploadCapacity = 0,
                 downloadRPM = 0,
                 uploadRPM = 0,
-                downloadCapacityAccuracy = 0,
-                uploadCapacityAccuracy = 0,
-                downloadRPMAccuracy = 0,
-                uploadRPMAccuracy = 0,
                 isRunning = true,
             )
         }
@@ -186,10 +177,6 @@ class NetworkQualityViewModel : BaseViewModel<NetworkQualityState>() {
                             uploadCapacity = progress.uploadCapacity,
                             downloadRPM = progress.downloadRPM.toInt(),
                             uploadRPM = progress.uploadRPM.toInt(),
-                            downloadCapacityAccuracy = progress.downloadCapacityAccuracy.toInt(),
-                            uploadCapacityAccuracy = progress.uploadCapacityAccuracy.toInt(),
-                            downloadRPMAccuracy = progress.downloadRPMAccuracy.toInt(),
-                            uploadRPMAccuracy = progress.uploadRPMAccuracy.toInt(),
                         )
                     }
                 }
@@ -207,10 +194,6 @@ class NetworkQualityViewModel : BaseViewModel<NetworkQualityState>() {
                             uploadCapacity = result.uploadCapacity,
                             downloadRPM = result.downloadRPM.toInt(),
                             uploadRPM = result.uploadRPM.toInt(),
-                            downloadCapacityAccuracy = result.downloadCapacityAccuracy.toInt(),
-                            uploadCapacityAccuracy = result.uploadCapacityAccuracy.toInt(),
-                            downloadRPMAccuracy = result.downloadRPMAccuracy.toInt(),
-                            uploadRPMAccuracy = result.uploadRPMAccuracy.toInt(),
                             isRunning = false,
                         )
                     }

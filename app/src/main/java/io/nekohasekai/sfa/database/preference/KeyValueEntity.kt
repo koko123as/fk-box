@@ -43,12 +43,6 @@ class KeyValueEntity() : Parcelable {
 
         @Query("DELETE FROM KeyValueEntity WHERE `key` = :key")
         fun delete(key: String): Int
-
-        @Query("DELETE FROM KeyValueEntity")
-        fun reset(): Int
-
-        @Insert
-        fun insert(list: List<KeyValueEntity>)
     }
 
     @PrimaryKey

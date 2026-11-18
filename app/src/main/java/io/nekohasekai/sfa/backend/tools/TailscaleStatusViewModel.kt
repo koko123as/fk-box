@@ -21,13 +21,9 @@ data class TailscalePeerData(
     val online: Boolean,
     val exitNode: Boolean,
     val exitNodeOption: Boolean,
-    val shareeNode: Boolean,
-    val expired: Boolean,
     val active: Boolean,
     val rxBytes: Long,
     val txBytes: Long,
-    val keyExpiry: Long,
-    val lastSeen: Long,
     val canReceiveFiles: Boolean,
 ) {
     val displayName: String get() = dnsName.substringBefore(".").ifEmpty { hostName }
@@ -37,31 +33,24 @@ data class TailscaleUserGroupData(
     val id: Long,
     val loginName: String,
     val displayName: String,
-    val profilePicURL: String,
     val peers: List<TailscalePeerData>,
 )
 
 data class TailscaleEndpointData(
     val endpointTag: String,
-    val backendState: String,
     val stateText: String,
     val authURL: String,
     val networkName: String,
-    val magicDNSSuffix: String,
     val selfPeer: TailscalePeerData?,
     val exitNode: TailscalePeerData?,
     val userGroups: List<TailscaleUserGroupData>,
-    val keyAuth: Boolean,
     val canShareFiles: Boolean,
     val waitingFileCount: Int,
-    val receivingFileCount: Int,
-    val unreadFileCount: Int,
 )
 
 data class TailscaleStatusState(
     val endpoints: List<TailscaleEndpointData> = emptyList(),
     val isSubscribed: Boolean = false,
-    val hasUpdate: Boolean = false,
 )
 
 class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
@@ -82,7 +71,7 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
                             val endpoints = convertUpdate(status)
                             viewModelScope.launch {
                                 if (!currentState.isSubscribed) return@launch
-                                updateState { copy(endpoints = endpoints, hasUpdate = true) }
+                                updateState { copy(endpoints = endpoints) }
                             }
                         }
 
@@ -90,7 +79,7 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
                             statusSubscription.discard(token)
                             viewModelScope.launch {
                                 if (!currentState.isSubscribed) return@launch
-                                updateState { copy(endpoints = emptyList(), isSubscribed = false, hasUpdate = false) }
+                                updateState { copy(endpoints = emptyList(), isSubscribed = false) }
                                 sendErrorMessage(message)
                             }
                         }
@@ -98,7 +87,7 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
                 statusSubscription.store(token, session)
             } catch (_: Exception) {
                 viewModelScope.launch {
-                    updateState { copy(endpoints = emptyList(), isSubscribed = false, hasUpdate = false) }
+                    updateState { copy(endpoints = emptyList(), isSubscribed = false) }
                 }
             }
         }
@@ -106,7 +95,7 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
 
     fun cancel() {
         statusSubscription.close()
-        updateState { copy(endpoints = emptyList(), isSubscribed = false, hasUpdate = false) }
+        updateState { copy(endpoints = emptyList(), isSubscribed = false) }
     }
 
     fun endpoint(tag: String): TailscaleEndpointData? = currentState.endpoints.firstOrNull { it.endpointTag == tag }
@@ -147,19 +136,14 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
         val exitNode = endpoint.exitNode
         return TailscaleEndpointData(
             endpointTag = endpoint.endpointTag,
-            backendState = endpoint.backendState,
             stateText = endpoint.stateText,
             authURL = endpoint.authURL,
             networkName = endpoint.networkName,
-            magicDNSSuffix = endpoint.magicDNSSuffix,
             selfPeer = if (self != null) convertPeer(self) else null,
             exitNode = if (exitNode != null) convertPeer(exitNode) else null,
             userGroups = userGroups,
-            keyAuth = endpoint.keyAuth,
             canShareFiles = endpoint.canShareFiles,
             waitingFileCount = endpoint.waitingFileCount,
-            receivingFileCount = endpoint.receivingFileCount,
-            unreadFileCount = endpoint.unreadFileCount,
         )
     }
 
@@ -175,7 +159,6 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
             id = group.userID,
             loginName = group.loginName,
             displayName = group.displayName,
-            profilePicURL = group.profilePicURL,
             peers = peers,
         )
     }
@@ -203,13 +186,9 @@ class TailscaleStatusViewModel : BaseViewModel<TailscaleStatusState>() {
             online = peer.online,
             exitNode = peer.exitNode,
             exitNodeOption = peer.exitNodeOption,
-            shareeNode = peer.shareeNode,
-            expired = peer.expired,
             active = peer.active,
             rxBytes = peer.rxBytes,
             txBytes = peer.txBytes,
-            keyExpiry = peer.keyExpiry,
-            lastSeen = peer.lastSeen,
             canReceiveFiles = peer.canReceiveFiles,
         )
     }

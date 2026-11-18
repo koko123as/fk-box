@@ -328,7 +328,6 @@ dependencies {
     val lifecycleVersion = "2.11.0"
     val roomVersion = "2.8.4"
 
-    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("com.android.tools.smali:smali-dexlib2:3.0.9") {

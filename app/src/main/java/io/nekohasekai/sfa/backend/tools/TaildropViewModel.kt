@@ -21,7 +21,6 @@ data class TaildropFileData(
     val name: String,
     val size: Long,
     val senderName: String,
-    val modifiedAt: Long,
 )
 
 data class TaildropReceivingFileData(
@@ -36,7 +35,6 @@ data class TaildropInboxState(
     val files: List<TaildropFileData> = emptyList(),
     val receiving: List<TaildropReceivingFileData> = emptyList(),
     val isSubscribed: Boolean = false,
-    val hasUpdate: Boolean = false,
 )
 
 object TaildropFiles {
@@ -149,7 +147,7 @@ class TaildropViewModel : BaseViewModel<TaildropInboxState>() {
                                 val receiving = convertReceiving(inbox)
                                 viewModelScope.launch {
                                     if (!currentState.isSubscribed) return@launch
-                                    updateState { copy(files = files, receiving = receiving, hasUpdate = true) }
+                                    updateState { copy(files = files, receiving = receiving) }
                                 }
                             }
 
@@ -158,7 +156,7 @@ class TaildropViewModel : BaseViewModel<TaildropInboxState>() {
                                 viewModelScope.launch {
                                     if (!currentState.isSubscribed) return@launch
                                     subscribedTag = null
-                                    updateState { TaildropInboxState(hasUpdate = true) }
+                                    updateState { TaildropInboxState() }
                                     sendErrorMessage(message)
                                 }
                             }
@@ -168,7 +166,7 @@ class TaildropViewModel : BaseViewModel<TaildropInboxState>() {
             } catch (e: Exception) {
                 viewModelScope.launch {
                     subscribedTag = null
-                    updateState { TaildropInboxState(hasUpdate = true) }
+                    updateState { TaildropInboxState() }
                     sendErrorMessage(e.message ?: e.toString())
                 }
             }
@@ -226,7 +224,6 @@ class TaildropViewModel : BaseViewModel<TaildropInboxState>() {
                     name = file.name,
                     size = file.size,
                     senderName = file.senderName,
-                    modifiedAt = file.modifiedAt,
                 ),
             )
         }

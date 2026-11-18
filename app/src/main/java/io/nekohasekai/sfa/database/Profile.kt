@@ -46,13 +46,7 @@ class Profile(
         @Query("select * from profiles order by userOrder asc")
         fun list(): List<Profile>
 
-        @Query("DELETE FROM profiles")
-        fun clear()
-
         @Query("SELECT MAX(userOrder) + 1 FROM profiles")
         fun nextOrder(): Long?
-
-        @Query("SELECT MAX(id) + 1 FROM profiles")
-        fun nextFileID(): Long?
     }
 }

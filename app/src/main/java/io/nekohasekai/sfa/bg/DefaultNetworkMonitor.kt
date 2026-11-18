@@ -1,7 +1,6 @@
 package io.nekohasekai.sfa.bg
 
 import android.net.Network
-import android.os.Build
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application

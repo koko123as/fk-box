@@ -9,10 +9,6 @@ internal object BoxSettings {
         "disableDeprecatedWarnings", "singBoxEnabled", "xrayEnabled", "mihomoEnabled", "oomKillerEnabled", "oomKillerDisabled", "powerReportEnabled", "geoAutoUpdate",
     )
 
-    /** A typed memory limit (spaces and a trailing "MiB"/"MB" tolerated), or null outside 10–4096. */
-    fun parseMemoryLimit(text: String): Int? =
-        text.trim().removeSuffix("MiB").removeSuffix("MB").trim().toIntOrNull()?.takeIf { it in 10..4096 }
-
     fun validate(values: Map<String, Any?>): Map<String, Any?> {
         values.forEach { (key, value) ->
             val valid = when (key) {

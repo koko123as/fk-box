@@ -16,7 +16,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class GroupsUiState(val groups: List<Group> = emptyList(), val isLoading: Boolean = false)
+data class GroupsUiState(val groups: List<Group> = emptyList())
 
 class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val commandClient = CommandClient(viewModelScope, CommandClient.ConnectionType.Groups, this)
@@ -41,7 +41,6 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
                 )
             }.distinctUntilChanged().collect { target ->
                 if (target.connect) {
-                    updateState { copy(isLoading = true) }
                     commandClient.connect()
                 } else {
                     commandClient.disconnect()
@@ -67,7 +66,6 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
             updateState {
                 copy(
                     groups = emptyList(),
-                    isLoading = false,
                 )
             }
         }
@@ -95,7 +93,6 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
             updateState {
                 copy(
                     groups = if (keepSnapshot) groups else emptyList(),
-                    isLoading = false,
                 )
             }
         }
@@ -119,7 +116,6 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
                 updateState {
                     copy(
                         groups = if (mergedGroups == groups) groups else mergedGroups,
-                        isLoading = false,
                     )
                 }
             }

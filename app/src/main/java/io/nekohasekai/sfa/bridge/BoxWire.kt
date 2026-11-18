@@ -30,13 +30,13 @@ internal fun Group.toWire(): Map<String, Any?> = mapOf(
 )
 
 internal fun Connection.toWire(): Map<String, Any?> = mapOf(
-    "id" to id, "inbound" to inbound, "inboundType" to inboundType,
+    "id" to id, "inbound" to inbound,
     "network" to network, "source" to source, "destination" to destination,
     "domain" to domain, "displayDestination" to displayDestination,
     "protocol" to protocolName, "user" to user, "createdAt" to createdAt,
     "closedAt" to closedAt, "upload" to upload, "download" to download,
     "uploadTotal" to uploadTotal, "downloadTotal" to downloadTotal,
-    "rule" to rule, "outbound" to outbound, "outboundType" to outboundType,
+    "rule" to rule, "outbound" to outbound,
     "chain" to chain, "process" to processInfo?.let {
         mapOf("id" to it.processId, "path" to it.processPath, "user" to it.userName, "packages" to it.packageNames)
     },

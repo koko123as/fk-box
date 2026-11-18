@@ -15,15 +15,6 @@ class BoxSettingsTest {
     }
 
     @Test
-    fun memoryLimitDialogEditsTheBareNumber() {
-        assertEquals(256, BoxSettings.parseMemoryLimit(" 256 "))
-        assertEquals(100, BoxSettings.parseMemoryLimit("100 MiB"))
-        assertEquals(null, BoxSettings.parseMemoryLimit("5"))
-        assertEquals(null, BoxSettings.parseMemoryLimit("5000"))
-        assertEquals(null, BoxSettings.parseMemoryLimit(""))
-    }
-
-    @Test
     fun geoResourceSettingsAreValidated() {
         val value = mapOf("geoAutoUpdate" to true, "geoUpdateInterval" to 24, "geoUrls" to mapOf("geoip" to "https://example.com/geoip.dat"))
         assertEquals(value, BoxSettings.validate(value))

@@ -38,8 +38,6 @@ object ProfileManager {
 
     suspend fun nextOrder(): Long = instance.profileDao().nextOrder() ?: 0
 
-    suspend fun nextFileID(): Long = instance.profileDao().nextFileID() ?: 1
-
     suspend fun get(id: Long): Profile? = instance.profileDao().get(id)
 
     suspend fun create(profile: Profile, andSelect: Boolean = false): Profile {

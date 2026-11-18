@@ -47,6 +47,8 @@
 
 配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
 
+桥接载荷只携带 Rust 界面读取的字段（以 `ui-slint/src` 中的键名为准）；USB/IP 设备、OpenConnect/OpenVPN 隧道信息和连接的进程信息由界面整体列出，保留完整字段。只供已删除 Compose 页面使用的状态与载荷字段（加载标志、Tailscale 头像/密钥到期/最后在线、Ping 历史、测速精度、扫码裁剪框回调、未接入的设置 DAO 方法等）已删除，新增字段时先确认界面会读取。设置存储 [RoomPreferenceDataStore](app/src/main/java/io/nekohasekai/sfa/database/preference/RoomPreferenceDataStore.kt) 是独立类，不再继承 androidx.preference 的 `PreferenceDataStore`，该依赖已移除；数据库与键值格式不变。
+
 Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/Shizuku 终端、Ghostty 设置和导入字体、OpenConnect/OpenVPN 认证、USB/IP、网络诊断、崩溃/OOM/电量报告均通过新页面使用现有后端。报告导出的“为 sing-box 维护者加密”开关默认关闭：上游 `Libbox.createZipArchive` 的 age 收件人是 sing-box 维护者的密钥，加密后的 `.zip.age` 只有他们能解开；崩溃报告导出总是包含 `jvm.log`（崩溃堆栈，“包含日志”只控制 `go.log`），并附带界面（libfkui）最近一次 panic 的 `fkui-panic.txt`（panic 钩子写入应用 files 目录，被捕获的 panic 也会写入）。历史 MOD-014 的功能移除已回退，不能按旧裁剪记录删除这些能力。
 
 ## 配置、服务应用与备份

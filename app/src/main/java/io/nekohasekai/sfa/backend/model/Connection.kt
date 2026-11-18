@@ -4,13 +4,12 @@ import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.libbox.Connection as LibboxConnection
 import io.nekohasekai.libbox.ProcessInfo as LibboxProcessInfo
 
-data class ProcessInfo(val processId: Long, val userId: Int, val userName: String, val processPath: String, val packageNames: List<String>) {
+data class ProcessInfo(val processId: Long, val userName: String, val processPath: String, val packageNames: List<String>) {
     companion object {
         fun from(processInfo: LibboxProcessInfo?): ProcessInfo? {
             if (processInfo == null) return null
             return ProcessInfo(
                 processId = processInfo.processID,
-                userId = processInfo.userID,
                 userName = processInfo.userName ?: "",
                 processPath = processInfo.processPath ?: "",
                 packageNames = processInfo.packageNames()?.toList() ?: emptyList(),
@@ -22,8 +21,6 @@ data class ProcessInfo(val processId: Long, val userId: Int, val userName: Strin
 data class Connection(
     val id: String,
     val inbound: String,
-    val inboundType: String,
-    val ipVersion: Int,
     val network: String,
     val source: String,
     val destination: String,
@@ -31,7 +28,6 @@ data class Connection(
     val displayDestination: String,
     val protocolName: String,
     val user: String,
-    val fromOutbound: String,
     val createdAt: Long,
     val closedAt: Long?,
     val upload: Long,
@@ -48,8 +44,6 @@ data class Connection(
         fun from(connection: LibboxConnection): Connection = Connection(
             id = connection.id,
             inbound = connection.inbound,
-            inboundType = connection.inboundType,
-            ipVersion = connection.ipVersion,
             network = connection.network,
             source = connection.source,
             destination = connection.destination,
@@ -57,7 +51,6 @@ data class Connection(
             displayDestination = connection.displayDestination(),
             protocolName = connection.protocol,
             user = connection.user,
-            fromOutbound = connection.fromOutbound,
             createdAt = connection.createdAt,
             closedAt = if (connection.closedAt > 0) connection.closedAt else null,
             upload = connection.uplink,

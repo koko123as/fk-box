@@ -34,13 +34,9 @@ internal fun TailscalePeerData.toWire(): Map<String, Any?> = mapOf(
     "online" to online,
     "exitNode" to exitNode,
     "exitNodeOption" to exitNodeOption,
-    "shareeNode" to shareeNode,
-    "expired" to expired,
     "active" to active,
     "rxBytes" to rxBytes,
     "txBytes" to txBytes,
-    "keyExpiry" to keyExpiry,
-    "lastSeen" to lastSeen,
     "canReceiveFiles" to canReceiveFiles,
 )
 
@@ -48,25 +44,19 @@ internal fun TailscaleUserGroupData.toWire(): Map<String, Any?> = mapOf(
     "id" to id,
     "loginName" to loginName,
     "displayName" to displayName,
-    "profilePicURL" to profilePicURL,
     "peers" to peers.map { it.toWire() },
 )
 
 internal fun TailscaleEndpointData.toWire(): Map<String, Any?> = mapOf(
     "endpointTag" to endpointTag,
-    "backendState" to backendState,
     "stateText" to stateText,
     "authURL" to authURL,
     "networkName" to networkName,
-    "magicDNSSuffix" to magicDNSSuffix,
     "selfPeer" to selfPeer?.toWire(),
     "exitNode" to exitNode?.toWire(),
     "userGroups" to userGroups.map { it.toWire() },
-    "keyAuth" to keyAuth,
     "canShareFiles" to canShareFiles,
     "waitingFileCount" to waitingFileCount,
-    "receivingFileCount" to receivingFileCount,
-    "unreadFileCount" to unreadFileCount,
 )
 
 internal fun OpenConnectAuthFormChoiceData.toWire(): Map<String, Any?> = mapOf(
@@ -89,12 +79,6 @@ internal fun OpenConnectAuthFormData.toWire(): Map<String, Any?> = mapOf(
 
 internal fun OpenConnectBrowserRequestData.toWire(): Map<String, Any?> = mapOf(
     "url" to url,
-    "finalURL" to finalURL,
-    "cacheID" to cacheID,
-    "cookieNames" to cookieNames,
-    "earlyCookieNames" to earlyCookieNames,
-    "headerNames" to headerNames,
-    "callbackURLPrefixes" to callbackURLPrefixes,
 )
 
 internal fun OpenConnectAuthChallengeData.toWire(): Map<String, Any?> = mapOf(
@@ -162,7 +146,6 @@ internal fun TaildropFileData.toWire(): Map<String, Any?> = mapOf(
     "name" to name,
     "size" to size,
     "senderName" to senderName,
-    "modifiedAt" to modifiedAt,
 )
 
 internal fun TaildropReceivingFileData.toWire(): Map<String, Any?> = mapOf(
@@ -176,32 +159,24 @@ internal fun TaildropReceivingFileData.toWire(): Map<String, Any?> = mapOf(
 internal fun TaildropInboxState.toWire(): Map<String, Any?> = mapOf(
     "files" to files.map { it.toWire() },
     "receiving" to receiving.map { it.toWire() },
-    "isSubscribed" to isSubscribed,
-    "hasUpdate" to hasUpdate,
 )
 
 internal fun TailscalePingState.toWire(): Map<String, Any?> = mapOf(
     "isRunning" to isRunning,
-    "hasResult" to hasResult,
     "latencyMs" to latencyMs,
     "isDirect" to isDirect,
     "derpRegionCode" to derpRegionCode,
     "endpoint" to endpoint,
-    "peerRelay" to peerRelay,
     "error" to error,
-    "latencyHistory" to latencyHistory.map { it.toDouble() },
 )
 
 internal fun STUNTestState.toWire(): Map<String, Any?> = mapOf(
     "phase" to phase,
     "externalAddr" to externalAddr,
     "latencyMs" to latencyMs,
-    "natMapping" to natMapping,
-    "natFiltering" to natFiltering,
     "natTypeSupported" to natTypeSupported,
     "isRunning" to isRunning,
     "server" to server,
-    "selectedOutbound" to selectedOutbound,
 )
 
 internal fun NetworkQualityState.toWire(): Map<String, Any?> = mapOf(
@@ -211,16 +186,10 @@ internal fun NetworkQualityState.toWire(): Map<String, Any?> = mapOf(
     "uploadCapacity" to uploadCapacity,
     "downloadRPM" to downloadRPM,
     "uploadRPM" to uploadRPM,
-    "downloadCapacityAccuracy" to downloadCapacityAccuracy,
-    "uploadCapacityAccuracy" to uploadCapacityAccuracy,
-    "downloadRPMAccuracy" to downloadRPMAccuracy,
-    "uploadRPMAccuracy" to uploadRPMAccuracy,
     "isRunning" to isRunning,
     "configURL" to configURL,
     "serial" to serial,
     "http3" to http3,
-    "maxRuntime" to maxRuntime.seconds,
-    "selectedOutbound" to selectedOutbound,
     "showMeteredWarning" to showMeteredWarning,
 )
 

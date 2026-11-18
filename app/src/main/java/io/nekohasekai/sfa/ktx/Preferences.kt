@@ -1,24 +1,24 @@
 package io.nekohasekai.sfa.ktx
 
-import androidx.preference.PreferenceDataStore
+import io.nekohasekai.sfa.database.preference.RoomPreferenceDataStore
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KProperty
 
-fun PreferenceDataStore.string(name: String, defaultValue: () -> String = { "" }) = PreferenceProxy(name, defaultValue, ::getString, ::putString)
+fun RoomPreferenceDataStore.string(name: String, defaultValue: () -> String = { "" }) = PreferenceProxy(name, defaultValue, ::getString, ::putString)
 
 
-fun PreferenceDataStore.boolean(name: String, defaultValue: () -> Boolean = { false }) = PreferenceProxy(name, defaultValue, ::getBoolean, ::putBoolean)
+fun RoomPreferenceDataStore.boolean(name: String, defaultValue: () -> Boolean = { false }) = PreferenceProxy(name, defaultValue, ::getBoolean, ::putBoolean)
 
-fun PreferenceDataStore.int(name: String, defaultValue: () -> Int = { 0 }) = PreferenceProxy(name, defaultValue, ::getInt, ::putInt)
-
-
-
-fun PreferenceDataStore.long(name: String, defaultValue: () -> Long = { 0L }) = PreferenceProxy(name, defaultValue, ::getLong, ::putLong)
+fun RoomPreferenceDataStore.int(name: String, defaultValue: () -> Int = { 0 }) = PreferenceProxy(name, defaultValue, ::getInt, ::putInt)
 
 
-fun PreferenceDataStore.stringSet(name: String, defaultValue: () -> Set<String> = { emptySet() }) = PreferenceProxy(name, defaultValue, ::getStringSet, ::putStringSet)
 
-fun PreferenceDataStore.map(name: String, defaultValue: () -> Map<String, String> = { emptyMap() }) = PreferenceProxy(
+fun RoomPreferenceDataStore.long(name: String, defaultValue: () -> Long = { 0L }) = PreferenceProxy(name, defaultValue, ::getLong, ::putLong)
+
+
+fun RoomPreferenceDataStore.stringSet(name: String, defaultValue: () -> Set<String> = { emptySet() }) = PreferenceProxy(name, defaultValue, ::getStringSet, ::putStringSet)
+
+fun RoomPreferenceDataStore.map(name: String, defaultValue: () -> Map<String, String> = { emptyMap() }) = PreferenceProxy(
     name,
     defaultValue,
     { key, default ->
