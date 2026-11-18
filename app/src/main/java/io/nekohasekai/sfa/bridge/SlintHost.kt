@@ -110,6 +110,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "closeConnection" -> closeConnection(args.str("id"))
     "closeConnections" -> closeConnections()
     "setLogsVisible" -> setLogsVisible(args.getBoolean("visible"))
+    "setTrafficVisible" -> setTrafficVisible(args.getBoolean("visible"))
     "clearLogs" -> clearLogs()
     // Settings
     "setPreferences" -> setPreferences(args.map("values"))

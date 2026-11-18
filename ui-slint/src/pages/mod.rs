@@ -62,10 +62,23 @@ impl Mark {
 thread_local! {
     static PENDING: Cell<u32> = const { Cell::new(0) };
     static SCHEDULED: Cell<bool> = const { Cell::new(false) };
-    static VISIBLE: Cell<[bool; 5]> = const { Cell::new([false; 5]) };
+    static VISIBLE: Cell<[bool; 6]> = const { Cell::new([false; 6]) };
     static FOREGROUND: Cell<bool> = const { Cell::new(true) };
-    static PAUSABLE: RefCell<Vec<(Weak<slint::Timer>, Option<Rc<dyn Fn()>>)>> = const { RefCell::new(Vec::new()) };
+    // Weak both: the timer's own callback keeps its resume hook alive, so a
+    // page that dropped its timer is not kept alive by this registry.
+    static PAUSABLE: RefCell<Vec<(Weak<slint::Timer>, Option<Weak<dyn Fn()>>)>> = const { RefCell::new(Vec::new()) };
+    // Set while a projection that carried per-second marks is fresh; more of
+    // them wait for the cooldown's end (see [mark]).
+    static COOLING: Cell<bool> = const { Cell::new(false) };
+    static COOLDOWN: slint::Timer = slint::Timer::default();
 }
+
+/// The marks that streams and timers raise every second or faster: the
+/// clock, the rates and the streamed connection and log records.
+const FREQUENT: u32 = Mark::CLOCK.0 | Mark::RATES.0 | Mark::RECORDS.0;
+/// At most one projection of [FREQUENT] marks per this interval; anything
+/// else (a tap, a page opened, a state change) projects at once.
+const FREQUENT_INTERVAL: Duration = Duration::from_millis(1000);
 
 /// Whether the app is in the foreground (the host's process lifecycle).
 pub fn foreground() -> bool {
@@ -74,7 +87,8 @@ pub fn foreground() -> bool {
 
 /// A repeating timer that only runs in the foreground: stopped while the app
 /// is in the background and restarted when it returns, `on_resume` running
-/// then at once (the refresh the background skipped).
+/// then at once (the refresh the background skipped). The timer's callback
+/// must own `on_resume` too: the registry only holds it weakly.
 pub fn pausable(timer: &Rc<slint::Timer>, on_resume: Option<Rc<dyn Fn()>>) {
     if !foreground() {
         timer.stop();
@@ -82,7 +96,7 @@ pub fn pausable(timer: &Rc<slint::Timer>, on_resume: Option<Rc<dyn Fn()>>) {
     PAUSABLE.with(|p| {
         let mut p = p.borrow_mut();
         p.retain(|(t, _)| t.strong_count() > 0);
-        p.push((Rc::downgrade(timer), on_resume));
+        p.push((Rc::downgrade(timer), on_resume.as_ref().map(Rc::downgrade)));
     });
 }
 
@@ -103,7 +117,7 @@ pub fn set_foreground(active: bool) {
             Some(timer) => {
                 if active {
                     timer.restart();
-                    resumed.extend(on_resume.clone());
+                    resumed.extend(on_resume.as_ref().and_then(|f| f.upgrade()));
                 } else {
                     timer.stop();
                 }
@@ -135,15 +149,43 @@ pub fn reset_gestures() {
     crate::gesture::touch(crate::gesture::Phase::Cancel, 0.0, 0.0);
 }
 
-/// Schedules a projection of the marked pages on the next turn of the event loop.
+/// Schedules a projection of the marked pages on the next turn of the event
+/// loop. Per-second marks ([FREQUENT]) are coalesced: after a projection that
+/// carried them, more of them wait until [FREQUENT_INTERVAL] has passed and
+/// are then projected together, so streams that arrive faster than that
+/// (logs, connection batches, the rates and the clock out of step) update the
+/// UI models about once a second. Any other mark projects at once and takes
+/// the waiting ones with it.
 pub fn mark(m: Mark) {
     if m.0 == 0 {
         return;
     }
-    PENDING.with(|p| p.set(p.get() | m.0));
+    let pending = PENDING.with(|p| {
+        p.set(p.get() | m.0);
+        p.get()
+    });
+    if pending & !FREQUENT == 0 && COOLING.with(Cell::get) {
+        return;
+    }
+    schedule();
+}
+
+fn schedule() {
     if !SCHEDULED.with(|s| s.replace(true)) {
         crate::defer("projection", flush);
     }
+}
+
+fn cool_down() {
+    COOLING.with(|c| c.set(true));
+    COOLDOWN.with(|t| {
+        t.start(slint::TimerMode::SingleShot, FREQUENT_INTERVAL, || {
+            COOLING.with(|c| c.set(false));
+            if PENDING.with(Cell::get) != 0 {
+                schedule();
+            }
+        })
+    });
 }
 
 fn flush() {
@@ -153,6 +195,9 @@ fn flush() {
         return;
     }
     let m = Mark(PENDING.with(|p| p.replace(0)));
+    if m.0 & FREQUENT != 0 {
+        cool_down();
+    }
     if !data(|d| d.ready) && !m.has(Mark::THEME) && m != Mark::ALL {
         return;
     }
@@ -176,7 +221,7 @@ fn flush() {
     if m.has(Mark::THEME) || m.has(Mark::SETTINGS) || m == Mark::ALL {
         appearance::project(&w);
     }
-    crate::rows::project(&w);
+    crate::rows::project(&w, m);
     sync_visibility(false);
 }
 
@@ -210,11 +255,24 @@ pub fn sync_visibility(force: bool) {
     let logs = (!covered && tab == "Logs") || routes.iter().any(|r| r == "logs");
     let connections = (!covered && tab == "Requests") || routes.iter().any(|r| r == "requests" || r == "connection");
     let connection_stats = dash_shown && cards.iter().any(|c| c == "Connection stats");
+    // The core's status stream (rates, traffic totals, the chart, the remote
+    // memory figure) only while the dashboard or the memory page shows it.
+    let traffic = dash_shown || memory;
     services::set_shown(active && dash_shown && cards.iter().any(|c| c == "Service status"));
     services::set_page_shown(active && routes.iter().any(|r| r == "services" || r == "services-manage"));
-    let next = [memory, lan, logs, connections, connection_stats].map(|shown| active && shown);
+    let next = [memory, lan, logs, connections, connection_stats, traffic].map(|shown| active && shown);
     let previous = VISIBLE.with(|v| v.replace(next));
-    let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible"];
+    // Back on a page after the stream was off: the charted window would join
+    // old samples to new ones across the gap, so it starts over; the first
+    // sample of the new subscription lands at once.
+    if next[5] && !previous[5] {
+        crate::app::data_mut(|d| {
+            d.upload_history.clear();
+            d.download_history.clear();
+        });
+        mark(Mark::RATES);
+    }
+    let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible", "setTrafficVisible"];
     for i in 0..names.len() {
         if force || previous[i] != next[i] {
             crate::app::act(names[i], serde_json::json!({ "visible": next[i] }));
