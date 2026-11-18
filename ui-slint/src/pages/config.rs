@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use serde_json::{json, Map, Value};
 
-use crate::app::{self, call, long, obj, text, truthy};
+use crate::app::{self, call, long, text, truthy};
 use crate::forms::{self, decode, encode, encode_line, Done};
 use crate::i18n::tr;
 use crate::nav::{self, MenuEntry};

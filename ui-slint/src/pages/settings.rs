@@ -15,7 +15,6 @@ use crate::i18n::tr;
 use crate::nav::{self, MenuEntry};
 use crate::pages::{mark, Mark};
 use crate::rows::{self, Bar, Page, Row};
-use crate::AppWindow;
 
 fn setting(key: &str) -> Value {
     data(|d| d.settings.get(key).cloned().unwrap_or(Value::Null))

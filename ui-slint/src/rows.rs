@@ -818,3 +818,134 @@ pub fn project(w: &AppWindow, m: crate::pages::Mark) {
         }
     }
 }
+fn find(id: i32, key: &str) -> Option<Row> {
+    ENTRIES.with(|e| e.borrow().get(&id).and_then(|en| en.last.rows.iter().find(|r| r.data.key == key).cloned()))
+}
+
+fn split(a: &str) -> Option<(i32, String)> {
+    let (id, key) = a.split_once(':')?;
+    Some((id.parse().ok()?, key.to_string()))
+}
+
+/// Row and bar actions from rows.slint.
+pub fn act2(id: &str, a: &str, b: &str) -> bool {
+    match id {
+        "row" | "row-edit" | "row-done" | "row-trail" => {
+            let Some((page, key)) = split(a) else { return true };
+            let Some(r) = find(page, &key) else { return true };
+            match id {
+                "row" => {
+                    if r.data.enabled {
+                        if let Some(f) = r.action {
+                            f(b.to_string())
+                        }
+                    }
+                }
+                "row-edit" => {
+                    if let Some(f) = r.edit {
+                        f(b.to_string())
+                    }
+                }
+                "row-done" => {
+                    if let Some(f) = r.done {
+                        f(b.to_string())
+                    }
+                }
+                _ => {
+                    if let Some(f) = r.trail {
+                        f()
+                    }
+                }
+            }
+            crate::pages::mark(crate::pages::Mark::ROWS);
+            true
+        }
+        "row-image" => {
+            crate::pages::settings::request_icon(a);
+            true
+        }
+        "bar" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let bar = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.bar.iter().find(|x| x.id == b).cloned()));
+            if let Some(f) = bar.and_then(|x| if x.enabled { x.action } else { None }) {
+                f();
+            }
+            true
+        }
+        "search" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.search.clone()));
+            if let Some(f) = f {
+                f(b.to_string());
+                crate::pages::mark(crate::pages::Mark::ROWS);
+            }
+            true
+        }
+        "keyword" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.on_keyword.clone()));
+            if let Some(f) = f {
+                f(b.to_string());
+                crate::pages::mark(crate::pages::Mark::ROWS);
+            }
+            true
+        }
+        "foot" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.foot_action.clone()));
+            if let Some(f) = f {
+                f();
+            }
+            true
+        }
+        "empty" => {
+            let Ok(page) = a.parse::<i32>() else { return true };
+            let f = ENTRIES.with(|e| e.borrow().get(&page).and_then(|en| en.last.empty_action.clone()));
+            if let Some(f) = f {
+                f();
+            }
+            true
+        }
+        _ => false,
+    }
+}
+
+pub fn menu(key: &str) -> Vec<MenuEntry> {
+    if let Some(rest) = key.strip_prefix("page:") {
+        let Ok(id) = rest.parse::<i32>() else { return Vec::new() };
+        let (folded, f) = ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.last.folded.clone(), en.last.menu.clone())).unwrap_or_default());
+        let mut items: Vec<MenuEntry> = folded
+            .into_iter()
+            .map(|b| {
+                let enabled = b.enabled && !b.loading;
+                let mut m = MenuEntry { label: b.tooltip.clone(), icon: Some(b.icon), checked: b.selected, action: b.action.clone(), ..Default::default() };
+                if !enabled {
+                    m.action = None;
+                }
+                m
+            })
+            .collect();
+        if let Some(f) = f {
+            items.extend(f());
+        }
+        return items;
+    }
+    if let Some(rest) = key.strip_prefix("title:") {
+        let Ok(id) = rest.parse::<i32>() else { return Vec::new() };
+        let f = ENTRIES.with(|e| e.borrow().get(&id).and_then(|en| en.last.title_menu.clone()));
+        return f.map(|f| f()).unwrap_or_default();
+    }
+    if let Some(rest) = key.strip_prefix("row:") {
+        if let Some((page, key)) = split(rest) {
+            if let Some(f) = find(page, &key).and_then(|r| r.menu) {
+                return f();
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Closes the Rust-built page `id`.
+pub fn close(id: i32) {
+    nav::close(id);
+}
