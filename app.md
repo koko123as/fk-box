@@ -185,7 +185,7 @@ Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、朴素 Material 界面约束（禁止自绘字形、玻璃/着色器/模糊、弹簧与按压特效、装饰形状、样式开关）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、Material Design 3 界面约束（禁止玻璃/着色器/模糊滤镜；阴影只经 `Theme.shadow-*` 令牌；页面不写十六进制颜色，取色器与二维码除外；M3 令牌与组件存在）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
 | [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及界面源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
 | [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |

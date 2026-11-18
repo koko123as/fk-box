@@ -1,6 +1,6 @@
 # FK-box 项目约束
 
-本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Rust + Slint 的朴素 Material 3 界面（`ui-slint/`，页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
+本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Rust + Slint 的 Material Design 3 界面（`ui-slint/`，按 [Material Design 3 UI skill](https://github.com/skydashnet/material-design-3-ui-skill) 重写，页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
 
 ## 文档职责
 
@@ -9,7 +9,7 @@
 | [README.md](README.md) | 项目介绍、下载入口和许可声明 |
 | [AGENTS.md](AGENTS.md) | 项目约束、工作方式和验证要求 |
 | [libbox.md](libbox.md) | 相对上游 sing-box/libbox 的补丁、扩展绑定及核心构建差异 |
-| [flclash.md](flclash.md) | 界面实现（朴素 Material 3）、FlClash 布局参考版本、适配范围及验证 |
+| [flclash.md](flclash.md) | 界面实现（Material Design 3）、FlClash 布局参考版本、适配范围及验证 |
 | [app.md](app.md) | 相对 sing-box-for-android 的应用差异、兼容性及构建发布 |
 
 开始任务先阅读适用的上级 `AGENTS.md`、本文件和所涉及领域的文档。修改跨越多个领域时同步更新对应文档；同一事实由所属文档维护，其他文档使用链接引用。文档描述当前源码，撤销或替代的实现不再列为当前要求；历史细节通过 Git 查询。
@@ -19,14 +19,14 @@
 - 本机是 Android Termux，使用支持的命令和工具，例如 `pkg`；不要依赖 `systemctl` 等完整 Linux 系统服务。
 - 临时文件统一放在 `$HOME/tmp`，同时遵守当前会话的文件系统权限；不要把本机 SDK、工具链路径或签名配置写入仓库和 CI。
 - 未得到用户明确要求，不在本机执行编译构建。Go 测试、Android 编译和设备测试使用 GitHub Actions。文档、源码和差异的静态检查可在本机执行。
-- 默认在 `main` 分支上工作并推送到 `koko123as/fk-box` 的 `main`；用户明确要求时可另开分支（如朴素界面分支 `ui/plain`），不建立其他长期分支。原 `koko123as/B-box` 仓库及其分支只读，不向其推送。
+- 默认在 `main` 分支上工作并推送到 `koko123as/fk-box` 的 `main`；用户明确要求时可另开分支（如朴素界面分支 `ui/plain`、M3 重写分支 `ui/m3-rewrite`），不建立其他长期分支。原 `koko123as/B-box` 仓库及其分支只读，不向其推送。
 - 开始前检查工作树，保留用户未提交的改动。上游同步固定比较 SHA，区分已提交差异和工作树差异，核实远端地址后再按任务授权推送。
 - 接口、构建方式和兼容性判断应有当前源码或对应版本的官方文档依据，不凭空增加接口，不将旧验证结果当作当前版本结果。
 - 不提交密钥、密码、`local.properties`、`.local-signing/`、`.core/`、SDK、AAR 或生成的 APK。发布沿用既有签名密钥，不重新生成替代密钥。
 
 ## 架构与兼容性约束
 
-1. 界面由 Rust + Slint 提供，位于 `ui-slint/`（`ui/*.slint` 布局、`src/` 状态与页面逻辑，编为 `libfkui.so`），页面布局按 FlClash 翻译，风格为朴素 Material 3 与 Material 图标；手机端底栏为悬浮导航栏（FlClash 移动端布局），其余不使用液态玻璃、着色器、模糊、装饰形状、按压特效、弹簧动效或页面转场（约定见 [flclash.md](flclash.md#朴素界面约定)，由 `tools/verify_newui.py` 检查）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
+1. 界面由 Rust + Slint 提供，位于 `ui-slint/`（`ui/*.slint` 布局、`src/` 状态与页面逻辑，编为 `libfkui.so`），页面布局按 FlClash 翻译，风格为 Material Design 3（语义颜色角色、M3 字阶、形状与间距令牌、状态层、48 dp 触控目标、标准 M3 组件）与 Material 图标；手机端为贴底的 M3 导航栏，较宽窗口为 M3 导航侧栏；阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮），不使用液态玻璃、着色器、模糊滤镜、装饰形状、弹簧动效或页面转场（约定见 [flclash.md](flclash.md#material-design-3-界面约定)，由 `tools/verify_newui.py` 检查）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
 2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。

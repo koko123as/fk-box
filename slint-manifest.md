@@ -80,8 +80,10 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 
 ## Deliberate departures from the Compose UI (2026-11-13)
 
-- Phones get a floating navigation bar (FlClash's mobile layout): a rounded bar 16 px from the
-  sides and 12 px above the gesture inset; home pages pad their content by `Nav.home-bottom`.
+- Phones get the M3 navigation bar (branch `ui/m3-rewrite`; the floating FlClash bar before it):
+  docked at the bottom, 80 dp above the gesture inset; home pages pad their content by
+  `Nav.home-bottom`. The visual layer follows Material Design 3 (tokens in `ui/theme.slint`,
+  components in `ui/kit.slint`, see flclash.md "Material Design 3 界面约定").
 - Routing rule editor: the Apps field opens the installed-app list used by Access control
   (search, system apps toggle, selected first) instead of a package-name text box; hidden for
   Xray rules, which cannot match apps.

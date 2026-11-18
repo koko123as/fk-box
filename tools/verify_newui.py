@@ -33,10 +33,34 @@ for path in (ROOT / "app/src").rglob("*.kt"):
 if re.search(r"androidx\.compose|kotlin\.plugin\.compose|compose\s*=\s*true|graphics-shapes", (ROOT / "app/build.gradle.kts").read_text()):
     errors.append("app/build.gradle.kts: Compose or retired shape dependency")
 
-# The plain UI: no glass, shaders or blur in the Slint sources.
-for path in list((ROOT / "ui-slint/ui").rglob("*.slint")) + list((ROOT / "ui-slint/src").rglob("*.rs")):
-    if re.search(r"LiquidGlass|RuntimeShader|AGSL|\bblur\(", path.read_text()):
+# The Material Design 3 UI (ui/m3-rewrite, flclash.md "Material Design 3 界面约定"):
+# no glass, shaders or blur filters in the Slint sources.
+slint_ui = ROOT / "ui-slint/ui"
+for path in list(slint_ui.rglob("*.slint")) + list((ROOT / "ui-slint/src").rglob("*.rs")):
+    if re.search(r"LiquidGlass|RuntimeShader|AGSL|(?<![-\w])blur\(", path.read_text()):
         errors.append(f"{path.relative_to(ROOT)}: glass, shader or blur effect")
+for path in slint_ui.rglob("*.slint"):
+    rel = path.relative_to(ROOT)
+    source = path.read_text()
+    # Elevation shadows only through the theme's tokens (overlapping surfaces).
+    for value in re.findall(r"drop-shadow-(?:blur|offset-x|offset-y|color)\s*:\s*([^;]+);", source):
+        if "Theme.shadow-" not in value and not re.fullmatch(r"\s*(?:0px|transparent)\s*", value):
+            errors.append(f"{rel}: drop shadow outside the Theme.shadow-* tokens: {value.strip()}")
+    # Screens use the semantic color roles; literal colors only in the token
+    # file, the colour picker (appearance.slint) and the QR code.
+    if path.name not in ("theme.slint", "appearance.slint") and re.search(r"#[0-9a-fA-F]{6}\b", source):
+        errors.append(f"{rel}: literal hex color; use a Theme.s color role")
+theme = (slint_ui / "theme.slint").read_text()
+for token in ("surface-container-lowest", "surface-container-highest", "outline-variant", "on-tertiary-container",
+              "corner-extra-small", "corner-extra-large", "state-pressed", "min-target",
+              "display-large", "headline-small", "title-medium", "body-small", "label-large"):
+    if token not in theme:
+        errors.append(f"ui-slint/ui/theme.slint: missing M3 token {token}")
+kit = (slint_ui / "kit.slint").read_text()
+for component in ("StateLayer", "FocusRing", "Button", "IconButton", "Switch", "FilterChip", "SegmentedButton",
+                  "Card", "ListItem", "Field", "SearchField", "TopBar"):
+    if not re.search(rf"export component {component}\b", kit):
+        errors.append(f"ui-slint/ui/kit.slint: missing M3 component {component}")
 
 for path in (ROOT / "app/src").rglob("*.kt"):
     source = path.read_text()
@@ -79,4 +103,4 @@ for license_file in ("LICENSE",):
         errors.append(f"licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
-print("Slint UI entry points, Compose and Flutter removal, plain UI and capture removal guards passed")
+print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI and capture removal guards passed")

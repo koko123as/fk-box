@@ -1,8 +1,8 @@
-# 界面说明（朴素 Material 3 界面，FlClash 仅作布局参考）
+# 界面说明（Material Design 3 界面，FlClash 仅作布局参考）
 
 本文记录界面的实现方式、布局来源和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](AGENTS.md)。
 
-`ui/plain` 起界面改为朴素的 Material 3 风格，观感参照 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)（`dev` 分支 Compose 界面）和 [2dust/v2rayNG](https://github.com/2dust/v2rayNG)。各页面的分区、顺序、按钮位置、底部四个目的地（仪表盘、代理、配置、工具）和平板侧栏仍按原 FlClash 布局；FlClash 只提供页面布局与信息组织参考，不再提供控件、字形、形状、动效或特效。FlClash 的来源与 GPL-3.0 许可保留。
+`ui/plain` 起界面改为朴素的 Material 3 风格；`ui/m3-rewrite` 按 [skydashnet/material-design-3-ui-skill](https://github.com/skydashnet/material-design-3-ui-skill)（v1.1.1）把视觉层重写为完整的 Material Design 3 系统（见下文“Material Design 3 界面约定”）。各页面的分区、顺序、按钮位置、底部四个目的地（仪表盘、代理、配置、工具）和平板侧栏仍按原 FlClash 布局；FlClash 只提供页面布局与信息组织参考，不再提供控件、字形、形状、动效或特效。FlClash 的来源与 GPL-3.0 许可保留。
 
 ## Rust + Slint 实现
 
@@ -23,16 +23,21 @@
 
 大部分子页为 Rust 构建的通用行页面（`src/rows.rs` 的 `Page`/`Row`，由 `ui/pages/rows.slint` 绘制）；导航、对话框、菜单和消息在 `src/nav.rs`、`ui/routes.slint` 与 `ui/app.slint`。
 
-## 朴素界面约定
+## Material Design 3 界面约定
 
-- 控件为 Material 3 风格的 Slint 组件（`ui/kit.slint`、`ui/pages/rows.slint`）：卡片无阴影/elevation，手机端底栏为悬浮导航栏（FlClash 移动端布局），平板为侧栏，页面为标题栏加列表，对话框、弹出菜单和消息在 Android 上优先使用平台原生实现（`src/native_ime.rs` 的 `native_ui`，Android 构建默认开启）。
-- 不使用液态玻璃、着色器、模糊、阴影（含 `drop-shadow-*`，分隔用细描边）、装饰图形、墨迹扩散、按下膨胀或弹簧动效。圆角统一 12 px（`ui/theme.slint` 的 `Theme.radius`），胶囊/圆形只用于状态点、徽章、悬浮底栏和颜色选择。
-- 页面推入/返回、表单和弹层即时出现与消失，不做转场动画；返回只用系统返回，没有页内拖动返回。底部标签切换即时完成。
-- 图标为 Material Icons 字体（`ui/fonts/`），`ui/icons.slint` 按用途命名映射，Rust 端按名称查表（`src/nav.rs` 的 `glyph`）；原 FlClash 派生的自绘字形集已删除。
+`ui/m3-rewrite` 按 Material Design 3 UI skill 重写视觉层；Rust↔Slint 接口（导出组件、属性、回调、结构体字段与全局）保持不变，页面布局与信息组织仍按 FlClash。
+
+- 令牌（`ui/theme.slint`）：颜色全部为 M3 语义角色，由 `src/theme.rs` 用 Material Color Utilities 的动态配色从主题色生成明暗两套（primary/secondary/tertiary/error 及其 container 与 on- 角色、surface 与 surface-dim/bright、surface-container-lowest…highest、outline/outline-variant、inverse 与 scrim/shadow）；配色风格映射为 Fidelity（鲜艳）、Content（着色）、TonalSpot（柔和，M3 默认）和 Monochrome；成功/警告是向主题色协调（harmonize）的 M3 自定义颜色；纯黑模式只压暗深色方案的表面。`theme::tests::role_pairs_meet_contrast` 检查各风格、明暗与纯黑下 on- 角色的对比度（文字 ≥ 4.5:1，outline ≥ 3:1）。字体为 M3 字阶（display/headline/title/body/label 各 large/medium/small，字号、行高、字重、字距），`TextRole` 即这 15 个角色；形状为 M3 圆角刻度（extra-small 4、small 8、medium 12、large 16、extra-large 28、full）；间距为 4 dp 网格；状态层不透明度为悬停 8%、聚焦 10%、按下 10%、拖动 16%，禁用内容 38%、禁用容器 12%；最小触控目标 48 dp。
+- 组件（`ui/kit.slint`）：M3 小型顶部应用栏（64 dp，title-large 标题，48 dp 图标按钮）、搜索栏（56 dp 全圆角）、按钮（填充/色调/描边/文字/提升，40 dp 高、全圆角、label-large、触控高度 ≥ 48 dp）、图标按钮（标准/色调/填充）、开关（52×32 轨道，选中带勾）、单选、复选、筛选/输入纸片（32 dp，small 圆角）、分段按钮、卡片（填充/提升/描边，medium 圆角）、分组列表项（surface-container-low 容器，首尾 large 圆角，内缩分隔线，单行 56 / 双行 72 dp）、描边文本框（56 dp，extra-small 圆角，标签落在描边上，错误同时有文字说明）、线性/环形进度。可交互组件有悬停/按下/聚焦状态层，可用 Tab 聚焦（3 dp secondary 聚焦环，Enter/空格触发），并声明无障碍角色与名称。
+- 导航（`ui/home.slint`）：窗口宽度 ≤ 600 为贴底的 M3 导航栏（80 dp，surface-container，64×32 secondary-container 指示器，选中图标为实心、未选为描边，label-medium 标签）；更宽为 M3 导航侧栏（80 dp，56×32 指示器；展开为 220 dp，图标与标签同行），目的地顺序在两种形态下一致。原 FlClash 的悬浮底栏已改为标准导航栏。
+- 覆盖层（`ui/app.slint`）：菜单为 extra-small 圆角的 surface-container 加 2 级阴影、48 dp 项；对话框为 extra-large 圆角的 surface-container-high、headline-small 标题、文字按钮靠尾部（危险确认用 error 色）；消息条为 inverse-surface、extra-small 圆角、3 级阴影。Android 上对话框、菜单和消息仍优先使用平台原生实现（`src/native_ime.rs` 的 `native_ui`）。
+- 页面：仪表盘卡片为填充卡片（surface-container-highest），卡片标题为 title-medium 加 primary 图标，内嵌块为 surface-container-low；启停按钮为卡片内的 M3 大号 FAB（extra-large 圆角，停止时 primary-container、运行时 primary，图标表示状态）；出站模式为分段按钮；上传/下载曲线分别用 tertiary/primary。代理分组为可滚动的 M3 主标签页（3 dp 指示器），节点与配置为描边卡片，选中时填充 secondary-container 并显示勾选徽标（不只靠颜色）。日志/请求记录为连续列表项（2 dp 间隔），不是每行一张卡片。外观页使用 M3 分段按钮，色板单元为 48 dp。
+- 阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、行页面底部提示条），并只经 `Theme.shadow-blur/offset/color` 令牌设置；常规层级用 surface 色调区分。不使用液态玻璃、着色器或模糊滤镜。动效只保留侧栏展开（M3 emphasized 缓动，300 ms）与进度指示；页面推入/返回、表单、弹层和底部标签切换仍即时完成，无页内拖动返回。
+- 图标为 Material Icons 字体（`ui/fonts/`），`ui/icons.slint` 按用途命名映射，Rust 端按名称查表（`src/nav.rs` 的 `glyph`）。
 - 界面文字经 `@tr()`（Slint）与 `src/i18n.rs` 的 `tr()`（Rust）翻译，简体中文表为 `ui-slint/i18n/zh/LC_MESSAGES/fkui.po`；Rust 源码中不写死中文。
-- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体；“标准/简约”样式开关及其令牌已删除，旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
-- 仍保留的绘制均为功能性内容：网络速度折线图（`ui/pages/dashboard.slint`）、二维码（`src/pages/profiles.rs`，qrcodegen）、颜色选择器的色板/色谱/滑条，以及订阅额度和进度条。
-- [tools/verify_newui.py](tools/verify_newui.py) 在 CI 中检查上述约束的源码部分（界面入口、Compose/Flutter 已删除、禁用的特效与依赖）。
+- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体；旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
+- 保留的自绘内容均为功能性：网络速度折线图（`ui/pages/dashboard.slint`）、二维码（`src/pages/profiles.rs`，qrcodegen）、颜色选择器的色板/色谱/滑条，以及订阅额度和进度条。
+- [tools/verify_newui.py](tools/verify_newui.py) 在 CI 中检查上述约束的源码部分（界面入口、Compose/Flutter 已删除、禁用的特效与依赖、阴影只经令牌、页面不写十六进制颜色、M3 令牌与组件存在）。
 
 ## 参考版本与来源清单
 
@@ -63,7 +68,7 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 ### 导航与交互约定
 
-- 布局断点按 FlClash v0.9.3 的布局：窗口宽度 ≤600 为手机、≤840 为 laptop、更宽为 desktop（`ui/globals.slint` 的 `Nav.mobile` 等），卡片间距 8/12/16。非手机宽度在左侧显示 `NavigationRail`；侧栏比手机多出“请求”（仅 sing-box 内核，其他内核在工具页灰显）和“日志”，工具页相应隐藏这两项。每个目的地在非手机宽度有自己的导航栈（`ui/routes.slint` 的路由 `pane`），推入的页面留在内容区，侧栏保持可见；表单、弹窗和菜单在根导航器上。
+- 布局断点按 FlClash v0.9.3 的布局：窗口宽度 ≤600 为手机、≤840 为 laptop、更宽为 desktop（`ui/globals.slint` 的 `Nav.mobile` 等，与 M3 的 compact/medium/expanded 宽度级别对应），卡片间距 8/12/16。非手机宽度在左侧显示 M3 导航侧栏；侧栏比手机多出“请求”（仅 sing-box 内核，其他内核在工具页灰显）和“日志”，工具页相应隐藏这两项。每个目的地在非手机宽度有自己的导航栈（`ui/routes.slint` 的路由 `pane`），推入的页面留在内容区，侧栏保持可见；表单、弹窗和菜单在根导航器上。
 - 消息（`src/nav.rs` 的 `toast`，Android 上为系统 Toast）：普通消息短时显示，错误长时显示，新消息替换当前消息。
 - 只读文字长按打开平台原生的文本查看器以选择复制（`select-text`）；输入框由覆盖在焦点字段上的原生 EditText 编辑（`src/native_ime.rs`），使用系统选择菜单与放大镜。
 - 列表基础设施（布局参考 FlClash v0.9.3 的记录筛选）：页面（`src/rows.rs` 的 `Page`）支持 `title_menu`（点按标题弹出菜单切换视图，标题后带 20/16 dp 下拉箭头，供请求页切换 最近/运行中/抓包）和 `keywords`（栏下的关键词条，36 dp 胶囊，显示时正文不再位于栏下）。`src/records.rs` 的筛选器（`Filters`）：点按行内的值（日志级别；连接的网络、规则、应用、代理链各出站）添加筛选条件，同一维度内为“或”、不同维度为“且”；手机宽度只显示已选条件（可移除），非手机宽度固定显示所有可选值作切换；菜单中有“筛选”（网络、规则；日志为级别，按出现次数取前 12 个）和“分组方式”（连接：应用/主机/规则/出口），分组以可折叠标题（名称和数量，默认折叠）显示，所选分组按页面保存在 `recordGroupings` 界面偏好。原有关键词搜索、活动/已关闭、排序、日志级别菜单、暂停、清除、导出及关闭连接保持不变；连接记录没有 MITM 标记，MITM 维度留给抓包列表。
@@ -82,7 +87,7 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 - 日志页默认选择“跟随配置”，显示内核上报的日志级别及更严重的记录；菜单同时显示当前级别，仍可手动选择“全部”或单一级别，手动筛选不会被后续状态更新覆盖。搜索、暂停和导出沿用同一筛选结果；默认级别尚未收到时保留已接收记录。日志来源及本地重载同步见 [app.md](app.md#配置服务应用与备份)。
 - 应用始终跟随系统语言并响应运行时变化。旧设置及备份中的语言选项丢弃，其他偏好保留。
 - 代理列表保留圆角吸顶分组标题、固定高度的懒加载行、折叠及填充/普通/隐藏分组图标。折叠状态按选中配置保存，定位节点通过行偏移实现，不要求节点预先进入视口。
-- 访问控制按上游 SFA 的列表/扫描分离方式加载，进入页面直接显示应用与已保存的托管选择；“重新扫描托管应用”为独立操作，扫描期间保留列表。应用图标只为滚动到视口附近（上下各约 600 逻辑像素）的行请求（行的 `image-key`，`rows.slint` 发出 `row-image`），同时最多 3 个请求、最新的请求先处理，等待队列最多 48 个（快速滑过的旧请求丢弃，回到视口附近时重新请求），解码后的图标最多保留 48 个（48 dp，3x 时约 80 KiB/个，按最近请求淘汰；视口加上下预取约 30～36 行），访问控制页和应用选择页关闭或刷新时全部释放，关闭时原生端的包查询快照（`releaseApps`）一并释放。列表行为懒加载行（`SettingRow.lazy`，`rows.slint` 的 `RowView`）：只有视口上下各约 600 逻辑像素内的行实例化文字与图标，其余行是空占位。懒加载行固定同高（上下各 10 px 内边距，48 dp 图标与一行名称加一行包名中较高者，随字体缩放），名称和包名各一行、超出省略；位置、是否实例化和是否请求图标只取决于行号与滚动偏移，不回读列表布局给出的位置，因此数百个应用只保留几十行的文本排版和图像。此前行高按实测回写共享值、图标请求读行的布局位置，快速拖动且图标回复迟到时构成依赖环，Slint 报 “Recursion detected” 并 panic，android-activity 随之关闭 Activity；`shot::tests::access_control_survives_rapid_scrolling` 以快速拖动、惯性滚动和迟到的图标回复回归此问题。原生端按 48 dp（最大 144 px）绘制图标并在写入 PNG 后立即 `recycle()` 位图。离开访问控制页或应用选择页时立即执行与进入后台相同的释放（`src/memory.rs`）：丢弃行模型与全部图标；下一帧前清空渲染器的图像/路径/文本缓存，对 Skia GPU 上下文调用 `free_gpu_resources()` 并清空 Skia 字体与资源缓存（补丁见 `ui-slint/vendor/i-slint-renderer-skia/FKBOX-PATCH.md`）；Kotlin 端释放包查询快照后执行 GC（标签与图标加载的各应用 Resources/APK 资源表映射和位图像素随之释放）；随后原生堆 `mallopt(M_PURGE_ALL/M_PURGE)` 归还空闲页。原先每次构建列表都为全部已安装应用请求图标：原生端并发绘制、编码数百个图标，Rust 端全部解码为 RGBA 并在进程生命周期内保留，打开页面时内存骤增且离开后不回落。原生查询与托管更新约定见 [app.md](app.md#配置服务应用与备份)。
+- 访问控制按上游 SFA 的列表/扫描分离方式加载，进入页面直接显示应用与已保存的托管选择；“重新扫描托管应用”为独立操作，扫描期间保留列表。应用图标只为滚动到视口附近（上下各约 600 逻辑像素）的行请求（行的 `image-key`，`rows.slint` 发出 `row-image`），同时最多 3 个请求、最新的请求先处理，等待队列最多 48 个（快速滑过的旧请求丢弃，回到视口附近时重新请求），解码后的图标最多保留 48 个（48 dp，3x 时约 80 KiB/个，按最近请求淘汰；视口加上下预取约 30～36 行），访问控制页和应用选择页关闭或刷新时全部释放，关闭时原生端的包查询快照（`releaseApps`）一并释放。列表行为懒加载行（`SettingRow.lazy`，`rows.slint` 的 `RowView`）：只有视口上下各约 600 逻辑像素内的行实例化文字与图标，其余行是空占位。懒加载行固定同高（上下各 8 px 内边距，48 dp 图标与一行名称加一行包名中较高者，随字体缩放，至少为 M3 双行列表项的 72 dp），名称和包名各一行、超出省略；位置、是否实例化和是否请求图标只取决于行号与滚动偏移，不回读列表布局给出的位置，因此数百个应用只保留几十行的文本排版和图像。此前行高按实测回写共享值、图标请求读行的布局位置，快速拖动且图标回复迟到时构成依赖环，Slint 报 “Recursion detected” 并 panic，android-activity 随之关闭 Activity；`shot::tests::access_control_survives_rapid_scrolling` 以快速拖动、惯性滚动和迟到的图标回复回归此问题。原生端按 48 dp（最大 144 px）绘制图标并在写入 PNG 后立即 `recycle()` 位图。离开访问控制页或应用选择页时立即执行与进入后台相同的释放（`src/memory.rs`）：丢弃行模型与全部图标；下一帧前清空渲染器的图像/路径/文本缓存，对 Skia GPU 上下文调用 `free_gpu_resources()` 并清空 Skia 字体与资源缓存（补丁见 `ui-slint/vendor/i-slint-renderer-skia/FKBOX-PATCH.md`）；Kotlin 端释放包查询快照后执行 GC（标签与图标加载的各应用 Resources/APK 资源表映射和位图像素随之释放）；随后原生堆 `mallopt(M_PURGE_ALL/M_PURGE)` 归还空闲页。原先每次构建列表都为全部已安装应用请求图标：原生端并发绘制、编码数百个图标，Rust 端全部解码为 RGBA 并在进程生命周期内保留，打开页面时内存骤增且离开后不回落。原生查询与托管更新约定见 [app.md](app.md#配置服务应用与备份)。
 - 首页编辑保留卡片的全局 key，防止重复出口请求及丢失状态。改动立即保存；保存失败保留草稿，点击完成再次尝试。
 - sing-box 专属 Tailscale、Taildrop、终端、认证、USB/IP、诊断和报告使用统一的 Slint 行页面（终端表面、OpenConnect 登录为原生 Activity），复用原生后端；能力边界见 [app.md](app.md)。
 
@@ -143,6 +148,6 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 ## 验证与升级参考版本
 
-当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Slint 界面源码约束、[build-apk.yml](.github/workflows/build-apk.yml) 的 Rust 单元测试（`cargo test --lib`）（由 [newui.yml](.github/workflows/newui.yml) 和 [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)。Slint 页面可用 `ui-slint` 的 `shot` 特性在主机上按手机尺寸渲染截图（`examples/shot.rs`），CI 不做像素比较；朴素界面改版尚未在实机上做视觉验收。删除 `flutter/` 前的 Flutter 测试与截图记录可在 Git 历史中查看，不代表当前源码已通过同等测试。
+当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Slint 界面源码约束、[build-apk.yml](.github/workflows/build-apk.yml) 的 Rust 单元测试（`cargo test --lib`）（由 [newui.yml](.github/workflows/newui.yml) 和 [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)。Slint 页面可用 `ui-slint` 的 `shot` 特性在主机上按手机尺寸渲染截图（`examples/shot.rs`），CI 不做像素比较；Material Design 3 重写（`ui/m3-rewrite`）只在主机截图中检查过，尚未在实机上做视觉验收。删除 `flutter/` 前的 Flutter 测试与截图记录可在 Git 历史中查看，不代表当前源码已通过同等测试。
 
 升级布局参考版本时只核对页面布局与信息组织，不再迁入控件、字形、动效或特效；同步审查来源清单和许可，按实际 Actions 运行记录结果。
