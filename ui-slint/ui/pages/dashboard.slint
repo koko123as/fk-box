@@ -6,9 +6,41 @@
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction } from "../globals.slint";
+import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Dash, ModeItem, KeyValue, ServiceItem } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field, StateLayer, FocusRing } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field, StateLayer, Ripple, FocusRing, Appear } from "../kit.slint";
+
+// Figures that count to their new value (rates, memory, counts). The texts
+// Rust formats (src/format.rs bytes() and count()) are read back into a
+// number, animated, and formatted again the same way; a text that is not a
+// number ("—") shows as it is.
+global Tween {
+    public pure function unit-index(unit: string) -> int {
+        if (unit == "B") { return 0; }
+        if (unit == "KB") { return 1; }
+        if (unit == "MB") { return 2; }
+        if (unit == "GB") { return 3; }
+        if (unit == "TB") { return 4; }
+        return -1;
+    }
+    // A bytes() figure and unit as bytes; -1 when they are not numbers.
+    public pure function bytes-of(figure: string, unit: string) -> float {
+        return figure.is-float() && unit-index(unit) >= 0 ? figure.to-float() * pow(1024, unit-index(unit)) : -1;
+    }
+    public pure function unit-step(bytes: float) -> int {
+        return bytes < 1024 ? 0 : bytes < pow(1024, 2) ? 1 : bytes < pow(1024, 3) ? 2 : bytes < pow(1024, 4) ? 3 : 4;
+    }
+    public pure function unit(bytes: float) -> string {
+        return ["B", "KB", "MB", "GB", "TB"][unit-step(bytes)];
+    }
+    // bytes(): whole bytes, else one decimal.
+    public pure function figure(bytes: float) -> string {
+        return unit-step(bytes) == 0 ? round(bytes) + "" : one-decimal(bytes / pow(1024, unit-step(bytes)));
+    }
+    public pure function one-decimal(v: float) -> string {
+        return floor(round(v * 10) / 10) + "." + mod(round(v * 10), 10);
+    }
+}
 
 // The service's start/stop: the screen's dominant action, an M3 large FAB
 // (extra-large corners) in primary-container, primary while running; the
@@ -21,10 +53,15 @@ component StartToggle inherits Rectangle {
     in property <bool> busy;
     callback clicked();
     property <color> ink: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : running ? Theme.s.on-primary : Theme.s.on-primary-container;
+    // Starting and stopping morph the button with an overshoot (ease-out-back,
+    // FlClash's status decoration): the corners tighten and the icon turns.
+    property <float> morph: root.running ? 1 : 0;
+    animate morph { duration: Theme.motion-long; easing: Theme.easing-back; }
     width: size;
     height: size;
-    border-radius: Theme.corner-extra-large;
+    border-radius: Theme.corner-extra-large - (Theme.corner-extra-large - Theme.corner-large) * root.morph;
     background: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : running ? Theme.s.primary : Theme.s.primary-container;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     drop-shadow-blur: enabled ? Theme.shadow-blur(ta.has-hover ? 2 : 1) : 0px;
     drop-shadow-offset-y: enabled ? Theme.shadow-offset(1) : 0px;
     drop-shadow-color: enabled ? Theme.shadow-color(1) : transparent;
@@ -33,11 +70,13 @@ component StartToggle inherits Rectangle {
     accessible-enabled: enabled && !busy;
     accessible-action-default => { if (root.enabled) { root.clicked(); } }
     StateLayer { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled; pressed: ta.pressed; hover: ta.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled; }
     if root.busy: Spinner { size: root.size * 0.36; tint: root.ink; }
     if !root.busy: Icon {
         glyph: root.running ? Icons.pause : Icons.start;
         size: 36px;
         color: root.ink;
+        transform-rotation: root.morph * 180deg;
     }
     FocusRing { shown: fs.has-focus; corner: root.border-radius; }
     fs := FocusScope {
@@ -51,6 +90,10 @@ component StartToggle inherits Rectangle {
     ta := TouchArea {
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
     }
 }
 
@@ -69,6 +112,27 @@ component CountryBadge inherits Rectangle {
     background: Theme.s.secondary-container;
     accessible-role: button;
     accessible-label: root.country;
+    // A new exit (another outbound, country or check) pops in with an
+    // overshoot (ease-out-back) from 60 %.
+    property <bool> popping;
+    property <duration> pop-start;
+    changed country => {
+        if (Theme.motion-on) {
+            self.pop-start = animation-tick();
+            self.popping = true;
+            pop-end.interval = Theme.motion-long + 16ms;
+            pop-end.restart();
+        }
+    }
+    pop-end := Timer {
+        running: false;
+        interval: Theme.motion-long;
+        triggered => {
+            self.stop();
+            root.popping = false;
+        }
+    }
+    transform-scale: root.popping ? 0.6 + 0.4 * Theme.ease-out-back(Theme.progress(animation-tick(), root.pop-start, Theme.motion-long)) : 1;
     if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
     if !root.checking && root.country != "": T {
         text: root.country;
@@ -269,6 +333,10 @@ component LineChart inherits Rectangle {
 
 component SpeedTile inherits Rectangle {
     in property <bool> upload;
+    // The rate in bytes, counting to each new sample.
+    property <float> rate: Tween.bytes-of(root.upload ? Dash.up-figure : Dash.down-figure, root.upload ? Dash.up-unit : Dash.down-unit);
+    property <float> shown: max(0, root.rate);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     property <color> fg: upload ? Theme.s.tertiary : Theme.s.primary;
     property <length> text-height: 14px + 4px + Theme.leading(TextRole.body-small) + Theme.leading(TextRole.headline-medium) + Theme.leading(TextRole.body-small);
     // Square-ish on a phone; capped on wider windows, where the card spans
@@ -305,7 +373,7 @@ component SpeedTile inherits Rectangle {
             alignment: start;
             spacing: 0px;
             T {
-                text: root.upload ? Dash.up-figure : Dash.down-figure;
+                text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
                 role: TextRole.headline-medium;
                 emphasized: true;
                 letter-spacing: -0.02 * Theme.size(TextRole.headline-medium);
@@ -313,7 +381,7 @@ component SpeedTile inherits Rectangle {
                 vertical-alignment: bottom;
             }
             T {
-                text: " " + (root.upload ? Dash.up-unit : Dash.down-unit) + "/s";
+                text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
                 role: TextRole.label-medium;
                 color: Theme.s.on-surface-variant;
                 vertical-alignment: bottom;
@@ -343,6 +411,9 @@ export component SpeedPanel inherits Panel {
 // the bottom edge.
 component SpeedCard inherits Rectangle {
     in property <bool> upload;
+    property <float> rate: Tween.bytes-of(root.upload ? Dash.up-figure : Dash.down-figure, root.upload ? Dash.up-unit : Dash.down-unit);
+    property <float> shown: max(0, root.rate);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     background: Theme.s.surface-container-highest;
     border-radius: Theme.radius;
     clip: true;
@@ -388,7 +459,7 @@ component SpeedCard inherits Rectangle {
             alignment: start;
             spacing: 0px;
             T {
-                text: root.upload ? Dash.up-figure : Dash.down-figure;
+                text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
                 role: TextRole.display-small;
                 emphasized: true;
                 letter-spacing: -0.02 * Theme.size(TextRole.display-small);
@@ -401,7 +472,7 @@ component SpeedCard inherits Rectangle {
                 alignment: end;
                 padding-bottom: 0.25 * (Theme.size(TextRole.display-small) - Theme.size(TextRole.body-medium));
                 T {
-                    text: " " + (root.upload ? Dash.up-unit : Dash.down-unit) + "/s";
+                    text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
                     role: TextRole.title-small;
                     color: Theme.s.on-surface-variant;
                 }
@@ -678,8 +749,12 @@ export component GroupsPanel inherits Panel {
 
 // MemoryBar + legend (MemorySummary)
 export component MemorySummary inherits VerticalLayout {
+    // The total counts to each new sample.
+    property <float> mem: Dash.memory-empty ? -1 : Tween.bytes-of(Dash.memory-figure, Dash.memory-unit);
+    property <float> mem-shown: max(0, root.mem);
+    animate mem-shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     T {
-        text: Dash.memory-figure + (Dash.memory-empty ? "" : " " + Dash.memory-unit);
+        text: root.mem < 0 ? Dash.memory-figure + (Dash.memory-empty ? "" : " " + Dash.memory-unit) : Tween.figure(root.mem-shown) + " " + Tween.unit(root.mem-shown);
         role: TextRole.headline-medium;
         emphasized: true;
     }
@@ -1144,22 +1219,31 @@ component ConnStat inherits Rectangle {
     in property <string> value;
     in property <string> label;
     in property <string> feed;
+    // Whole counts count to their new value; "12.3k" and "—" show as they are.
+    property <float> n: root.value.is-float() ? root.value.to-float() : -1;
+    property <float> shown: max(0, root.n);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     horizontal-stretch: 1;
     border-radius: Theme.corner-medium;
     accessible-role: button;
     accessible-label: root.label + " " + root.value;
     StateLayer { border-radius: root.border-radius; enabled: root.feed != ""; pressed: cta.pressed; hover: cta.has-hover; }
+    crip := Ripple { border-radius: root.border-radius; enabled: root.feed != ""; }
     VerticalLayout {
         alignment: center;
         padding-top: 12px;
         padding-bottom: 12px;
         spacing: 4px;
-        T { text: root.value; role: TextRole.headline-small; emphasized: true; horizontal-alignment: center; }
+        T { text: root.n < 0 ? root.value : round(root.shown) + ""; role: TextRole.headline-small; emphasized: true; horizontal-alignment: center; }
         T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-alignment: center; overflow: elide; }
     }
     cta := TouchArea {
         enabled: root.feed != "";
         clicked => { Nav.act("open-requests", root.feed); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { crip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { crip.up(); }
+        }
     }
 }
 
@@ -1254,37 +1338,237 @@ component DashboardCard inherits Rectangle {
     }
 }
 
-// The dashboard editor (DashboardEditor.kt): the shown cards with move
-// and remove buttons, then the hidden ones with add buttons.
+// The dashboard editor (FlClash dashboard/edit.dart), in place: the shown
+// cards as they are, swaying slightly (Theme.motion-sway-*, driven by
+// animation-tick()) and not interactive; a long press lifts a card, which
+// then follows the finger while the cards it passes make room for it
+// (Theme.motion-yield), and on release it settles into its new place before
+// the order is saved (dash-move). The minus badge removes a card: it fades
+// (Theme.motion-appear), then its room closes (Theme.motion-yield); a card
+// added from the hidden list first makes its room, then appears. Status
+// cannot be removed. The cards' places come from the layout; the drag only
+// offsets the cards inside their slots, so nothing reads back a layout it
+// changes.
 component DashboardEditor inherits VerticalLayout {
     spacing: 0px;
-    SectionTitle { text: @tr("Shown"); first: true; }
-    for c[i] in Dash.edit-shown: ListItem {
-        position: Dash.edit-shown.length == 1 ? 4 : i == 0 ? 1 : i == Dash.edit-shown.length - 1 ? 3 : 2;
-        title: c.value;
-        HorizontalLayout {
-            spacing: 0px;
-            Mid { IconButton {
-                glyph: Icons.arrow-up;
-                tooltip: @tr("Move up");
-                enabled: i > 0;
-                
-                clicked => { Nav.act2("dash-move", c.key, "-1"); }
-            } }
-            Mid { IconButton {
-                glyph: Icons.arrow-down;
-                tooltip: @tr("Move down");
-                enabled: i < Dash.edit-shown.length - 1;
-                
-                clicked => { Nav.act2("dash-move", c.key, "1"); }
-            } }
-            Mid { IconButton {
-                glyph: Icons.remove;
-                tooltip: @tr("Remove");
-                enabled: c.key != "Status";
-                
-                clicked => { Nav.act2("dash-hide", c.key, ""); }
-            } }
+    property <length> gap: Nav.gap;
+    // The lifted card: its index and key, how far the finger moved it, its
+    // slot's top and height (with the gap under it).
+    property <int> from: -1;
+    property <string> from-key;
+    property <length> drag-dy;
+    property <length> from-top;
+    property <length> drag-h;
+    // The slot the lifted card is over, and its edges.
+    property <int> target: -1;
+    property <length> target-top;
+    property <length> target-bottom;
+    // Released: the card glides to `settle-dy`, then the move is saved.
+    property <bool> settling;
+    property <length> settle-dy;
+    property <bool> pending;
+    // One frame without animation while the reordered list lands under the cards.
+    property <bool> snap;
+    // After the first frame: cards created from now on make an entrance.
+    property <bool> ready;
+    init => { ready-next.restart(); }
+    ready-next := Timer {
+        running: false;
+        interval: 1ms;
+        triggered => {
+            self.stop();
+            root.ready = true;
+        }
+    }
+    function lift(index: int, key: string, top: length, h: length) {
+        root.from = index;
+        root.from-key = key;
+        root.from-top = top;
+        root.drag-h = h;
+        root.drag-dy = 0px;
+        root.target = index;
+        root.target-top = top;
+        root.target-bottom = top + h;
+        root.settling = false;
+        Motion.card-dragging = true;
+    }
+    function drop() {
+        if (root.from < 0 || root.settling) { return; }
+        Motion.card-dragging = false;
+        root.settle-dy = root.target > root.from ? root.target-bottom - root.drag-h - root.from-top
+            : root.target < root.from ? root.target-top - root.from-top : 0px;
+        root.settling = true;
+        settle-end.interval = Theme.motion-yield + 16ms;
+        settle-end.restart();
+    }
+    // The cards changed under the slots (moved, removed, added): drop the
+    // drag offsets at once, without animating them.
+    function reflow() {
+        root.snap = true;
+        root.from = -1;
+        root.target = -1;
+        root.settling = false;
+        root.pending = false;
+        snap-end.restart();
+    }
+    settle-end := Timer {
+        running: false;
+        interval: Theme.motion-yield;
+        triggered => {
+            self.stop();
+            if (root.target != root.from && root.target >= 0) {
+                root.pending = true;
+                give-up.restart();
+                Nav.act2("dash-move", root.from-key, root.target - root.from);
+            } else {
+                root.reflow();
+            }
+        }
+    }
+    // The saved order did not arrive (a failed save): put the cards back.
+    give-up := Timer {
+        running: false;
+        interval: 1000ms;
+        triggered => {
+            self.stop();
+            if (root.pending) { root.reflow(); }
+        }
+    }
+    snap-end := Timer {
+        running: false;
+        interval: 32ms;
+        triggered => {
+            self.stop();
+            root.snap = false;
+        }
+    }
+    SectionTitle { text: @tr("Long-press a card to drag it"); first: true; }
+    for c[i] in Dash.edit-shown: slot := Rectangle {
+        property <string> k: c.key;
+        property <bool> lifted: root.from == i;
+        // Entrance and exit (FlClash _Presence): room, then the card.
+        property <bool> entered: !root.ready;
+        property <bool> removing;
+        init => { self.entered = true; }
+        changed k => {
+            self.removing = false;
+            root.reflow();
+        }
+        // The lifted card's centre decides which slot it is over.
+        property <length> center: root.from-top + root.drag-dy + root.drag-h / 2;
+        property <bool> hit: root.from >= 0 && !root.settling && self.center >= self.y && self.center < self.y + self.height;
+        changed hit => {
+            if (self.hit) {
+                root.target = i;
+                root.target-top = self.y;
+                root.target-bottom = self.y + self.height;
+            }
+        }
+        // The cards between the lifted card's place and the slot it is over
+        // move one place towards where it came from.
+        property <length> shift: root.from < 0 || self.lifted ? 0px
+            : root.target > root.from && i > root.from && i <= root.target ? -root.drag-h
+            : root.target < root.from && i >= root.target && i < root.from ? root.drag-h : 0px;
+        height: self.entered && !self.removing ? holder.preferred-height + root.gap : 0px;
+        animate height {
+            duration: root.snap ? 0ms : Theme.motion-yield;
+            delay: self.removing ? Theme.motion-appear : 0ms;
+            easing: Theme.easing-standard;
+        }
+        clip: self.height < holder.preferred-height + root.gap - 0.5px;
+        z: self.lifted ? 1 : 0;
+        accessible-role: list-item;
+        accessible-label: c.value;
+        holder := Rectangle {
+            y: slot.lifted ? (root.settling ? root.settle-dy : root.drag-dy) : slot.shift;
+            animate y {
+                duration: (slot.lifted && !root.settling) || root.snap ? 0ms : Theme.motion-yield;
+                easing: Theme.easing-standard;
+            }
+            height: self.preferred-height;
+            preferred-height: card.preferred-height;
+            opacity: slot.entered && !slot.removing ? 1 : 0;
+            transform-scale: slot.lifted ? 1.03 : slot.entered && !slot.removing ? 1 : Theme.motion-enter-scale;
+            animate opacity, transform-scale {
+                duration: Theme.motion-appear;
+                delay: slot.entered && !slot.removing && !slot.lifted && !root.snap ? Theme.motion-yield : 0ms;
+                easing: Theme.easing-decelerate;
+            }
+            drop-shadow-blur: slot.lifted ? Theme.shadow-blur(3) : 0px;
+            drop-shadow-offset-y: slot.lifted ? Theme.shadow-offset(3) : 0px;
+            drop-shadow-color: slot.lifted ? Theme.shadow-color(3) : transparent;
+            border-radius: Theme.radius;
+            // The sway: each card turns and bobs on its own phase while editing.
+            swayer := Rectangle {
+                property <bool> swaying: Theme.motion-on && !slot.lifted && !slot.removing;
+                property <angle> turn: self.swaying
+                    ? (mod(animation-tick() / Theme.motion-sway-period, 1) * [6, 7, 5][mod(i, 3)] * 360 + i * 97.4) * 1deg
+                    : 0deg;
+                y: self.swaying ? cos(self.turn) * Theme.motion-sway-bob : 0px;
+                height: card.preferred-height;
+                transform-rotation: self.swaying ? sin(self.turn) * Theme.motion-sway-turn : 0deg;
+                card := DashboardCard { card: c.key; }
+                // The card's own controls do not react while editing.
+                TouchArea {
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down) {
+                            hold.restart();
+                        } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                            hold.stop();
+                            if (slot.lifted) { root.drop(); }
+                        }
+                    }
+                    moved => {
+                        if (slot.lifted && !root.settling) {
+                            root.drag-dy = self.mouse-y - self.pressed-y;
+                        } else if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) {
+                            hold.stop();
+                        }
+                    }
+                }
+                hold := Timer {
+                    running: false;
+                    interval: 450ms;
+                    triggered => {
+                        self.stop();
+                        root.lift(i, c.key, slot.y, slot.height);
+                    }
+                }
+                // On the card's top corner, over its edge (FlClash's remove badge).
+                if c.key != "Status": Rectangle {
+                    x: parent.width - self.width + 6px;
+                    y: -8px;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 14px;
+                    background: Theme.s.error-container;
+                    drop-shadow-blur: Theme.shadow-blur(1);
+                    drop-shadow-offset-y: Theme.shadow-offset(1);
+                    drop-shadow-color: Theme.shadow-color(1);
+                    accessible-role: button;
+                    accessible-label: @tr("Remove");
+                    accessible-action-default => { remove-now.restart(); slot.removing = true; }
+                    Icon { glyph: Icons.remove; size: 18px; color: Theme.s.on-error-container; }
+                    TouchArea {
+                        width: Theme.min-target;
+                        height: Theme.min-target;
+                        enabled: !slot.removing && root.from < 0;
+                        clicked => {
+                            slot.removing = true;
+                            remove-now.interval = Theme.motion-appear + Theme.motion-yield + 16ms;
+                            remove-now.restart();
+                        }
+                    }
+                }
+                remove-now := Timer {
+                    running: false;
+                    interval: Theme.motion-yield;
+                    triggered => {
+                        self.stop();
+                        Nav.act2("dash-hide", c.key, "");
+                    }
+                }
+            }
         }
     }
     if Dash.edit-hidden.length > 0: SectionTitle { text: @tr("Hidden"); }
@@ -1294,7 +1578,7 @@ component DashboardEditor inherits VerticalLayout {
         Mid { IconButton {
             glyph: Icons.add;
             tooltip: @tr("Add");
-            
+
             clicked => { Nav.act2("dash-show", c.key, ""); }
         } }
     }
@@ -1314,6 +1598,9 @@ export component DashboardPage inherits Rectangle {
         y: 0;
         height: parent.height;
         content-height: body.preferred-height;
+        // A dragged card (the editor) moves instead of the page.
+        interactive: !Motion.card-dragging;
+        changed content-y => { Motion.scrolled("Dashboard", self.content-y); }
         body := VerticalLayout {
             property <length> side: Dash.editing || Nav.mobile ? Nav.side(root.width) : root.grid-side;
             padding-left: side;

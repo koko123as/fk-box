@@ -6,7 +6,7 @@
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons } from "icons.slint";
-import { Nav, Route } from "globals.slint";
+import { Nav, Route, Motion } from "globals.slint";
 import { T, ScrollPage, EmptyState } from "kit.slint";
 import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage, ServicesPage, ServicesManagePage } from "pages/dashboard.slint";
 import { ProxiesPage, NodeDetailsPage } from "pages/proxies.slint";
@@ -45,9 +45,74 @@ component RoutePage inherits Rectangle {
     }
 }
 
+// The container transform (phones, FlClash's OpenContainer): a card or a
+// list item that opened a page records its rectangle (Motion.open-from); a
+// surface grows from it to the whole window, its corners and color turning
+// into the page's, and the page fades in over it as it lands. Closing that
+// page shrinks the surface back into the card. Slint drops a closed route at
+// once, so the way back shows the surface without the page's content. The
+// surface is plain (no blur), so it is cheap to move and scale.
 export component RouteHost inherits Rectangle {
     // The content pane starts where the rail ends (80 dp, or 220 dp expanded).
     property <length> pane-x: Nav.mobile ? 0px : Nav.rail-width;
+    property <int> count: Nav.routes.length;
+    // The open container: the route count while its page is on top, where
+    // it came from (in this element's coordinates), and the transition.
+    property <int> depth: -1;
+    property <int> handled: 0;
+    property <bool> pending: Motion.container-tick != root.handled && Motion.container-depth == root.count;
+    property <length> ox;
+    property <length> oy;
+    property <length> ow;
+    property <length> oh;
+    property <length> oradius;
+    property <color> ocolor;
+    property <bool> opening;
+    property <bool> closing;
+    property <duration> start;
+    property <float> t: root.opening || root.closing ? Theme.progress(animation-tick(), root.start, Theme.motion-long) : 1;
+    // Emphasized: quick at first, settling slowly.
+    property <float> e: Theme.ease-out(root.t);
+    // How much of the way the surface is from the card to the window.
+    property <float> grown: root.opening ? root.e : root.closing ? 1 - root.e : 0;
+    property <int> tick: Motion.container-tick;
+    changed tick => {
+        root.handled = Motion.container-tick;
+        if (!Nav.mobile || !Theme.motion-on || Motion.container-depth != root.count) {
+            return;
+        }
+        root.depth = Motion.container-depth;
+        root.ox = Motion.container-x - root.absolute-position.x;
+        root.oy = Motion.container-y - root.absolute-position.y;
+        root.ow = Motion.container-width;
+        root.oh = Motion.container-height;
+        root.oradius = Motion.container-radius;
+        root.ocolor = Motion.container-color;
+        root.closing = false;
+        root.opening = true;
+        root.start = animation-tick();
+        finish.restart();
+    }
+    changed count => {
+        if (root.depth > 0 && root.count < root.depth) {
+            root.depth = -1;
+            if (Nav.mobile && Theme.motion-on) {
+                root.opening = false;
+                root.closing = true;
+                root.start = animation-tick();
+                finish.restart();
+            }
+        }
+    }
+    finish := Timer {
+        running: false;
+        interval: Theme.motion-long + 16ms;
+        triggered => {
+            self.stop();
+            root.opening = false;
+            root.closing = false;
+        }
+    }
     for r[i] in Nav.routes: Rectangle {
         property <bool> card: r.form && !Nav.mobile;
         // A page of another destination stays hidden in its pane.
@@ -66,6 +131,23 @@ export component RouteHost inherits Rectangle {
             y: card ? (root.height - Nav.keyboard-height - self.height) / 2 : 0px;
             border-radius: card ? Theme.corner-extra-large : 0px;
             clip: card;
+            // The page opened from a container waits for the surface, then fades in.
+            opacity: i == root.count - 1 && root.pending ? 0
+                : i == root.depth - 1 && root.opening ? clamp((root.t - 0.6) / 0.4, 0, 1) : 1;
         }
+    }
+    if root.opening || root.closing: Rectangle {
+        x: root.ox * (1 - root.grown);
+        y: root.oy * (1 - root.grown);
+        width: root.ow + (root.width - root.ow) * root.grown;
+        height: root.oh + (root.height - root.oh) * root.grown;
+        border-radius: root.oradius * (1 - root.grown);
+        background: Theme.s.surface.mix(root.ocolor, root.grown);
+        // Hands over to the page at the end of the way in, and to the card at
+        // the end of the way back.
+        opacity: root.opening ? 1 - clamp((root.t - 0.6) / 0.4, 0, 1) : 1 - clamp((root.t - 0.8) / 0.2, 0, 1);
+        drop-shadow-blur: Theme.shadow-blur(2);
+        drop-shadow-offset-y: Theme.shadow-offset(2);
+        drop-shadow-color: Theme.shadow-color(2);
     }
 }
