@@ -34,12 +34,13 @@ def adb(*args, binary=False, timeout=45):
 # is accepted, and a cold restart works. Screenshots are kept for review.
 
 # x86_64 emulator images run the arm64-only APK through ARM translation
-# (berberis). It does not implement MRS reads of the ARM ID registers
+# (berberis on the API 35 image, libndk_translation on API 31). Neither implements
+# MRS reads of the ARM ID registers
 # (0xd538xxxx, e.g. MIDR_EL1) that the Go runtime inside libbox.so issues at
 # start-up, so every process that loads libbox dies with SIGILL before any app
 # code runs. That is a property of the emulator, not of FK-box; it is reported
 # as an environment skip, never as a pass, and any other failure still fails.
-TRANSLATION_SIGILL = re.compile(r"berberis\s*:\s*Undefined instruction 0xd538[0-9a-f]{4}")
+TRANSLATION_SIGILL = re.compile(r"(?:berberis|ndk_translation)\s*:\s*Undefined instruction 0xd538[0-9a-f]{4}")
 
 
 class EnvironmentSkip(Exception):
