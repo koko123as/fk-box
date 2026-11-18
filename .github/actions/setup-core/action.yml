@@ -1,6 +1,15 @@
 name: Prepare fk-box core
 description: Check out the matching sing-box version and install all fk-box patches and bindings.
 
+inputs:
+  cache-purpose:
+    description: >-
+      Names the Go build cache. Callers that compile different things (host
+      tests with -race, the gomobile Android build) keep separate caches so
+      neither evicts the other's objects.
+    required: false
+    default: test
+
 outputs:
   version:
     description: Core and application version from version.properties.
@@ -22,6 +31,10 @@ runs:
         echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "go_version=$go_version" >> "$GITHUB_OUTPUT"
         echo "core_version=$core_version" >> "$GITHUB_OUTPUT"
+        # The module set is fixed by the core tag and the pinned extra cores
+        # (the app's own VERSION_NAME/CODE, rewritten for every release, is left out).
+        deps=$(printf 'core=%s\n' "$core_version"; grep -E '^(GO_VERSION|XRAY_VERSION|XRAY_MODULE_VERSION|MIHOMO_VERSION|LIBXRAY_MODULE_VERSION)=' version.properties | tr -d '\r' | sort)
+        echo "deps_key=$(printf '%s' "$deps" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
     - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       with:
         repository: SagerNet/sing-box
@@ -31,7 +44,29 @@ runs:
     - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
       with:
         go-version: ${{ steps.versions.outputs.go_version }}
-        cache-dependency-path: .core/go.sum
+        # setup-go's own cache is keyed on the upstream go.sum only (the Xray,
+        # mihomo and goja modules added below never changed its key) and has
+        # no restore-keys; the module and build caches are handled below.
+        cache: false
+    - name: Locate the Go caches
+      id: goenv
+      shell: bash
+      run: |
+        echo "modcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
+        echo "buildcache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
+    # Saved once per module set (core tag, pinned cores, this file's go.mod
+    # edits); a newer set starts from the closest older cache. Go's build cache
+    # is content-addressed, so objects restored from an older run are only
+    # reused when their inputs match.
+    - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          ${{ steps.goenv.outputs.modcache }}
+          ${{ steps.goenv.outputs.buildcache }}
+        key: go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-${{ steps.versions.outputs.deps_key }}-${{ hashFiles('.github/actions/setup-core/action.yml') }}
+        restore-keys: |
+          go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-${{ steps.versions.outputs.deps_key }}-
+          go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-
     - name: Apply patches and install bindings
       shell: bash
       run: |
