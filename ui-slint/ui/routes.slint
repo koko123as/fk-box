@@ -93,7 +93,37 @@ export component RouteHost inherits Rectangle {
         root.start = animation-tick();
         if (finish.running) { finish.restart(); } else { finish.start(); }
     }
+    // Plain pushes and pops (FlClash FadePageRoute and its sheets): a page
+    // fades in over `motion-route`; a form on a phone rises from the bottom
+    // as a sheet over `motion-sheet`; a form card on wider windows fades in
+    // and grows from `motion-enter-scale` with its scrim. Slint drops a
+    // closed route at once, so the way back fades (or sinks) a plain surface
+    // where the page was, as the container transform does.
+    property <int> seen: 0;
+    property <bool> top-form: false;
+    property <int> top-pane: -1;
+    property <bool> top-root: false;
+    property <int> enter-depth: -1;
+    property <bool> entering;
+    property <duration> enter-start;
+    property <duration> enter-span;
+    property <float> et: root.entering ? Theme.progress(animation-tick(), root.enter-start, root.enter-span) : 1;
+    // 1 a page, 2 a phone sheet, 3 a form card.
+    property <int> leave-kind: 0;
+    property <length> leave-x;
+    property <bool> leaving;
+    property <duration> leave-start;
+    property <duration> leave-span;
+    property <float> lt: root.leaving ? Theme.progress(animation-tick(), root.leave-start, root.leave-span) : 1;
     changed count => {
+        let grew = root.count > root.seen;
+        let old-form = root.top-form;
+        let old-pane = root.top-pane;
+        let old-root = root.top-root;
+        root.seen = root.count;
+        root.top-form = root.count > 0 ? Nav.routes[root.count - 1].form : false;
+        root.top-pane = root.count > 0 ? Nav.routes[root.count - 1].pane : -1;
+        root.top-root = root.count > 0 ? Nav.routes[root.count - 1].sheet-root : false;
         if (root.depth > 0 && root.count < root.depth) {
             root.depth = -1;
             if (Nav.mobile && Theme.motion-on) {
@@ -102,6 +132,50 @@ export component RouteHost inherits Rectangle {
                 root.start = animation-tick();
                 if (finish.running) { finish.restart(); } else { finish.start(); }
             }
+            return;
+        }
+        if (!Theme.motion-on) {
+            return;
+        }
+        if (grew) {
+            // A page opened from a card or a list item grows from it instead.
+            if (Motion.container-depth == root.count && (Motion.container-tick != root.handled || root.depth == root.count)) {
+                return;
+            }
+            root.enter-depth = root.count;
+            root.enter-span = root.top-root && Nav.mobile ? Theme.motion-sheet : Theme.motion-route;
+            root.enter-start = animation-tick();
+            root.entering = true;
+            entered.interval = root.enter-span + 16ms;
+            if (entered.running) { entered.restart(); } else { entered.start(); }
+        } else {
+            root.leave-kind = !old-root ? 1 : Nav.mobile ? 2 : 3;
+            root.leave-x = !old-form && old-pane >= 0 ? root.pane-x : 0px;
+            // A page inside a form card leaves the card where it is.
+            if (old-form && !old-root && !Nav.mobile) {
+                return;
+            }
+            root.leave-span = root.leave-kind == 2 ? Theme.motion-sheet : Theme.motion-route;
+            root.leave-start = animation-tick();
+            root.leaving = true;
+            left.interval = root.leave-span + 16ms;
+            if (left.running) { left.restart(); } else { left.start(); }
+        }
+    }
+    entered := Timer {
+        running: false;
+        interval: Theme.motion-sheet + 16ms;
+        triggered => {
+            self.stop();
+            root.entering = false;
+        }
+    }
+    left := Timer {
+        running: false;
+        interval: Theme.motion-sheet + 16ms;
+        triggered => {
+            self.stop();
+            root.leaving = false;
         }
     }
     finish := Timer {
@@ -115,10 +189,13 @@ export component RouteHost inherits Rectangle {
     }
     for r[i] in Nav.routes: Rectangle {
         property <bool> card: r.form && !Nav.mobile;
+        // This route is the one fading (or rising) in.
+        property <bool> arriving: root.entering && i == root.enter-depth - 1;
         // A page of another destination stays hidden in its pane.
         property <bool> shown: r.form || Nav.mobile || r.pane < 0 || Nav.destinations[r.pane] == Nav.tab;
         if card && r.sheet-root: Rectangle {
             background: Theme.s.scrim.with-alpha(0.32);
+            opacity: arriving ? root.et : 1;
             TouchArea { clicked => { Nav.dismiss-form(r.id); } }
         }
         RoutePage {
@@ -128,12 +205,40 @@ export component RouteHost inherits Rectangle {
             width: card ? min(580px, root.width * 0.9) : r.form || r.pane < 0 ? root.width : root.width - root.pane-x;
             height: card ? min(720px, (root.height - Nav.keyboard-height) * 0.85) : root.height;
             x: card ? (root.width - self.width) / 2 : r.form || r.pane < 0 ? 0px : root.pane-x;
-            y: card ? (root.height - Nav.keyboard-height - self.height) / 2 : 0px;
+            // A phone form rises from the bottom edge as a sheet.
+            y: card ? (root.height - Nav.keyboard-height - self.height) / 2
+                : arriving && r.sheet-root ? root.height * (1 - Theme.ease-out(root.et)) : 0px;
             border-radius: card ? Theme.corner-extra-large : 0px;
             clip: card;
-            // The page opened from a container waits for the surface, then fades in.
+            transform-scale: card && r.sheet-root && arriving ? Theme.motion-enter-scale + (1 - Theme.motion-enter-scale) * Theme.ease-out(root.et) : 1;
+            // The page opened from a container waits for the surface, then
+            // fades in; a pushed page or a form card fades in.
             opacity: i == root.count - 1 && root.pending ? 0
-                : i == root.depth - 1 && root.opening ? clamp((root.t - 0.6) / 0.4, 0, 1) : 1;
+                : i == root.depth - 1 && root.opening ? clamp((root.t - 0.6) / 0.4, 0, 1)
+                : arriving && (card || !r.sheet-root) ? root.et : 1;
+        }
+    }
+    // The way back: a page's surface fades out where it was, a phone sheet
+    // sinks out of the window (accelerating), a form card fades with its scrim.
+    if root.leaving && root.leave-kind == 1: Rectangle {
+        x: root.leave-x;
+        width: root.width - root.leave-x;
+        background: Theme.s.surface;
+        opacity: 1 - root.lt;
+    }
+    if root.leaving && root.leave-kind == 2: Rectangle {
+        y: root.height * (1 - Theme.ease-out(1 - root.lt));
+        background: Theme.s.surface;
+    }
+    if root.leaving && root.leave-kind == 3: Rectangle {
+        background: Theme.s.scrim.with-alpha(0.32);
+        opacity: 1 - root.lt;
+        Rectangle {
+            width: min(580px, root.width * 0.9);
+            height: min(720px, (root.height - Nav.keyboard-height) * 0.85);
+            y: (root.height - Nav.keyboard-height - self.height) / 2;
+            border-radius: Theme.corner-extra-large;
+            background: Theme.s.surface;
         }
     }
     if root.opening || root.closing: Rectangle {

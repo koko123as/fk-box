@@ -40,6 +40,49 @@ global Tween {
     public pure function one-decimal(v: float) -> string {
         return floor(round(v * 10) / 10) + "." + mod(round(v * 10), 10);
     }
+    // figure()'s shape with every digit a "0" ("00.0", "000"): the width the
+    // figure keeps while its digits count, so the unit after it does not jump
+    // when "9.9" becomes "10.0" only at a new digit count.
+    public pure function pattern(bytes: float) -> string {
+        let v = unit-step(bytes) == 0 ? round(bytes) : round(bytes / pow(1024, unit-step(bytes)) * 10) / 10;
+        let whole = v < 10 ? "0" : v < 100 ? "00" : v < 1000 ? "000" : "0000";
+        return unit-step(bytes) == 0 ? whole : whole + ".0";
+    }
+}
+
+// A rate figure: Slint cannot select tabular figures, so the box is as wide
+// as the wider of the text and its digit pattern (Tween.pattern), plus room
+// for the last glyph's overhang (no negative tracking, which drew the last
+// glyph past the measured width), and as tall as the role's line height.
+// When `avail` is narrower than the widest figure (large font scales on a
+// phone) the figure shrinks, to 75 % at most, before it would be cut.
+component RateFigure inherits Rectangle {
+    in property <string> text;
+    in property <string> pattern;
+    in property <TextRole> role;
+    in property <length> avail;
+    property <length> natural: max(pattern-measure.preferred-width, text-measure.preferred-width) + root.overhang;
+    property <length> overhang: 0.08 * Theme.size(root.role);
+    // Fit for the widest figure a rate shows (three digits and a decimal),
+    // so both tiles and every value keep one size.
+    property <float> fit: clamp(root.avail / max(1px, max(root.natural, widest-measure.preferred-width + root.overhang)), 0.75, 1);
+    width: root.natural * root.fit;
+    height: Theme.leading(root.role);
+    horizontal-stretch: 0;
+    widest-measure := T { visible: false; text: "000.0"; role: root.role; emphasized: true; }
+    pattern-measure := T { visible: false; text: root.pattern; role: root.role; emphasized: true; }
+    text-measure := T { visible: false; text: root.text; role: root.role; emphasized: true; }
+    T {
+        x: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        role: root.role;
+        emphasized: true;
+        font-size: Theme.size(root.role) * root.fit;
+        vertical-alignment: bottom;
+        accessible-role: none;
+    }
 }
 
 // The service's start/stop: the screen's dominant action, an M3 large FAB
@@ -94,6 +137,8 @@ component StartToggle inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -147,14 +192,31 @@ component CountryBadge inherits Rectangle {
     }
 }
 
+// A label over a value. `keep`: the value keeps its whole width (the run
+// time); otherwise the cell takes what is left and the value elides (the
+// organization's name).
 component StatusCell inherits VerticalLayout {
     in property <string> label;
     in property <string> value;
     in property <bool> loading;
+    in property <bool> keep;
     spacing: 2px;
-    T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; }
+    horizontal-stretch: root.keep ? 0 : 1;
+    T {
+        text: root.label;
+        role: TextRole.body-small;
+        color: Theme.s.on-surface-variant;
+        min-width: root.keep ? self.preferred-width : 0px;
+    }
     if root.loading: Skeleton { width: 96px; pill-height: Theme.sp(14); }
-    if !root.loading: T { text: root.value; role: TextRole.title-small; }
+    if !root.loading: T {
+        text: root.value;
+        role: TextRole.title-small;
+        height: Theme.leading(TextRole.title-small);
+        // Room for the last glyph's overhang so it is never trimmed.
+        min-width: root.keep ? self.preferred-width + 0.08 * Theme.size(TextRole.title-small) : 0px;
+        overflow: elide;
+    }
 }
 
 export component StatusPanel inherits Rectangle {
@@ -236,8 +298,11 @@ export component StatusPanel inherits Rectangle {
                             color: Dash.egress-failed ? Theme.s.error : App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
                         }
                     }
+                    // As tall as the chips it holds (they grow with the font
+                    // scale), so their borders are never cut; the clip only
+                    // trims a row too wide for the card.
                     Rectangle {
-                        height: 28px;
+                        height: Theme.chip-height-large;
                         clip: true;
                         if Dash.egress-failed && Dash.egress-ip == "": T {
                             x: 0;
@@ -248,8 +313,8 @@ export component StatusPanel inherits Rectangle {
                         if !(Dash.egress-failed && Dash.egress-ip == ""): HorizontalLayout {
                             alignment: start;
                             spacing: 6px;
-                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 48px; pill-height: 28px; }
-                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 72px; pill-height: 28px; }
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 48px; pill-height: Theme.chip-height-large; }
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 72px; pill-height: Theme.chip-height-large; }
                             if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")): Chip { label: Dash.egress-type; large: true; }
                             if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")) && Dash.egress-quality != "": Chip {
                                 label: @tr("Quality") + " " + Dash.egress-quality;
@@ -263,8 +328,7 @@ export component StatusPanel inherits Rectangle {
             Rectangle { height: 16px; }
             HorizontalLayout {
                 spacing: 24px;
-                alignment: start;
-                StatusCell { label: @tr("Run time"); value: Dash.runtime; }
+                StatusCell { label: @tr("Run time"); value: Dash.runtime; keep: true; }
                 StatusCell {
                     label: @tr("Organization");
                     value: Dash.organization == "" ? "—" : Dash.organization;
@@ -338,7 +402,9 @@ component SpeedTile inherits Rectangle {
     property <float> shown: max(0, root.rate);
     animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     property <color> fg: upload ? Theme.s.tertiary : Theme.s.primary;
-    property <length> text-height: 14px + 4px + Theme.leading(TextRole.body-small) + Theme.leading(TextRole.headline-medium) + Theme.leading(TextRole.body-small);
+    // The top padding, the label row, the gap, the figure's and the total's
+    // line heights, all from the type scale so they grow with the font scale.
+    property <length> text-height: 14px + max(16px, Theme.leading(TextRole.label-medium)) + 4px + Theme.leading(TextRole.headline-medium) + Theme.leading(TextRole.body-small);
     // Square-ish on a phone; capped on wider windows, where the card spans
     // two grid columns.
     property <length> chart-height: Nav.mobile ? max(36px, self.width / 1.06 - text-height - 12px + 2px) : clamp(self.width / 1.06 - text-height - 12px + 2px, 36px, 84px);
@@ -372,15 +438,13 @@ component SpeedTile inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             spacing: 0px;
-            T {
+            RateFigure {
                 text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
+                pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
                 role: TextRole.headline-medium;
-                emphasized: true;
-                letter-spacing: -0.02 * Theme.size(TextRole.headline-medium);
-                overflow: clip;
-                vertical-alignment: bottom;
+                avail: root.width - 32px - tile-unit.preferred-width;
             }
-            T {
+            tile-unit := T {
                 text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
                 role: TextRole.label-medium;
                 color: Theme.s.on-surface-variant;
@@ -458,20 +522,18 @@ component SpeedCard inherits Rectangle {
         HorizontalLayout {
             alignment: start;
             spacing: 0px;
-            T {
+            RateFigure {
                 text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
+                pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
                 role: TextRole.display-small;
-                emphasized: true;
-                letter-spacing: -0.02 * Theme.size(TextRole.display-small);
-                overflow: clip;
-                vertical-alignment: bottom;
+                avail: root.width - 32px - card-unit.preferred-width;
             }
             // On the figure's baseline: bottom-aligned, raised by the
             // difference of the two descents (about a quarter of the size).
             VerticalLayout {
                 alignment: end;
                 padding-bottom: 0.25 * (Theme.size(TextRole.display-small) - Theme.size(TextRole.body-medium));
-                T {
+                card-unit := T {
                     text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
                     role: TextRole.title-small;
                     color: Theme.s.on-surface-variant;
@@ -1244,6 +1306,8 @@ component ConnStat inherits Rectangle {
             if (e.kind == PointerEventKind.down) { crip.down(self.mouse-x, self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { crip.up(); }
         }
+        changed pressed => { if (!self.pressed) { crip.up(); } }
+        changed has-hover => { if (!self.has-hover) { crip.up(); } }
     }
 }
 

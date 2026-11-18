@@ -22,6 +22,13 @@
 //! `motion:SCALE` (the system's animator duration scale, 0 = animations off),
 //! `pref:KEY=VALUE` (an interface preference, e.g. `pref:proxyLayout=List`).
 //!
+//! Checks (they panic, so the unit tests below fail): `rest:NAME` lets
+//! everything settle, then requires the home page at x = 0, no page drag or
+//! slide in progress (Motion.pages-moving, Motion.swiping) and nothing still
+//! animating (a press ripple left behind keeps animating); `textscale:F`
+//! sets the font scale (Theme.text-scale, as the system or the appearance
+//! page does).
+//!
 //! With the `shot-skia` feature and `SHOT_RENDERER=skia`, the frames are drawn
 //! by the Skia renderer (the one Android uses) rasterized on the CPU instead of
 //! Slint's software renderer, so effects only Skia draws (the glass surfaces'
@@ -38,7 +45,7 @@ use slint::Rgb8Pixel;
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, PhysicalSize};
 
-use crate::{AppWindow, Nav, Theme};
+use crate::{AppWindow, Motion, Nav, Theme};
 
 thread_local! {
     static PREFS: RefCell<serde_json::Map<String, Value>> = RefCell::new(
@@ -591,6 +598,28 @@ impl Harness {
         frames
     }
 
+    /// `rest:NAME`: after everything settles the home pager is at rest (the
+    /// shown page at x = 0, no drag or slide, the top bars' blur back on) and
+    /// no ripple or other animation is left running.
+    fn expect_rest(&self, name: &str) {
+        self.settle();
+        // Drawn frames, as a device draws them: a binding that read
+        // animation-tick() only drops it once it is evaluated again.
+        for _ in 0..3 {
+            self.frame(&mut Vec::new());
+            self.advance(Duration::from_millis(16));
+            self.pump_now();
+        }
+        let motion = self.app.global::<Motion>();
+        let (offset, moving, swiping) = (motion.get_home_offset(), motion.get_pages_moving(), motion.get_swiping());
+        let animating = self.window.has_active_animations();
+        eprintln!("rest ({name}): offset {offset} pages-moving {moving} swiping {swiping} animating {animating}");
+        assert!(offset.abs() < 0.01, "{name}: the home page stays shifted by {offset} px");
+        assert!(!moving, "{name}: Motion.pages-moving stuck (the top bar loses its blur)");
+        assert!(!swiping, "{name}: Motion.swiping stuck");
+        assert!(!animating, "{name}: an animation (a press ripple) never ends");
+    }
+
     fn pointer(&self, event: WindowEvent) {
         self.window.window().dispatch_event(event);
         self.pump();
@@ -677,10 +706,20 @@ pub fn run(args: Vec<String>) {
                     _ => WindowEvent::PointerReleased { position, button },
                 };
                 h.window.window().dispatch_event(event);
+                // A lifted finger leaves no hover behind (Slint's Android
+                // backend sends the exit with the release).
+                if cmd == "up" {
+                    h.window.window().dispatch_event(WindowEvent::PointerExited);
+                }
                 h.pump_now();
                 // A device draws the frame the event changed before the next
                 // tick, so what it creates starts from its first state.
                 h.frame(&mut Vec::new());
+            }
+            "rest" => h.expect_rest(rest),
+            "textscale" => {
+                h.app.global::<Theme>().set_text_scale(rest.parse().unwrap_or(1.0));
+                h.settle();
             }
             "tab" => {
                 h.app.global::<Nav>().invoke_select_tab(rest.into());
@@ -820,6 +859,54 @@ pub fn run(args: Vec<String>) {
 
 #[cfg(test)]
 mod tests {
+    fn steps(name: &str, steps: &[&str]) {
+        let out = std::env::temp_dir().join(name);
+        let mut args = vec![out.to_string_lossy().into_owned()];
+        args.extend(steps.iter().map(|s| s.to_string()));
+        super::run(args);
+    }
+
+    /// A tap with a few pixels of jitter (press, move 5 px, release) on the
+    /// dashboard, on a row of the tools page and on the last page: Slint's
+    /// swipe handler reports such moves but never the release, which left
+    /// the pager dragging (the page shifted left, the top bar unblurred) and
+    /// the row's ripple and pressed layer on (Meizu 20 Pro). Then a real
+    /// swipe to the next page and back still works and ends at rest.
+    #[test]
+    fn tap_jitter_leaves_pages_at_rest() {
+        steps("fkui-shot-tap", &[
+            "tab:Dashboard", "down:120,420", "move:125,420", "move:125,423", "up:125,423", "rest:dashboard tap",
+            "down:200,480", "move:205,480", "up:205,480", "rest:dashboard tap on the speed card", "pop", "rest:back to the dashboard",
+            "tab:Tools", "rest:tools", "down:200,517", "move:205,517", "up:205,517",
+            "pop", "rest:tools after the row's page (its ripple gone)",
+            "down:200,300", "move:204,302", "ms:40", "up:204,302", "rest:tools last page tap",
+            // A swipe still turns the page: from Tools (the last page) right to Profiles.
+            "down:60,500", "move:100,500", "move:180,500", "move:260,500", "move:320,500", "up:320,500", "rest:after the swipe",
+        ]);
+    }
+
+    /// A page drag whose release never arrives (the finger stays down; the
+    /// handler sends neither swiped nor cancelled) settles after
+    /// Theme.touch-drag-idle; a rubber-band pull past the first page springs
+    /// back to 0 when released; a drag in flight when the app leaves the
+    /// foreground settles too.
+    #[test]
+    fn page_drag_without_release_settles() {
+        steps("fkui-shot-drag", &[
+            "tab:Profiles", "rest:start",
+            "down:320,500", "move:300,500", "move:260,500", "move:220,500", "move:200,500", "ms:1600", "rest:drag held without a release",
+            "up:200,500", "rest:released late",
+            "tab:Dashboard", "rest:dashboard",
+            "down:40,500", "move:80,500", "move:160,500", "move:240,500", "up:240,500", "rest:rubber band springs back",
+            "down:320,500", "move:280,500", "move:220,500", "bg", "fg", "rest:background mid-drag",
+            "up:220,500", "rest:released after the foreground",
+            // Page push and back (fade), a form sheet (rise and sink): their
+            // ghosts and timers end too.
+            "push:memory:", "rest:pushed page", "pop", "rest:back from the page",
+            "form:egress:", "rest:form sheet", "pop", "rest:back from the sheet",
+        ]);
+    }
+
     /// Access control with a long list of apps: thousands of px of fast drags
     /// and flings down and back up, icon answers landing on rows the list
     /// reuses, a frame drawn every 16 ms; then closed (the memory release

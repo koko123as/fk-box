@@ -13,7 +13,7 @@ import { HomePage } from "home.slint";
 import { RouteHost } from "routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
 
-export { Theme, Scheme, TextRole, Nav, MenuItem, BarAction, Route, Keyword, Glyph, Icons, NativeIme, NativeImeSpec }
+export { Theme, Scheme, TextRole, Nav, Motion, MenuItem, BarAction, Route, Keyword, Glyph, Icons, NativeIme, NativeImeSpec }
 export { Look, Swatch }
 export { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow }
 
@@ -102,6 +102,8 @@ component MenuLayer inherits Rectangle {
                                 if (e.kind == PointerEventKind.down) { mrip.down(self.mouse-x, self.mouse-y); }
                                 else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { mrip.up(); }
                             }
+                            changed pressed => { if (!self.pressed) { mrip.up(); } }
+                            changed has-hover => { if (!self.has-hover) { mrip.up(); } }
                         }
                     }
                 }
@@ -114,9 +116,34 @@ component MenuLayer inherits Rectangle {
 // tint) over a 32 % scrim, 24 dp padding, the headline in headline-small, supporting text
 // in body-medium, choices as radio rows, an outlined text field, and text
 // buttons at the end (the last confirms; `dialog-danger` paints it in error).
+//
+// It grows in from `motion-dialog-scale` as it fades in and, once closed,
+// only fades out at the size it had (FlClash showFloatingDialog), on a
+// critically damped curve over `motion-dialog`; the scrim fades with it.
+// While it leaves (`leaving`) it shows what it last showed and takes no input.
 component DialogLayer inherits Rectangle {
-    background: Theme.s.scrim.with-alpha(0.32);
-    TouchArea { clicked => { Nav.dialog-dismiss(); } }
+    in property <bool> leaving;
+    property <duration> start: animation-tick();
+    property <bool> moving: true;
+    property <float> t: root.moving ? Theme.progress(animation-tick(), root.start, Theme.motion-dialog) : 1;
+    property <float> shown: root.leaving ? 1 - Theme.ease-spring(root.t) : Theme.ease-spring(root.t);
+    property <float> held: 1;
+    property <float> grow: root.leaving ? root.held : Theme.motion-dialog-scale + (1 - Theme.motion-dialog-scale) * Theme.ease-spring(root.t);
+    changed leaving => {
+        root.held = root.leaving ? Theme.motion-dialog-scale + (1 - Theme.motion-dialog-scale) * Theme.ease-spring(root.t) : 1;
+        root.start = animation-tick();
+        root.moving = true;
+        if (done.running) { done.restart(); } else { done.start(); }
+    }
+    done := Timer {
+        interval: Theme.motion-dialog + 16ms;
+        triggered => {
+            self.stop();
+            root.moving = false;
+        }
+    }
+    background: Theme.s.scrim.with-alpha(0.32 * root.shown);
+    TouchArea { enabled: !root.leaving; clicked => { Nav.dialog-dismiss(); } }
     property <length> bottom: Nav.keyboard-height > 0 ? Nav.keyboard-height : Nav.inset-bottom;
     card := Glass {
         width: clamp(root.width - 48px, min(280px, root.width - 16px), 560px);
@@ -125,9 +152,13 @@ component DialogLayer inherits Rectangle {
         y: max(Nav.inset-top + 24px, (root.height - root.bottom - self.height) / 2);
         border-radius: Theme.corner-extra-large;
         level: 3;
+        opacity: root.shown;
+        transform-scale: root.grow;
         accessible-role: groupbox;
         accessible-label: Nav.dialog-title;
         TouchArea { }
+        // Swallows taps while the dialog fades out.
+        if root.leaving: TouchArea { z: 10; }
         lay := VerticalLayout {
             padding: 24px;
             spacing: 16px;
@@ -254,6 +285,23 @@ export component AppWindow inherits Window {
     changed left-inset => { Nav.inset-left = self.left-inset; }
     changed right-inset => { Nav.inset-right = self.right-inset; }
     changed keyboard => { Nav.keyboard-height = self.keyboard; }
+    // The closed dialog stays while it fades out (DialogLayer).
+    property <bool> dialog-open: Nav.dialog-open;
+    property <bool> dialog-leaving;
+    changed dialog-open => {
+        root.dialog-leaving = !Nav.dialog-open && Theme.motion-on;
+        if (root.dialog-leaving) {
+            if (dialog-left.running) { dialog-left.restart(); } else { dialog-left.start(); }
+        }
+    }
+    dialog-left := Timer {
+        running: false;
+        interval: Theme.motion-dialog + 16ms;
+        triggered => {
+            self.stop();
+            root.dialog-leaving = false;
+        }
+    }
     property <int> focus-tick: Nav.focus-tick;
     changed focus-tick => { fs.focus(); }
 
@@ -283,7 +331,7 @@ export component AppWindow inherits Window {
         }
 
         if Nav.menu-open: MenuLayer { }
-        if Nav.dialog-open: DialogLayer { }
+        if Nav.dialog-open || root.dialog-leaving: DialogLayer { leaving: !Nav.dialog-open; }
         if Nav.toast != "": Snackbar {
             x: 16px + Nav.inset-left;
             width: min(560px, parent.width - 32px - Nav.inset-left - Nav.inset-right);

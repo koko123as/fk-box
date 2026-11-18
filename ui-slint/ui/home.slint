@@ -131,6 +131,8 @@ component DestinationItem inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(0px, 0px); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -192,6 +194,8 @@ component ExtendedItem inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -295,12 +299,25 @@ component Pages inherits Rectangle {
     property <float> exit-share: Theme.motion-exit / max(1ms, root.span);
     property <float> enter: Theme.ease-out((root.t - root.exit-share) / max(0.001, 1 - root.exit-share));
     // A horizontal drag (slide mode): the neighbour it pulls in, from which
-    // side, and how far (0–1 of the width).
+    // side, and how far (0–1 of the width). A press only becomes a drag past
+    // Theme.touch-slop and mostly horizontal, so a tap's jitter never moves
+    // the page; the drag is measured from the slop.
     property <bool> dragging;
     property <string> drag-to;
     property <float> drag-dir: 1;
     property <float> drag-p;
     property <length> rubber;
+    // A rubber-band pull past the first or last page springs back from
+    // `rubber-from` when released.
+    property <length> rubber-from;
+    property <bool> springing;
+    property <length> spring: root.springing ? root.rubber-from * (1 - Theme.ease-out(Theme.progress(animation-tick(), root.start, Theme.motion-medium))) : 0px;
+    // Where the current page sits (0 at rest), for the harness and its tests.
+    property <length> current-offset: root.offset-of(root.current);
+    changed current-offset => { Motion.home-offset = self.current-offset; }
+    // The host reset the gestures (background, foreground, resume).
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { root.settle(); }
 
     pure function index(key: string) -> int {
         if (key == "Dashboard") { return 0; }
@@ -320,6 +337,7 @@ component Pages inherits Rectangle {
             if (key == root.current) { return root.drag-to == "" ? root.rubber : -root.drag-dir * root.drag-p * root.width; }
             return root.drag-dir * (1 - root.drag-p) * root.width;
         }
+        if (root.springing) { return key == root.current ? root.spring : 0px; }
         if (!root.moving) { return 0px; }
         if (key == root.leaving) { return -root.dir * root.e * root.width; }
         return root.dir * (1 - root.e) * root.width;
@@ -353,6 +371,8 @@ component Pages inherits Rectangle {
     }
     init => { root.shown = root.current; }
     changed current => {
+        // A tab picked while a drag is under the finger ends the drag first.
+        if (root.dragging) { root.reset-drag(); }
         // A drag that settled on this page already started its transition.
         if (root.current != root.shown) {
             root.begin(root.shown, root.index(root.current) >= root.index(root.shown) ? 1 : -1, 0);
@@ -364,7 +384,18 @@ component Pages inherits Rectangle {
         triggered => {
             self.stop();
             root.moving = false;
+            root.springing = false;
             Motion.pages-moving = root.dragging;
+        }
+    }
+    // A drag whose release never arrived (no move for Theme.touch-drag-idle)
+    // is settled all the same.
+    idle := Timer {
+        running: false;
+        interval: Theme.touch-drag-idle;
+        triggered => {
+            self.stop();
+            root.settle();
         }
     }
     clip: true;
@@ -376,18 +407,33 @@ component Pages inherits Rectangle {
         handle-swipe-left: true;
         handle-swipe-right: true;
         moved => {
+            // Below Slint's own threshold the handler reports moves without
+            // ever reporting the release (no swiped or cancelled follows a
+            // tap), so only a gesture it took over (`swiping`) may drag.
+            if (!self.swiping) { return; }
             let dx = self.current-position.x - self.pressed-position.x;
+            let dy = self.current-position.y - self.pressed-position.y;
+            if (!root.dragging) {
+                if (abs(dx) <= Theme.touch-slop || abs(dx) <= Theme.touch-axis-ratio * abs(dy)) { return; }
+                root.dragging = true;
+                root.moving = false;
+                root.springing = false;
+                done.stop();
+                Motion.swiping = true;
+                Motion.pages-moving = true;
+            }
+            // Measured from the slop, so the page does not jump by it.
+            let d = dx < 0 ? min(0px, dx + Theme.touch-slop) : max(0px, dx - Theme.touch-slop);
             let i = root.index(root.current) + (dx < 0 ? 1 : -1);
-            root.dragging = true;
-            root.moving = false;
-            Motion.swiping = true;
-            Motion.pages-moving = true;
             root.drag-dir = dx < 0 ? 1 : -1;
             root.drag-to = i >= 0 && i < Nav.destinations.length ? Nav.destinations[i] : "";
-            root.drag-p = clamp(abs(dx) / max(1px, root.width), 0, 1);
+            root.drag-p = clamp(abs(d) / max(1px, root.width), 0, 1);
             // Past the first or last page the page follows a third of the drag.
-            root.rubber = dx / 3;
+            root.rubber = d / 3;
+            idle.interval = Theme.touch-drag-idle;
+            if (idle.running) { idle.restart(); } else { idle.start(); }
         }
+        changed swiping => { if (!self.swiping) { root.settle(); } }
         swiped => { root.settle(); }
         cancelled => { root.settle(); }
         HomeSlot { shown: root.visible-of("Dashboard"); offset: root.offset-of("Dashboard"); fade: root.fade-of("Dashboard"); grow: root.grow-of("Dashboard"); DashboardPage { } }
@@ -397,30 +443,62 @@ component Pages inherits Rectangle {
         if root.visible-of("Requests"): HomeSlot { shown: true; offset: root.offset-of("Requests"); fade: root.fade-of("Requests"); grow: root.grow-of("Requests"); RequestsPage { } }
         if root.visible-of("Logs"): HomeSlot { shown: true; offset: root.offset-of("Logs"); fade: root.fade-of("Logs"); grow: root.grow-of("Logs"); LogsPage { } }
     }
-    // The drag ends: past a quarter of the width it carries on to the
-    // neighbour, otherwise it slides back.
-    function settle() {
-        if (!root.dragging) { return; }
+    // Drops a drag without moving anywhere: every drag value back to rest.
+    function reset-drag() {
+        idle.stop();
         root.dragging = false;
+        root.drag-to = "";
+        root.drag-p = 0;
+        root.rubber = 0px;
         Motion.swiping = false;
-        if (root.drag-to != "" && root.drag-p > 0.25) {
-            let next = root.drag-to;
+        Motion.pages-moving = root.moving;
+    }
+    // The drag ends: past a quarter of the width it carries on to the
+    // neighbour, otherwise it slides back; a rubber-band pull springs back.
+    // Every branch leaves the drag values at rest.
+    function settle() {
+        idle.stop();
+        if (!root.dragging) {
+            Motion.swiping = false;
+            Motion.pages-moving = root.moving;
+            return;
+        }
+        let to = root.drag-to;
+        let p = root.drag-p;
+        let pull = root.rubber;
+        let dir = root.drag-dir;
+        root.dragging = false;
+        root.drag-to = "";
+        root.drag-p = 0;
+        root.rubber = 0px;
+        Motion.swiping = false;
+        if (to != "" && p > 0.25) {
             let leave = root.current;
-            root.shown = next;
-            Nav.select-tab(next);
-            root.begin(leave, root.drag-dir, root.drag-p);
-        } else if (root.drag-to != "") {
+            root.shown = to;
+            Nav.select-tab(to);
+            root.begin(leave, dir, p);
+        } else if (to != "" && p > 0) {
             // Back: the neighbour leaves the way it came.
-            let back = root.drag-to;
-            root.drag-to = "";
-            root.leaving = back;
-            root.dir = -root.drag-dir;
-            root.from = 1 - root.drag-p;
+            root.leaving = to;
+            root.dir = -dir;
+            root.from = 1 - p;
             root.start = animation-tick();
             root.moving = true;
+            Motion.pages-moving = true;
             done.interval = root.span + 16ms;
             if (done.running) { done.restart(); } else { done.start(); }
+        } else if (pull != 0px) {
+            // Past the first or last page: spring back to 0.
+            root.rubber-from = pull;
+            root.leaving = "";
+            root.start = animation-tick();
+            root.springing = true;
+            root.moving = true;
+            Motion.pages-moving = true;
+            done.interval = Theme.motion-medium + 16ms;
+            if (done.running) { done.restart(); } else { done.start(); }
         } else {
+            root.moving = false;
             Motion.pages-moving = false;
         }
     }

@@ -248,6 +248,14 @@ export global Motion {
     // A horizontal drag between home destinations is in progress (cards and
     // lists under it ignore the gesture).
     in-out property <bool> swiping;
+    // Where the shown home page sits horizontally (0 at rest; the pager
+    // writes it while a drag or a slide moves the page).
+    in-out property <length> home-offset;
+    // Bumped by the host's lifecycle (src/pages/mod.rs `reset_gestures`:
+    // background, foreground, the motion event sent on resume): every
+    // gesture in flight is dropped — the pager settles, press ripples and
+    // pressed state layers end — since its release may never arrive.
+    in-out property <int> gesture-resets;
     // A dashboard card is being dragged in the editor: the page stops scrolling.
     in-out property <bool> card-dragging;
 

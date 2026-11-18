@@ -599,7 +599,10 @@ pub fn on_event(payload: &str) {
         // Remove animations in accessibility; resent on resume).
         "motion" => {
             let scale = crate::theme_apply::motion_scale(value["scale"].as_f64().unwrap_or(1.0));
-            crate::defer("motion", move || crate::theme_apply::set_motion_scale(scale));
+            crate::defer("motion", move || {
+                crate::theme_apply::set_motion_scale(scale);
+                pages::reset_gestures();
+            });
             Mark::NONE
         }
         // The host's own menu or dialog (src/nav.rs).

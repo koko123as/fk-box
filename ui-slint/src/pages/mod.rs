@@ -96,6 +96,7 @@ pub fn set_foreground(active: bool) {
     if FOREGROUND.with(|f| f.replace(active)) == active {
         return;
     }
+    reset_gestures();
     let mut resumed: Vec<Rc<dyn Fn()>> = Vec::new();
     PAUSABLE.with(|p| {
         p.borrow_mut().retain(|(t, on_resume)| match t.upgrade() {
@@ -119,6 +120,17 @@ pub fn set_foreground(active: bool) {
         mark(Mark::ALL);
     } else {
         sync_visibility(false);
+    }
+}
+
+/// Drops every gesture in flight (Motion.gesture-resets): the home pager
+/// settles, press ripples and pressed state layers end. Leaving or entering
+/// the foreground, or resuming (the host's motion event), can swallow the
+/// release a gesture waits for.
+pub fn reset_gestures() {
+    if let Some(w) = crate::app::window() {
+        let motion = w.global::<crate::Motion>();
+        motion.set_gesture_resets(motion.get_gesture_resets().wrapping_add(1));
     }
 }
 

@@ -174,13 +174,43 @@ export component T inherits Text {
 
 // The M3 state layer: the content color over its container at the hover,
 // focus or pressed opacity. Fills its parent and takes its corners.
+//
+// A press whose release never reaches the owner's TouchArea (a gesture
+// handler above took the gesture, the window lost the pointer) would leave
+// `pressed` and `hover` true and the surface grey: after Theme.touch-press-max
+// without a change, or when the host resets gestures (Motion.gesture-resets),
+// the pressed and hover layers are dropped until either input changes again.
 export component StateLayer inherits Rectangle {
     in property <color> ink: Theme.s.on-surface;
     in property <bool> pressed;
     in property <bool> hover;
     in property <bool> focused;
     in property <bool> enabled: true;
-    background: enabled ? Theme.state(ink, pressed, hover, focused) : transparent;
+    property <bool> stale;
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { self.stale = self.pressed || self.hover; }
+    changed pressed => { self.watch(); }
+    changed hover => { self.watch(); }
+    function watch() {
+        self.stale = false;
+        if (self.pressed || self.hover) {
+            guard.interval = Theme.touch-press-max;
+            if (guard.running) { guard.restart(); } else { guard.start(); }
+        } else {
+            guard.stop();
+        }
+    }
+    guard := Timer {
+        running: false;
+        interval: Theme.touch-press-max;
+        triggered => {
+            self.stop();
+            // A mouse resting over the surface is a real hover; only a press
+            // left behind turns both off.
+            root.stale = root.pressed;
+        }
+    }
+    background: enabled ? Theme.state(ink, pressed && !stale, hover && !stale, focused) : transparent;
     animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
 }
 
@@ -190,9 +220,11 @@ export component StateLayer inherits Rectangle {
 // the parent's corners). The owner's TouchArea calls `down(x, y)` (in this
 // element's coordinates) from its pointer-event on a press, before any
 // delayed `pressed`, so a quick tap still ripples, and `up()` on release or
-// cancel. Drawn from animation-tick() only while a ripple is alive; nothing
-// when motion is off (Theme.motion-on), where the state layer alone shows
-// the press.
+// cancel and whenever the TouchArea's `pressed` or `has-hover` turns false
+// (the Exit a gesture handler sends when it takes the gesture over); a
+// release that never arrives fades after Theme.touch-press-max. Drawn from
+// animation-tick() only while a ripple is alive; nothing when motion is off
+// (Theme.motion-on), where the state layer alone shows the press.
 export component Ripple inherits Rectangle {
     in property <color> ink: Theme.s.on-surface;
     in property <bool> enabled: true;
@@ -215,10 +247,16 @@ export component Ripple inherits Rectangle {
     border-bottom-right-radius: self.border-radius;
     clip: true;
     accessible-role: none;
+    // A ripple whose release never comes (a gesture handler above took it,
+    // the host reset gestures) fades by itself after Theme.touch-press-max.
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { self.up(); }
     public function down(x: length, y: length) {
         if (!self.enabled || !Theme.motion-on) {
             return;
         }
+        guard.interval = Theme.touch-press-max;
+        if (guard.running) { guard.restart(); } else { guard.start(); }
         self.cx = self.centered ? self.width / 2 : clamp(x, 0px, self.width);
         self.cy = self.centered ? self.height / 2 : clamp(y, 0px, self.height);
         self.start = animation-tick();
@@ -227,6 +265,7 @@ export component Ripple inherits Rectangle {
         end.stop();
     }
     public function up() {
+        guard.stop();
         if (!self.live || !self.held) {
             return;
         }
@@ -235,6 +274,14 @@ export component Ripple inherits Rectangle {
         self.fade-from = max(animation-tick(), self.start + Theme.motion-ripple * 0.5);
         end.interval = self.fade-from - animation-tick() + Theme.motion-ripple-fade + 16ms;
         if (end.running) { end.restart(); } else { end.start(); }
+    }
+    guard := Timer {
+        running: false;
+        interval: Theme.touch-press-max;
+        triggered => {
+            self.stop();
+            root.up();
+        }
     }
     end := Timer {
         running: false;
@@ -418,6 +465,8 @@ export component IconButton inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -476,6 +525,8 @@ export component TonalIconButton inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -545,6 +596,8 @@ export component Button inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -707,7 +760,8 @@ export component Chip inherits Rectangle {
     in property <bool> dot;
     in property <bool> large;
     property <color> fg: tone == 1 ? Theme.s.on-success-container : tone == 2 ? Theme.s.on-warning-container : Theme.s.on-surface-variant;
-    height: large ? 32px : 24px;
+    // 32 / 24 dp, taller with the label's line height at large font scales.
+    height: large ? Theme.chip-height-large : Theme.chip-height;
     border-radius: Theme.corner-small;
     // Neutral labels are outlined, so they read on any surface level.
     background: tone == 1 ? Theme.s.success-container : tone == 2 ? Theme.s.warning-container : transparent;
@@ -785,6 +839,8 @@ export component FilterChip inherits Rectangle {
             if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
         }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -856,6 +912,8 @@ export component SegmentedButton inherits Rectangle {
                     if (e.kind == PointerEventKind.down) { srip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
                     else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { srip.up(); }
                 }
+                changed pressed => { if (!self.pressed) { srip.up(); } }
+                changed has-hover => { if (!self.has-hover) { srip.up(); } }
             }
         }
     }
@@ -911,6 +969,8 @@ export component Card inherits Rectangle {
                 rip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { hold.running = false; rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { hold.running = false; rip.up(); } }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
     }
     hold := Timer {
@@ -963,6 +1023,8 @@ export component Panel inherits Rectangle {
             if (e.kind == PointerEventKind.down) { prip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
             else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { prip.up(); }
         }
+        changed pressed => { if (!self.pressed) { prip.up(); } }
+        changed has-hover => { if (!self.has-hover) { prip.up(); } }
     }
     StateLayer { enabled: root.clickable; pressed: ta.pressed; hover: ta.has-hover; }
     prip := Ripple { border-radius: root.border-radius; enabled: root.clickable; }
@@ -1072,6 +1134,8 @@ export component ListItem inherits Rectangle {
                 rip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { hold.running = false; rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { hold.running = false; rip.up(); } }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
     }
     hold := Timer {
