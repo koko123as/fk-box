@@ -105,11 +105,25 @@ def main():
         manifest = json.loads(apk.read('assets/geo/manifest.json')) if 'assets/geo/manifest.json' in names else {}
         if manifest.get('commit') != pins['GEO_COMMIT']:
             raise SystemExit('Missing or stale bundled geo manifest')
+        bundled = {name.strip() for name in pins.get('GEO_BUNDLED', '').split(',') if name.strip()}
+        if not bundled:
+            raise SystemExit('GEO_BUNDLED is empty')
         for resource in ('geoip', 'geosite', 'mmdb', 'asn'):
-            _, file, digest = pins[resource].split(':')
+            source, file, digest = pins[resource].split(':')
             packaged = f'assets/geo/{file}'
-            if packaged not in names or hashlib.sha256(apk.read(packaged)).hexdigest() != digest:
-                raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
+            if resource in bundled:
+                if packaged not in names or hashlib.sha256(apk.read(packaged)).hexdigest() != digest:
+                    raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
+                if manifest.get('files', {}).get(resource, {}).get('sha256') != digest:
+                    raise SystemExit(f'Geo manifest does not list bundled {resource}')
+                continue
+            # Downloaded on first use: not in the APK, pinned in the manifest.
+            if packaged in names:
+                raise SystemExit(f'Geo file outside GEO_BUNDLED was packaged: {packaged}')
+            remote = manifest.get('remote', {}).get(resource, {})
+            url = f"https://raw.githubusercontent.com/{pins['GEO_REPOSITORY']}/{pins['GEO_COMMIT']}/{source}"
+            if remote.get('sha256') != digest or remote.get('url') != url or remote.get('file') != file:
+                raise SystemExit(f'Geo manifest does not pin on-demand {resource}')
     if abis != {'arm64-v8a'}:
         raise SystemExit(f'Unexpected native ABIs: {abis}')
     verify_native_libraries(apks[0], abis)

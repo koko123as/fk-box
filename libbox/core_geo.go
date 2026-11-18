@@ -27,8 +27,9 @@ import (
 )
 
 // Geo data (GeoIP, GeoSite, MMDB, ASN) shared by Xray and mihomo, modelled on
-// FlClash: the app ships a copy in its assets, extracts it on first use and
-// can replace each file from its own URL. All four live in mihomo's home
+// FlClash: the app ships some of the files in its assets and pins the rest to
+// a hash it downloads on first use (FetchExpected), extracts what a core needs
+// when it starts and can replace each file from its own URL. All four live in mihomo's home
 // directory, which mihomo searches by case-insensitive name; Xray is pointed
 // at the same directory through xray.location.asset and reads the lower-case
 // geoip.dat / geosite.dat written here.
@@ -128,6 +129,24 @@ func (u *GeoUpdate) Cancel() { u.cancel() }
 // Callers serialize updates (GeoResources' mutex in the app); Fetch does not
 // lock by itself. One GeoUpdate is good for one Fetch.
 func (u *GeoUpdate) Fetch(dir string, name string, link string, installedSha256 string, etag string, lastModified string) (*GeoUpdateResult, error) {
+	return u.fetch(dir, name, link, installedSha256, etag, lastModified, "")
+}
+
+// FetchExpected downloads a resource that must have exactly expectedSha256,
+// such as the file pinned in the APK's geo manifest that the app downloads on
+// first use instead of shipping it. The request is unconditional; a body with
+// another hash is rejected before it can replace anything, and it is still
+// checked to be that kind of database.
+func (u *GeoUpdate) FetchExpected(dir string, name string, link string, expectedSha256 string) (*GeoUpdateResult, error) {
+	expected := strings.ToLower(strings.TrimSpace(expectedSha256))
+	if _, err := hex.DecodeString(expected); err != nil || len(expected) != sha256.Size*2 {
+		u.cancel()
+		return nil, fmt.Errorf("invalid expected SHA-256")
+	}
+	return u.fetch(dir, name, link, "", "", "", expected)
+}
+
+func (u *GeoUpdate) fetch(dir string, name string, link string, installedSha256 string, etag string, lastModified string, expectedSha256 string) (*GeoUpdateResult, error) {
 	defer u.cancel()
 	spec, ok := geoResourceSpecs[name]
 	if !ok {
@@ -161,7 +180,7 @@ func (u *GeoUpdate) Fetch(dir string, name string, link string, installedSha256 
 		}, nil
 	}
 	defer os.Remove(download.path)
-	return installGeoResource(dir, name, download)
+	return installGeoResource(dir, name, download, expectedSha256)
 }
 
 type geoValidators struct {
@@ -188,10 +207,13 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
-func installGeoResource(dir string, name string, download *geoDownload) (*GeoUpdateResult, error) {
+func installGeoResource(dir string, name string, download *geoDownload, expectedSha256 string) (*GeoUpdateResult, error) {
 	spec := geoResourceSpecs[name]
 	if download.size == 0 {
 		return nil, fmt.Errorf("%s: empty file", spec.file)
+	}
+	if expectedSha256 != "" && download.sha256 != expectedSha256 {
+		return nil, fmt.Errorf("%s: SHA-256 %s, expected %s", spec.file, download.sha256, expectedSha256)
 	}
 	if err := spec.verify(download.path); err != nil {
 		return nil, fmt.Errorf("invalid %s: %w", spec.file, err)

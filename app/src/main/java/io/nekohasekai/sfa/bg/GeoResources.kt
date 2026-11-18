@@ -2,10 +2,14 @@ package io.nekohasekai.sfa.bg
 
 import android.content.Context
 import android.util.Log
+import io.nekohasekai.libbox.GeoUpdate
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.Settings
+import io.nekohasekai.sfa.database.TypedProfile
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
@@ -13,6 +17,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
@@ -23,14 +28,26 @@ import java.net.URI
 import java.security.MessageDigest
 
 /**
- * Geo data shared by Xray and mihomo (as FlClash handles it): a copy ships in the APK's `assets/geo`, is extracted
- * on first use, and each file can be replaced from its own URL. The directory
- * is libbox's GeoDataDir (mihomo's home, also Xray's xray.location.asset).
+ * Geo data shared by Xray and mihomo (as FlClash handles it). The directory is
+ * libbox's GeoDataDir (mihomo's home, also Xray's xray.location.asset).
+ *
+ * The APK's `assets/geo` carries only the resources in GEO_BUNDLED of
+ * geo-assets.properties (geosite.dat and geoip.metadb); its manifest lists the
+ * rest (geoip.dat, ASN.mmdb) with their pinned URL and SHA-256. Nothing is
+ * extracted or downloaded until Xray or mihomo starts: [prepareForCore] then
+ * extracts the bundled files that core needs and downloads the missing pinned
+ * ones. Each file can be replaced from its own URL afterwards.
  */
 object GeoResources {
     private const val TAG = "GeoResources"
     private const val STATE_FILE = "geo-resources.json"
     private const val ASSET_DIR = "geo"
+
+    /**
+     * How long a core start may wait for on-demand downloads in total. The
+     * service start itself is confirmed within 120 s (ServiceStartResult).
+     */
+    private const val ON_DEMAND_BUDGET_MS = 90_000L
 
     /** Display order and labels match FlClash's GeoResource enum. */
     val names = listOf(GeoPolicy.GEOIP, GeoPolicy.GEOSITE, GeoPolicy.MMDB, GeoPolicy.ASN)
@@ -38,8 +55,8 @@ object GeoResources {
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val mutex = Mutex()
 
-    /** Set once the bundle was checked in this process; the APK cannot change while it runs. */
-    @Volatile private var bundleChecked = false
+    /** Bundled resources already checked in this process; the APK cannot change while it runs. */
+    private val bundleChecked = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
 
     fun label(name: String): String = when (name) {
         GeoPolicy.GEOIP -> "GeoIP"
@@ -54,41 +71,143 @@ object GeoResources {
 
     private fun dir(): File = File(Libbox.geoDataDir())
 
-    /** Extract the bundled files that are missing or older than the bundle. */
-    suspend fun ensureBundled(context: Context = Application.application) = withContext(Dispatchers.IO) {
-        mutex.withLock { ensureBundledLocked(context) }
+    private fun installed(dir: File, name: String): Boolean = File(dir, Libbox.geoResourceFileName(name)).let { it.isFile && it.length() > 0 }
+
+    /**
+     * For the service start path, which is not a coroutine: puts the files
+     * [core] needs for [text] (its profile and routing rules) in place.
+     * Returns why some could not be, or null; the start goes on either way,
+     * and a core that really needs a missing file reports it itself.
+     */
+    fun prepareForCoreBlocking(core: String, text: String, context: Context = Application.application): String? {
+        val wanted = GeoPolicy.needed(core, text)
+        if (wanted.isEmpty()) return null
+        return try {
+            runBlocking { prepareForCore(wanted, context) }
+        } catch (error: Exception) {
+            Log.e(TAG, "prepare geo data for $core", error)
+            error.message ?: error.javaClass.simpleName
+        }
     }
 
-    /** For the service start path, which is not a coroutine. */
-    fun ensureBundledBlocking(context: Context = Application.application) {
-        runCatching { runBlocking { ensureBundled(context) } }.onFailure { Log.e(TAG, "extract bundled geo data", it) }
+    suspend fun prepareForCore(wanted: Set<String>, context: Context = Application.application): String? = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val bundle = readBundle(context)
+            extractBundledLocked(context, bundle, wanted)
+            val dir = dir().apply { mkdirs() }
+            val deadline = System.nanoTime() + ON_DEMAND_BUDGET_MS * 1_000_000
+            val failures = wanted.filter { !installed(dir, it) }.mapNotNull { name ->
+                downloadMissingLocked(dir, name, bundle, deadline)?.let { "${Libbox.geoResourceFileName(name)}: $it" }
+            }
+            failures.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        }
     }
 
-    private fun ensureBundledLocked(context: Context, force: Boolean = false) {
+    /** Extract the bundled files among [wanted] that are missing or older than the bundle. */
+    private fun extractBundledLocked(context: Context, bundle: GeoPolicy.Bundle?, wanted: Set<String>) {
+        if (bundle == null) return
+        val dir = dir().apply { mkdirs() }
         // Only a missing file needs another look after the first check
         // (mihomo or the user may have removed one).
-        if (bundleChecked && !force && names.all { File(dir(), Libbox.geoResourceFileName(it)).isFile }) return
-        val bundle = readBundle(context) ?: return
-        val dir = dir().apply { mkdirs() }
+        val pending = wanted.filter { it in bundle.files && !(it in bundleChecked && installed(dir, it)) }
+        if (pending.isEmpty()) return
         val state = readState(dir).toMutableMap()
         var changed = false
-        for (name in names) {
-            val bundled = bundle.files[name] ?: continue
+        for (name in pending) {
+            val bundled = bundle.files.getValue(name)
             val target = File(dir, bundled.file)
-            val installed = state[name]
             val exists = target.isFile && target.length() > 0
-            if (!GeoPolicy.shouldExtract(exists, installed, bundled.sha256, bundle.time, target.lastModified())) continue
-            try {
-                extract(context, bundled, target)
-                state[name] = GeoPolicy.Installed(GeoPolicy.SOURCE_BUILTIN, bundled.sha256, bundle.time, System.currentTimeMillis())
-                changed = true
-            } catch (error: Exception) {
-                // The previous file (if any) stays; the cores report a missing file themselves.
-                Log.e(TAG, "extract $name", error)
+            if (GeoPolicy.shouldExtract(exists, state[name], bundled.sha256, bundle.time, target.lastModified())) {
+                try {
+                    extract(context, bundled, target)
+                    state[name] = GeoPolicy.Installed(GeoPolicy.SOURCE_BUILTIN, bundled.sha256, bundle.time, System.currentTimeMillis())
+                    changed = true
+                } catch (error: Exception) {
+                    // The previous file (if any) stays; the cores report a missing file themselves.
+                    Log.e(TAG, "extract $name", error)
+                    continue
+                }
             }
+            bundleChecked += name
         }
         if (changed) writeState(dir, state)
-        bundleChecked = true
+    }
+
+    /**
+     * Download a missing resource on first use, within the start's time
+     * budget: the pinned file from the manifest (the URL and SHA-256 the build
+     * would have bundled) and the configured address (latest release, checked
+     * by format only). An address the user set (a mirror) is tried first; the
+     * first attempt gets at most two thirds of what is left so a blocked host
+     * cannot use up the whole budget. Returns the error, or null.
+     */
+    private suspend fun downloadMissingLocked(dir: File, name: String, bundle: GeoPolicy.Bundle?, deadline: Long): String? {
+        val pinned = bundle?.remote?.get(name)?.let { it.url to it.sha256 }
+        val configured = url(name) to ""
+        val custom = GeoPolicy.decodeUrls(Settings.geoUrls)[name] != null
+        val attempts = (if (custom) listOf(configured, pinned) else listOf(pinned, configured)).filterNotNull().distinctBy { it.first }
+        var failure = "not available"
+        for ((index, attempt) in attempts.withIndex()) {
+            val (link, sha256) = attempt
+            val remaining = (deadline - System.nanoTime()) / 1_000_000
+            if (remaining <= 0) {
+                failure = "timed out"
+                break
+            }
+            val limit = if (index == attempts.lastIndex) remaining else remaining * 2 / 3
+            val started = System.nanoTime()
+            try {
+                val result = withTimeout(limit) {
+                    cancellable { task ->
+                        if (sha256.isNotEmpty()) task.fetchExpected(dir.path, name, link, sha256) else task.fetch(dir.path, name, link, "", "", "")
+                    }
+                }
+                val now = System.currentTimeMillis()
+                val state = readState(dir).toMutableMap()
+                state[name] = if (sha256.isNotEmpty()) {
+                    // The pinned data is as old as the pin; no validators, they belong to another URL.
+                    GeoPolicy.Installed(GeoPolicy.SOURCE_DOWNLOAD, result.sha256, bundle?.time ?: now, now)
+                } else {
+                    GeoPolicy.Installed(GeoPolicy.SOURCE_DOWNLOAD, result.sha256, now, now, etag = result.etag, lastModified = result.lastModified)
+                }
+                writeState(dir, state)
+                Log.i(TAG, "downloaded ${Libbox.geoResourceFileName(name)} on first use (${if (sha256.isNotEmpty()) "pinned" else "configured address"})")
+                return null
+            } catch (_: TimeoutCancellationException) {
+                failure = "timed out"
+                Log.w(TAG, "download $name (${if (sha256.isNotEmpty()) "pinned" else "configured address"}): timed out")
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                // The timeout may surface as Go's own "context canceled".
+                val timedOut = (System.nanoTime() - started) / 1_000_000 >= limit
+                failure = if (timedOut) "timed out" else error.message ?: error.javaClass.simpleName
+                Log.w(TAG, "download $name (${if (sha256.isNotEmpty()) "pinned" else "configured address"}): $failure")
+            }
+        }
+        return failure
+    }
+
+    /**
+     * A download in Go cannot see coroutine cancellation (leaving the page,
+     * WorkManager stopping the worker, a timeout); cancel it explicitly.
+     */
+    private suspend fun <T> cancellable(block: (GeoUpdate) -> T): T {
+        val task = Libbox.newGeoUpdate()
+        return coroutineScope {
+            val watcher = launch {
+                try {
+                    awaitCancellation()
+                } finally {
+                    task.cancel()
+                }
+            }
+            try {
+                block(task)
+            } finally {
+                watcher.cancel()
+            }
+        }
     }
 
     private fun extract(context: Context, bundled: GeoPolicy.BundledFile, target: File) {
@@ -141,22 +260,38 @@ object GeoResources {
     /** Rows for the Resources page. */
     suspend fun list(context: Context = Application.application): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
         mutex.withLock {
-            ensureBundledLocked(context)
+            // Listing never extracts or downloads: a file not in place yet is
+            // shown as the APK copy that a core start extracts, or as one that
+            // is downloaded on first use.
+            val bundle = readBundle(context)
             val dir = dir()
             val state = readState(dir)
             names.map { name ->
                 val file = File(dir, Libbox.geoResourceFileName(name))
                 val exists = file.isFile
                 val installed = state[name]
+                val bundled = bundle?.files?.get(name)
                 mapOf(
                     "name" to name,
                     "label" to label(name),
                     "file" to file.name,
                     "url" to url(name),
                     "defaultUrl" to defaultUrl(name),
-                    "size" to if (exists) file.length() else null,
-                    "updatedAt" to if (exists) (installed?.time ?: file.lastModified()) else null,
-                    "source" to if (exists) (installed?.source ?: GeoPolicy.SOURCE_CORE) else null,
+                    "size" to when {
+                        exists -> file.length()
+                        bundled != null -> bundled.size.takeIf { it > 0 }
+                        else -> null
+                    },
+                    "updatedAt" to when {
+                        exists -> installed?.time ?: file.lastModified()
+                        bundled != null && bundle != null -> bundle.time
+                        else -> null
+                    },
+                    "source" to when {
+                        exists -> installed?.source ?: GeoPolicy.SOURCE_CORE
+                        bundled != null -> GeoPolicy.SOURCE_BUILTIN
+                        else -> GeoPolicy.SOURCE_ON_DEMAND
+                    },
                 )
             }
         }
@@ -172,22 +307,8 @@ object GeoResources {
         mutex.withLock {
             val dir = dir()
             val previous = readState(dir)[name]
-            // A download in Go cannot see coroutine cancellation (leaving the
-            // page, WorkManager stopping the worker); cancel it explicitly.
-            val task = Libbox.newGeoUpdate()
-            val result = coroutineScope {
-                val watcher = launch {
-                    try {
-                        awaitCancellation()
-                    } finally {
-                        task.cancel()
-                    }
-                }
-                try {
-                    task.fetch(dir.path, name, link, previous?.sha256.orEmpty(), previous?.etag.orEmpty(), previous?.lastModified.orEmpty())
-                } finally {
-                    watcher.cancel()
-                }
+            val result = cancellable { task ->
+                task.fetch(dir.path, name, link, previous?.sha256.orEmpty(), previous?.etag.orEmpty(), previous?.lastModified.orEmpty())
             }
             val now = System.currentTimeMillis()
             val state = readState(dir).toMutableMap()
@@ -204,11 +325,16 @@ object GeoResources {
         }
     }
 
-    /** Resources whose last check is older than [intervalHours]. */
+    /**
+     * Installed resources whose last check is older than [intervalHours]. A
+     * file no core has needed yet is left for its first use, so automatic
+     * updates never fetch data nothing reads.
+     */
     suspend fun due(intervalHours: Int): List<String> = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val state = readState(dir())
-            names.filter { GeoPolicy.isDue(state[it]?.checked ?: 0L, intervalHours, System.currentTimeMillis()) }
+            val dir = dir()
+            val state = readState(dir)
+            names.filter { installed(dir, it) && GeoPolicy.isDue(state[it]?.checked ?: 0L, intervalHours, System.currentTimeMillis()) }
         }
     }
 
@@ -239,6 +365,9 @@ object GeoPolicy {
     /** A file written by mihomo itself (its own geo-auto-update or first-run download). */
     const val SOURCE_CORE = "core"
 
+    /** Not installed and not in the APK: downloaded when a core first needs it. */
+    const val SOURCE_ON_DEMAND = "ondemand"
+
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val stateSerializer by lazy { MapSerializer(String.serializer(), Installed.serializer()) }
     private val urlsSerializer = MapSerializer(String.serializer(), String.serializer())
@@ -246,9 +375,22 @@ object GeoPolicy {
     @Serializable
     data class BundledFile(val file: String, val sha256: String, val size: Long = 0)
 
-    /** assets/geo/manifest.json, written by the app's prepareGeoAssets task. */
+    /** A pinned resource the APK does not carry: downloaded from [url] on first use and checked against [sha256]. */
     @Serializable
-    data class Bundle(val source: String = "", val commit: String = "", val time: Long, val files: Map<String, BundledFile>)
+    data class RemoteFile(val file: String, val url: String, val sha256: String)
+
+    /**
+     * assets/geo/manifest.json, written by the app's prepareGeoAssets task:
+     * [files] are in the APK, [remote] are pinned but downloaded on first use.
+     */
+    @Serializable
+    data class Bundle(
+        val source: String = "",
+        val commit: String = "",
+        val time: Long,
+        val files: Map<String, BundledFile>,
+        val remote: Map<String, RemoteFile> = emptyMap(),
+    )
 
     /** What the app last put in place: [time] is the age of the data, [checked] the last download attempt that succeeded. */
     /** [etag] and [lastModified] are the server's validators for the downloaded file, for a conditional re-check. */
@@ -275,6 +417,35 @@ object GeoPolicy {
         if (installed.sha256 == bundledSha256) return false
         return installed.time < bundleTime
     }
+
+    /**
+     * The resources [core] reads for [text] (its profile content plus the
+     * routing rules compiled for it). sing-box uses rule sets, none of these.
+     * Xray loads geoip.dat / geosite.dat only for the geoip:/geosite: (or
+     * ext:geoip.dat:…) entries it is given. mihomo may read GeoSite and the
+     * MMDB lazily (GEOSITE/GEOIP rules, DNS fallback-filter), so both bundled
+     * files are always prepared; ASN.mmdb only for IP-ASN rules and geoip.dat
+     * only in geodata-mode. A reference this check misses still has mihomo's
+     * own download or the Resources page to fall back on.
+     */
+    fun needed(core: String, text: String): Set<String> {
+        val lower = text.lowercase()
+        return when (core) {
+            TypedProfile.CORE_XRAY -> buildSet {
+                if ("geosite:" in lower || "geosite.dat" in lower) add(GEOSITE)
+                if ("geoip:" in lower || "geoip.dat" in lower) add(GEOIP)
+            }
+            TypedProfile.CORE_MIHOMO -> buildSet {
+                add(GEOSITE)
+                add(MMDB)
+                if ("ip-asn" in lower) add(ASN)
+                if (GEODATA_MODE.containsMatchIn(lower)) add(GEOIP)
+            }
+            else -> emptySet()
+        }
+    }
+
+    private val GEODATA_MODE = Regex("""geodata-mode["']?\s*:\s*true""")
 
     fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean =
         lastChecked <= 0L || now - lastChecked >= intervalHours.coerceAtLeast(1) * 3_600_000L

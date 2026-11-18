@@ -16,7 +16,6 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.SetupOptions
 import io.nekohasekai.sfa.bg.AppChangeReceiver
 import io.nekohasekai.sfa.bg.CrashReportManager
-import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bg.OOMReportManager
 import io.nekohasekai.sfa.bg.PowerReportManager
 import io.nekohasekai.sfa.bg.UpdateGeoWork
@@ -75,8 +74,6 @@ class Application : Application() {
             }
             UpdateProfileWork.reconfigureUpdater()
             UpdateGeoWork.reconfigure()
-            // Bundled geo data for Xray/mihomo, extracted off the start path.
-            if (setupCompleted) runCatching { GeoResources.ensureBundled(this@Application) }
             TaildropFiles.cleanCache()
         }
 
