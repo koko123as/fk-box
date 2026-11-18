@@ -1,5 +1,5 @@
-// Profiles (pages/ProfilesPage.kt, ProfileEditor.kt's CodeEditor and
-// ProfileEditor, ui/QrCode.kt): the profile grid with its cards, the code
+// Profiles: the grid of outlined profile cards (single selection: the
+// selected card fills with secondary-container and shows a check), the code
 // editor and the QR code page. The add, form, details, order and
 // configuration pages are Rust-built rows (src/pages/profiles.rs).
 
@@ -9,23 +9,38 @@ import { Nav, BarAction } from "../globals.slint";
 import { App, Profiles, ProfileRow } from "../data.slint";
 import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText } from "../kit.slint";
 
-// The expiry date on a tinted pill (SubscriptionExpireChip) and the core chip.
+// A small status label (expiry, core): 0 neutral on secondary-container,
+// 1 warning, 2 error on their container roles; the text names the state.
 component TonePill inherits Rectangle {
     in property <string> label;
-    in property <color> tone;
+    in property <int> tone;
+    // On a selected (secondary-container) card the neutral label is outlined.
+    in property <bool> on-fill;
     height: t.preferred-height + 4px;
     width: t.preferred-width + 16px;
-    border-radius: self.height / 2;
-    background: tone.with-alpha(0.15);
-    t := T { text: root.label; role: TextRole.caption1; emphasized: true; color: root.tone; x: 8px; }
+    border-radius: Theme.corner-small;
+    background: tone == 2 ? Theme.s.error-container : tone == 1 ? Theme.s.warning-container : on-fill ? transparent : Theme.s.secondary-container;
+    border-width: tone == 0 && on-fill ? 1px : 0px;
+    border-color: Theme.s.on-secondary-container;
+    accessible-role: AccessibleRole.text;
+    accessible-label: label;
+    t := T {
+        text: root.label;
+        role: TextRole.label-medium;
+        color: root.tone == 2 ? Theme.s.on-error-container : root.tone == 1 ? Theme.s.on-warning-container : Theme.s.on-secondary-container;
+        x: 8px;
+    }
 }
 
 // ProfileCard
 component ProfileCard inherits Card {
     in property <ProfileRow> p;
     in property <bool> picker;
-    property <color> tone: p.days-tone == 2 ? Theme.s.error : p.days-tone == 1 ? Theme.s.warning : Theme.s.primary;
     property <color> bar-tone: p.bar-tone == 2 ? Theme.s.error : p.bar-tone == 1 ? Theme.s.warning : Theme.s.primary;
+    // Outlined; the selected profile fills with secondary-container and
+    // shows the check badge.
+    variant: 2;
+    fills: true;
     selected: p.selected;
     long-press-menu: !p.updating && !picker;
     enabled: !App.transitioning;
@@ -43,32 +58,25 @@ component ProfileCard inherits Card {
             spacing: 4px;
             HorizontalLayout {
                 spacing: 8px;
-                T { text: root.p.name; role: TextRole.headline; horizontal-stretch: 0; min-width: 40px; }
-                if root.p.days != "": Mid { TonePill { label: root.p.days; tone: root.tone;  } }
+                T { text: root.p.name; role: TextRole.title-medium; horizontal-stretch: 0; min-width: 40px; color: root.p.selected ? Theme.s.on-secondary-container : Theme.s.on-surface; }
+                if root.p.days != "": Mid { TonePill { label: root.p.days; tone: root.p.days-tone; on-fill: root.p.selected; } }
                 Rectangle { horizontal-stretch: 1; }
             }
             HorizontalLayout {
                 spacing: 6px;
-                if root.p.core != "": Mid { TonePill { label: root.p.core; tone: Theme.s.secondary;  } }
-                T { text: root.p.source; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 1; }
+                if root.p.core != "": Mid { TonePill { label: root.p.core; tone: 0; on-fill: root.p.selected; } }
+                T { text: root.p.source; role: TextRole.body-small; color: root.p.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; horizontal-stretch: 1; }
             }
             if root.p.has-usage: Rectangle {
                 height: 10px;
-                Rectangle {
-                    y: 6px;
-                    height: 4px;
-                    border-radius: 2px;
-                    background: root.bar-tone.with-alpha(0.15);
-                    clip: true;
-                    Rectangle { x: 0; width: parent.width * clamp(root.p.ratio, 0, 1); background: root.bar-tone; }
-                }
+                ProgressBar { y: 6px; value: clamp(root.p.ratio, 0, 1); tint: root.bar-tone; }
             }
         }
         HorizontalLayout {
             spacing: 8px;
             alignment: end;
             if root.p.updating: Mid { Spinner { size: 24px;  } }
-            if !root.p.updating: T { text: root.p.updated; role: TextRole.footnote; color: Theme.s.on-surface.with-alpha(0.6); horizontal-stretch: 0; }
+            if !root.p.updating: T { text: root.p.updated; role: TextRole.body-small; color: root.p.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; horizontal-stretch: 0; }
             if root.p.selected: Mid { SelectionBadge { size: 24px;  } }
         }
     }
@@ -79,7 +87,7 @@ export component ProfilesPage inherits Rectangle {
     in property <int> leading: picker ? 2 : 0;
     property <length> gap: Nav.gap;
     property <int> columns: clamp(floor((self.width - 32px + gap) / (300px + gap)), 1, 3);
-    property <length> card-height: Theme.leading(TextRole.headline) + 4px + Theme.leading(TextRole.footnote) + (Profiles.any-usage ? 10px : 0px) + 20px;
+    property <length> card-height: Theme.leading(TextRole.title-medium) + 4px + Theme.leading(TextRole.body-small) + (Profiles.any-usage ? 10px : 0px) + 20px;
     background: Theme.s.surface;
     bar := TopBar {
         y: 0;
@@ -145,7 +153,6 @@ export component CodeEditorPage inherits Rectangle {
             spacing: 4px;
             SearchField {
                 horizontal-stretch: 1;
-                fill: Theme.level(1);
                 text <=> Profiles.editor-find;
                 edited(t) => { Nav.act("editor-find", t); }
             }
@@ -161,12 +168,12 @@ export component CodeEditorPage inherits Rectangle {
                 text: Profiles.editor-error;
                 wrap: word-wrap;
                 color: Theme.s.on-error-container;
-                font-size: Theme.size(TextRole.body);
+                font-size: Theme.size(TextRole.body-large);
             }
         }
         if Profiles.editor-note != "": T {
             text: Profiles.editor-note;
-            role: TextRole.caption1;
+            role: TextRole.body-small;
             color: Theme.s.on-surface-variant;
             wrap: word-wrap;
             height: self.preferred-height + 24px;

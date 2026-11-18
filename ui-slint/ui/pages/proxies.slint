@@ -1,18 +1,19 @@
-// Proxies (pages/ProxiesPage.kt): the group tabs over a node grid, or the
-// groups as folding sections; node cards select on tap and open a menu on
-// long press. Sorting, filtering and folding state live in Rust.
+// Proxies: the groups as M3 scrollable tabs over a grid of outlined node
+// cards, or the groups as folding sections; a node card selects on tap
+// (secondary-container fill and a check badge) and opens a menu on long
+// press. Sorting, filtering and folding state live in Rust.
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav, BarAction } from "../globals.slint";
 import { App, Proxies, GroupRow, NodeRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem } from "../kit.slint";
+import { Mid, Icon, T, Spinner, IconButton, TonalIconButton, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, ListItem, StateLayer } from "../kit.slint";
 
 // ProxyCardMetrics
 global Metrics {
-    out property <length> name-height: Theme.leading(TextRole.subheadline) * (Proxies.compact ? 1 : 2);
-    out property <length> detail-height: Theme.leading(TextRole.footnote);
-    out property <length> delay-height: Theme.leading(TextRole.caption2);
+    out property <length> name-height: Theme.leading(TextRole.body-medium) * (Proxies.compact ? 1 : 2);
+    out property <length> detail-height: Theme.leading(TextRole.body-small);
+    out property <length> delay-height: Theme.leading(TextRole.label-small);
     out property <length> extent: 28px + name-height + detail-height + (Proxies.loose ? delay-height + 6px : 0px);
     out property <length> row-extent: extent + 8px;
 
@@ -27,8 +28,11 @@ export component NodeCard inherits Card {
     in property <GroupRow> group;
     in property <NodeRow> node;
     property <color> delay-color: !node.tested ? Theme.s.on-surface-variant : node.delay-ms <= 0 ? Theme.s.error : node.delay-ms < 300 ? Theme.s.success : Theme.s.warning;
+    // Outlined; the selected node fills with secondary-container and shows
+    // the check badge.
+    variant: 2;
     selected: node.selected;
-    fills: false;
+    fills: true;
     long-press-menu: true;
     enabled: true;
     clicked => {
@@ -44,7 +48,8 @@ export component NodeCard inherits Card {
         HorizontalLayout {
             T {
                 text: root.node.tag;
-                role: TextRole.subheadline;
+                role: TextRole.title-small;
+                color: root.node.selected ? Theme.s.on-secondary-container : Theme.s.on-surface;
                 wrap: Proxies.compact ? no-wrap : word-wrap;
                 height: Metrics.name-height;
                 vertical-alignment: top;
@@ -58,8 +63,8 @@ export component NodeCard inherits Card {
         Rectangle { height: 8px; }
         if Proxies.loose: T {
             text: root.node.kind;
-            role: TextRole.footnote;
-            color: Theme.s.on-surface.with-alpha(0.8);
+            role: TextRole.body-small;
+            color: root.node.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
             height: Metrics.detail-height;
         }
         if Proxies.loose: Rectangle { height: 6px; }
@@ -68,8 +73,8 @@ export component NodeCard inherits Card {
             spacing: 4px;
             if !Proxies.loose: T {
                 text: root.node.kind;
-                role: TextRole.footnote;
-                color: Theme.s.on-surface.with-alpha(0.8);
+                role: TextRole.body-small;
+                color: root.node.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
                 horizontal-stretch: 1;
             }
             Rectangle {
@@ -88,7 +93,7 @@ export component NodeCard inherits Card {
                 delay-label := T {
                     visible: !root.node.testing && root.node.tested;
                     text: root.node.delay;
-                    role: TextRole.caption2;
+                    role: TextRole.label-small;
                     emphasized: true;
                     color: root.delay-color;
                     horizontal-alignment: Proxies.loose ? left : right;
@@ -122,43 +127,54 @@ component NodeGrid inherits Rectangle {
     }
 }
 
-// GroupTabs
+// The groups of the current destination as M3 scrollable primary tabs:
+// 48 dp, labels in title-small (primary when active, on-surface-variant
+// otherwise), a 3 dp primary indicator under the active label and a
+// divider under the row; a trailing button lists every group.
 component GroupTabs inherits Rectangle {
     in property <[GroupRow]> groups;
     in-out property <int> selected;
-    height: 40px;
+    height: 48px;
+    accessible-role: tab-list;
+    Rectangle { y: parent.height - 1px; height: 1px; background: Theme.s.outline-variant; }
     flick := Flickable {
         width: parent.width - (more.visible ? 64px : 0px);
         x: 0;
         content-width: strip.preferred-width;
         strip := HorizontalLayout {
-            padding-left: 16px;
-            padding-right: 16px;
-            spacing: 8px;
-            for g[i] in root.groups: Rectangle {
+            padding-left: 4px;
+            padding-right: 4px;
+            spacing: 0px;
+            for g[i] in root.groups: tb := Rectangle {
                 property <bool> on: i == root.selected;
-                height: 40px;
-                width: max(64px, tab-label.preferred-width + 32px);
-                border-radius: 20px;
-                background: on ? Theme.s.primary-container : Theme.level(1);
-                Rectangle {
-                    border-radius: parent.border-radius;
-                    background: tta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
-                }
+                height: 48px;
+                width: max(90px, tab-label.preferred-width + 32px);
+                accessible-role: tab;
+                accessible-label: g.tag;
+                accessible-checked: on;
+                accessible-action-default => { root.selected = i; }
+                StateLayer { ink: tb.on ? Theme.s.primary : Theme.s.on-surface; pressed: tta.pressed; hover: tta.has-hover; }
                 tab-label := T {
                     text: g.tag;
-                    role: TextRole.subheadline;
-                    emphasized: true;
-                    color: on ? Theme.s.on-primary-container : Theme.s.on-surface-variant;
+                    role: TextRole.title-small;
+                    color: tb.on ? Theme.s.primary : Theme.s.on-surface-variant;
                     horizontal-alignment: center;
+                }
+                if tb.on: Rectangle {
+                    y: parent.height - 3px;
+                    height: 3px;
+                    width: max(24px, tab-label.preferred-width);
+                    border-top-left-radius: 3px;
+                    border-top-right-radius: 3px;
+                    background: Theme.s.primary;
                 }
                 tta := TouchArea { clicked => { root.selected = i; } }
             }
         }
     }
-    more := TonalIconButton {
-        visible: strip.preferred-width - 16px > root.width;
-        x: parent.width - 16px - self.width;
+    more := IconButton {
+        visible: strip.preferred-width > root.width;
+        x: parent.width - 8px - self.width;
         glyph: Icons.chevron-down;
         tooltip: @tr("Proxy groups");
         clicked => { Nav.open-menu("proxy-tabs", self.absolute-position.x, self.absolute-position.y + self.height); }
@@ -173,16 +189,16 @@ component GroupIcon inherits Rectangle {
         x: 0;
         width: root.height;
         height: root.height;
-        border-radius: Theme.radius;
-        background: Theme.level(3);
-        T { text: root.mark; font-size: (root.height - 12px) * 0.62; font-weight: 600; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+        border-radius: Theme.corner-medium;
+        background: Theme.s.secondary-container;
+        T { text: root.mark; font-size: (root.height - 12px) * 0.62; font-weight: 500; color: Theme.s.on-secondary-container; horizontal-alignment: center; }
     }
     if Proxies.icon-style == "Plain": T {
         x: 2px;
         width: root.height;
         text: root.mark;
         font-size: root.height * 0.62;
-        font-weight: 600;
+        font-weight: 500;
         color: Theme.s.primary;
         horizontal-alignment: center;
     }
@@ -192,18 +208,17 @@ component GroupIcon inherits Rectangle {
 component GroupHeader inherits Rectangle {
     in property <GroupRow> group;
     property <bool> expanded: group.expanded;
-    height: 20px + Theme.leading(TextRole.callout) + 2px + Theme.leading(TextRole.caption1) + 2px;
-    border-top-left-radius: Theme.radius;
-    border-top-right-radius: Theme.radius;
-    border-bottom-left-radius: expanded ? 0 : Theme.radius;
-    border-bottom-right-radius: expanded ? 0 : Theme.radius;
-    background: Theme.level(2);
+    height: 20px + Theme.leading(TextRole.body-large) + 2px + Theme.leading(TextRole.body-small) + 2px;
+    border-top-left-radius: Theme.corner-large;
+    border-top-right-radius: Theme.corner-large;
+    border-bottom-left-radius: expanded ? 0 : Theme.corner-large;
+    border-bottom-right-radius: expanded ? 0 : Theme.corner-large;
+    background: Theme.level(1);
     Card {
         x: 4px;
         y: 4px;
         width: parent.width - 8px;
         height: parent.height - 8px;
-        level: 1;
         background: transparent;
         clicked => { Nav.act("toggle-group", root.group.tag); }
         HorizontalLayout {
@@ -214,8 +229,8 @@ component GroupHeader inherits Rectangle {
                 horizontal-stretch: 1;
                 alignment: center;
                 spacing: 2px;
-                T { text: root.group.tag; role: TextRole.callout; emphasized: true; }
-                T { text: root.group.selected; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface.with-alpha(0.8); }
+                T { text: root.group.tag; role: TextRole.title-medium; }
+                T { text: root.group.selected; role: TextRole.label-medium; color: Theme.s.on-surface-variant; }
             }
             if root.expanded: HorizontalLayout {
                 spacing: 0px;
@@ -233,9 +248,8 @@ component GroupHeader inherits Rectangle {
             }
             if !root.expanded: T {
                 text: root.group.kind;
-                role: TextRole.caption1;
-                emphasized: true;
-                color: Theme.s.on-surface.with-alpha(0.8);
+                role: TextRole.label-medium;
+                color: Theme.s.on-surface-variant;
                 horizontal-stretch: 0;
             }
             Rectangle { width: 6px; }
@@ -295,6 +309,7 @@ export component ProxiesPage inherits Rectangle {
         Rectangle {
             height: 56px;
             GroupTabs {
+                width: parent.width;
                 y: 0;
                 groups: Proxies.groups;
                 selected <=> Proxies.tab;
@@ -302,7 +317,7 @@ export component ProxiesPage inherits Rectangle {
         }
         if !root.current.selectable: T {
             text: @tr("Automatic selection");
-            role: TextRole.caption1;
+            role: TextRole.body-small;
             color: Theme.s.on-surface-variant;
             horizontal-alignment: center;
             height: self.preferred-height + 8px;
@@ -336,9 +351,9 @@ export component ProxiesPage inherits Rectangle {
                 spacing: 0px;
                 GroupHeader { group: g; }
                 if g.expanded && g.items.length > 0: Rectangle {
-                    background: Theme.level(2);
-                    border-bottom-left-radius: Theme.radius;
-                    border-bottom-right-radius: Theme.radius;
+                    background: Theme.level(1);
+                    border-bottom-left-radius: Theme.corner-large;
+                    border-bottom-right-radius: Theme.corner-large;
                     height: rows.height + 2px;
                     rows := NodeGrid {
                         y: 0;
