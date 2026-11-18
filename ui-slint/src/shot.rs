@@ -15,6 +15,13 @@
 //! the UI uses and the scale factor), `fling:COUNT,DY` (COUNT fast drags of DY
 //! px with icons arriving on reused rows and a frame drawn every 16 ms).
 //!
+//! Motion keyframes (nothing settles in between, so an animation can be
+//! caught midway): `down:X,Y`, `move:X,Y`, `up:X,Y` (one pointer event each),
+//! `ms:N` (N ms of timers and animations in 16 ms frames), `frame:NAME` (a
+//! screenshot of the current frame without letting animations finish),
+//! `motion:SCALE` (the system's animator duration scale, 0 = animations off),
+//! `pref:KEY=VALUE` (an interface preference, e.g. `pref:proxyLayout=List`).
+//!
 //! With the `shot-skia` feature and `SHOT_RENDERER=skia`, the frames are drawn
 //! by the Skia renderer (the one Android uses) rasterized on the CPU instead of
 //! Slint's software renderer, so effects only Skia draws (the glass surfaces'
@@ -34,6 +41,9 @@ use slint::{ComponentHandle, LogicalPosition, PhysicalSize};
 use crate::{AppWindow, Nav, Theme};
 
 thread_local! {
+    static PREFS: RefCell<serde_json::Map<String, Value>> = RefCell::new(
+        serde_json::from_str(r#"{ "hiddenCards": [] }"#).expect("fixture preferences"),
+    );
     static QUEUE: RefCell<VecDeque<(i64, String, String)>> = const { RefCell::new(VecDeque::new()) };
     /// While a fling runs, icon answers wait here and arrive a few per frame,
     /// out of order, as the host's IO thread answers them on a phone.
@@ -238,14 +248,23 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         "locale" => json!({ "language": std::env::var("SHOT_LANG").unwrap_or("zh".into()), "utcOffsetMinutes": 480, "fontScale": 1.0 }),
         "attach" => Value::Null,
         // The saved preferences are the values just set.
-        "setPreferences" => args["values"].clone(),
+        // Merged into the saved ones and all of them returned, as BoxPreferences does.
+        "setPreferences" => PREFS.with(|p| {
+            let mut p = p.borrow_mut();
+            if let Some(values) = args["values"].as_object() {
+                for (key, value) in values {
+                    p.insert(key.clone(), value.clone());
+                }
+            }
+            Value::Object(p.clone())
+        }),
         "ready" => json!({
             "version": "1.15.6", "coreVersion": "1.13.0", "xrayVersion": "25.10.15", "mihomoVersion": "1.19.15",
             "systemAccentColor": 0xff007aff_u32,
             "dashboard": dashboard(now),
             "profiles": profiles(now),
             "settings": {},
-            "preferences": { "hiddenCards": [] },
+            "preferences": PREFS.with(|p| Value::Object(p.borrow().clone())),
             "lan": { "addresses": ["192.168.1.23", "fd00::23"], "running": false, "enabled": false, "bindings": [], "canToggle": true, "profileId": 1 },
             "tools": {},
             "diagnostics": { "stun": {}, "quality": {} },
@@ -406,8 +425,15 @@ impl Harness {
         slint::platform::update_timers_and_animations();
     }
 
-    /// Lets animations finish (up to 2 s) so the frame is settled.
+    /// Lets animations finish (up to 2 s) so the frame is settled. Motion
+    /// driven by animation-tick() (the home pager, ripples, the container
+    /// transform, the editor) only reports itself while a frame is drawn, so
+    /// the clock first runs on for the longest of those (timers end them).
     fn settle(&self) {
+        for _ in 0..50 {
+            self.advance(Duration::from_millis(16));
+            self.pump_now();
+        }
         for _ in 0..125 {
             self.pump();
             if !self.window.has_active_animations() {
@@ -432,8 +458,36 @@ impl Harness {
         }
     }
 
+    /// Replies and timers due now, without moving the clock.
+    fn pump_now(&self) {
+        for _ in 0..50 {
+            slint::platform::update_timers_and_animations();
+            match QUEUE.with(|q| q.borrow_mut().pop_front()) {
+                Some((id, method, args)) => answer_call(id, &method, &args),
+                None => break,
+            }
+        }
+    }
+
+    /// `ms` of frames: the clock moves 16 ms at a time and each frame is drawn.
+    fn run_ms(&self, ms: u64) {
+        let mut buffer = Vec::new();
+        let mut left = ms;
+        while left > 0 {
+            let step = left.min(16);
+            self.advance(Duration::from_millis(step));
+            self.pump_now();
+            self.frame(&mut buffer);
+            left -= step;
+        }
+    }
+
     fn shot(&self, path: &str) {
         self.settle();
+        self.write_frame(path);
+    }
+
+    fn write_frame(&self, path: &str) {
         self.window.request_redraw();
         let (w, h) = (self.width as usize, self.height as usize);
         let mut buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
@@ -594,6 +648,37 @@ pub fn run(args: Vec<String>) {
         let (cmd, rest) = step.split_once(':').unwrap_or((step.as_str(), ""));
         match cmd {
             "shot" => h.shot(&format!("{out}/{rest}.png")),
+            "frame" => {
+                h.pump_now();
+                h.write_frame(&format!("{out}/{rest}.png"));
+            }
+            "ms" => h.run_ms(rest.parse().unwrap_or(16)),
+            // An interface preference (JSON value, else a string), as the menus save it.
+            "pref" => {
+                let (key, value) = rest.split_once('=').unwrap_or((rest, ""));
+                let value = serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
+                crate::app::set_preference(key, value);
+                h.settle();
+            }
+            "motion" => {
+                crate::theme_apply::set_motion_scale(crate::theme_apply::motion_scale(rest.parse().unwrap_or(1.0)));
+                h.pump_now();
+            }
+            "down" | "move" | "up" => {
+                let (x, y) = rest.split_once(',').unwrap_or(("0", "0"));
+                let position = LogicalPosition::new(x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
+                let button = slint::platform::PointerEventButton::Left;
+                let event = match cmd {
+                    "down" => {
+                        h.window.window().dispatch_event(WindowEvent::PointerMoved { position });
+                        WindowEvent::PointerPressed { position, button }
+                    }
+                    "move" => WindowEvent::PointerMoved { position },
+                    _ => WindowEvent::PointerReleased { position, button },
+                };
+                h.window.window().dispatch_event(event);
+                h.pump_now();
+            }
             "tab" => {
                 h.app.global::<Nav>().invoke_select_tab(rest.into());
                 h.pump();

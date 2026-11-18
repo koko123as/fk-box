@@ -2,7 +2,7 @@
 
 本文记录界面的实现方式、布局来源和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](AGENTS.md)。
 
-`ui/plain` 起界面改为朴素的 Material 3 风格；`ui/m3-rewrite` 按 [skydashnet/material-design-3-ui-skill](https://github.com/skydashnet/material-design-3-ui-skill)（v1.1.1）把视觉层重写为完整的 Material Design 3 系统（见下文“Material Design 3 界面约定”）。各页面的分区、顺序、按钮位置、底部四个目的地（仪表盘、代理、配置、工具）和平板侧栏仍按原 FlClash 布局；FlClash 只提供页面布局与信息组织参考，不再提供控件、字形、形状、动效或特效。FlClash 的来源与 GPL-3.0 许可保留。
+`ui/plain` 起界面改为朴素的 Material 3 风格；`ui/m3-rewrite` 按 [skydashnet/material-design-3-ui-skill](https://github.com/skydashnet/material-design-3-ui-skill)（v1.1.1）把视觉层重写为完整的 Material Design 3 系统（见下文“Material Design 3 界面约定”）。各页面的分区、顺序、按钮位置、底部四个目的地（仪表盘、代理、配置、工具）和平板侧栏仍按原 FlClash 布局；FlClash 提供页面布局、信息组织以及动效与交互手感的参考（动效用 Slint 重新实现，见下文“动效”），不提供控件、字形、形状或特效。FlClash 的来源与 GPL-3.0 许可保留。
 
 ## Rust + Slint 实现
 
@@ -33,12 +33,28 @@
 - 覆盖层（`ui/app.slint`）：菜单为 extra-small 圆角的玻璃（surface-container 色调、较小模糊）加 2 级阴影、48 dp 项；对话框为 extra-large 圆角的玻璃（surface-container-high 色调）、headline-small 标题、文字按钮靠尾部（危险确认用 error 色）；消息条为 inverse-surface、extra-small 圆角、3 级阴影（不透明）。行页面底部提示条为 large 圆角玻璃。Android 上对话框、菜单和消息仍优先使用平台原生实现（`src/native_ime.rs` 的 `native_ui`），玻璃只在 Slint 自绘时出现。
 - 页面：仪表盘卡片为填充卡片（surface-container-highest），卡片标题为 title-medium 加 primary 图标，内嵌块为 surface-container-low；启停按钮为卡片内的 M3 大号 FAB（extra-large 圆角，停止时 primary-container、运行时 primary，图标表示状态）；出站模式为分段按钮；上传/下载曲线分别用 tertiary/primary。代理分组为可滚动的 M3 主标签页（3 dp 指示器），节点与配置为描边卡片，选中时填充 secondary-container 并显示勾选徽标（不只靠颜色）。日志/请求记录为连续列表项（2 dp 间隔），不是每行一张卡片。外观页使用 M3 分段按钮，色板单元为 48 dp。
 - 玻璃表面（Slint 1.19 `backdrop-blur`，Android 的 Skia 渲染器绘制；软件渲染器只画色调）：只用于浮在滚动内容之上的表面——悬浮导航栏、内容滚入后的顶部应用栏、菜单、对话框和行页面底部提示条——一律经 `ui/kit.slint` 的 `Glass` 组件，参数只来自 `ui/theme.slint` 的玻璃令牌：`glass-opacity-light` 0.78 / `glass-opacity-dark` 0.82（色调为对应层级的 surface-container 角色）、`glass-blur` 24 px（高斯标准差，栏与对话框）/ `glass-blur-soft` 12 px（菜单、提示条）、`glass-edge` 与 `glass-outline`（浅色为白色高光内线加 outline-variant 细线，深色为 on-surface 14% 边线）。不透明度由 `theme::tests::glass_text_meets_contrast` 决定：各配色风格、明暗与纯黑下，玻璃上的 on-surface / on-surface-variant 文字在所有会滚到其下的背景（surface 与各 container 角色、强调色、模糊后的文字）上保持 ≥ 4.5:1（测试读取 `theme.slint` 的令牌并给出可通过的最低值）。页面卡片仍为不透明的色调卡片：它们放在纯色背景上，模糊不会显出内容，只增加每帧重读像素的开销。
-- 阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条），并只经 `Theme.shadow-blur/offset/color` 令牌设置；常规层级用 surface 色调区分。不使用液态玻璃着色器、`RuntimeShader`/AGSL 或其他模糊滤镜（`blur()`）。动效只保留侧栏展开（M3 emphasized 缓动，300 ms）与进度指示；页面推入/返回、表单、弹层和底部标签切换仍即时完成，无页内拖动返回。
+- 阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条），并只经 `Theme.shadow-blur/offset/color` 令牌设置；常规层级用 surface 色调区分。不使用液态玻璃着色器、`RuntimeShader`/AGSL 或其他模糊滤镜（`blur()`）。动效见下文“动效”；页面推入/返回（容器变换除外）、表单和弹层仍即时完成，无页内拖动返回。
 - 图标为 Material Icons 字体（`ui/fonts/`），`ui/icons.slint` 按用途命名映射，Rust 端按名称查表（`src/nav.rs` 的 `glyph`）。
 - 界面文字经 `@tr()`（Slint）与 `src/i18n.rs` 的 `tr()`（Rust）翻译，简体中文表为 `ui-slint/i18n/zh/LC_MESSAGES/fkui.po`；Rust 源码中不写死中文。
-- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体；旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
+- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体，并有“页面切换”（滑动/淡入，界面偏好 `tabMotion`，默认滑动）；旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
 - 保留的自绘内容均为功能性：网络速度折线图（`ui/pages/dashboard.slint`）、二维码（`src/pages/profiles.rs`，qrcodegen）、颜色选择器的色板/色谱/滑条，以及订阅额度和进度条。
 - [tools/verify_newui.py](tools/verify_newui.py) 在 CI 中检查上述约束的源码部分（界面入口、Compose/Flutter 已删除、禁用的特效与依赖、`backdrop-blur` 只出现在 `kit.slint` 的 `Glass` 中且只用 `Theme.glass-blur*` 令牌、玻璃令牌存在、顶部应用栏继承 `Glass`、手机导航栏为悬浮 `Glass` 且 `home-bottom` 留出栏高、Slint ≥ 1.19 且两个 vendored crate 与之同版本、阴影只经令牌、页面不写十六进制颜色、M3 令牌与组件存在）。
+
+## 动效
+
+参考 FlClash v0.9.3 的动效与交互手感（`lib/pages/home.dart` 的 PageView 与底栏、`lib/ui/list_item.dart` 的 OpenContainer、`lib/views/proxies/list.dart` 的展开、`lib/views/dashboard/edit.dart` 的编辑晃动与让位、`dashboard/widgets/current_outbound.dart` 的 ease-out-back 形变，以及 `context.motionDuration`/`disableAnimations`），在 Slint 中重新实现；保留磨砂玻璃，不做液态玻璃或折射。
+
+- 令牌（`ui/theme.slint`）：时长 `motion-short` 150 ms、`motion-medium` 300 ms、`motion-long` 450 ms、淡出 `motion-exit` 90 ms／淡入 `motion-enter` 210 ms（自 `motion-enter-scale` 0.92 放大）、分页 `motion-tab` 300 ms、水波纹 `motion-ripple` 450 ms／`motion-ripple-fade` 150 ms、错峰 `motion-stagger` 30 ms（最多 `motion-stagger-items` 8 项）、编辑让位 `motion-yield` 260 ms 与出现 `motion-appear` 200 ms、晃动周期 `motion-sway-period` 3600 ms（0.7°、1.25 px）；曲线 `easing-standard`／`easing-emphasized` cubic-bezier(0.2, 0, 0, 1)、`easing-decelerate`、`easing-accelerate`、`easing-back`（ease-out-back），手动推进的进度用 `Theme.ease-out`/`ease-out-back`/`progress`。组件中不写死时长或曲线：`tools/verify_newui.py` 检查 `animate` 块的 duration/delay 只用 `Theme.motion-*`、easing 只用 `Theme.easing-*`、`animation-tick()` 的周期只用令牌、主题外不出现 `cubic-bezier(`。
+- 减少动画：Android 宿主（`BoxActivity`）读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，随 `locale` 回复（`animatorScale`）及回到前台时的 `motion` 事件传入；Rust 端 `theme_apply::set_motion_scale` 写入 `Theme.motion-scale`，除周期类令牌外所有时长都乘以该系数；为 0（开发者选项关闭动画或无障碍“移除动画”）时所有变化立即完成，`Theme.motion-on` 为假时不画水波纹、编辑晃动和容器变换。不依赖 Slint 自带的减少动画查询。
+- 状态过渡：状态层、按钮、图标按钮、开关（滑块位置与尺寸）、单选/复选、筛选纸片、分段按钮、卡片和导航项的颜色与尺寸按 `motion-short`/`motion-medium` 过渡；导航指示器选中时从中心展开，导航图标在描边/填充两图标间交叉淡化并放大（填充图标用 ease-out-back）。
+- 水波纹：`kit.slint` 的 `Ripple` 在 TouchArea 的 pointer-event 按下时从按下点扩散（`centered` 时从中心），剪裁到表面圆角，松开后淡出；只在存在时读取 `animation-tick()`。用于按钮、图标按钮、卡片、仪表盘面板、可点击列表项、筛选纸片、分段按钮、导航项、菜单项和启停按钮。
+- 底栏：手机首页内容向下滚动（累计 24 px）时悬浮玻璃底栏滑出窗口，向上滚动或回到顶部时滑回（`globals.slint` 的 `Motion.scrolled`，首页各页面的 Flickable 上报）；消息条随之下移。切换目的地时底栏复位；侧栏不受影响。
+- 首页切换：手机默认滑动分页（类似 PageView）：点按目的地时旧页滑出、新页滑入（跨多个目的地时只移动这两页），水平拖动带入相邻页，松手超过四分之一宽度即切换，否则回弹，首尾页拖动有阻尼；仪表盘编辑中和代理页的分组标签模式下不响应水平拖动。外观页可改为淡入（fade-through：旧页淡出 90 ms，新页淡入并自 0.92 放大 210 ms）；侧栏窗口总是淡入。核心页面常驻，只有当前页与正在移动的页可见；移动期间顶部应用栏的玻璃保留色调、暂停模糊（`Motion.pages-moving`），避免每帧在移动层下重算模糊。
+- 状态切换：空状态、启动错误、首页、代理/配置/行页面内容出现时淡入并轻微放大（`kit.slint` 的 `Appear`）。Slint 的 `if` 移除是瞬间的，被替换的内容不做淡出（首页分页常驻，两半都有）。
+- 代理组（列表视图）：展开/收起时对显式高度做动画并剪裁，节点卡片错峰淡入放大（只对前 8 项错峰），箭头图标旋转 180°；收起完成后才移除节点网格。
+- 数值：仪表盘上传/下载速率、内存与连接计数（整数）从旧值补间到新值（按 `format.rs` 的单位规则在 Slint 中还原字节数再格式化，单位切换不跳变）；节点延迟数字补间；确定进度条宽度补间。启停按钮在运行状态变化时以 ease-out-back 改变圆角并旋转图标；出口国家徽标在出口变化时以 ease-out-back 弹出。
+- 仪表盘编辑：原地编辑显示的卡片（单列阅读宽度），卡片按各自相位轻微晃动（`animation-tick()` 驱动旋转与上下浮动）且内部控件不响应；长按卡片后拖动，经过的卡片以 `motion-yield` 让位，松手后卡片滑入新位置再保存顺序（`dash-move`）；减号徽标移除卡片（先淡出 `motion-appear`，再收起空间 `motion-yield`，然后 `dash-hide`）；从隐藏列表添加的卡片先让出空间再出现。状态卡不可移除。拖动时页面停止滚动，暂不在边缘自动滚动。
+- 容器变换（手机）：仪表盘面板或带箭头的列表项打开页面时（点按后路由数增加），`RouteHost` 从其位置、尺寸、圆角和颜色画一个不透明表面在 `motion-long` 内长到全屏，同时颜色变为 surface，最后 40% 新页面淡入；关闭该页面时表面从全屏缩回原卡片。Slint 关闭路由是瞬间的，返回时表面上不显示页面内容。
 
 ## 参考版本与来源清单
 
@@ -151,4 +167,4 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Slint 界面源码约束、[build-apk.yml](.github/workflows/build-apk.yml) 的 Rust 单元测试（`cargo test --lib`）（由 [newui.yml](.github/workflows/newui.yml) 和 [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)。Slint 页面可用 `ui-slint` 的 `shot` 特性在主机上按手机尺寸渲染截图（`examples/shot.rs`，软件渲染器）；`shot-skia` 特性加 `SHOT_RENDERER=skia` 改用 Android 所用的 Skia 渲染器（CPU 光栅化），玻璃的背景模糊只在这种截图里可见。CI 不做像素比较；Material Design 3 重写与玻璃界面（`ui/m3-rewrite`）只在主机截图中检查过，尚未在实机上做视觉验收（GPU 上的模糊开销同样未在设备上测量）。删除 `flutter/` 前的 Flutter 测试与截图记录可在 Git 历史中查看，不代表当前源码已通过同等测试。
 
-升级布局参考版本时只核对页面布局与信息组织，不再迁入控件、字形、动效或特效；同步审查来源清单和许可，按实际 Actions 运行记录结果。
+升级布局参考版本时核对页面布局、信息组织与动效时序，不迁入控件、字形或特效；同步审查来源清单和许可，按实际 Actions 运行记录结果。
