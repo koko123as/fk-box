@@ -118,15 +118,15 @@ export component RowView inherits Rectangle {
                         Nav.act2("row", root.key, root.entry.value);
                     }
                 }
-                if root.entry.kind == "radio": Mid { Radio { selected: root.entry.checked;  } }
-                if root.entry.loading: Mid { Spinner { size: 24px;  } }
+                if root.entry.kind == "radio": Mid { Radio { selected: root.entry.checked; } }
+                if root.entry.loading: Mid { Spinner { } }
                 if root.entry.kind == "switch": Mid { Switch {
                     checked: root.entry.checked;
                     enabled: root.entry.enabled && root.entry.clickable;
 
                     toggled(v) => { Nav.act2("row", root.key, v ? "1" : "0"); }
                 } }
-                if root.entry.kind == "check": Mid { CheckBox { checked: root.entry.checked;  } }
+                if root.entry.kind == "check": Mid { CheckBox { checked: root.entry.checked; } }
                 if root.entry.has-trailing: Mid { IconButton {
                     glyph: root.entry.trailing-glyph;
 
@@ -221,8 +221,8 @@ export component RowView inherits Rectangle {
                     spacing: 4px;
                     HorizontalLayout {
                         spacing: 12px;
-                        T { text: root.entry.title; role: TextRole.title-small; color: Theme.s.on-surface-variant; horizontal-stretch: 1; overflow: elide; }
-                        T { text: root.entry.value; role: TextRole.body-small; horizontal-stretch: 0; overflow: elide;
+                        T { text: root.entry.title; role: TextRole.title-small; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+                        T { text: root.entry.value; role: TextRole.body-small; horizontal-stretch: 0;
                             color: root.entry.lines == 0 ? Theme.s.on-surface-variant : u.tone; }
                     }
                     if root.entry.checked: ProgressBar { value: root.entry.progress; tint: u.tone; }
@@ -233,7 +233,6 @@ export component RowView inherits Rectangle {
                 padding-left: 24px;
                 padding-right: 24px;
                 padding-top: 16px;
-                spacing: 0px;
                 alignment: start;
                 HorizontalLayout {
                     alignment: center;
@@ -290,7 +289,7 @@ export component RowView inherits Rectangle {
                         spacing: 6px;
                         HorizontalLayout {
                             spacing: 8px;
-                            if root.entry.value != "": T { text: root.entry.value; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
+                            if root.entry.value != "": T { text: root.entry.value; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
                             for l[i] in root.entry.options: Mid { Rectangle {
                                 height: lt.preferred-height + 2px;
                                 width: lt.preferred-width + 12px;
@@ -313,7 +312,6 @@ export component RowView inherits Rectangle {
                         }
                         if root.entry.title != "": SelectableText {
                             text: root.entry.title;
-                            wrap: word-wrap;
                             font-size: Theme.size(root.entry.mono ? TextRole.body-small : TextRole.body-medium);
                             font-family: root.entry.mono ? Theme.mono : Theme.font-family;
                             font-weight: root.entry.mono ? 400 : 500;
@@ -328,13 +326,12 @@ export component RowView inherits Rectangle {
                                 role: TextRole.body-small;
                                 color: Theme.s.on-surface-variant;
                                 horizontal-stretch: 0;
-                                vertical-alignment: center;
                                 Tap { border-radius: Theme.corner-extra-small; ink: Theme.s.on-surface-variant; clicked => { Nav.act2("row-edit", root.key, "r"); } }
                             }
-                            if root.entry.detail != "": Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant;  } }
+                            if root.entry.detail != "": Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; } }
                             for c[i] in root.entry.chain: HorizontalLayout {
                                 spacing: 6px;
-                                if i > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant;  } }
+                                if i > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 14px; color: Theme.s.on-surface-variant; } }
                                 Mid { Rectangle {
                                     height: cl.preferred-height + 2px;
                                     width: cl.preferred-width + 12px;
@@ -363,7 +360,7 @@ export component RowView inherits Rectangle {
                     T { text: root.entry.title; role: TextRole.title-small; horizontal-stretch: 0; }
                     T { text: "(" + root.entry.value + ")"; role: TextRole.body-medium; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
                     if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
-                    Mid { Icon { glyph: root.entry.checked ? Icons.chevron-down : Icons.chevron-forward; size: 20px; color: Theme.s.on-surface-variant;  } }
+                    Mid { Icon { glyph: root.entry.checked ? Icons.chevron-down : Icons.chevron-forward; size: 20px; color: Theme.s.on-surface-variant; } }
                 }
             }
             if entry.kind == "card": Card {
@@ -380,7 +377,7 @@ export component RowView inherits Rectangle {
                     padding-top: 10px;
                     padding-bottom: 10px;
                     spacing: 16px;
-                    if root.entry.has-glyph: Mid { Icon { glyph: root.entry.glyph;  color: Theme.s.on-surface-variant; } }
+                    if root.entry.has-glyph: Mid { Icon { glyph: root.entry.glyph; color: Theme.s.on-surface-variant; } }
                     VerticalLayout {
                         horizontal-stretch: 1;
                         alignment: center;
@@ -412,8 +409,6 @@ export component RowView inherits Rectangle {
                 border-bottom-left-radius: bottom ? Theme.corner-large : Theme.corner-none;
                 border-bottom-right-radius: bottom ? Theme.corner-large : Theme.corner-none;
                 background: root.entry.invalid ? Theme.s.error-container : Theme.level(1);
-                accessible-role: text-input;
-                accessible-label: root.entry.title;
                 // The whole row is the field's tap target, not only the line
                 // of text in its middle (ListItemInput).
                 TouchArea { clicked => { ff.focus-end(); } }
@@ -426,6 +421,7 @@ export component RowView inherits Rectangle {
                     T { text: root.entry.title; color: root.entry.enabled ? Theme.s.on-surface : Theme.s.on-surface.with-alpha(Theme.disabled-content); horizontal-stretch: 0; min-width: min(self.preferred-width, 140px); }
                     Mid { horizontal-stretch: 1; ff := Field {
                         outlined: false;
+                        label: root.entry.title;
                         horizontal-stretch: 1;
                         text: root.entry.value;
                         hint: root.entry.hint;
@@ -462,7 +458,7 @@ export component RowView inherits Rectangle {
                     field-min: max(120px, (root.entry.lines > 0 ? root.entry.lines : 8) * Theme.sp(21));
                     edited(t) => { Nav.act2("row-edit", root.key, t); }
                 }
-                if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.body-small; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; x: 16px; }
+                if root.entry.subtitle != "": HorizontalLayout { padding-left: 16px; T { text: root.entry.subtitle; role: TextRole.body-small; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; } }
             }
             // An outlined single-line field with its label.
             if entry.kind == "input": VerticalLayout {
@@ -479,7 +475,7 @@ export component RowView inherits Rectangle {
                     edited(t) => { Nav.act2("row-edit", root.key, t); }
                     accepted(t) => { Nav.act2("row-done", root.key, t); }
                 }
-                if root.entry.subtitle != "": T { text: root.entry.subtitle; role: TextRole.body-small; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; x: 16px; }
+                if root.entry.subtitle != "": HorizontalLayout { padding-left: 16px; T { text: root.entry.subtitle; role: TextRole.body-small; color: root.entry.invalid ? Theme.s.error : Theme.s.on-surface-variant; wrap: word-wrap; } }
             }
             if entry.kind == "text": Rectangle {
                 height: tx.preferred-height + 8px;
@@ -487,7 +483,6 @@ export component RowView inherits Rectangle {
                     y: 4px;
                     height: self.preferred-height;
                     text: root.entry.title;
-                    wrap: word-wrap;
                     font-size: root.entry.mono ? Theme.sp(13) : Theme.size(TextRole.body-medium);
                     font-family: root.entry.mono ? Theme.mono : Theme.font-family;
                     color: root.entry.danger ? Theme.s.error : root.entry.checked ? Theme.s.on-surface : Theme.s.on-surface-variant;
@@ -502,7 +497,6 @@ export component RowView inherits Rectangle {
                     width: parent.width - 24px;
                     height: self.preferred-height;
                     text: root.entry.title;
-                    wrap: word-wrap;
                     font-size: Theme.size(TextRole.body-medium);
                     color: Theme.s.on-error-container;
                 }
@@ -517,7 +511,6 @@ export component RowView inherits Rectangle {
                     glyph: root.entry.glyph;
                     kind: root.entry.lines;
                     enabled: root.entry.enabled;
-                    button-height: 40px;
                     clicked => { Nav.act2("row", root.key, root.entry.value); }
                 }
             }
@@ -641,8 +634,8 @@ export component RowsPage inherits Rectangle {
             padding-top: 6px;
             padding-bottom: 6px;
             spacing: 12px;
-            Mid { Icon { glyph: root.d.foot-glyph; size: 20px; color: Theme.s.on-surface-variant;  } }
-            T { text: root.d.foot-text; role: TextRole.body-small; wrap: word-wrap; horizontal-stretch: 1; vertical-alignment: center; }
+            Mid { Icon { glyph: root.d.foot-glyph; size: 20px; color: Theme.s.on-surface-variant; } }
+            T { text: root.d.foot-text; role: TextRole.body-small; wrap: word-wrap; horizontal-stretch: 1; }
             if root.d.foot-chip != "": Mid { Rectangle {
 
                 height: chip.preferred-height + 8px;
@@ -653,7 +646,6 @@ export component RowsPage inherits Rectangle {
             } }
             if root.d.foot-button != "": Button {
                 label: root.d.foot-button;
-                kind: 0;
                 clicked => { Nav.act2("foot", root.d.id, ""); }
             }
         }

@@ -175,9 +175,7 @@ component ExtendedItem inherits Rectangle {
             text: Destinations.label(root.key);
             role: TextRole.label-large;
             color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant;
-            vertical-alignment: center;
             horizontal-stretch: 1;
-            overflow: elide;
         }
     }
     FocusRing { shown: fs.has-focus; corner: root.border-radius; }
@@ -232,7 +230,6 @@ component Rail inherits Rectangle {
             if Nav.rail-extended: T {
                 text: "fk-box";
                 role: TextRole.title-large;
-                vertical-alignment: center;
             }
         }
         Rectangle { height: Nav.rail-extended ? 12px : 4px; }
@@ -515,7 +512,6 @@ export component HomePage inherits Rectangle {
     if Nav.mobile: Rectangle {
         Pages { }
         bar := Surface {
-            level: 2;
             elevation: 2;
             width: min(parent.width - 2 * Nav.bar-side, 480px);
             x: (parent.width - self.width) / 2;

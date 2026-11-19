@@ -24,7 +24,7 @@ class ServiceStartResultTest {
         runCurrent()
         // Coroutine stack-trace recovery may copy the exception across await.
         assertEquals(failure.javaClass, outcome!!.exceptionOrNull()!!.javaClass)
-        assertEquals(failure.message, outcome!!.exceptionOrNull()!!.message)
+        assertEquals(failure.message, outcome.exceptionOrNull()!!.message)
         outcome = null
         launch { outcome = runCatching { start.awaitStarted {} } }
         runCurrent()

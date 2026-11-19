@@ -462,11 +462,6 @@ impl Page {
         self
     }
 
-    pub fn title_menu(mut self, f: impl Fn() -> Vec<MenuEntry> + 'static) -> Page {
-        self.title_menu = Some(Rc::new(f));
-        self
-    }
-
     pub fn keywords(mut self, keywords: Vec<(String, String, bool, bool, bool)>, f: impl Fn(String) + 'static) -> Page {
         self.keywords = keywords;
         self.on_keyword = Some(Rc::new(f));
@@ -943,9 +938,4 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
         }
     }
     Vec::new()
-}
-
-/// Closes the Rust-built page `id`.
-pub fn close(id: i32) {
-    nav::close(id);
 }

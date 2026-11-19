@@ -30,7 +30,7 @@ object ProfileManager {
                 Path.PROFILES_DATABASE_PATH,
             )
             .addMigrations(ProfileDatabase.MIGRATION_1_2, ProfileDatabase.MIGRATION_2_3)
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
             .enableMultiInstanceInvalidation()
             .setQueryExecutor { GlobalScope.launch { it.run() } }
             .build()

@@ -18,16 +18,16 @@ abstract class ProfileDatabase : RoomDatabase() {
     companion object {
         val MIGRATION_1_2 =
             object : Migration(1, 2) {
-                override fun migrate(database: SupportSQLiteDatabase) {
+                override fun migrate(db: SupportSQLiteDatabase) {
                     // Add icon column to profiles table with default value null
-                    database.execSQL("ALTER TABLE profiles ADD COLUMN icon TEXT DEFAULT NULL")
+                    db.execSQL("ALTER TABLE profiles ADD COLUMN icon TEXT DEFAULT NULL")
                 }
             }
 
         val MIGRATION_2_3 =
             object : Migration(2, 3) {
-                override fun migrate(database: SupportSQLiteDatabase) {
-                    database.execSQL(
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
                         "CREATE TABLE IF NOT EXISTS `remote_servers` (" +
                             "`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, " +
                             "`userOrder` INTEGER NOT NULL, " +

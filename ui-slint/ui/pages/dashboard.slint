@@ -154,7 +154,6 @@ component CountryBadge inherits Rectangle {
     width: size;
     height: size;
     border-radius: size / 2;
-    background: Theme.s.secondary-container;
     accessible-role: button;
     accessible-label: root.country;
     // A new exit (another outbound, country or check) pops in with an
@@ -177,21 +176,26 @@ component CountryBadge inherits Rectangle {
             root.popping = false;
         }
     }
-    transform-scale: root.popping ? 0.6 + 0.4 * Theme.ease-out-back(Theme.progress(animation-tick(), root.pop-start, Theme.motion-long)) : 1;
-    if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
-    if !root.checking && root.country != "": T {
-        text: root.country;
-        role: TextRole.label-medium;
-        color: root.fg;
-        horizontal-alignment: center;
-    }
-    if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
-    Tap {
+    // Scaled inside the root: a root element's own transform-scale is ignored.
+    face := Rectangle {
         border-radius: root.border-radius;
-        ink: Theme.s.on-secondary-container;
-        centered: true;
-        enabled: root.can-retry;
-        clicked => { root.retry(); }
+        background: Theme.s.secondary-container;
+        transform-scale: root.popping ? 0.6 + 0.4 * Theme.ease-out-back(Theme.progress(animation-tick(), root.pop-start, Theme.motion-long)) : 1;
+        if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
+        if !root.checking && root.country != "": T {
+            text: root.country;
+            role: TextRole.label-medium;
+            color: root.fg;
+            horizontal-alignment: center;
+        }
+        if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
+        Tap {
+            border-radius: root.border-radius;
+            ink: Theme.s.on-secondary-container;
+            centered: true;
+            enabled: root.can-retry;
+            clicked => { root.retry(); }
+        }
     }
 }
 
@@ -218,7 +222,6 @@ component StatusCell inherits VerticalLayout {
         height: Theme.leading(TextRole.title-small);
         // Room for the last glyph's overhang so it is never trimmed.
         min-width: root.keep ? self.preferred-width + 0.08 * Theme.size(TextRole.title-small) : 0px;
-        overflow: elide;
     }
 }
 
@@ -235,12 +238,11 @@ export component StatusPanel inherits Rectangle {
         spacing: 12px;
         VerticalLayout {
             horizontal-stretch: 1;
-            spacing: 0px;
             alignment: start;
             HorizontalLayout {
                 height: max(Theme.min-target, Theme.leading(TextRole.title-medium));
                 spacing: 8px;
-                Mid { Icon { glyph: Icons.status; size: 20px; color: Theme.s.primary;  } }
+                Mid { Icon { glyph: Icons.status; size: 20px; color: Theme.s.primary; } }
                 T { text: @tr("Status"); role: TextRole.title-medium; horizontal-stretch: 0; }
                 Rectangle {
                     horizontal-stretch: 1;
@@ -370,27 +372,17 @@ component LineChart inherits Rectangle {
     if root.area != "": Path {
         x: 0;
         y: 0;
-        width: root.width;
-        height: root.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: root.width / 1px;
         viewbox-height: root.height / 1px;
         commands: root.area;
         fill: root.tint.with-alpha(0.14);
-        stroke-width: 0;
     }
     if root.line != "": Path {
         x: 0;
         y: 0;
-        width: root.width;
-        height: root.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: root.width / 1px;
         viewbox-height: root.height / 1px;
         commands: root.line;
-        fill: transparent;
         stroke: root.tint;
         stroke-width: 2px;
         stroke-line-cap: round;
@@ -440,7 +432,6 @@ component SpeedTile inherits Rectangle {
         Rectangle { height: 4px; }
         HorizontalLayout {
             alignment: start;
-            spacing: 0px;
             RateFigure {
                 text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
                 pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
@@ -501,7 +492,6 @@ component SpeedCard inherits Rectangle {
         padding-left: 16px;
         padding-right: 16px;
         padding-top: 12px;
-        spacing: 0px;
         HorizontalLayout {
             height: max(Theme.min-target, Theme.leading(TextRole.title-medium));
             spacing: 8px;
@@ -516,15 +506,12 @@ component SpeedCard inherits Rectangle {
                 role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
                 horizontal-alignment: right;
-                vertical-alignment: center;
-                overflow: elide;
                 horizontal-stretch: 1;
             }
         }
         Rectangle { height: 10px; }
         HorizontalLayout {
             alignment: start;
-            spacing: 0px;
             RateFigure {
                 text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
                 pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
@@ -629,7 +616,7 @@ export component ModePanel inherits Panel {
             horizontal-stretch: 0;
             spacing: 8px;
             Mid { Icon { glyph: Icons.split; size: 20px; color: Theme.s.primary; } }
-            T { text: @tr("Outbound mode"); role: TextRole.title-medium; vertical-alignment: center; }
+            T { text: @tr("Outbound mode"); role: TextRole.title-medium; }
         }
         Mid { horizontal-stretch: 1; ModeSegments { } }
     }
@@ -679,12 +666,11 @@ export component ProfilePanel inherits Panel {
                 clicked => { Nav.act("update-selected-profile", ""); }
             }
         }
-        Mid { Icon { glyph: Icons.chevron-forward; size: 24px;  color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
     Rectangle { height: 4px; }
     // Compose: the name (weight 1, fill = false), 8 dp, the core chip, then the 32 dp switch button right after it.
     HorizontalLayout {
-        spacing: 0px;
         alignment: start;
         T {
             text: App.remote ? @tr("Remote configuration") : Dash.has-profile ? Dash.profile-name : @tr("Add profile");
@@ -794,8 +780,8 @@ export component GroupsPanel inherits Panel {
         glyph: Icons.layers;
         HorizontalLayout {
             spacing: 6px;
-            if Dash.timeout-count > 0: Mid { Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2;  } }
-            if Dash.group-count > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 24px;  color: Theme.s.on-surface-variant; } }
+            if Dash.timeout-count > 0: Mid { Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2; } }
+            if Dash.group-count > 0: Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
         }
     }
     Rectangle { height: 4px; }
@@ -821,7 +807,7 @@ export component GroupsPanel inherits Panel {
             T { text: Dash.group-count; role: TextRole.display-small; emphasized: true; vertical-alignment: bottom; }
             T { text: " " + @tr("Groups"); role: TextRole.body-medium; color: Theme.s.on-surface-variant; vertical-alignment: bottom; height: Theme.leading(TextRole.display-small) - 8px; }
         }
-        Mid { GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest;  } }
+        Mid { GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest; } }
     }
 }
 
@@ -879,7 +865,7 @@ export component MemoryPanel inherits Panel {
     PanelTitle {
         title: @tr("Memory");
         glyph: Icons.memory;
-        Mid { Icon { glyph: Icons.chevron-forward; size: 24px;  color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
     Rectangle { height: 4px; }
     MemorySummary { }
@@ -918,7 +904,7 @@ export component LanProxyRow inherits Rectangle {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T { text: @tr("LAN proxy"); role: TextRole.body-large; }
+            T { text: @tr("LAN proxy"); }
             T { text: root.subtitle; role: TextRole.body-small; color: Theme.s.on-surface-variant; }
         }
         Mid { Switch {
@@ -960,8 +946,6 @@ export component IntranetPanel inherits Panel {
     }
     Rectangle { height: 14px; }
     if App.remote: ListItem {
-        position: 4;
-        level: 1;
         title: @tr("This device");
         subtitle: @tr("Device network addresses");
         has-leading: true;
@@ -995,7 +979,7 @@ export component SystemProxyPanel inherits Panel {
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T { text: @tr("System HTTP proxy"); role: TextRole.body-large; emphasized: true; wrap: word-wrap; }
+            T { text: @tr("System HTTP proxy"); emphasized: true; wrap: word-wrap; }
             T { text: Dash.system-proxy ? @tr("Enabled") : @tr("Disabled"); role: TextRole.body-small; color: Theme.s.on-surface-variant; }
         }
         Mid { Switch {
@@ -1063,12 +1047,9 @@ component ServiceBadge inherits Rectangle {
         y: root.size * 0.22;
         width: root.size * 0.56;
         height: root.size * 0.56;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: 24;
         viewbox-height: 24;
         fill: root.ink;
-        stroke-width: 0;
         commands: root.fill-path;
     }
     if root.stroke-path != "": Path {
@@ -1076,11 +1057,8 @@ component ServiceBadge inherits Rectangle {
         y: root.size * 0.22;
         width: root.size * 0.56;
         height: root.size * 0.56;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: 24;
         viewbox-height: 24;
-        fill: transparent;
         stroke: root.ink;
         stroke-width: root.size * 0.56 / 12;
         stroke-line-cap: round;
@@ -1124,8 +1102,6 @@ component ServiceCell inherits Rectangle {
         if !root.s.loading: T {
             text: root.s.status;
             role: TextRole.label-medium;
-            vertical-alignment: center;
-            overflow: elide;
             horizontal-stretch: 1;
             color: root.s.tone == 3 ? Theme.s.error : root.s.tone == 2 ? Theme.s.warning : Theme.s.on-surface-variant;
         }
@@ -1142,7 +1118,7 @@ export component ServicePanel inherits Panel {
         glyph: Icons.verified;
         if Dash.services-checking && Dash.service-verdict == "": Mid { Spinner { size: 16px; } }
         if Dash.service-verdict != "": Mid { Chip { label: Dash.service-verdict; tone: Dash.service-verdict-tone; } }
-        Mid { Icon { glyph: Icons.chevron-forward; size: 24px; color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
     Rectangle { height: 4px; }
     VerticalLayout {
@@ -1205,7 +1181,6 @@ component ServiceRow inherits Rectangle {
             spacing: 2px;
             T {
                 text: root.s.label;
-                overflow: elide;
                 color: root.s.enabled ? Theme.s.on-surface : Theme.s.on-surface-variant;
             }
             if root.manage && root.s.on-card: T {
@@ -1219,14 +1194,12 @@ component ServiceRow inherits Rectangle {
                 text: root.s.subtitle == "" ? "—" : root.s.subtitle;
                 role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
-                overflow: elide;
             }
         }
         if !root.manage && root.s.loading: Mid { Skeleton { width: 44px; pill-height: Theme.sp(12); } }
         if !root.manage && !root.s.loading: T {
             text: root.s.status;
             role: TextRole.label-medium;
-            vertical-alignment: center;
             horizontal-alignment: right;
             max-width: 150px;
             wrap: word-wrap;
@@ -1316,7 +1289,7 @@ component ConnStat inherits Rectangle {
         padding-bottom: 12px;
         spacing: 4px;
         T { text: root.n < 0 ? root.value : round(root.shown) + ""; role: TextRole.headline-small; emphasized: true; horizontal-alignment: center; }
-        T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-alignment: center; overflow: elide; }
+        T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
     }
     cta := TouchArea {
         enabled: root.feed != "";
@@ -1433,7 +1406,6 @@ component DashboardCard inherits Rectangle {
 // offsets the cards inside their slots, so nothing reads back a layout it
 // changes.
 component DashboardEditor inherits VerticalLayout {
-    spacing: 0px;
     property <length> gap: Nav.gap;
     // The lifted card: its index and key, how far the finger moved it, its
     // slot's top and height (with the gap under it).
@@ -1582,6 +1554,8 @@ component DashboardEditor inherits VerticalLayout {
                 delay: slot.entered && !slot.removing && !slot.lifted && !root.snap ? Theme.motion-yield : 0ms;
                 easing: Theme.easing-decelerate;
             }
+            // A shadow needs a fill of its own; the card covers it.
+            background: slot.lifted ? Theme.s.surface-container-highest : transparent;
             drop-shadow-blur: slot.lifted ? Theme.shadow-blur(3) : 0px;
             drop-shadow-offset-y: slot.lifted ? Theme.shadow-offset(3) : 0px;
             drop-shadow-color: slot.lifted ? Theme.shadow-color(3) : transparent;
@@ -1703,7 +1677,7 @@ export component DashboardPage inherits Rectangle {
             padding-bottom: 16px + Nav.home-bottom;
             spacing: Dash.editing ? 0px : Nav.gap;
             if Dash.editing: DashboardEditor { }
-            if !Dash.editing && (App.remote || Dash.apply-required): Banners { top: true; }
+            if !Dash.editing && (App.remote || Dash.apply-required): Banners { }
             if !Dash.editing && Nav.mobile: VerticalLayout {
                 spacing: Nav.gap;
                 for c in Dash.cards: DashboardCard { card: c; }
@@ -1813,7 +1787,7 @@ export component IntranetPage inherits ScrollPage {
         padding-top: 16px;
         spacing: 8px;
         T { text: Dash.lan-error; role: TextRole.body-medium; color: Theme.s.error; wrap: word-wrap; horizontal-alignment: center; }
-        HorizontalLayout { alignment: center; Button { label: @tr("Retry"); kind: 0; clicked => { Nav.act("lan-refresh", ""); } } }
+        HorizontalLayout { alignment: center; Button { label: @tr("Retry"); clicked => { Nav.act("lan-refresh", ""); } } }
     }
     if !App.remote: SectionTitle { text: @tr("Local proxy listeners"); }
     if !App.remote: VerticalLayout {
@@ -1854,7 +1828,7 @@ export component NewLanProxyPage inherits ScrollPage {
         input-type: number;
         edited => { Nav.act("lan-port-edited", ""); }
     }
-    if Dash.lan-port-invalid: T { text: @tr("Invalid proxy port"); role: TextRole.body-small; color: Theme.s.error; x: 16px; }
+    if Dash.lan-port-invalid: HorizontalLayout { padding-left: 16px; T { text: @tr("Invalid proxy port"); role: TextRole.body-small; color: Theme.s.error; } }
     Rectangle { height: 16px; }
     T { text: @tr("Adds an HTTP and SOCKS proxy to the selected profile."); role: TextRole.body-small; color: Theme.s.on-surface-variant; wrap: word-wrap; }
 }

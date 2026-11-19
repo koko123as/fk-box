@@ -505,7 +505,6 @@ export component Spinner inherits Rectangle {
         stroke: root.tint;
         stroke-width: root.size < 20px ? 2px : root.size < 40px ? 3px : 4px;
         stroke-line-cap: round;
-        fill: transparent;
         commands: "M 50 6 A 44 44 0 1 1 6 50";
         transform-origin: { x: root.size / 2, y: root.size / 2 };
         transform-rotation: mod(animation-tick() / Theme.motion-spin-period, 1) * 360deg;
@@ -1289,7 +1288,6 @@ export component ListItem inherits Rectangle {
                     width: parent.width;
                     height: parent.height;
                     text: root.title;
-                    role: TextRole.body-large;
                     color: root.enabled ? root.title-color : root.disabled-ink;
                     wrap: root.title-lines == 1 ? no-wrap : word-wrap;
                 }
@@ -1409,7 +1407,6 @@ export component EmptyState inherits VerticalLayout {
         padding-top: 8px;
         Button {
             label: root.action-label;
-            kind: 0;
             clicked => { root.action(); }
         }
     }
@@ -1446,8 +1443,8 @@ export component Field inherits Rectangle {
     border-width: outlined ? (input.has-focus || invalid ? 2px : 1px) : 0;
     border-color: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container)
         : invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : hover.has-hover ? Theme.s.on-surface : Theme.s.outline;
-    accessible-role: text-input;
-    accessible-label: root.label != "" ? root.label : root.hint;
+    // The TextInput inside is the screen reader's text field; the frame
+    // around it adds no second node.
     hover := TouchArea {
         enabled: root.enabled;
         clicked => { root.focus-end(); }
@@ -1473,6 +1470,7 @@ export component Field inherits Rectangle {
         content-height: max(self.height, input.preferred-height);
         input := NativeTextInput {
             text <=> root.text;
+            accessible-label: root.label != "" ? root.label : root.hint;
             width: parent.width;
             height: max(flick.height, self.preferred-height);
             // The native editor covers the visible box, not the scrolled text.
@@ -1508,7 +1506,6 @@ export component Field inherits Rectangle {
         // Elide on wrapped lines drew them over each other; the box is the hint's full height.
         overflow: root.multiline ? clip : elide;
         text: root.hint;
-        role: TextRole.body-large;
         color: Theme.s.on-surface-variant;
     }
 }
@@ -1523,8 +1520,6 @@ export component SearchField inherits Rectangle {
     height: 56px;
     border-radius: self.height / 2;
     background: fill;
-    accessible-role: text-input;
-    accessible-label: @tr("Search");
     HorizontalLayout {
         padding-left: 16px;
         padding-right: 4px;
@@ -1573,7 +1568,6 @@ export component TopBar inherits Surface {
     callback search(string);
     callback keyword(string, bool);
     height: lay.preferred-height;
-    level: 2;
     background: root.scrolled ? Theme.level(2) : root.bar-color;
     animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     lay := VerticalLayout {
@@ -1581,7 +1575,6 @@ export component TopBar inherits Surface {
             height: 64px;
             padding-left: root.leading == 0 && !root.searching ? 16px : 4px;
             padding-right: 4px;
-            spacing: 0px;
             if root.searching: Mid { IconButton {
                 glyph: Icons.back;
                 tooltip: @tr("Cancel");
@@ -1639,10 +1632,9 @@ export component TopBar inherits Surface {
                 clicked => { root.searching = true; }
             } }
             if !root.searching: HorizontalLayout {
-                spacing: 0px;
                 for a in root.actions: Rectangle {
                     width: 48px;
-                    if a.loading: Spinner { size: 24px; }
+                    if a.loading: Spinner { }
                     if !a.loading: IconButton {
                         glyph: a.glyph;
                         tooltip: a.tooltip;

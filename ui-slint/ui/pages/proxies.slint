@@ -49,7 +49,6 @@ export component NodeCard inherits Card {
     selected: node.selected;
     fills: true;
     long-press-menu: true;
-    enabled: true;
     clicked => {
         if (group.selectable && App.running) {
             Nav.act2("select-node", group.tag, node.tag);
@@ -163,7 +162,6 @@ component GroupTabs inherits Rectangle {
         strip := HorizontalLayout {
             padding-left: 4px;
             padding-right: 4px;
-            spacing: 0px;
             for g[i] in root.groups: tb := Rectangle {
                 property <bool> on: i == root.selected;
                 height: 48px;
@@ -243,7 +241,6 @@ component GroupHeader inherits Rectangle {
         clicked => { Nav.act("toggle-group", root.group.tag); }
         HorizontalLayout {
             padding: 6px;
-            spacing: 0px;
             GroupIcon { mark: root.group.monogram; }
             VerticalLayout {
                 horizontal-stretch: 1;
@@ -253,7 +250,6 @@ component GroupHeader inherits Rectangle {
                 T { text: root.group.selected; role: TextRole.label-medium; color: Theme.s.on-surface-variant; }
             }
             if root.expanded: HorizontalLayout {
-                spacing: 0px;
                 Mid { TonalIconButton {
                     glyph: Icons.bolt;
                     tooltip: @tr("Test latency");
@@ -303,7 +299,6 @@ export component ProxiesPage inherits Rectangle {
     } }
     if Proxies.groups.length > 0 && !Proxies.list: Appear { y: bar.height; height: parent.height - bar.height; VerticalLayout {
         padding-top: 8px;
-        spacing: 0px;
         Rectangle {
             height: 56px;
             GroupTabs {
@@ -348,7 +343,6 @@ export component ProxiesPage inherits Rectangle {
             padding-right: 16px;
             padding-top: bar.height + 8px;
             padding-bottom: 16px + (root.form ? Nav.inset-bottom : Nav.home-bottom);
-            spacing: 0px;
             // A group added to the list grows into its place as it fades in; a
             // slot that now shows another group (the model updates rows in
             // place) fades back in with a short rise; a group moved up by a
@@ -376,7 +370,6 @@ export component ProxiesPage inherits Rectangle {
                 group-lay := VerticalLayout {
                     y: Theme.motion-list-rise * (1 - swap.t) + gslot.slide-from * (1 - slide.t);
                     height: self.preferred-height;
-                    spacing: 0px;
                     GroupHeader { group: g; joined: fold.open || fold.height > 0.5px; }
                     // The nodes unfold: the box grows to the grid's height (it
                     // clips the grid meanwhile) while the cards fade in one after

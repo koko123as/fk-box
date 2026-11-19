@@ -284,7 +284,7 @@ object GeoResources {
                     },
                     "updatedAt" to when {
                         exists -> installed?.time ?: file.lastModified()
-                        bundled != null && bundle != null -> bundle.time
+                        bundled != null -> bundle.time
                         else -> null
                     },
                     "source" to when {

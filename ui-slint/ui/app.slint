@@ -52,7 +52,6 @@ component MenuLayer inherits Rectangle {
         x: clamp(Nav.menu-x - (Nav.menu-x > root.width / 2 ? self.width : 0px), 8px, root.width - self.width - 8px);
         y: clamp(Nav.menu-y, Nav.inset-top + 8px, root.height - self.height - Nav.inset-bottom - 8px);
         border-radius: Theme.corner-extra-small;
-        level: 2;
         elevation: 2;
         accessible-role: list;
         TouchArea { }
@@ -66,13 +65,15 @@ component MenuLayer inherits Rectangle {
                         height: 17px;
                         Rectangle { height: 1px; background: Theme.s.outline-variant; }
                     }
-                    if item.section != "" && item.label == "": T {
-                        text: item.section;
-                        role: TextRole.title-small;
-                        color: Theme.s.primary;
-                        x: 12px;
-                        height: self.preferred-height + 12px;
-                        vertical-alignment: bottom;
+                    if item.section != "" && item.label == "": HorizontalLayout {
+                        padding-left: 12px;
+                        T {
+                            text: item.section;
+                            role: TextRole.title-small;
+                            color: Theme.s.primary;
+                            height: self.preferred-height + 12px;
+                            vertical-alignment: bottom;
+                        }
                     }
                     if item.label != "": Rectangle {
                         height: 48px;
@@ -89,10 +90,10 @@ component MenuLayer inherits Rectangle {
                             padding-left: 12px;
                             padding-right: 12px;
                             spacing: 12px;
-                            if item.has-glyph: Icon { glyph: item.glyph; size: 24px; color: icon-fg; y: (parent.height - 24px) / 2; }
+                            if item.has-glyph: Icon { glyph: item.glyph; color: icon-fg; y: (parent.height - 24px) / 2; }
                             T { text: item.label; role: TextRole.label-large; color: fg; horizontal-stretch: 1; }
-                            if item.submenu: Icon { glyph: Icons.chevron-forward; size: 24px; color: icon-fg; y: (parent.height - 24px) / 2; }
-                            if !item.submenu && item.checked: Icon { glyph: Icons.check; size: 24px; color: Theme.s.primary; y: (parent.height - 24px) / 2; }
+                            if item.submenu: Icon { glyph: Icons.chevron-forward; color: icon-fg; y: (parent.height - 24px) / 2; }
+                            if !item.submenu && item.checked: Icon { glyph: Icons.check; color: Theme.s.primary; y: (parent.height - 24px) / 2; }
                         }
                         ta := TouchArea {
                             enabled: item.enabled;
@@ -168,7 +169,6 @@ component DialogLayer inherits Rectangle {
                 preferred-height: min(body.preferred-height, 420px);
                 content-height: body.preferred-height;
                 body := VerticalLayout {
-                    spacing: 0px;
                     if Nav.dialog-message != "": TextInput {
                         text: Nav.dialog-message;
                         read-only: true;
@@ -189,7 +189,7 @@ component DialogLayer inherits Rectangle {
                         HorizontalLayout {
                             spacing: 8px;
                             Mid { Radio { selected: i == Nav.dialog-option; } }
-                            T { text: o; role: TextRole.body-large; horizontal-stretch: 1; }
+                            T { text: o; horizontal-stretch: 1; }
                         }
                     }
                 }

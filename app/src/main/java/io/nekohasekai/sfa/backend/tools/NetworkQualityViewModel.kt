@@ -171,12 +171,12 @@ class NetworkQualityViewModel : BaseViewModel<NetworkQualityState>() {
                     if (!currentState.isRunning) return@launch
                     updateState {
                         copy(
-                            phase = progress.phase.toInt(),
-                            idleLatencyMs = progress.idleLatencyMs.toInt(),
+                            phase = progress.phase,
+                            idleLatencyMs = progress.idleLatencyMs,
                             downloadCapacity = progress.downloadCapacity,
                             uploadCapacity = progress.uploadCapacity,
-                            downloadRPM = progress.downloadRPM.toInt(),
-                            uploadRPM = progress.uploadRPM.toInt(),
+                            downloadRPM = progress.downloadRPM,
+                            uploadRPM = progress.uploadRPM,
                         )
                     }
                 }
@@ -188,12 +188,12 @@ class NetworkQualityViewModel : BaseViewModel<NetworkQualityState>() {
                     if (!currentState.isRunning) return@launch
                     updateState {
                         copy(
-                            phase = Libbox.NetworkQualityPhaseDone.toInt(),
-                            idleLatencyMs = result.idleLatencyMs.toInt(),
+                            phase = Libbox.NetworkQualityPhaseDone,
+                            idleLatencyMs = result.idleLatencyMs,
                             downloadCapacity = result.downloadCapacity,
                             uploadCapacity = result.uploadCapacity,
-                            downloadRPM = result.downloadRPM.toInt(),
-                            uploadRPM = result.uploadRPM.toInt(),
+                            downloadRPM = result.downloadRPM,
+                            uploadRPM = result.uploadRPM,
                             isRunning = false,
                         )
                     }

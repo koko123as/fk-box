@@ -203,7 +203,8 @@ pub fn luminance(argb_value: u32) -> f64 {
     0.2126 * lin(argb_value >> 16) + 0.7152 * lin(argb_value >> 8) + 0.0722 * lin(argb_value)
 }
 
-/// WCAG contrast ratio of two colours.
+/// WCAG contrast ratio of two colours (the theme tests check role pairs with it).
+#[cfg(test)]
 pub fn contrast(a: u32, b: u32) -> f64 {
     let (la, lb) = (luminance(a), luminance(b));
     let (hi, lo) = if la > lb { (la, lb) } else { (lb, la) };

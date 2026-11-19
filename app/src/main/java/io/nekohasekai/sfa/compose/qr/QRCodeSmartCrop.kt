@@ -202,7 +202,7 @@ object QRCodeSmartCrop {
                 score *= 1f - 0.35f * aspectPenalty
                 score *= 1f - 0.15f * edgeTouches
 
-                if (best == null || score > best!!.score) {
+                if (best == null || score > best.score) {
                     best = CropComponent(
                         minX = minX,
                         minY = minY,

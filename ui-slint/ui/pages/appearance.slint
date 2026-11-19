@@ -59,7 +59,7 @@ component InfoHeader inherits HorizontalLayout {
     height: 56px;
     spacing: 12px;
     Mid { Icon { glyph: root.glyph; size: 20px; color: Theme.s.primary; } }
-    T { text: root.label; role: TextRole.title-small; color: Theme.s.primary; horizontal-stretch: 1; vertical-alignment: center; }
+    T { text: root.label; role: TextRole.title-small; color: Theme.s.primary; horizontal-stretch: 1; }
     @children
 }
 
@@ -125,21 +125,21 @@ export component AppearancePage inherits ScrollPage {
         title: c.l;
         clickable: true;
         clicked => { Nav.act("look-theme", c.v); }
-        Mid { Radio { selected: Look.theme == c.v;  } }
+        Mid { Radio { selected: Look.theme == c.v; } }
     }
     Rectangle { height: 16px; }
     ListItem {
         title: @tr("Pure black mode");
         clickable: true;
         clicked => { Nav.act("look-pure-black", Look.pure-black ? "0" : "1"); }
-        Mid { Switch { checked: Look.pure-black;  toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } } }
+        Mid { Switch { checked: Look.pure-black; toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } } }
     }
     Rectangle { height: 16px; }
     // Accent colour
     InfoHeader {
         label: @tr("Accent color");
         glyph: Icons.palette;
-        Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-reset-colors", ""); } } }
+        Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); clicked => { Nav.act("look-reset-colors", ""); } } }
     }
     swatches := Rectangle {
         property <length> inner: self.width - 2 * 10px;
@@ -192,7 +192,7 @@ export component AppearancePage inherits ScrollPage {
     InfoHeader {
         label: @tr("Font scale");
         glyph: Icons.text-size;
-        if Look.custom-scale && Look.scale != 1: Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-scale", "1"); } } }
+        if Look.custom-scale && Look.scale != 1: Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); clicked => { Nav.act("look-scale", "1"); } } }
     }
     SegmentedButton {
         labels: [@tr("Follow system"), @tr("Custom")];
@@ -224,7 +224,7 @@ export component AppearancePage inherits ScrollPage {
             }
             HorizontalLayout {
                 spacing: 12px;
-                T { text: "A"; role: TextRole.body-small; horizontal-stretch: 0; vertical-alignment: center; }
+                T { text: "A"; role: TextRole.body-small; horizontal-stretch: 0; }
                 track := Rectangle {
                     height: 48px;
                     accessible-role: slider;
@@ -254,7 +254,7 @@ export component AppearancePage inherits ScrollPage {
                         }
                     }
                 }
-                T { text: "A"; role: TextRole.headline-small; horizontal-stretch: 0; vertical-alignment: center; }
+                T { text: "A"; role: TextRole.headline-small; horizontal-stretch: 0; }
             }
         }
     }
@@ -331,19 +331,18 @@ export component CustomColorPage inherits ScrollPage {
                     padding-left: 12px;
                     padding-right: 12px;
                     spacing: 4px;
-                    T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
+                    T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
                     hex := NativeTextInput {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
                         font-size: Theme.size(TextRole.body-large);
                         ink: Theme.s.on-surface;
-                        single-line: true;
                         property <int> tick: Look.hex-tick;
                         changed tick => { if (self.text != Look.hex) { self.text = Look.hex; } }
                         init => { self.text = Look.hex; }
                         edited => { Nav.act("look-hex", self.text); }
                     }
-                    Mid { Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick;  } }
+                    Mid { Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick; } }
                 }
             }
         }

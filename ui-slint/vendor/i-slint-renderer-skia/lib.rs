@@ -838,7 +838,7 @@ impl SkiaRenderer {
         if FKBOX_PURGE.with(|p| p.replace(false)) {
             self.clear_graphics_caches();
             if let Some(context) = gr_context.as_mut() {
-                context.flush_and_submit();
+                let _ = context.flush_and_submit();
                 context.free_gpu_resources();
             }
             skia_safe::graphics::purge_all_caches();

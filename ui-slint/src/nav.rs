@@ -359,10 +359,6 @@ impl MenuEntry {
         Self::new(label, None, Some(Rc::new(f)))
     }
 
-    pub fn disabled(label: &str, icon: &'static str) -> Self {
-        Self::new(label, Some(icon), None)
-    }
-
     pub fn when(self, enabled: bool) -> Self {
         if enabled {
             self

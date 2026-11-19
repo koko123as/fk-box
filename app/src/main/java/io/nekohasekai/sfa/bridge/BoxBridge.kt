@@ -510,7 +510,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun setPreferences(values: Map<String, Any?>) = operations.withLock {
         val value = BoxPreferences.validate(values)
         val old = JSONObject(preferences.getString("value", "{}")!!).apply { remove("locale") }
-        value.forEach { (key, item) -> old.put(key.toString(), JSONObject.wrap(item)) }
+        value.forEach { (key, item) -> old.put(key, JSONObject.wrap(item)) }
         withContext(Dispatchers.IO) { check(preferences.edit().putString("value", old.toString()).commit()) { "Unable to save preferences" } }
         readPreferences()
     }
@@ -556,7 +556,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             val result = Libbox.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
             mapOf(
                 "profile" to profile.name, "core" to core, "content" to result.content,
-                "applied" to result.applied.toInt(), "active" to result.active,
+                "applied" to result.applied, "active" to result.active,
                 "warnings" to result.warnings.lines().filter { it.isNotBlank() },
             )
         }
