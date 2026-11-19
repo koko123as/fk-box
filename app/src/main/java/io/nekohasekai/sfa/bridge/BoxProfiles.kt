@@ -119,7 +119,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     /**
      * Creates one local profile per entry of a split JSON array of configs
-     * ([decode]/[decodeText] return them as "entries"). Every entry is checked first, so a
+     * ([decode] and libbox's decodeProfileText return them as "entries"). Every entry is checked first, so a
      * bad element saves nothing. Returns the new profile ids in order.
      */
     suspend fun saveAll(args: Map<String, Any?>): List<Long> = mutex.withLock {
@@ -171,8 +171,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         if (id == 0L && element == null) {
             // A JSON array of configs becomes one profile per element; a subscription URL is
             // shared by all of them, and each update keeps following its own element.
-            ProfileContent.splitArray(incomingContent)?.let { elements ->
-                val entries = ProfileContent.prepareArray(declaredCore, name, elements)
+            ProfileContent.prepareArray(declaredCore, name, incomingContent)?.let { entries ->
                 return entries.map { entry ->
                     saveLocked(args + mapOf("name" to entry.name, "content" to entry.content), ArrayElement(fetched))
                 }.first()
@@ -291,20 +290,12 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     /**
      * A JSON array of configs, split for [saveAll]: "entries" holds one name/content/core per
      * element, already checked by its core. Null when [text] is not such an array.
+     * Pasted or scanned text takes the same path in libbox (decodeProfileText, core_method.go).
      */
     private fun decodeArray(text: String, source: String): Map<String, Any?>? {
-        val elements = ProfileContent.splitArray(text) ?: return null
-        val entries = ProfileContent.prepareArray(TypedProfile.CORE_AUTO, source, elements)
+        val entries = ProfileContent.prepareArray(TypedProfile.CORE_AUTO, source, text) ?: return null
         return mapOf("name" to source, "core" to TypedProfile.CORE_AUTO,
             "entries" to entries.map { mapOf("name" to it.name, "content" to it.content, "core" to it.core) })
-    }
-
-    /** Pasted or scanned text: a JSON array of configs is split, anything else is prepared as one profile. */
-    fun decodeText(text: String, name: String): Map<String, Any?> {
-        decodeArray(text, name)?.let { return it }
-        val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
-        return mapOf("name" to name, "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
-            "detectedCore" to prepared.core)
     }
 
     fun decode(data: ByteArray, name: String): Map<String, Any?> {

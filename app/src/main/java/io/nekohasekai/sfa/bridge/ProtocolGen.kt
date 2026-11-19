@@ -5,6 +5,8 @@ package io.nekohasekai.sfa.bridge
 internal object ProtocolGen {
     /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */
     val GO_METHODS: Set<String> = setOf(
+        "checkConfig",
+        "decodeProfileText",
         "formatConfig",
     )
 
@@ -23,7 +25,6 @@ internal object ProtocolGen {
         "capture.logs",
         "capture.settings",
         "capture.snapshot",
-        "checkConfig",
         "checkUpdates",
         "checkWebdav",
         "clearLogs",
@@ -33,7 +34,6 @@ internal object ProtocolGen {
         "configureCapture",
         "connectRemoteServer",
         "decodeProfileIntent",
-        "decodeProfileText",
         "deleteProfile",
         "deleteRemoteServer",
         "deleteTerminalFont",

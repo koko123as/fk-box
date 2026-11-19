@@ -18,7 +18,9 @@ import (
 type uiMethodHandler func(args json.RawMessage) (any, error)
 
 var uiMethods = map[string]uiMethodHandler{
-	"formatConfig": uiFormatConfig,
+	"checkConfig":       uiCheckConfig,
+	"decodeProfileText": uiDecodeProfileText,
+	"formatConfig":      uiFormatConfig,
 }
 
 // UIEventSink receives events Go raises for the UI: kind is the event name in
@@ -127,4 +129,79 @@ func uiFormatConfig(args json.RawMessage) (any, error) {
 		return nil, err
 	}
 	return formatted.Value, nil
+}
+
+// checkConfig {core?, content}: true when the content prepares as a profile
+// for its core ("auto" or absent detects it) with the cores left on in
+// Settings; the error says why not. Was BoxBridge.checkConfig.
+func uiCheckConfig(args json.RawMessage) (any, error) {
+	var request struct {
+		Core    *string `json:"core"`
+		Content string  `json:"content"`
+	}
+	if err := uiDecodeArgs(args, &request); err != nil {
+		return nil, err
+	}
+	declared := CoreAuto
+	if request.Core != nil {
+		declared = *request.Core
+	}
+	enabledCores, err := uiEnabledCores()
+	if err != nil {
+		return nil, err
+	}
+	if _, err = PrepareCoreProfile(declared, enabledCores, request.Content); err != nil {
+		return nil, err
+	}
+	return true, nil
+}
+
+// uiDecodedProfileArray is decodeProfileText's answer for a JSON array of
+// configs: one entry per element for saveProfiles.
+type uiDecodedProfileArray struct {
+	Name    string                `json:"name"`
+	Core    string                `json:"core"`
+	Entries []uiProfileArrayEntry `json:"entries"`
+}
+
+// uiDecodedProfile is decodeProfileText's answer for one profile.
+type uiDecodedProfile struct {
+	Name         string `json:"name"`
+	Content      string `json:"content"`
+	Core         string `json:"core"`
+	DetectedCore string `json:"detectedCore"`
+}
+
+// decodeProfileText {content, name?}: pasted or scanned text. A JSON array of
+// configs is split into prepared entries named after name ("Imported
+// profile" when absent); anything else is prepared as one auto profile.
+// Was BoxBridge.decodeProfileText (BoxProfiles.decodeText).
+func uiDecodeProfileText(args json.RawMessage) (any, error) {
+	var request struct {
+		Content string  `json:"content"`
+		Name    *string `json:"name"`
+	}
+	if err := uiDecodeArgs(args, &request); err != nil {
+		return nil, err
+	}
+	name := "Imported profile"
+	if request.Name != nil {
+		name = *request.Name
+	}
+	enabledCores, err := uiEnabledCores()
+	if err != nil {
+		return nil, err
+	}
+	entries, err := prepareCoreProfileArray(CoreAuto, enabledCores, name, request.Content)
+	if err != nil {
+		return nil, err
+	}
+	if entries != nil {
+		return uiDecodedProfileArray{Name: name, Core: CoreAuto, Entries: entries}, nil
+	}
+	prepared, err := PrepareCoreProfile(CoreAuto, enabledCores, request.Content)
+	if err != nil {
+		return nil, err
+	}
+	return uiDecodedProfile{Name: name, Content: prepared.Content, Core: CoreAuto, DetectedCore: prepared.Core}, nil
 }
