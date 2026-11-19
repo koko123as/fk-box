@@ -1023,11 +1023,11 @@ mod tests {
         assert!(validate_rule(&rule, "mihomo").is_ok());
         assert!(validate_rule(&rule, "xray").unwrap_err().contains("Xray"));
         // The list shows the apps, not "All traffic".
-        let summary = rule_summary(&rule);
+        let summary = rule_summary_with(&rule, true);
         assert!(summary.starts_with("com.tencent.mm, com.android.chrome →"), "{summary}");
         assert_eq!(rule_title(&rule, ""), "com.tencent.mm, com.android.chrome");
         APP_LABELS.with(|l| l.borrow_mut().insert("com.tencent.mm".into(), "微信".into()));
-        assert!(rule_summary(&rule).starts_with("微信, com.android.chrome →"));
+        assert!(rule_summary_with(&rule, true).starts_with("微信, com.android.chrome →"));
     }
 
     #[test]
@@ -1049,6 +1049,6 @@ mod tests {
         all["content"] = json!("all");
         let all = editor(all, "", "").result();
         assert!(validate_rule(&all, "sing-box").is_ok());
-        assert!(rule_summary(&all).starts_with("All traffic"));
+        assert!(rule_summary_with(&all, true).starts_with("All traffic"));
     }
 }
