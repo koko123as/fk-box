@@ -4,6 +4,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.SubscriptionFetch
 import io.nekohasekai.sfa.database.SubscriptionHeaders
+import io.nekohasekai.sfa.database.SubscriptionInfo
 import java.io.Closeable
 import java.util.Locale
 
@@ -27,12 +28,18 @@ class HTTPClient : Closeable {
 
     /**
      * Fetches a subscription; [core] picks the User-Agent so the provider answers in
-     * that core's format. Provider traffic/expiry/update headers come back parsed.
+     * that core's format. libbox parses the provider's traffic/expiry and update
+     * interval headers; the web page address is checked here.
      */
     fun getSubscription(url: String, core: String = "sing-box"): SubscriptionFetch {
         // gomobile lowercases the initial uppercase run in UISubscriptionGet.
         val response = Libbox.uiSubscriptionGet(url, userAgentFor(core))
-        return SubscriptionHeaders.fetch(response.content, response.userInfo, response.updateInterval, response.webPage)
+        return SubscriptionFetch(
+            content = response.content,
+            info = if (response.hasInfo) SubscriptionInfo(response.upload, response.download, response.total, response.expire) else null,
+            updateIntervalMinutes = response.intervalMinutes.takeIf { it > 0 },
+            webPageUrl = SubscriptionHeaders.parseWebPageUrl(response.webPage),
+        )
     }
 
     override fun close() = Unit

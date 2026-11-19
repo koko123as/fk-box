@@ -19,6 +19,7 @@ type uiMethodHandler func(args json.RawMessage) (any, error)
 
 var uiMethods = map[string]uiMethodHandler{
 	"checkConfig":       uiCheckConfig,
+	"checkUpdates":      uiCheckUpdates,
 	"decodeProfileText": uiDecodeProfileText,
 	"formatConfig":      uiFormatConfig,
 }

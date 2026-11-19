@@ -6,6 +6,7 @@ internal object ProtocolGen {
     /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */
     val GO_METHODS: Set<String> = setOf(
         "checkConfig",
+        "checkUpdates",
         "decodeProfileText",
         "formatConfig",
     )
@@ -25,7 +26,6 @@ internal object ProtocolGen {
         "capture.logs",
         "capture.settings",
         "capture.snapshot",
-        "checkUpdates",
         "checkWebdav",
         "clearLogs",
         "closeConnection",

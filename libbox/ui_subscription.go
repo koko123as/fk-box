@@ -18,12 +18,21 @@ const (
 
 // UISubscriptionResponse carries a subscription body together with the raw
 // provider headers the app reads for traffic, expiry and update hints. Empty
-// strings mean the provider did not send that header.
+// strings mean the provider did not send that header. HasInfo and the
+// traffic/expiry counts are subscription-userinfo parsed
+// (core_subscription_info.go); IntervalMinutes is profile-update-interval in
+// minutes, 0 when absent or unusable. WebPage is left for the app to check.
 type UISubscriptionResponse struct {
-	Content        string
-	UserInfo       string
-	UpdateInterval string
-	WebPage        string
+	Content         string
+	UserInfo        string
+	UpdateInterval  string
+	WebPage         string
+	HasInfo         bool
+	Upload          int64
+	Download        int64
+	Total           int64
+	Expire          int64
+	IntervalMinutes int32
 }
 
 // UISubscriptionGet fetches a subscription the way HTTPRequest.Execute does
@@ -78,12 +87,18 @@ func UISubscriptionGet(link string, userAgent string) (*UISubscriptionResponse, 
 	}
 	// Subscriptions never carry HTTP rewrite rules (ui_subscription_rewrite.go).
 	content, _ := stripSubscriptionHTTPRewrite(string(body))
-	return &UISubscriptionResponse{
+	result := &UISubscriptionResponse{
 		Content:        content,
 		UserInfo:       uiSubscriptionHeaderValue(response.Header, "subscription-userinfo"),
 		UpdateInterval: uiSubscriptionHeaderValue(response.Header, "profile-update-interval"),
 		WebPage:        uiSubscriptionHeaderValue(response.Header, "profile-web-page-url"),
-	}, nil
+	}
+	if info, ok := uiParseSubscriptionUserInfo(result.UserInfo); ok {
+		result.HasInfo = true
+		result.Upload, result.Download, result.Total, result.Expire = info.Upload, info.Download, info.Total, info.Expire
+	}
+	result.IntervalMinutes, _ = uiParseSubscriptionInterval(result.UpdateInterval)
+	return result, nil
 }
 
 // uiSubscriptionHeaderValue matches the name case-insensitively, including
