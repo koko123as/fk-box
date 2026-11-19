@@ -86,8 +86,8 @@ component RateFigure inherits Rectangle {
 }
 
 // The service's start/stop: the screen's dominant action, an M3 large FAB
-// (extra-large corners) in primary-container, primary while running; the
-// icon (start or stop) carries the state, not the color alone. It sits in
+// (extra-large corners) in primary-container whether running or not; the
+// icon (start or stop) and the corner morph carry the state. It sits in
 // the status card, so it is lowered (level 1 shadow).
 component StartToggle inherits Rectangle {
     in property <length> size: 96px;
@@ -95,7 +95,7 @@ component StartToggle inherits Rectangle {
     in property <bool> running;
     in property <bool> busy;
     callback clicked();
-    property <color> ink: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : running ? Theme.s.on-primary : Theme.s.on-primary-container;
+    property <color> ink: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : Theme.s.on-primary-container;
     // Starting and stopping morph the button with an overshoot (ease-out-back,
     // FlClash's status decoration): the corners tighten and the icon turns.
     property <float> morph: root.running ? 1 : 0;
@@ -103,7 +103,7 @@ component StartToggle inherits Rectangle {
     width: size;
     height: size;
     border-radius: Theme.corner-extra-large - (Theme.corner-extra-large - Theme.corner-large) * root.morph;
-    background: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : running ? Theme.s.primary : Theme.s.primary-container;
+    background: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : Theme.s.primary-container;
     animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     drop-shadow-blur: enabled ? Theme.shadow-blur(ta.has-hover ? 2 : 1) : 0px;
     drop-shadow-offset-y: enabled ? Theme.shadow-offset(1) : 0px;

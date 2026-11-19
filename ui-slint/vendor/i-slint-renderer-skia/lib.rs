@@ -626,7 +626,12 @@ impl SkiaRenderer {
         self.layer_cache.clear_all();
         self.path_cache.clear_all();
         self.box_shadow_cache.clear();
-        self.text_layout_cache.clear_all();
+        // FK-box patch: the text layout cache holds no GPU resource, and
+        // clearing it drops each entry's dependency tracker, the only link
+        // between a Text's preferred size binding and its text: the size then
+        // never updates again and a growing value (the run time, a rate)
+        // elides at its old width. Destroyed components still drop their
+        // entries (free_graphics_resources) and the cache sweeps itself.
     }
 
     /// Reset the surface to a new surface. (destroy the previously set surface if any)

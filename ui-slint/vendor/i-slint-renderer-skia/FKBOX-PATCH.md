@@ -2,7 +2,7 @@
 
 Unmodified crates.io source of `i-slint-renderer-skia` 1.19.0 (GPL-3.0-only OR
 the Slint licenses, see LICENSES/; `Cargo.toml.orig` and the registry's
-`.cargo_vcs_info.json`/`Cargo.lock` left out) with two changes, used through
+`.cargo_vcs_info.json`/`Cargo.lock` left out) with three changes, used through
 `[patch.crates-io]` in ui-slint/Cargo.toml. Search for "FK-box patch" to find
 every hunk.
 
@@ -14,6 +14,13 @@ every hunk.
    GrDirectContext and `skia_safe::graphics::purge_all_caches()`. The UI calls
    it when a page with many images closes (the app lists), so memory returns
    without the app going to the background.
+3. `lib.rs`: `clear_graphics_caches()` no longer clears `text_layout_cache`
+   (it runs on every purge and every new surface, i.e. each return from the
+   background). Clearing it drops the entries' dependency trackers, which are
+   the only link from a Text's preferred-size binding to its text, so the size
+   stopped following the text and growing values (run time, rates, memory)
+   elided at their old width. The cache holds no GPU resource; destroyed
+   components still free their entries and the cache sweeps unused shaping.
 
 Retired with 1.19: the 1.18.1 copy also patched `font_cache.rs`, whose
 `load_typeface_internal` created every typeface from `Data::new_copy` (a heap
