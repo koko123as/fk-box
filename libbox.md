@@ -68,7 +68,7 @@ Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/ma
 
 libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，并把未设置的 `json.RawMessage` 序列化成 `null`（Xray 会把 `"dest": null` 当成已设置，按服务端构建 REALITY）。转换后统一改为 `tag` 并清除 `null`。
 
-应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 统一负责链接转换、sing-box 退役捕获选项清理与分内核校验。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
+应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 转调 libbox `PrepareCoreProfile`（[core_prepare.go](libbox/core_prepare.go)，传入设置里开启的内核），统一负责链接转换、sing-box 退役捕获选项清理、内核开关检查与分内核校验。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
 
 ### 服务层（第 2 阶段）
 
