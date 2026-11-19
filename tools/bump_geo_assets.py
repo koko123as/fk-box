@@ -6,7 +6,9 @@ Usage: python3 tools/bump_geo_assets.py [<commit>] [--dry-run]
 Without a commit the current head of the release branch is used. Each file is
 downloaded once to compute its SHA-256; nothing is written into the
 repository except the properties file. The app build downloads and checks the
-same files (prepare*GeoAssets in app/build.gradle.kts).
+files listed in GEO_BUNDLED (prepare*GeoAssets in app/build.gradle.kts); the
+others keep their pinned hash in the APK's manifest and the app downloads them
+on first use, so every resource needs a current hash.
 """
 
 import hashlib

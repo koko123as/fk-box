@@ -7,7 +7,6 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import android.os.RemoteException
 import android.util.Log
-import androidx.preference.PreferenceDataStore
 import io.nekohasekai.sfa.aidl.IService
 import io.nekohasekai.sfa.aidl.IServiceCallback
 import io.nekohasekai.sfa.constant.Action
@@ -16,6 +15,7 @@ import io.nekohasekai.sfa.constant.SettingsKey
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
+import io.nekohasekai.sfa.database.preference.RoomPreferenceDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,7 +78,7 @@ class ServiceConnection(private val context: Context, callback: Callback, privat
         connect()
     }
 
-    override fun onPreferenceDataStoreChanged(store: PreferenceDataStore, key: String) {
+    override fun onPreferenceDataStoreChanged(store: RoomPreferenceDataStore, key: String) {
         if (key != SettingsKey.SERVICE_MODE) return
         scope.launch {
             if (connectJob != null) reconnect()

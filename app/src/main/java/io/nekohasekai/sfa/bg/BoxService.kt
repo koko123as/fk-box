@@ -291,9 +291,29 @@ class BoxService(private val service: Service, private val platformInterface: Pl
      * applied to the content handed to the core (the file is not changed), and
      * returns the rule set used. [routing] overrides the saved rules (fallback).
      */
-    private fun startOrReloadCore(content: String, declaredCore: String, routing: String? = null): String? = synchronized(MitmCertificate.accessLock) {
+    private fun startOrReloadCore(content: String, declaredCore: String, routing: String? = null): String? {
         val core = Libbox.resolveProfileCore(declaredCore, content)
         Settings.requireCoreEnabled(core)
+        var unreadable: String? = null
+        val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
+            .onFailure {
+                Log.w(TAG, "routing rules unreadable, starting without them", it)
+                unreadable = it.message ?: it.javaClass.simpleName
+            }.getOrDefault("")
+        // Xray/mihomo geo data: the bundled files are extracted and the others
+        // (geoip.dat, ASN.mmdb) downloaded the first time the profile or its
+        // routing rules need them, outside the CA lock since it may take a while.
+        val geoMissing = if (core != TypedProfile.CORE_SING_BOX) GeoResources.prepareForCoreBlocking(core, content + "\n" + rules, service) else null
+        if (geoMissing != null) notifyGeoMissing(geoMissing)
+        return try {
+            startCoreLocked(core, content, rules, unreadable)
+        } catch (error: Exception) {
+            if (geoMissing == null) throw error
+            throw Exception("${error.message}\n\n${geoMissingText(geoMissing)}", error)
+        }
+    }
+
+    private fun startCoreLocked(core: String, content: String, rules: String, unreadable: String?): String = synchronized(MitmCertificate.accessLock) {
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
@@ -315,21 +335,32 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         // activates profile processing before reporting startup success.
         // Xray and mihomo get the VpnService TUN fd directly (CommandServer.startOrReloadCoreService).
         if (core != TypedProfile.CORE_SING_BOX) {
-            // geoip.dat / geosite.dat / MMDB / ASN come from the APK until downloaded.
-            GeoResources.ensureBundledBlocking(service)
             DefaultNetworkMonitor.pushSystemDNS()
         }
-        var unreadable: String? = null
-        val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
-            .onFailure {
-                Log.w(TAG, "routing rules unreadable, starting without them", it)
-                unreadable = it.message ?: it.javaClass.simpleName
-            }.getOrDefault("")
         // The rules never keep the profile from running: libbox starts it
         // without them and reports why (CoreRoutingResult.error).
         val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
         publishRoutingStatus(core, result, unreadable)
         rules
+    }
+
+    private fun geoMissingText(detail: String): String {
+        val zh = java.util.Locale.getDefault().language == "zh"
+        val title = if (zh) {
+            "地理数据下载失败，可在 工具 › 资源 中手动下载或更换下载地址"
+        } else {
+            "Geo data could not be downloaded; download it or change its address in Tools › Resources"
+        }
+        return title + "\n" + detail
+    }
+
+    /** The profile needs geo data that is neither in the APK nor downloadable now; the core may still start. */
+    private fun notifyGeoMissing(detail: String) {
+        Log.w(TAG, "geo data missing: $detail")
+        val text = geoMissingText(detail).take(200)
+        android.os.Handler(android.os.Looper.getMainLooper()).post {
+            android.widget.Toast.makeText(service, text, android.widget.Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun publishRoutingStatus(core: String, result: io.nekohasekai.libbox.CoreRoutingResult?, unreadable: String?) {

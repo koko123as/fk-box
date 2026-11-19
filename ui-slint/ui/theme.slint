@@ -1,9 +1,14 @@
-// The app theme (compose/theme/Theme.kt, Color.kt, Shape.kt, Type.kt): the
-// seeded Material 3 scheme computed in Rust (src/theme.rs, Material Color
-// Utilities), surface levels, the 12 dp corner and the M3 type scale.
+// The Material Design 3 design tokens of the app (ui/m3-rewrite, after the
+// Material Design 3 UI skill): the seeded color roles computed in Rust
+// (src/theme.rs, Material Color Utilities' dynamic scheme, light and dark),
+// the M3 type scale, the shape scale, the 4 dp spacing grid, the state-layer
+// opacities and the elevation levels. Screens use these semantic tokens, not
+// literal colors, radii or font sizes.
 
 import { Palette } from "std-widgets.slint";
 
+// The M3 color roles (plus FK-box's harmonized success and warning custom
+// colors, which M3 leaves to the product).
 export struct Scheme {
     primary: color,
     on-primary: color,
@@ -15,6 +20,8 @@ export struct Scheme {
     on-secondary-container: color,
     tertiary: color,
     on-tertiary: color,
+    tertiary-container: color,
+    on-tertiary-container: color,
     error: color,
     on-error: color,
     error-container: color,
@@ -27,7 +34,11 @@ export struct Scheme {
     on-inverse-surface: color,
     inverse-primary: color,
     scrim: color,
+    shadow: color,
     surface: color,
+    surface-dim: color,
+    surface-bright: color,
+    surface-container-lowest: color,
     surface-container-low: color,
     surface-container: color,
     surface-container-high: color,
@@ -40,8 +51,26 @@ export struct Scheme {
     on-warning-container: color,
 }
 
-// AppTextStyle: size and line height in sp; the weight is chosen at the use site.
-export enum TextRole { display, large-title, title1, page-title, title2, title3, headline, body, callout, subheadline, footnote, caption1, caption2 }
+// The M3 type scale: five semantic groups, each Large, Medium and Small.
+// Pick the role by purpose (a screen title is title-large, a list item's
+// headline body-large, a button label label-large), not by the size that fits.
+export enum TextRole {
+    body-large,
+    body-medium,
+    body-small,
+    display-large,
+    display-medium,
+    display-small,
+    headline-large,
+    headline-medium,
+    headline-small,
+    title-large,
+    title-medium,
+    title-small,
+    label-large,
+    label-medium,
+    label-small,
+}
 
 export global Theme {
     // "system" | "light" | "dark" (the theme preference).
@@ -56,43 +85,256 @@ export global Theme {
     in property <string> font-family;
     // The system monospace family (src/fonts.rs); "monospace" until it is known.
     in property <string> mono: "monospace";
-    out property <length> radius: 12px;
+
+    // Shape scale (M3 corner tokens). Components with the same role share a
+    // corner: menus, snackbars and text fields extra-small; chips and
+    // segmented ends small; cards medium; grouped lists, FABs and the nav
+    // drawer items large; dialogs and sheets extra-large; buttons, the
+    // navigation indicator and the search bar full (height / 2).
+    out property <length> corner-none: 0px;
+    out property <length> corner-extra-small: 4px;
+    out property <length> corner-small: 8px;
+    out property <length> corner-medium: 12px;
+    out property <length> corner-large: 16px;
+    out property <length> corner-extra-large: 28px;
+    // The card corner, kept under its old name for the pages.
+    out property <length> radius: corner-medium;
+
+    // The 4 dp spacing grid.
+    out property <length> space-1: 4px;
+    out property <length> space-2: 8px;
+    out property <length> space-3: 12px;
+    out property <length> space-4: 16px;
+    out property <length> space-5: 20px;
+    out property <length> space-6: 24px;
+    out property <length> space-8: 32px;
+
+    // The minimum touch target; visible icons may be smaller.
+    out property <length> min-target: 48px;
+
+    // Touch input (not motion: these are distances and guard times, not
+    // animation timings, so the animator scale does not touch them).
+    // `touch-slop`: how far a press must travel horizontally (and mostly
+    // horizontally, |dx| > touch-axis-ratio × |dy|) before the home pager
+    // takes it as a page drag; a tap's few pixels of jitter never move the
+    // page. `touch-drag-idle`: a page drag that has had no move for this long
+    // is settled, should its release never arrive. `touch-press-max`: a press
+    // ripple and pressed state layer that have heard no release for this long
+    // fade out by themselves (a gesture handler above took the release).
+    out property <length> touch-slop: 24px;
+    out property <float> touch-axis-ratio: 1.5;
+    out property <duration> touch-drag-idle: 1200ms;
+    out property <duration> touch-press-max: 3000ms;
+    // A phone form sheet dragged down by its handle (FlClash's modal sheet,
+    // after Flutter's BottomSheet): released past `sheet-close-fraction` of
+    // its height, or flung down faster than `sheet-fling-velocity` (dp per
+    // second), it closes; otherwise it springs back up in `motion-sheet`.
+    // `sheet-handle` is the strip above the sheet's page that carries the
+    // M3 drag handle (32 × 4 dp) and takes the drag.
+    out property <float> sheet-close-fraction: 0.5;
+    out property <float> sheet-fling-velocity: 700;
+    out property <length> sheet-handle: 24px;
+
+    // Status chips (kit.slint Chip): the M3 24 / 32 dp heights, taller when
+    // the label's line height grows with the font scale, so a container
+    // sized to them never cuts the chip's border.
+    out property <length> chip-height: max(24px, leading(TextRole.label-medium) + 8px);
+    out property <length> chip-height-large: max(32px, leading(TextRole.label-large) + 12px);
+
+    // State layers: the content color over the container at these opacities.
+    out property <float> state-hover: 0.08;
+    out property <float> state-focus: 0.10;
+    out property <float> state-pressed: 0.10;
+    out property <float> state-dragged: 0.16;
+    // Disabled: content at 38 %, container at 12 % of on-surface.
+    out property <float> disabled-content: 0.38;
+    out property <float> disabled-container: 0.12;
+
+    // Motion (M3 easing and duration tokens; the timings after FlClash's
+    // motion). Every animation in the UI takes its duration and curve from
+    // here (tools/verify_newui.py). `motion-scale` is the system's animator
+    // duration scale (Settings.Global.ANIMATOR_DURATION_SCALE, sent by the
+    // Android host, src/theme_apply.rs `set_motion_scale`); every duration is
+    // multiplied by it, so 0 ("animations off") makes every change instant and
+    // `motion-on` turns off the effects that only exist as motion (ripples,
+    // the edit-mode sway, the container transform).
+    in property <float> motion-scale: 1.0;
+    out property <bool> motion-on: motion-scale > 0.001;
+    // Durations: short for state changes (colors, the switch handle), medium
+    // for small movement (the navigation bar sliding away, a group folding),
+    // long for large movement (a page container opening).
+    out property <duration> motion-short: 150ms * motion-scale;
+    out property <duration> motion-medium: 300ms * motion-scale;
+    out property <duration> motion-long: 450ms * motion-scale;
+    // Fade-through: the outgoing content fades out in `motion-exit`, then
+    // the incoming fades in and grows from `motion-enter-scale` in `motion-enter`.
+    out property <duration> motion-exit: 90ms * motion-scale;
+    out property <duration> motion-enter: 210ms * motion-scale;
+    out property <float> motion-enter-scale: 0.92;
+    // A pushed page fading in, and out on the way back (FlClash
+    // FadePageRoute, 200 ms both ways); a phone form rising as a bottom
+    // sheet and sinking back (FlClash commonDuration).
+    out property <duration> motion-route: 200ms * motion-scale;
+    out property <duration> motion-sheet: 300ms * motion-scale;
+    // The basic dialog grows in from `motion-dialog-scale` and only fades
+    // out, both on one critically damped curve that settles in 404 ms
+    // (FlClash showFloatingDialog); its scrim fades with it.
+    out property <duration> motion-dialog: 404ms * motion-scale;
+    out property <float> motion-dialog-scale: 1.2;
+    // A home destination sliding in (FlClash kTabScrollDuration).
+    out property <duration> motion-tab: 300ms * motion-scale;
+    // The press ripple spreading over its surface, and fading after release.
+    out property <duration> motion-ripple: 450ms * motion-scale;
+    out property <duration> motion-ripple-fade: 150ms * motion-scale;
+    // Staggered entrance: each item after the first waits this much longer,
+    // for at most `motion-stagger-items` items.
+    out property <duration> motion-stagger: 30ms * motion-scale;
+    out property <int> motion-stagger-items: 8;
+    // The dashboard editor (FlClash dashboard/edit.dart): cards make room
+    // (`motion-yield`) before one appears (`motion-appear`), and sway on a
+    // 3600 ms loop while editing (not scaled: it is a period; motion-on
+    // stops it).
+    out property <duration> motion-yield: 260ms * motion-scale;
+    out property <duration> motion-appear: 200ms * motion-scale;
+    // Lists (profiles, proxy groups, Rust-built rows such as rules): an
+    // added item fades in and grows into its place (or settles from
+    // `motion-list-rise` above it) in `motion-appear`, and the items after a
+    // removed one slide to their new places in the same time (kit.slint
+    // ListMotion, Entrance). A change of more than `motion-list-batch` items
+    // at once (a reload, a search) moves nothing.
+    out property <length> motion-list-rise: 8px;
+    out property <int> motion-list-batch: 3;
+    out property <duration> motion-sway-period: 3600ms;
+    out property <angle> motion-sway-turn: 0.7deg;
+    out property <length> motion-sway-bob: 1.25px;
+    // The indeterminate progress indicators' periods (not scaled).
+    out property <duration> motion-spin-period: 1080ms;
+    out property <duration> motion-sweep-period: 2800ms;
+    // Easing: standard for most changes, emphasized decelerate for things
+    // entering, emphasized accelerate for things leaving, back (ease-out-back)
+    // for the overshooting morph of the status card.
+    out property <easing> easing-standard: cubic-bezier(0.2, 0, 0, 1);
+    out property <easing> easing-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    out property <easing> easing-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+    out property <easing> easing-accelerate: cubic-bezier(0.3, 0, 0.8, 0.15);
+    out property <easing> easing-back: cubic-bezier(0.34, 1.56, 0.64, 1);
+    // The same curves for progress computed by hand from animation-tick()
+    // (the tab pager, ripples): t in 0..1.
+    public pure function ease-out(t: float) -> float {
+        return 1 - pow(1 - clamp(t, 0, 1), 3);
+    }
+    // Ease-out-back (overshoots, then settles at 1), the same curve as
+    // `easing-back` for progress computed by hand.
+    public pure function ease-out-back(t: float) -> float {
+        return 1 + 2.70158 * pow(clamp(t, 0, 1) - 1, 3) + 1.70158 * pow(clamp(t, 0, 1) - 1, 2);
+    }
+    // A critically damped spring (no bounce) whose perceived duration is
+    // 275 ms, sampled over `motion-dialog` (404 ms) so it has settled at
+    // t = 1: x = 1 - (1 + k t) e^(-k t), k = 2π · 404 / 275 (FlClash's alert spring).
+    public pure function ease-spring(t: float) -> float {
+        return 1 - (1 + 9.23 * clamp(t, 0, 1)) * pow(2.718281828, -9.23 * clamp(t, 0, 1));
+    }
+    // 0 → 1 over `span` since `start` (an animation-tick() value); 1 when
+    // motion is off.
+    public pure function progress(now: duration, start: duration, span: duration) -> float {
+        return span <= 0ms ? 1 : clamp((now - start) / span, 0, 1);
+    }
 
     public pure function sp(v: float) -> length {
         return v * text-scale * 1px;
     }
 
     public pure function size(role: TextRole) -> length {
-        if (role == TextRole.display) { return sp(36); }
-        if (role == TextRole.large-title) { return sp(32); }
-        if (role == TextRole.title1) { return sp(28); }
-        if (role == TextRole.page-title) { return sp(22); }
-        if (role == TextRole.title2) { return sp(24); }
-        if (role == TextRole.title3) { return sp(22); }
-        if (role == TextRole.subheadline) { return sp(14); }
-        if (role == TextRole.footnote) { return sp(12); }
-        if (role == TextRole.caption1) { return sp(12); }
-        if (role == TextRole.caption2) { return sp(11); }
+        if (role == TextRole.display-large) { return sp(57); }
+        if (role == TextRole.display-medium) { return sp(45); }
+        if (role == TextRole.display-small) { return sp(36); }
+        if (role == TextRole.headline-large) { return sp(32); }
+        if (role == TextRole.headline-medium) { return sp(28); }
+        if (role == TextRole.headline-small) { return sp(24); }
+        if (role == TextRole.title-large) { return sp(22); }
+        if (role == TextRole.title-medium) { return sp(16); }
+        if (role == TextRole.title-small) { return sp(14); }
+        if (role == TextRole.body-medium) { return sp(14); }
+        if (role == TextRole.body-small) { return sp(12); }
+        if (role == TextRole.label-large) { return sp(14); }
+        if (role == TextRole.label-medium) { return sp(12); }
+        if (role == TextRole.label-small) { return sp(11); }
         return sp(16);
     }
 
     public pure function leading(role: TextRole) -> length {
-        if (role == TextRole.display) { return sp(44); }
-        if (role == TextRole.large-title) { return sp(40); }
-        if (role == TextRole.title1) { return sp(36); }
-        if (role == TextRole.page-title) { return sp(28); }
-        if (role == TextRole.title2) { return sp(32); }
-        if (role == TextRole.title3) { return sp(28); }
-        if (role == TextRole.subheadline) { return sp(20); }
-        if (role == TextRole.footnote || role == TextRole.caption1 || role == TextRole.caption2) { return sp(16); }
+        if (role == TextRole.display-large) { return sp(64); }
+        if (role == TextRole.display-medium) { return sp(52); }
+        if (role == TextRole.display-small) { return sp(44); }
+        if (role == TextRole.headline-large) { return sp(40); }
+        if (role == TextRole.headline-medium) { return sp(36); }
+        if (role == TextRole.headline-small) { return sp(32); }
+        if (role == TextRole.title-large) { return sp(28); }
+        if (role == TextRole.title-small || role == TextRole.body-medium || role == TextRole.label-large) { return sp(20); }
+        if (role == TextRole.body-small || role == TextRole.label-medium || role == TextRole.label-small) { return sp(16); }
         return sp(24);
     }
 
-    // SurfaceLevel: 0 page, 1 card, 2 block, 3 inset.
+    // Titles (medium, small) and labels are medium weight; the rest regular.
+    public pure function weight(role: TextRole) -> int {
+        if (role == TextRole.title-medium || role == TextRole.title-small
+            || role == TextRole.label-large || role == TextRole.label-medium || role == TextRole.label-small) {
+            return 500;
+        }
+        return 400;
+    }
+
+    // Tracking in sp.
+    public pure function tracking(role: TextRole) -> length {
+        if (role == TextRole.display-large) { return sp(-0.25); }
+        if (role == TextRole.title-medium) { return sp(0.15); }
+        if (role == TextRole.title-small || role == TextRole.label-large) { return sp(0.1); }
+        if (role == TextRole.body-large) { return sp(0.5); }
+        if (role == TextRole.body-medium) { return sp(0.25); }
+        if (role == TextRole.body-small) { return sp(0.4); }
+        if (role == TextRole.label-medium || role == TextRole.label-small) { return sp(0.5); }
+        return 0px;
+    }
+
+    // The state layer over a container: `ink` (the content color) at the
+    // pressed, focus or hover opacity, transparent at rest.
+    public pure function state(ink: color, pressed: bool, hover: bool, focused: bool) -> color {
+        if (pressed) { return ink.with-alpha(state-pressed); }
+        if (focused) { return ink.with-alpha(state-focus); }
+        if (hover) { return ink.with-alpha(state-hover); }
+        return transparent;
+    }
+
+    // Tonal surface levels: 0 surface, 1 container-low, 2 container,
+    // 3 container-high, 4 container-highest.
     public pure function level(l: int) -> color {
         if (l <= 0) { return s.surface; }
-        if (l == 1) { return s.surface-container; }
-        if (l == 2) { return s.surface-container-high; }
+        if (l == 1) { return s.surface-container-low; }
+        if (l == 2) { return s.surface-container; }
+        if (l == 3) { return s.surface-container-high; }
         return s.surface-container-highest;
+    }
+
+    // Shadow elevation, only for surfaces that overlap content (menus,
+    // snackbars, FABs, elevated cards and buttons, the floating navigation
+    // bar, the rows' foot bar): levels 1–3 as blur and offset. Routine
+    // hierarchy uses the tonal surface roles instead. Surfaces are opaque:
+    // nothing in the UI blurs or reads back what lies under it (no
+    // backdrop-blur; tools/verify_newui.py), so scrolling content under a
+    // floating surface costs no per-frame filter.
+    public pure function shadow-blur(l: int) -> length {
+        if (l <= 0) { return 0px; }
+        if (l == 1) { return 2px; }
+        if (l == 2) { return 6px; }
+        return 10px;
+    }
+    public pure function shadow-offset(l: int) -> length {
+        if (l <= 0) { return 0px; }
+        if (l == 1) { return 1px; }
+        if (l == 2) { return 2px; }
+        return 4px;
+    }
+    public pure function shadow-color(l: int) -> color {
+        return l <= 0 ? transparent : s.shadow.with-alpha(dark ? 0.5 : 0.2);
     }
 }

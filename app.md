@@ -10,24 +10,24 @@
 | Android 上游 | [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，`dev` 分支 |
 | 已合并的比较基线 | [`a548a7903e96266a0046018562c73b192edbfc18`](https://github.com/SagerNet/sing-box-for-android/commit/a548a7903e96266a0046018562c73b192edbfc18)，`1.15.0-alpha.13` |
 | FlClash 布局参考 | [v0.9.3 `be84736`](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（仅页面布局；控件为 Material 3），见 [flclash.md](flclash.md#参考版本与来源清单) |
-| FK-box 版本 / versionCode | `1.15.5-beta.1` / `755`，以 [version.properties](version.properties) 为准 |
-| 应用名 / Gradle 根项目名 / APK 前缀 | `FK-box` |
+| fk-box 版本 / versionCode | `1.15.5-beta.1` / `755`，以 [version.properties](version.properties) 为准 |
+| 应用名 / Gradle 根项目名 / APK 前缀 | `fk-box` |
 | 安装包名 / applicationId | `io.fkbox.app` |
 | 源码 namespace / 包路径 | `io.nekohasekai.sfa` |
 | Android / flavor | API 24（Android 7.0）起，`play` / `other` |
 
-应用基线与核心标签、FlClash 参考提交分别维护；FK-box 的 versionCode 不必等于上游基线的值。以上描述当前源码，不表示已有 Release 包含全部改动。
+应用基线与核心标签、FlClash 参考提交分别维护；fk-box 的 versionCode 不必等于上游基线的值。以上描述当前源码，不表示已有 Release 包含全部改动。
 
 品牌、安装身份及组件约定：
 
-- 应用标签、Gradle 根项目名和 APK 前缀统一使用 FK-box。应用图标为白底蓝色笔刷字母 S；自适应图标的主题单色层（`ic_launcher_monochrome`）与通知/快捷开关小图标（`ic_menu`，24dp 画布内 20dp 高）都是去掉白底的 S 剪影。保留上游许可和非官方分支说明，不改写真实来源名称。
+- 应用标签、Gradle 根项目名和 APK 前缀统一使用 fk-box。应用图标为白底蓝色笔刷字母 S；自适应图标的主题单色层（`ic_launcher_monochrome`）与通知/快捷开关小图标（`ic_menu`，24dp 画布内 20dp 高）都是去掉白底的 S 剪影。保留上游许可和非官方分支说明，不改写真实来源名称。
 - namespace、Kotlin/Java 类路径、AIDL 描述符及 RootServer 反射类名继续使用 `io.nekohasekai.sfa`。Provider authorities 使用 `${applicationId}`，服务控制和 USB/Taildrop 等广播使用 `BuildConfig.APPLICATION_ID` 或运行时包名。
 - 可与原版 SFA 并行安装，私有配置和数据相互独立；原版数据需导出/导入。Flutter 迁移沿用 B-box 既有安装身份、数据库及配置，不以换 UI 为由清空数据。
 
-## FK-box（本仓库 main）
+## fk-box（本仓库 main）
 
-- 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `FK-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产。
-- 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/plain` 起界面为朴素 Material 3（无玻璃、阴影、特效和转场动画，Material 图标），见 [flclash.md](flclash.md#朴素界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
+- 安装身份 `io.fkbox.app`，应用标签、Gradle 根项目名与 APK 前缀为 `fk-box`；源码 namespace、类路径与 AIDL 描述符仍为 `io.nekohasekai.sfa`。应用内更新检查读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `fk-box-*` 发布资产，同时接受改名前的 `FK-box-*`（见 [关于页更新检查](#已移除能力与兼容入口)）。
+- 界面已从 Flutter、Jetpack Compose 迁移到 Rust + Slint（`ui-slint/`，编译为 `libfkui.so`），`flutter/` 与 Compose 页面均已删除，页面对应关系见 [flclash.md](flclash.md#rust--slint-实现)。`ui/m3-rewrite` 上界面为 Material Design 3，基于 Slint 1.19，手机端为悬浮导航栏，浮在滚动内容之上的表面为不透明的 M3 色调表面（不使用 `backdrop-blur`），见 [flclash.md](flclash.md#material-design-3-界面约定)。`BoxBridge` 保留原 MethodChannel 命令和 EventChannel 消息名，只把通道外壳换成 `call()` / `listen()`。
 - [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 仅构建核心与 Slint 应用（ARM64 debug），不再等待 Flutter AAR；[newui.yml](.github/workflows/newui.yml) 在 `main` 推送时验证核心并运行界面源码检查。
 
 ## 界面替换与 Android 桥接
@@ -46,6 +46,8 @@
 | 应用查询 | [vendor/](app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
 配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
+
+桥接载荷只携带 Rust 界面读取的字段（以 `ui-slint/src` 中的键名为准）；USB/IP 设备、OpenConnect/OpenVPN 隧道信息和连接的进程信息由界面整体列出，保留完整字段。只供已删除 Compose 页面使用的状态与载荷字段（加载标志、Tailscale 头像/密钥到期/最后在线、Ping 历史、测速精度、扫码裁剪框回调、未接入的设置 DAO 方法等）已删除，新增字段时先确认界面会读取。设置存储 [RoomPreferenceDataStore](app/src/main/java/io/nekohasekai/sfa/database/preference/RoomPreferenceDataStore.kt) 是独立类，不再继承 androidx.preference 的 `PreferenceDataStore`，该依赖已移除；数据库与键值格式不变。
 
 Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/Shizuku 终端、Ghostty 设置和导入字体、OpenConnect/OpenVPN 认证、USB/IP、网络诊断、崩溃/OOM/电量报告均通过新页面使用现有后端。报告导出的“为 sing-box 维护者加密”开关默认关闭：上游 `Libbox.createZipArchive` 的 age 收件人是 sing-box 维护者的密钥，加密后的 `.zip.age` 只有他们能解开；崩溃报告导出总是包含 `jvm.log`（崩溃堆栈，“包含日志”只控制 `go.log`），并附带界面（libfkui）最近一次 panic 的 `fkui-panic.txt`（panic 钩子写入应用 files 目录，被捕获的 panic 也会写入）。历史 MOD-014 的功能移除已回退，不能按旧裁剪记录删除这些能力。
 
@@ -71,7 +73,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 [BoxBackups.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用 Room 事务；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
 
-界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受仪表盘的全部卡片键（含 `VPN`、`Service status`、`Connection stats`、`System HTTP proxy` 及已退役仍被接受的 `Connections`）；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
+界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受仪表盘的全部卡片键（含 `VPN`、`Service status`、`Connection stats`、`System HTTP proxy` 及已退役仍被接受的 `Connections`）；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）；新的页面切换偏好为 `tabMotion`（`slide`/`fade`），与退役的 `tabAnimation` 无关。`BoxActivity` 读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，在 `locale` 回复中以 `animatorScale` 提供，回到前台或重新连接界面时若有变化再发 `motion` 事件（`{"scale": …}`），界面按其缩放全部动效（见 [flclash.md](flclash.md#动效)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
 
 备份读取/传输上限为 64 MiB，WebDAV 使用 [BoxWebDAV.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt) 与核心扩展；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
 
@@ -79,7 +81,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序处理；`ConnectionStore` 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射，只有 NEW 和带快照的 CLOSED 经 JNI 读取连接，UPDATE 按增量复制该行，关闭 5 分钟后淘汰，DNS 连接不显示；未变化的行保持同一实例与桥接映射。
 
-日志原生缓冲保留最近 3000 条记录；[LogStream.kt](app/src/main/java/io/nekohasekai/sfa/bridge/LogStream.kt) 仅在前台日志页请求数据时生成桥接消息，首次订阅及恢复可见时发送快照，随后发送新增记录、最早保留 ID 和默认等级。清空或缓冲身份重置发送替换消息，单纯等级变化不重新编码记录。隐藏日志页不影响原生缓冲和当前会话的等级同步。
+日志原生缓冲保留最近 3000 条记录；[LogStream.kt](app/src/main/java/io/nekohasekai/sfa/bridge/LogStream.kt) 仅在前台日志页请求数据时生成桥接消息，首次订阅及恢复可见时发送快照，随后发送新增记录、最早保留 ID 和默认等级，两次发送至少间隔一秒（期间的新记录合并到下一次）。清空或缓冲身份重置发送替换消息，单纯等级变化不重新编码记录。隐藏日志页不影响原生缓冲和当前会话的等级同步。
 
 [BoxDashboard.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxDashboard.kt) 的详细内存采样独立于网络/热点轮询，由内存卡片和详情页共享订阅。[VisiblePolling.kt](app/src/main/java/io/nekohasekai/sfa/bridge/VisiblePolling.kt) 仅在订阅可见、应用前台且屏幕亮起时每两秒采样；重新满足条件立即采样，隐藏或断开 EventChannel 时停止。手动释放仍单次执行 libbox 回收并更新统计，不增加自动强制 GC。
 
@@ -139,20 +141,22 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 - **旧任务兼容：** 启动时取消 WorkManager 的 `AutoUpdate`。原 `UpdateWorker` 占位类已删除：残留任务若在取消前被调度，WorkManager 找不到该类，只会把它记为失败，不会崩溃，也不会下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
 - **Binder/设置兼容：** Root/Shizuku 已退役的安装事务编号 2 不复用；Root 的模块专用编号 3 与采集器编号 10 也保持空缺，其余编号不重排。删除功能的历史设置不再读取，不清空无关设置和数据库。
 
-关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `FK-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `FK-box-<版本>-<ABI>.apk`。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
+关于页仍提供独立 [BoxUpdates.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `fk-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `fk-box-<版本>-<ABI>.apk`。改名前的 Release 使用 `FK-box-version-metadata.json` 与 `FK-box-<版本>-<ABI>.apk`，两种前缀都接受（新前缀优先）：REST 列表按 Release 实际列出的资产选 APK，`latest/download` 在新名称返回 404 时再取旧名称的元数据，并按其前缀拼 APK 名。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
 
 ## 地理数据资源
 
 Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 规则需要地理数据文件。目录与下载校验由 libbox 提供（见 [libbox.md](libbox.md#地理数据)），应用侧参照 FlClash 的 `initGeo` 与资源页：
 
-- 内置：构建时 [app/build.gradle.kts](app/build.gradle.kts) 的 `prepare<变体>GeoAssets` 任务按 [geo-assets.properties](app/geo-assets.properties) 从 `MetaCubeX/meta-rules-dat` release 分支的固定提交下载四个文件，逐个核对 SHA-256，连同 `manifest.json`（提交、提交时间、各文件哈希/大小）放入 APK 的 `assets/geo/`。文件不入库，缓存在 `.gradle/geo-assets/<提交>`。更新固定版本用 `python3 tools/bump_geo_assets.py [提交]`（`--dry-run` 只打印）。
-- 解压：[GeoResources.kt](app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt) 在应用启动（后台）、打开资源页以及 Xray/mihomo 启动前把内置文件解压到 `Libbox.geoDataDir()`，边解压边算 SHA-256，与清单一致才 rename 覆盖。状态记在同目录的 `geo-resources.json`（来源 builtin/download、哈希、数据时间、上次成功检查时间）。规则（`GeoPolicy.shouldExtract`）：文件缺失一定解压；已记录的文件只在其数据时间早于内置提交时间且哈希不同才被替换，所以较新的下载版不会被内置文件覆盖，而应用升级带来的更新内置数据会替换更旧的文件；没有记录的文件（mihomo 自己下载的）按修改时间同样判断。
-- 下载：资源页的单独更新、全部更新和自动更新都调 `Libbox.newGeoUpdate().fetch(...)`，传入上次记录的 SHA-256、`ETag`、`Last-Modified`（`geo-resources.json` 的 `etag`/`lastModified`），文件仍与记录一致时发条件请求，304 视为“已是最新”且不下载。失败保留原文件并显示错误；成功后记为“已下载”。协程取消（离开资源页、WorkManager 停止任务）会调用 `cancel()` 中止 Go 侧下载。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。内置文件检查每个进程只完整做一次，之后 `geo.list` 只在有文件缺失时重新检查。
+- 内置与按需：四个文件都按 [geo-assets.properties](app/geo-assets.properties) 固定在 `MetaCubeX/meta-rules-dat` release 分支的同一提交并记录 SHA-256，但 APK 只带 `GEO_BUNDLED` 列出的 `geosite.dat`（Xray 与 mihomo 的 GEOSITE 共用）和 `geoip.metadb`（mihomo 的 GEOIP）。`geoip.dat` 与 `geoip.metadb` 是同一份 IP 数据的两种格式，只有 Xray 读前者；`ASN.mmdb` 只用于 mihomo 的 IP-ASN 规则，二者改为首次使用时下载。构建时 [app/build.gradle.kts](app/build.gradle.kts) 的 `prepare<变体>GeoAssets` 任务只下载内置的两个文件，逐个核对 SHA-256，放入 APK 的 `assets/geo/`，并写入 `manifest.json`：`files` 为内置文件（哈希/大小），`remote` 为按需文件的固定地址（`https://raw.githubusercontent.com/<仓库>/<提交>/<文件>`，与构建使用的地址相同）和 SHA-256，另有提交与提交时间。文件不入库，缓存在 `.gradle/geo-assets/<提交>`。更新固定版本用 `python3 tools/bump_geo_assets.py [提交]`（`--dry-run` 只打印），四个文件的哈希都要更新。
+- 何时放到磁盘：[GeoResources.kt](app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt) 不在应用启动、打开资源页或自动更新时解压，只在 Xray/mihomo 启动或重载前（`prepareForCoreBlocking`，在 MITM 证书锁之外）按 `GeoPolicy.needed` 准备该内核用到的文件：Xray 只在配置内容或编译后的分流规则含 `geosite:`/`geoip:`（或 `geosite.dat`/`geoip.dat` 的 `ext:` 写法）时需要对应文件；mihomo 总是准备 `geosite.dat` 和 `geoip.metadb`（GEOSITE/GEOIP 规则与 DNS fallback-filter 会读取），含 `IP-ASN` 时加 `ASN.mmdb`，`geodata-mode: true` 时加 `geoip.dat`；sing-box 用远程规则集，不需要这些文件。所以只用 sing-box 的用户磁盘上没有解压副本，内置文件也只解压该内核要的那几个。
+- 解压：内置文件解压到 `Libbox.geoDataDir()`，边解压边算 SHA-256，与清单一致才 rename 覆盖。状态记在同目录的 `geo-resources.json`（来源 builtin/download、哈希、数据时间、上次成功检查时间）。规则（`GeoPolicy.shouldExtract`）：文件缺失一定解压；已记录的文件只在其数据时间早于内置提交时间且哈希不同才被替换，所以较新的下载版不会被内置文件覆盖，而应用升级带来的更新内置数据会替换更旧的文件；没有记录的文件（mihomo 自己下载的）按修改时间同样判断。每个内置文件每个进程只完整检查一次，之后只在文件缺失时重新检查。
+- 首次使用时下载：需要的文件不在磁盘上且不在 APK 中时，先下载清单 `remote` 中的固定文件（libbox `GeoUpdate.fetchExpected`：SHA-256 与清单不符则拒绝，不替换任何文件），失败再用资源页配置的地址（默认 latest，按格式校验）；用户改过该资源的地址（镜像）时先试其地址。全部下载共用 90 秒预算（服务启动确认的上限为 120 秒），非最后一次尝试最多用剩余时间的三分之二，超时会中止 Go 侧下载。下载写临时文件、校验后 rename，失败不留下半个文件。成功后记为“已下载”，固定文件的数据时间记为固定提交时间。失败时服务仍照常启动：弹出 Toast“地理数据下载失败，可在 工具 › 资源 中手动下载或更换下载地址”及原因；内核若因此启动失败，错误提示末尾附同样说明。下次启动仍缺失时会再次尝试。已有固定文件不会因应用升级换了固定提交而重新下载，按资源页或自动更新刷新。
+- 下载（资源页）：资源页的单独更新、全部更新和自动更新都调 `Libbox.newGeoUpdate().fetch(...)`，传入上次记录的 SHA-256、`ETag`、`Last-Modified`（`geo-resources.json` 的 `etag`/`lastModified`），文件仍与记录一致时发条件请求，304 视为“已是最新”且不下载。失败保留原文件并显示错误；成功后记为“已下载”。协程取消（离开资源页、WorkManager 停止任务）会调用 `cancel()` 中止 Go 侧下载。下载经应用自身网络，服务运行时按分应用设置可能经过当前代理。资源页列表本身不解压也不下载：尚未放到磁盘的内置文件显示内置大小与提交时间，按需文件显示“首次使用时下载”；“全部更新”跳过尚未下载的按需文件，单独更新仍可下载。
 - 设置：`geoAutoUpdate`（默认关）、`geoUpdateInterval`（小时，1–8760，默认 24）、`geoUrls`（只存与默认不同的地址，仅 http/https）。三项由 `settings()` 提供并随备份导出/恢复，经 [BoxSettings.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxSettings.kt) 校验。桥接命令 `geo.list`、`geo.update`、`geo.setUrl`。
-- 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新上次成功检查早于间隔的文件；关闭时取消任务。应用启动和修改这两项设置时重新登记。
+- 自动更新：[UpdateGeoWork.kt](app/src/main/java/io/nekohasekai/sfa/bg/UpdateGeoWork.kt) 用 WorkManager 周期任务（间隔即设置的小时数，需联网，失败指数退避），每次只更新已在磁盘上、且上次成功检查早于间隔的文件（没有内核用过的文件不下载）；关闭时取消任务。应用启动和修改这两项设置时重新登记。
 - 界面：工具页顶部分组的“资源”（[resources.rs](ui-slint/src/pages/resources.rs)），说明见 [flclash.md](flclash.md#导航与交互约定)。
-- 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/BoxSettingsTest.kt) 覆盖三项设置的校验。
-- APK 体积：内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），APK 中压缩存放；首次解压约占 38 MB 存储。2026-11-06 实测（ARM64 debug，Artifact 未压缩打包）：630f444 为 78,069,486 字节，59d5b01 为 93,208,464 字节，增加 15,138,978 字节（约 14.4 MiB）；源码 SHA 59d5b01 的 [newui.yml](https://github.com/koko123as/fk-box/actions/runs/42207100362) 与 [build-debug-apk.yml](https://github.com/koko123as/fk-box/actions/runs/42207110939) 均通过（含 `TestCoreGeo*` 与 JVM 测试）。未覆盖：真机解压耗时、下载、自动更新、Xray/mihomo 实际读取 geo 规则。
+- 单元测试：[GeoPolicyTest.kt](app/src/test/java/io/nekohasekai/sfa/bg/GeoPolicyTest.kt) 覆盖解压判断、到期判断、状态和地址的读写容错、各内核需要的文件（`needed`）及含/不含 `remote` 的清单解析；[BoxSettingsTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/BoxSettingsTest.kt) 覆盖三项设置的校验。
+- APK 体积：之前内置四个文件共约 38.3 MB（geoip.dat 16.5 MB、geosite.dat 4.4 MB、geoip.metadb 8.4 MB、ASN 9.1 MB），2026-11-06 实测（ARM64 debug，Artifact 未压缩打包）四个文件使 APK 从 78,069,486 字节（630f444）增至 93,208,464 字节（59d5b01），增加约 14.4 MiB，首次运行另解压约 38 MB。现在只内置 geosite.dat 与 geoip.metadb（约 12.8 MB，未压缩），geoip.dat 与 ASN.mmdb（约 25.5 MB）首次使用时下载；APK 实际减少量与内置文件的压缩比有关，尚未在 CI 实测，需以下一次构建的 APK 大小为准。未覆盖：真机解压耗时、首次使用下载、自动更新、Xray/mihomo 实际读取 geo 规则。
 
 ## 构建与发布
 
@@ -161,6 +165,13 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
 
 [build-release.yml](.github/workflows/build-release.yml) 仅手动触发，发布 Android 7.0+ 的 ARM64 `otherRelease`。Release 与模拟器构建共用 [build-libbox](.github/actions/build-libbox/action.yml)，核心使用 JDK 17，应用使用 JDK 21；具体 SDK/Build Tools/NDK 版本以共享 Action 和 Gradle 为准。本机未经明确要求不构建，见 [AGENTS.md](AGENTS.md)。
+
+CI 缓存（均为 GitHub Actions 缓存，不含密钥或签名文件）：
+
+- `libbox.aar`：[build-libbox](.github/actions/build-libbox/action.yml) 以平台、`version.properties` 中的核心/Go/Xray/mihomo/libXray 版本（不含每次发布都改写的 `VERSION_NAME`/`VERSION_CODE`）以及 `libbox/**`、`tools/patch_*.py` 和两个共享 Action 文件的哈希为键；命中时跳过 sing-box 检出、补丁、`go mod tidy` 与 gomobile 构建，未命中时构建后立即保存（之后的应用构建失败也保留）。
+- Go：[setup-core](.github/actions/setup-core/action.yml) 关闭 setup-go 自带缓存（只按上游 `go.sum` 取键且无回退），改用 `actions/cache` 缓存模块与构建缓存，键为用途（`test` 或 `libbox-<平台>`）、Go 版本、上述版本集合及该 Action 文件哈希，可回退到同 Go 版本的旧缓存。
+- Rust：`Swatinem/rust-cache` 缓存 `~/.cargo`（含 `cargo-ndk`）与 `ui-slint/target`，在安装 `cargo-ndk` 之前恢复；键随 `Cargo.lock` 与 rustc 版本变化。Slint 的 Skia 预编译包由 `skia-bindings` 下载到其 `OUT_DIR`（`target/<目标>/release/build/skia-bindings-*/out`，下载文件在 `.cache/`），依赖的构建输出随该缓存保留，命中时不再下载；不使用指向本地文件的 `SKIA_BINARIES_URL`，因为文件名不匹配时 `skia-bindings` 会退回从源码完整构建 Skia。`ui-slint` 自身与 `vendor/` 中的 Slint 补丁 crate 仍每次重新编译。
+- Gradle：`gradle/actions/setup-gradle`，`main` 与 `ui/*` 分支写入，其他分支只读；内置地理数据的下载目录 `.gradle/geo-assets` 按 [geo-assets.properties](app/geo-assets.properties) 的哈希缓存。
 
 发布签名使用以下仓库 Actions Secrets：
 
@@ -177,23 +188,23 @@ Release 构建开启 R8 与 `isShrinkResources`（[keep.xml](app/src/main/res/ra
 
 应用自身的 Baseline Profile 位于 [baseline-prof.txt](app/src/main/baseline-prof.txt)，AGP 将其与库的配置合并进 `assets/dexopt/baseline.prof`，由 `profileinstaller` 在旁加载安装时编译。当前文件为手写的启动/常用页面规则（CI 模拟器为 x86_64，arm64 libbox 无法运行，不能在 CI 中采集）。[baselineprofile](baselineprofile/) 模块提供 Macrobenchmark `BaselineProfileRule` 生成器，仅在 `-PbaselineProfile=true` 时加入构建（同时定义应用的 `benchmark` 构建类型：Release 代码、不混淆、`profileable`、CI 调试签名），常规与 Release 构建不受影响。在 API 33+ 的 ARM64 设备上运行 `./gradlew -PbaselineProfile=true -Parm64Only=true :baselineprofile:connectedOtherBenchmarkAndroidTest`，再把输出的 `*-baseline-prof.txt` 替换到 `app/src/main/baseline-prof.txt`。
 
-Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及界面源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致、四个文件哈希相符）、退役采集器未打包及签名。APK 文件为 `FK-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `FK-box`），所在 Artifact 名为 `FK-box-<版本>-arm64-v8a-release`，保留 30 天。
+Release 先调用 [newui.yml](.github/workflows/newui.yml) 完成多内核、核心扩展、MITM 测试及界面源码检查，再构建 arm64 libbox，运行 `testOtherDebugUnitTest` 及保留 R8 的签名 Release 构建；单元测试成功或失败后均上传 HTML/XML 报告至 `release-unit-tests` Artifact（报告已生成时），保留 30 天。签名密钥在单元测试通过后才准备。[verify_release.py](tools/verify_release.py) 在 APK 上传前校验唯一 APK、最低 API 24、ARM64、应用包名/版本/标签、启动 Activity、MITM 模块 assets、内置地理数据（清单提交与 `geo-assets.properties` 一致；`GEO_BUNDLED` 的文件已打包且哈希相符，其余文件未打包、清单 `remote` 记有固定地址与哈希）、退役采集器未打包及签名。APK 文件为 `fk-box-<版本>-arm64-v8a.apk`（安装身份 `io.fkbox.app`、标签 `fk-box`），所在 Artifact 名为 `fk-box-<版本>-arm64-v8a-release`，保留 30 天。
 
-`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `FK-box-version-metadata.json`，alpha/beta/rc 标为预发布。
+`publish_release` 默认开启；设为 `false` 时仍构建、校验并上传 Actions Artifact，仅跳过发布。版本号按发布日（北京时间）自动生成：[release_version.py](tools/release_version.py) 在构建前把 `VERSION_NAME` 设为当天第一次发布 `YYYY.MM.DD`、之后依次 `YYYY.MM.DD.2`、`.3`……，`VERSION_CODE` 为 `YYMMDDNN`（始终大于旧的 1.x 版本码）；同一提交当天重跑沿用已有 tag。仓库里的 `version.properties` 只是本地构建的默认值。[publish_release.py](tools/publish_release.py) 要求 Release tag 严格等于 `VERSION_NAME`（不加 `v`）且指向本次源码 SHA；已有 tag 指向其他提交时失败，不移动版本标签。同一提交重跑可重传资产。发布 APK 及 `fk-box-version-metadata.json`，alpha/beta/rc 标为预发布；另以单独、失败不阻断的上传附带同内容的 `FK-box-version-metadata.json`，让改名前的安装仍能发现新版本（它们只认 `FK-box-*` APK，因此只会看到“有更新”并打开 Release 页面，不会直接下载）。
 
 ## 验证与历史记录
 
 | 入口 | 配置的验证范围 |
 | --- | --- |
-| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、朴素 Material 界面约束（禁止自绘字形、玻璃/着色器/模糊、弹簧与按压特效、装饰形状、样式开关）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
+| [verify_newui.py](tools/verify_newui.py) | `flutter/` 已删除且无 Flutter 依赖、Slint 界面入口、Material Design 3 界面约束（禁止着色器/`blur()` 滤镜与 `backdrop-blur`，悬浮导航栏与顶部应用栏为不透明 `Surface`，可点按表面带水波纹，列表增删与底部表单拖动的动效接入，Slint ≥ 1.19 且 vendored crate 同版本；阴影只经 `Theme.shadow-*` 令牌；页面不写十六进制颜色，取色器与二维码除外；M3 令牌与组件存在）、占位页、旧 UI/更新依赖、退役抓包实现残留及补充参考来源的静态检查 |
 | [newui.yml](.github/workflows/newui.yml) | `main` push、目标为 `main` 的 PR、手动触发或 Release 复用；仅 Markdown 的 push/PR 跳过。运行多内核 gRPC 覆盖检查、内核识别/转换/校验、HTTP/MITM/改写/JS 与自动重定向布局等 Go 测试，以及界面源码检查 |
 | [newui-android.yml](.github/workflows/newui-android.yml) | 手动触发；JVM 回归、`play` Kotlin 编译、`other` ARM64 APK/仪器测试构建及 API 31/35 模拟器 smoke（只有 arm64 核心，x86_64 镜像从 API 30 起才有 ARM 转译） |
-| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `FK-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
+| [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) | 手动触发；界面源码检查、ARM64 `otherDebug` APK（Artifact `fk-box-<版本>-<SHA>-arm64-v8a-debug`）及 JVM 测试 |
 | [build-release.yml](.github/workflows/build-release.yml) | 手动触发；复用 newui.yml 的核心/源码验证，运行 JVM 测试、签名 ARM64 Release、安装身份/产物校验及可选发布 |
 
 JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界和 QRS；[ServiceSettingsChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/bridge/ServiceSettingsChangeTest.kt) 覆盖服务开关保存后的启动确认、失败/超时/取消恢复及恢复错误保留；[ProfileChangeTest.kt](app/src/test/java/io/nekohasekai/sfa/database/ProfileChangeTest.kt) 覆盖配置持久化失败、应用超时/取消、恢复确认及恢复错误保留。[ProfileRecoveryTest.kt](app/src/androidTest/java/io/nekohasekai/sfa/bridge/ProfileRecoveryTest.kt) 覆盖实际 libbox 二进制导入、查询策略持久化、端口占用导致的 JSON 编辑/配置切换/手动与自动订阅/完整备份恢复失败，以及停服和未选中配置更新的服务状态。界面验证范围见 [flclash.md](flclash.md)。
 
-模拟器统一入口为 [android_smoke.py](tools/android_smoke.py)：安装应用和仪器测试 APK，分别重置应用数据后运行 UI smoke 与原生回归，前一组失败不跳过后一组。UI 覆盖首次启动、远程 JSON 导入、VPN 授权、启停、实际内核分组及进程重启后配置保留；原生组运行全部仪器测试并拒绝零测试结果。`build/android-smoke/` 保存截图、logcat、失败堆栈、仪器测试输出及带源码 SHA 的 `results.json`，超时也保留日志。启动阶段允许截图后关闭一次 Google APIs 模拟器的 Pixel Launcher ANR 弹窗，再重新打开 FK-box；不关闭 FK-box 自身的 ANR 或其他错误。脚本仅用于 CI 模拟器，不能对保有用户数据的设备执行。
+模拟器统一入口为 [android_smoke.py](tools/android_smoke.py)：安装应用和仪器测试 APK，分别重置应用数据后运行 UI smoke 与原生回归，前一组失败不跳过后一组。UI 覆盖首次启动、远程 JSON 导入、VPN 授权、启停、实际内核分组及进程重启后配置保留；原生组运行全部仪器测试并拒绝零测试结果。`build/android-smoke/` 保存截图、logcat、失败堆栈、仪器测试输出及带源码 SHA 的 `results.json`，超时也保留日志。启动阶段允许截图后关闭一次 Google APIs 模拟器的 Pixel Launcher ANR 弹窗，再重新打开 fk-box；不关闭 fk-box 自身的 ANR 或其他错误。脚本仅用于 CI 模拟器，不能对保有用户数据的设备执行。
 
 查询策略回归在每次切换 Root/Shizuku 并刷盘后重新打开 Room 数据库读取持久值，同时核对状态流，不以读取同一内存缓存代替持久化验证。
 

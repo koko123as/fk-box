@@ -565,6 +565,9 @@ msgstr "下载地址"
 msgid "Downloaded"
 msgstr "已下载"
 
+msgid "Downloaded on first use"
+msgstr "首次使用时下载"
+
 msgid "Duplicate session"
 msgstr "复制会话"
 
@@ -2148,3 +2151,15 @@ msgstr "%d 小时前"
 
 msgid "%dm ago"
 msgstr "%d 分钟前"
+
+msgid "Page switching"
+msgstr "页面切换"
+
+msgid "Slide"
+msgstr "滑动"
+
+msgid "Fade"
+msgstr "淡入"
+
+msgid "Long-press a card to drag it"
+msgstr "长按卡片后拖动排序"

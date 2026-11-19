@@ -43,15 +43,27 @@ class DashboardViewModel :
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
     val serviceStatus: StateFlow<Status> = _serviceStatus.asStateFlow()
 
+    // The mode follows every page, so its subscription runs whenever the
+    // service is reachable in the foreground.
+    private val modeClient =
+        CommandClient(
+            viewModelScope,
+            CommandClient.ConnectionType.ClashMode,
+            this,
+        )
+
+    // The per-second status (rates, traffic totals, memory) only while a page
+    // shows it ([setTrafficVisible]); the bridge reads it through addHandler.
+    // Its own handler, so onConnected and the mode callbacks are not doubled.
     internal val commandClient =
         CommandClient(
             viewModelScope,
-            listOf(
-                CommandClient.ConnectionType.Status,
-                CommandClient.ConnectionType.ClashMode,
-            ),
-            this,
+            CommandClient.ConnectionType.Status,
+            object : CommandClient.Handler {
+                override fun updateStatus(status: StatusMessage) = this@DashboardViewModel.updateStatus(status)
+            },
         )
+    private val trafficWanted = MutableStateFlow(false)
 
     override fun createInitialState() = DashboardUiState()
 
@@ -71,6 +83,29 @@ class DashboardViewModel :
                 )
             }.distinctUntilChanged().collect { target ->
                 if (target.connect) {
+                    modeClient.connect()
+                } else {
+                    modeClient.disconnect()
+                }
+            }
+        }
+        viewModelScope.launch {
+            combine(
+                AppLifecycleObserver.isForeground,
+                AppLifecycleObserver.isScreenOn,
+                trafficWanted,
+                RemoteControlManager.remoteServer,
+                combine(RemoteControlManager.isConnected, _serviceStatus) { remoteConnected, status -> remoteConnected to status },
+            ) { foreground, screenOn, wanted, remoteServer, (remoteConnected, status) ->
+                SessionTarget(
+                    connect = foreground && screenOn && wanted &&
+                        if (remoteServer != null) remoteConnected else status == Status.Started,
+                    remoteServerId = remoteServer?.id,
+                )
+            }.distinctUntilChanged().collect { target ->
+                // A fresh subscription reports the current status at once, so
+                // a page shown again starts from current values.
+                if (target.connect) {
                     commandClient.connect()
                 } else {
                     commandClient.disconnect()
@@ -81,8 +116,12 @@ class DashboardViewModel :
 
     private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?)
 
+    /** Whether a page shows the per-second status (the Slint UI's visibility sync). */
+    fun setTrafficVisible(visible: Boolean) { trafficWanted.value = visible }
+
     override fun onCleared() {
         super.onCleared()
+        modeClient.disconnect()
         commandClient.disconnect()
     }
 

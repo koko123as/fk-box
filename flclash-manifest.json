@@ -2,7 +2,7 @@
   "repository": "https://github.com/chen08209/FlClash",
   "version": "v0.9.3",
   "commit": "be84736605527034689c95bf27828ff27d912c5e",
-  "usage": "Layout reference only: FK-box keeps FlClash's page sections, order and navigation layout, implemented with stock Material 3 components and Material icons. No FlClash/prism_ui widgets, glyphs, shapes, shaders, motion or press effects are used (see flclash.md).",
+  "usage": "Layout reference only: fk-box keeps FlClash's page sections, order and navigation layout, implemented with stock Material 3 components and Material icons. No FlClash/prism_ui widgets, glyphs, shapes, shaders, motion or press effects are used (see flclash.md).",
   "previousReference": {
     "version": "v0.9.2",
     "commit": "7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
@@ -39,7 +39,7 @@
         {
           "source": "lib/providers/service_status.dart",
           "sourceSHA256": "6c2707bbd94722a73a9c937f5ebe2f7e1abe575b95b55bebe1e6c0b1dcbc1b55",
-          "changes": "Route-keyed answers with the 1.5 s settle and 5 s throttle of RoutedProbe; FK-box adds a two-minute re-check while the card is shown and no checks in the background."
+          "changes": "Route-keyed answers with the 1.5 s settle and 5 s throttle of RoutedProbe; fk-box adds a two-minute re-check while the card is shown and no checks in the background."
         },
         {
           "source": "lib/views/dashboard/widgets/service_status.dart",
@@ -63,7 +63,7 @@
         {
           "source": "lib/views/dashboard/widgets/connection_stats.dart",
           "sourceSHA256": "5e495b40238ca7b47aaa1655b60ae13d52749a683c18db0766cce6071d914e5d",
-          "changes": "Three counts (live connections, recent requests, DNS queries), the first two opening their request views; counts come from the FK-box connection stream."
+          "changes": "Three counts (live connections, recent requests, DNS queries), the first two opening their request views; counts come from the fk-box connection stream."
         }
       ]
     },
@@ -253,7 +253,7 @@
           "localPaths": [
             "app/src/main/java/io/nekohasekai/sfa/bg/GeoResources.kt"
           ],
-          "changes": "initGeo extracts bundled assets into the core home; FK-box also replaces a bundled or downloaded file older than a newer bundle, never a newer download, and checks each extraction against the build's SHA-256."
+          "changes": "initGeo extracts bundled assets into the core home; fk-box also replaces a bundled or downloaded file older than a newer bundle, never a newer download, and checks each extraction against the build's SHA-256."
         },
         {
           "source": "lib/models/clash_config.dart",

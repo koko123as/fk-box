@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <resources>
     <!-- App -->
-    <string name="app_name" translatable="false">FK-box</string>
+    <string name="app_name" translatable="false">fk-box</string>
 
     <!-- Common Actions -->
     <string name="stop">Остановить</string>
@@ -72,8 +72,6 @@
     <!-- Content Descriptions (Accessibility) -->
     
     <!-- Tools -->
-    <string name="network_quality_max_runtime_30s">30s</string>
-    <string name="network_quality_max_runtime_60s">60s</string>
 
     <!-- STUN Test -->
     <!-- Tailscale -->

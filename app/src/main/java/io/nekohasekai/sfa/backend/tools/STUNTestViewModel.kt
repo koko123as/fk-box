@@ -120,11 +120,11 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
                     if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@launch
                     updateState {
                         copy(
-                            phase = progress.phase.toInt(),
+                            phase = progress.phase,
                             externalAddr = progress.externalAddr,
-                            latencyMs = progress.latencyMs.toInt(),
-                            natMapping = progress.natMapping.toInt(),
-                            natFiltering = progress.natFiltering.toInt(),
+                            latencyMs = progress.latencyMs,
+                            natMapping = progress.natMapping,
+                            natFiltering = progress.natFiltering,
                         )
                     }
                 }
@@ -136,12 +136,12 @@ class STUNTestViewModel : BaseViewModel<STUNTestState>() {
                     if (!stunSession.isCurrent(generation) || !currentState.isRunning) return@launch
                     updateState {
                         copy(
-                            phase = Libbox.STUNPhaseDone.toInt(),
+                            phase = Libbox.STUNPhaseDone,
                             isRunning = false,
                             externalAddr = result.externalAddr,
-                            latencyMs = result.latencyMs.toInt(),
-                            natMapping = result.natMapping.toInt(),
-                            natFiltering = result.natFiltering.toInt(),
+                            latencyMs = result.latencyMs,
+                            natMapping = result.natMapping,
+                            natFiltering = result.natFiltering,
                             natTypeSupported = result.natTypeSupported,
                         )
                     }

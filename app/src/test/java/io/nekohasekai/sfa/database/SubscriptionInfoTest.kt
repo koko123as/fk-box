@@ -33,12 +33,9 @@ class SubscriptionInfoTest {
     @Test fun expireZeroIsNoExpiry() {
         val info = SubscriptionHeaders.parseUserInfo("upload=0; download=0; total=0; expire=0")!!
         assertTrue(info.isEmpty)
-        assertNull(info.usage)
         val quota = SubscriptionHeaders.parseUserInfo("upload=30; download=70; total=200; expire=0")!!
         assertEquals(0L, quota.expire)
-        assertEquals(0.5, quota.usage!!, 1e-9)
         assertEquals(100L, quota.remaining)
-        assertEquals(1.0, SubscriptionInfo(upload = 300, total = 200).usage!!, 1e-9)
         assertEquals(0L, SubscriptionInfo(upload = 300, total = 200).remaining)
     }
 

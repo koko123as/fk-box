@@ -36,9 +36,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -172,17 +172,28 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     coroutineScope {
                         launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
                         launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
+                        // The streamed lists reach the UI about once a second:
+                        // after a send the collector waits, and the StateFlow
+                        // keeps only the newest state meanwhile. Showing a
+                        // page sends its current state at once (the
+                        // set*Visible commands, and the log stream restarting).
                         launch { connections.uiState.collect { state ->
+                            val sent = connectionsVisible || connectionStatsVisible
                             if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
                             if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
+                            if (sent) delay(UI_UPDATE_INTERVAL_MILLIS)
                         } }
                         launch {
                             val stream = LogStream()
-                            combine(logs.uiState, logsVisible) { state, visible -> state.takeIf { visible } }.collect { state ->
-                                if (state == null) stream.reset()
-                                else {
+                            logsVisible.collectLatest { visible ->
+                                stream.reset()
+                                if (!visible) return@collectLatest
+                                logs.uiState.collect { state ->
                                     val update = withContext(Dispatchers.Default) { stream.update(state) }
-                                    if (update != null) emit("logs", update)
+                                    if (update != null) {
+                                        emit("logs", update)
+                                        delay(UI_UPDATE_INTERVAL_MILLIS)
+                                    }
                                 }
                             }
                         }
@@ -203,6 +214,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         streamJob?.cancel()
         logsVisible.value = false
+        if (::dashboard.isInitialized) dashboard.setTrafficVisible(false)
         if (::dashboardDetails.isInitialized) {
             dashboardDetails.setMemoryVisible(false)
             dashboardDetails.setLanVisible(false)
@@ -492,10 +504,13 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
 
+    /** The core's per-second status stream ("rates") while a page shows it. */
+    fun setTrafficVisible(visible: Boolean) { dashboard.setTrafficVisible(visible) }
+
     suspend fun setPreferences(values: Map<String, Any?>) = operations.withLock {
         val value = BoxPreferences.validate(values)
         val old = JSONObject(preferences.getString("value", "{}")!!).apply { remove("locale") }
-        value.forEach { (key, item) -> old.put(key.toString(), JSONObject.wrap(item)) }
+        value.forEach { (key, item) -> old.put(key, JSONObject.wrap(item)) }
         withContext(Dispatchers.IO) { check(preferences.edit().putString("value", old.toString()).commit()) { "Unable to save preferences" } }
         readPreferences()
     }
@@ -541,7 +556,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             val result = Libbox.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
             mapOf(
                 "profile" to profile.name, "core" to core, "content" to result.content,
-                "applied" to result.applied.toInt(), "active" to result.active,
+                "applied" to result.applied, "active" to result.active,
                 "warnings" to result.warnings.lines().filter { it.isNotBlank() },
             )
         }
@@ -913,6 +928,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
+            dashboard.setTrafficVisible(false)
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
             if (connectionsVisible) connections.setVisible(false)
@@ -923,6 +939,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 }
+
+/** The streamed connection list and logs reach the UI at most this often. */
+private const val UI_UPDATE_INTERVAL_MILLIS = 1000L
 
 internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
 private fun jsonValue(value: Any?): Any? = when (value) {

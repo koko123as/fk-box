@@ -81,6 +81,7 @@ pub fn project(w: &AppWindow) {
         )
     });
     look.set_theme(theme.into());
+    look.set_tab_motion(data(|d| d.pref_str("tabMotion", "slide")).into());
     look.set_pure_black(pure_black);
     let selected = selected_color();
     let colors = accent_colors();
@@ -310,6 +311,7 @@ pub fn act(id: &str, arg: &str) -> bool {
         }
         "look-font" => open_fonts(),
         "look-custom-scale" => app::set_preference("customFontScale", json!(arg == "1")),
+        "look-tab-motion" if arg == "slide" || arg == "fade" => app::set_preference("tabMotion", json!(arg)),
         "look-scale" => {
             if let Ok(v) = arg.parse::<f64>() {
                 app::set_preference("fontScale", json!((v * 20.0).round() / 20.0));

@@ -18,9 +18,6 @@ data class SubscriptionInfo(
     val used: Long get() = saturatedAdd(upload, download)
     val remaining: Long get() = (total - used).coerceAtLeast(0L)
 
-    /** Used share of the quota in 0..1, or null when the provider gave no total. */
-    val usage: Double? get() = if (total > 0) (used.toDouble() / total.toDouble()).coerceIn(0.0, 1.0) else null
-
     val isEmpty: Boolean get() = total <= 0 && expire <= 0 && upload <= 0 && download <= 0
 
     companion object {

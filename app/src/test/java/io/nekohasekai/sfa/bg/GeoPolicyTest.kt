@@ -76,4 +76,41 @@ class GeoPolicyTest {
         assertFalse(GeoPolicy.validUrl("not a url"))
         assertTrue(GeoPolicy.validUrl("https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat"))
     }
+
+    @Test
+    fun coresNeedOnlyTheResourcesTheyRead() {
+        assertEquals(emptySet<String>(), GeoPolicy.needed("sing-box", """{"route":{"rule_set":[{"tag":"geoip-cn"}]}}"""))
+        assertEquals(emptySet<String>(), GeoPolicy.needed("xray", """{"outbounds":[{"protocol":"freedom"}]}"""))
+        assertEquals(
+            setOf(GeoPolicy.GEOSITE, GeoPolicy.GEOIP),
+            GeoPolicy.needed("xray", """{"routing":{"rules":[{"domain":["geosite:cn"]},{"ip":["GeoIP:CN"]}]}}"""),
+        )
+        assertEquals(setOf(GeoPolicy.GEOIP), GeoPolicy.needed("xray", """{"ip":["ext:geoip.dat:private"]}"""))
+        assertEquals(setOf(GeoPolicy.GEOSITE, GeoPolicy.MMDB), GeoPolicy.needed("mihomo", "rules:\n  - MATCH,DIRECT\n"))
+        assertEquals(
+            setOf(GeoPolicy.GEOSITE, GeoPolicy.MMDB, GeoPolicy.ASN),
+            GeoPolicy.needed("mihomo", "rules:\n  - IP-ASN,13335,DIRECT\n"),
+        )
+        assertEquals(
+            setOf(GeoPolicy.GEOSITE, GeoPolicy.MMDB, GeoPolicy.GEOIP),
+            GeoPolicy.needed("mihomo", "geodata-mode: true\nrules:\n  - GEOIP,CN,DIRECT\n"),
+        )
+        assertFalse(GeoPolicy.GEOIP in GeoPolicy.needed("mihomo", "geodata-mode: false\n"))
+    }
+
+    @Test
+    fun manifestListsBundledAndOnDemandFiles() {
+        val json = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        val current = json.decodeFromString(
+            GeoPolicy.Bundle.serializer(),
+            """{"source":"MetaCubeX/meta-rules-dat","commit":"c","time":5,""" +
+                """"files":{"geosite":{"file":"geosite.dat","sha256":"$bundleSha","size":3}},""" +
+                """"remote":{"geoip":{"file":"geoip.dat","url":"https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/c/geoip.dat","sha256":"$bundleSha"}}}""",
+        )
+        assertEquals(setOf(GeoPolicy.GEOSITE), current.files.keys)
+        assertEquals("geoip.dat", current.remote.getValue(GeoPolicy.GEOIP).file)
+        // A manifest from before on-demand downloads has no "remote" key.
+        val older = json.decodeFromString(GeoPolicy.Bundle.serializer(), """{"time":5,"files":{}}""")
+        assertEquals(emptyMap<String, GeoPolicy.RemoteFile>(), older.remote)
+    }
 }

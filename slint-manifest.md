@@ -80,8 +80,13 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 
 ## Deliberate departures from the Compose UI (2026-11-13)
 
-- Phones get a floating navigation bar (FlClash's mobile layout): a rounded bar 16 px from the
-  sides and 12 px above the gesture inset; home pages pad their content by `Nav.home-bottom`.
+- Phones get a floating navigation bar (branch `ui/m3-rewrite`, Slint 1.19): a 72 dp pill
+  16 dp from the sides and 12 dp above the gesture inset, an opaque surface-container with a
+  level 2 shadow; home pages scroll their content under it and pad its end by `Nav.home-bottom`.
+  The top app bar turns to the opaque surface-container role once content scrolls under it; menus,
+  dialogs and the rows' foot bar are opaque tonal surfaces too (`ui/kit.slint` `Surface`). Nothing
+  uses `backdrop-blur` (the earlier glass surfaces were removed for scrolling cost).
+  The visual layer otherwise follows Material Design 3 (see flclash.md "Material Design 3 界面约定").
 - Routing rule editor: the Apps field opens the installed-app list used by Access control
   (search, system apps toggle, selected first) instead of a package-name text box; hidden for
   Xray rules, which cannot match apps.
@@ -100,19 +105,57 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 - JetBrains Mono is no longer bundled (neither in `ui-slint/ui/fonts` nor `res/font`); code and
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
-- `ui-slint/vendor/i-slint-renderer-skia` (1.18.1 + FKBOX-PATCH.md): font data shared without
-  copies and a 32 MB GPU resource cache.
-- `ui-slint/vendor/i-slint-backend-android-activity` (1.18.1 + FKBOX-PATCH.md): the GameActivity
-  IME path exchanges text state with GameTextInput in UTF-16 with an ordered selection (upstream
-  sent UTF-8 byte offsets, which crashed GameTextInput's backspace with Chinese text and panicked
-  on composing regions), does not echo the IME's own state back (each echo restarted the IME and
-  broke Chinese composition), sets the EditorInfo per field and shows the keyboard explicitly.
-  Host tests: `src/ime_tests.rs`. `BoxActivity.dispatchKeyEvent` orders the editable's selection
-  and drops a key that still throws IndexOutOfBoundsException.
+- Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).
+  The UI does not use 1.19's `backdrop-blur` (tools/verify_newui.py forbids it). Edition /
+  project-file support is not adopted (the crate keeps the default edition).
+- `ui-slint/vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
+  the purge hook. The font-data patch of the 1.18.1 copy is retired: upstream 1.19 builds typefaces
+  from the font blob without copying it (`Data::new_with_owner`).
+- `ui-slint/vendor/i-slint-backend-android-activity` (1.19.0 + FKBOX-PATCH.md, rebased by a
+  three-way merge; the Java helper hunk re-applied by hand to 1.19's rewritten helper): text is edited
+  in the app's own EditText (`src/native_ime.rs`, `bridge/NativeEditor.kt`), so the GameActivity
+  `input_method_request` is empty; text that GameActivity's own input connection still reports is
+  converted from Java UTF-16 indices (`fkbox_ime.rs`, host tests `src/ime_tests.rs`) instead of
+  panicking; the IME action key is Return; the Java `SlintInputView` stays unfocusable unless
+  `show_keyboard` asks for it; plus the touch observer and the Back release (table below).
+  `BoxActivity.dispatchKeyEvent` orders the editable's selection and drops a key that still throws
+  IndexOutOfBoundsException.
+- `ui-slint/vendor/i-slint-core` (1.19.0 + FKBOX-PATCH.md): `SwipeGestureHandler` forwards the press
+  at once instead of delaying it, so a fast flick reaches the home pages' `Flickable` and scrolls (upstream the
+  held press was dropped when the pager locked out, and the list stayed still).
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
-  fixture data; never part of the Android build). Its software renderer measures wrapped Chinese
+  fixture data; never part of the Android build). `--features shot-skia` with `SHOT_RENDERER=skia`
+  draws with the vendored Skia renderer on the CPU instead. Its software renderer measures wrapped Chinese
   text with one font, so wrapped CJK footers show one line there; the Skia renderer on Android
   measures with the same font fallback it draws with.
+
+## Vendored Slint patches and upstream status (checked 2026-11-19)
+
+Each vendored crate was diffed against its crates.io 1.19.0 source, which is unchanged apart from the
+hunks below. Upstream is slint-ui/slint `master` at `1c002a9d8` (2026-11-18). 1.19.0 is the newest
+release, so no newer release could replace a patch yet. Kinds:
+**upstreamable** = a general Slint bug or gap, worth a PR;
+**fixed upstream** = can be dropped on the next upgrade;
+**FK-box-specific** = only makes sense with FK-box's own design.
+
+| # | Crate / file | Patch | Upstream state | Kind |
+|---|---|---|---|---|
+| C1 | i-slint-core `items/input_items.rs` | `SwipeGestureHandler` forwards the press at once (`ForwardAndInterceptGrab`), not after 100 ms, so a fast flick reaches the home pages' `Flickable` | Not fixed on master. Issue #13120 (delayed press lost) is related but different. The FK-box form contradicts the upstream test `swipegesturehandler.slint` (`ta_pressed` stays false during the delay), so it can't go upstream as is. A replacement patch is drafted: a move past the drag threshold that the delaying item doesn't take replays the held press at once (`input.rs`), so the delay stays for taps. If upstream takes it, drop C1. | upstreamable (as the drafted fix) |
+| S1 | i-slint-renderer-skia `opengl_surface.rs` | GrDirectContext resource budget 32 MB (Skia's default is 256 MB) | Not on master: no `set_resource_cache_limit` anywhere | FK-box-specific tuning. Upstreamable only as a setting (public API, discuss first) |
+| S2 | i-slint-renderer-skia `lib.rs` | `fkbox_request_purge()`: the next frame clears the renderer caches, frees GPU resources and purges Skia's caches | Partly upstream already: `SkiaRenderer::free_gpu_resources()` is public, and the Android backend calls it on `LowMemory`. Slint also drops a destroyed item's cache entries (`free_graphics_resources`). There is no public way to clear the renderer caches, and the app can't reach the backend's renderer. | FK-box-specific. Possible feature request: "trim memory" API / map `onTrimMemory` |
+| S3 | i-slint-renderer-skia `lib.rs` | `clear_graphics_caches()` keeps the text layout cache. Upstream clears it (on every new surface, so each return from the background, and on FK-box's purge); `ItemCache::clear_all` drops the entries' dependency trackers, the only link from a Text's preferred-size binding to its text, so the size stops following the text and a growing value elides at its old width | Same code on master | upstreamable (bug: clearing an `ItemCache` should mark its dependents dirty, not just drop the trackers) |
+| S0 | i-slint-renderer-skia `font_cache.rs` | (retired) per-face `Data::new_copy` of whole font files | Fixed in 1.19.0 (`Data::new_with_owner`) | fixed upstream (already dropped) |
+| A1 | android-activity `androidwindowadapter.rs` | GameActivity `input_method_request` is empty (no GameTextInput state, no keyboard requests) | Upstream still sends Slint's UTF-8 byte offsets as GameTextInput's Java (UTF-16) indices, with an unordered selection, on master. Upstream's maintained IME path is NativeActivity + Java helper (#14216, handles, magnifier). | FK-box-specific (FK-box edits in its own EditText). The underlying GameActivity offset bug is upstreamable |
+| A2 | android-activity `fkbox_ime.rs` + `InputEvent::TextEvent` | UTF-16 indices to char-boundary byte offsets, composing region taken out, positions after it moved back by its length (upstream panics slicing UTF-8 at UTF-16 indices and moves them the wrong way) | Same code on master | upstreamable (bug fix, GameActivity only) |
+| A3 | android-activity `InputEvent::TextAction` | IME action key (Done) dispatched as Return so `accepted` runs | Master ignores `TextAction` (`Unhandled`) | upstreamable (small) |
+| A4 | android-activity `java/SlintAndroidJavaHelper.java` | `SlintInputView` not focusable / not a text editor until `show_keyboard` | Master still adds a focusable full-window `SlintInputView` under GameActivity too (helper heavily rewritten after 1.19.0, so this hunk needs a manual re-apply next time) | upstreamable in spirit ("don't take focus under GameActivity"), FK-box-specific in form |
+| A5 | android-activity `lib.rs` + touch dispatch | `fkbox_set_touch_observer`: FK-box sees each touch before Slint and locks the axis (`src/gesture.rs`) | No equivalent upstream. `SwipeGestureHandler` takes a drag with dx > 8 and dx > abs(dy)/2, so a diagonal scroll can go to the pager. The C1 replacement doesn't change that. | FK-box-specific |
+| A6 | android-activity `InputEvent::KeyEvent` | A Back release whose press the UI took is `Handled`, so GameActivity doesn't finish the activity | Master's OnBackInvokedCallback path (API 34+) already counts press or release as handled. The KeyEvent path (below API 34, or without `enableOnBackInvokedCallback`) still reports each event alone. Open issue #14962 is about Back control. | upstreamable (align the KeyEvent path with the OnBackInvoked path) |
+
+Next upgrade: master changed the Android backend after 1.19.0 (NativeActivity IME client tracking,
+wgpu fallback, a much larger Java helper diff), so A1-A6 need a fresh three-way merge. None of those
+changes fixes an FK-box hunk. `ui-slint/Cargo.toml`'s `[patch.crates-io]` comment still describes
+retired patches (font data, UTF-16 state exchange, echo suppression, explicit keyboard requests).
 
 ## Layout checks (screenshot harness, 2026-11-13)
 

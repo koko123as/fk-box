@@ -9,6 +9,7 @@ slint::include_modules!();
 mod app;
 mod forms;
 mod fonts;
+mod gesture;
 mod format;
 mod host;
 mod i18n;
@@ -64,6 +65,16 @@ fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
         log::error!("set_platform failed: {error}");
         return;
     }
+    // Decides each touch's axis before Slint's swipe handler sees it.
+    i_slint_backend_android_activity::fkbox_set_touch_observer(|phase, x, y| {
+        let phase = match phase {
+            0 => gesture::Phase::Down,
+            1 => gesture::Phase::Move,
+            2 => gesture::Phase::Up,
+            _ => gesture::Phase::Cancel,
+        };
+        gesture::touch(phase, x, y);
+    });
     fonts::install(files_dir);
     if let Err(error) = app::run() {
         log::error!("UI stopped: {error}");

@@ -67,8 +67,11 @@ fn update_one(st: &ResRef, name: String, label: String, announce: bool, done: im
     });
 }
 
+/// Files not downloaded yet (fetched when a core first needs them) are left
+/// out; a single update still downloads one.
 fn update_all(st: &ResRef) {
     let Some(items) = st.borrow().items.clone() else { return };
+    let items: Vec<Value> = items.into_iter().filter(|item| item.get("source").and_then(Value::as_str) != Some("ondemand")).collect();
     let remaining = Rc::new(RefCell::new((items.len(), true)));
     for item in items {
         let (a, r) = (st.clone(), remaining.clone());
@@ -144,10 +147,11 @@ fn page(st: &ResRef) -> Page {
         let url = item.get("url").and_then(Value::as_str).unwrap_or("").to_string();
         let default_url = item.get("defaultUrl").and_then(Value::as_str).unwrap_or("").to_string();
         let updated_at = long(&item["updatedAt"]);
+        let on_demand = item.get("source").and_then(Value::as_str) == Some("ondemand");
         let source = match item.get("source").and_then(Value::as_str) {
             Some("builtin") => Some(tr("Built in")),
             Some("download") => Some(tr("Downloaded")),
-            None => None,
+            None | Some("ondemand") => None,
             Some(_) => Some("mihomo".to_string()),
         };
         let subtitle = match updated_at {
@@ -155,6 +159,7 @@ fn page(st: &ResRef) -> Page {
                 let date: String = format::local_date(ms).chars().take(16).collect();
                 [Some(date), source].into_iter().flatten().collect::<Vec<_>>().join(" · ")
             }
+            None if on_demand => tr("Downloaded on first use"),
             None => tr("Unknown"),
         };
         let updating = s.updating.contains(&name);

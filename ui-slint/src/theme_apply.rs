@@ -1,6 +1,7 @@
 //! BoxApp's theme: the seeded scheme from the appearance preferences
 //! (accent or system colour, colour style, pure black), the light/dark/system
-//! mode, the font family and the text scale (appTextScale).
+//! mode, the font family, the text scale (appTextScale) and the motion
+//! scale (the system's animator duration scale).
 
 use slint::{Color, ComponentHandle};
 
@@ -24,6 +25,8 @@ pub fn to_slint(s: &BoxScheme) -> Scheme {
         on_secondary_container: c(s.on_secondary_container),
         tertiary: c(s.tertiary),
         on_tertiary: c(s.on_tertiary),
+        tertiary_container: c(s.tertiary_container),
+        on_tertiary_container: c(s.on_tertiary_container),
         error: c(s.error),
         on_error: c(s.on_error),
         error_container: c(s.error_container),
@@ -36,7 +39,11 @@ pub fn to_slint(s: &BoxScheme) -> Scheme {
         on_inverse_surface: c(s.on_inverse_surface),
         inverse_primary: c(s.inverse_primary),
         scrim: c(s.scrim),
+        shadow: c(s.shadow),
         surface: c(s.surface),
+        surface_dim: c(s.surface_dim),
+        surface_bright: c(s.surface_bright),
+        surface_container_lowest: c(s.surface_container_lowest),
         surface_container_low: c(s.surface_container_low),
         surface_container: c(s.surface_container),
         surface_container_high: c(s.surface_container_high),
@@ -73,6 +80,28 @@ pub fn text_scale(system: f32) -> f32 {
 thread_local! {
     static LAST: std::cell::RefCell<String> = const { std::cell::RefCell::new(String::new()) };
     pub static SYSTEM_FONT_SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+    static MOTION_SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+/// The system's animator duration scale (Settings.Global.ANIMATOR_DURATION_SCALE,
+/// sent by the Android host with `locale` and as a `motion` event when the
+/// app returns to the foreground). Theme multiplies every motion duration by
+/// it; 0 ("animations off" or Remove animations) makes every change instant
+/// and turns the purely decorative motion off. Not Slint's own reduced-motion
+/// setting: Android reports it through this scale.
+pub fn motion_scale(value: f64) -> f32 {
+    if value.is_finite() {
+        (value as f32).clamp(0.0, 10.0)
+    } else {
+        1.0
+    }
+}
+
+pub fn set_motion_scale(scale: f32) {
+    MOTION_SCALE.with(|s| s.set(scale));
+    if let Some(w) = crate::app::window() {
+        w.global::<Theme>().set_motion_scale(scale);
+    }
 }
 
 pub fn apply() {
@@ -110,6 +139,22 @@ pub fn apply() {
     }
     theme.set_font_family(if font == "JetBrainsMono" { theme.get_mono() } else { font.as_str().into() });
     theme.set_text_scale(text_scale(SYSTEM_FONT_SCALE.with(|s| s.get())));
+    theme.set_motion_scale(MOTION_SCALE.with(|s| s.get()));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::motion_scale;
+
+    #[test]
+    fn motion_scale_is_bounded() {
+        assert_eq!(motion_scale(1.0), 1.0);
+        assert_eq!(motion_scale(0.0), 0.0);
+        assert_eq!(motion_scale(0.5), 0.5);
+        assert_eq!(motion_scale(-1.0), 0.0);
+        assert_eq!(motion_scale(100.0), 10.0);
+        assert_eq!(motion_scale(f64::NAN), 1.0);
+    }
 }
 
 /// Whether the dark scheme is showing (for the native pages opened over the UI).

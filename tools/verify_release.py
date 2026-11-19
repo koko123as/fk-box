@@ -15,6 +15,38 @@ REQUIRED_LIBRARIES = ('libbox.so', 'libfkui.so')
 ELF_MACHINES = {'arm64-v8a': 183, 'armeabi-v7a': 40, 'x86_64': 62, 'x86': 3}
 
 
+def undefined_cxx_symbols(data):
+    """Undefined, non-weak C++ standard library symbols in a 64-bit little-endian
+    ELF shared object's dynamic symbol table. libfkui.so links libc++ statically
+    and needs no libc++_shared.so, so any such symbol is left unresolved at load
+    time: System.loadLibrary fails and the app closes at launch (Slint 1.19's
+    prebuilt Skia linked with an NDK older than r30 left
+    std::__ndk1::__hash_memory undefined)."""
+    if data[:4] != b'\x7fELF' or data[4] != 2 or data[5] != 1:
+        return []
+    u16 = lambda o: int.from_bytes(data[o:o + 2], 'little')
+    u32 = lambda o: int.from_bytes(data[o:o + 4], 'little')
+    u64 = lambda o: int.from_bytes(data[o:o + 8], 'little')
+    shoff, shentsize, shnum = u64(0x28), u16(0x3A), u16(0x3C)
+    sections = [(u32(shoff + i * shentsize + 4), u64(shoff + i * shentsize + 0x18),
+                 u64(shoff + i * shentsize + 0x20), u32(shoff + i * shentsize + 0x28))
+                for i in range(shnum)]
+    found = []
+    for sh_type, offset, size, link in sections:
+        if sh_type != 11:  # SHT_DYNSYM
+            continue
+        strtab = sections[link][1]
+        for entry in range(offset, offset + size, 24):
+            name_offset, info, shndx = u32(entry), data[entry + 4], u16(entry + 6)
+            if shndx != 0 or name_offset == 0 or info >> 4 == 2:  # defined, unnamed or weak
+                continue
+            end = data.index(b'\0', strtab + name_offset)
+            name = data[strtab + name_offset:end].decode('ascii', 'replace')
+            if name.startswith(('_ZNSt', '_ZNKSt', '_ZSt', '_ZTVNSt', '_ZTINSt', '_ZTSNSt')):
+                found.append(name)
+    return found
+
+
 def verify_native_libraries(apk_path, abis):
     with ZipFile(apk_path) as apk:
         names = set(apk.namelist())
@@ -35,7 +67,12 @@ def verify_native_libraries(apk_path, abis):
                 expected_class = 1 if abi in ('armeabi-v7a', 'x86') else 2
                 if elf_class != expected_class or elf_type != 3 or machine != ELF_MACHINES.get(abi):
                     raise SystemExit(f'{name}: class {elf_class}, type {elf_type}, machine {machine} do not match {abi}')
-    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI')
+                if name.endswith('/libfkui.so'):
+                    missing = undefined_cxx_symbols(apk.read(name))
+                    if missing:
+                        raise SystemExit(f'{name}: unresolved C++ library symbols {missing[:5]} '
+                                         '(Slint\'s prebuilt Skia needs the NDK it was built with, see FKUI_NDK_HOME)')
+    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI, libfkui.so without unresolved C++ library symbols')
 
 
 def main():
@@ -45,7 +82,7 @@ def main():
         if line.strip() and not line.lstrip().startswith('#') and '=' in line
     )
     apks = list(Path('app/build/outputs/apk/other/release').glob('*.apk'))
-    expected_name = f"FK-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
+    expected_name = f"fk-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
     if len(apks) != 1 or apks[0].name != expected_name:
         raise SystemExit(f'Expected exactly one {expected_name}, found: {apks}')
     with ZipFile(apks[0]) as apk:
@@ -68,11 +105,25 @@ def main():
         manifest = json.loads(apk.read('assets/geo/manifest.json')) if 'assets/geo/manifest.json' in names else {}
         if manifest.get('commit') != pins['GEO_COMMIT']:
             raise SystemExit('Missing or stale bundled geo manifest')
+        bundled = {name.strip() for name in pins.get('GEO_BUNDLED', '').split(',') if name.strip()}
+        if not bundled:
+            raise SystemExit('GEO_BUNDLED is empty')
         for resource in ('geoip', 'geosite', 'mmdb', 'asn'):
-            _, file, digest = pins[resource].split(':')
+            source, file, digest = pins[resource].split(':')
             packaged = f'assets/geo/{file}'
-            if packaged not in names or hashlib.sha256(apk.read(packaged)).hexdigest() != digest:
-                raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
+            if resource in bundled:
+                if packaged not in names or hashlib.sha256(apk.read(packaged)).hexdigest() != digest:
+                    raise SystemExit(f'Missing or changed bundled geo file: {packaged}')
+                if manifest.get('files', {}).get(resource, {}).get('sha256') != digest:
+                    raise SystemExit(f'Geo manifest does not list bundled {resource}')
+                continue
+            # Downloaded on first use: not in the APK, pinned in the manifest.
+            if packaged in names:
+                raise SystemExit(f'Geo file outside GEO_BUNDLED was packaged: {packaged}')
+            remote = manifest.get('remote', {}).get(resource, {})
+            url = f"https://raw.githubusercontent.com/{pins['GEO_REPOSITORY']}/{pins['GEO_COMMIT']}/{source}"
+            if remote.get('sha256') != digest or remote.get('url') != url or remote.get('file') != file:
+                raise SystemExit(f'Geo manifest does not pin on-demand {resource}')
     if abis != {'arm64-v8a'}:
         raise SystemExit(f'Unexpected native ABIs: {abis}')
     verify_native_libraries(apks[0], abis)
@@ -103,7 +154,7 @@ def main():
     if launcher.get('name') != 'io.nekohasekai.sfa.compose.MainActivity':
         raise SystemExit(f'Unexpected launcher activity: {launcher.get("name")!r}')
     labels = dict(re.findall(r"^(application-label(?:-[^:]+)?):'(.*)'$", badging, re.MULTILINE))
-    if 'application-label' not in labels or any(label != 'FK-box' for label in labels.values()):
+    if 'application-label' not in labels or any(label != 'fk-box' for label in labels.values()):
         raise SystemExit(f'Unexpected application labels: {labels}')
     print(f'Verified ARM64 APK identity, minimum SDK 24 and {len(labels)} application labels: {apks[0]}')
     subprocess.run([str(aapt2.with_name('apksigner')), 'verify', '--verbose', str(apks[0])], check=True)

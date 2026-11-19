@@ -95,8 +95,9 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 - 目录：`GeoDataDir()` = `<工作目录>/cores/mihomo`，即 mihomo 的 home（mihomo 按不区分大小写的名字找 `GeoIP.dat`/`GeoSite.dat`/`geoip.metadb`/`ASN.mmdb`）；Xray 启动和 `CheckCoreConfig` 时把 `xray.location.asset` 设为同一目录，读小写的 `geoip.dat`/`geosite.dat`。因此两个内核共用一份文件，mihomo 配置自己的 `geo-auto-update`/`geox-url` 也写入这里。Android 的应用外部目录不支持符号链接，所以不用链接。
 - `NewGeoUpdate()` 返回一次可取消的更新，`Fetch(dir, name, url, installedSha256, etag, lastModified)`：经 libbox HTTP 客户端（与订阅相同，上限 96 MiB，5 分钟超时）流式下载到同目录临时文件并边写边算 SHA-256，整个文件不进 Go 堆；`Cancel()` 随时中止。`installedSha256` 与磁盘文件一致且给了 `etag`/`lastModified` 时发 `If-None-Match`/`If-Modified-Since`，304 返回 `Skipped`。校验：`.dat` 用 protowire 逐字段检查整体分帧（截断即失败），只解码到第一条可用条目；MMDB/ASN 用 `maxminddb.Open`（mmap）打开再关闭。与现有文件大小相同才流式比对哈希，相同返回 `Skipped`，否则 rename 覆盖；下载失败、HTTP 非 200/304、长度不符、校验失败都不动原文件。结果带服务器的 `Etag`、`LastModified` 供下次条件请求。写入后删除大小写不同的旧变体（如 mihomo 下载的 `GeoSite.dat`，大小写不敏感的文件系统上同一文件不删），并让 mihomo 重新读取：清除 GeoIP/GeoSite 匹配缓存，MMDB/ASN 调 `mmdb.ReloadIP/ReloadASN`（下次查询打开新文件，旧映射随之释放）；已建好的规则和 Xray 在内核下次启动时读到新文件。结束时 `debug.FreeOSMemory()`。并发由应用侧 `GeoResources` 的互斥锁串行化，Go 侧不再另加锁。
-- `GeoResourceFileName`、`GeoResourceDefaultURL`、`GeoDataDir` 供应用使用。APK 内置副本、解压和自动更新见 [app.md](app.md#地理数据资源)。
-- 测试 [core_geo_test.go](libbox/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理；[core_memory_test.go](libbox/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
+- `FetchExpected(dir, name, url, expectedSha256)`：无条件下载，下载内容的 SHA-256 与给定值不符则拒绝（在格式校验和 rename 之前，原文件与临时文件都不留下），其余同 `Fetch`。应用用它在首次使用时下载 APK 未内置、但清单固定了提交与哈希的文件。
+- `GeoResourceFileName`、`GeoResourceDefaultURL`、`GeoDataDir` 供应用使用。APK 内置哪些文件、何时解压/按需下载和自动更新见 [app.md](app.md#地理数据资源)。
+- 测试 [core_geo_test.go](libbox/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理、`FetchExpected` 拒绝哈希不符或非法的期望值且不留文件；[core_memory_test.go](libbox/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
 
 ### 升级内核
 

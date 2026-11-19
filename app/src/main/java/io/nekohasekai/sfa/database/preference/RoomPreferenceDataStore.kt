@@ -1,7 +1,6 @@
 package io.nekohasekai.sfa.database.preference
 
 import android.util.Log
-import androidx.preference.PreferenceDataStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -11,8 +10,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
-@Suppress("MemberVisibilityCanBePrivate", "unused")
-open class RoomPreferenceDataStore(createDao: () -> KeyValueEntity.Dao) : PreferenceDataStore() {
+/** Settings key/value store backed by Room, read from an in-memory cache and written in order off the caller thread. */
+class RoomPreferenceDataStore(createDao: () -> KeyValueEntity.Dao) {
     private val kvPairDao by lazy(createDao)
     private val writeAccess = Any()
     private val pendingWrites = Channel<() -> Unit>(Channel.UNLIMITED)
@@ -56,61 +55,29 @@ open class RoomPreferenceDataStore(createDao: () -> KeyValueEntity.Dao) : Prefer
         fireChangeListener(entity.key)
     }
 
-    fun getBoolean(key: String) = cache[key]?.boolean
+    fun getBoolean(key: String, defValue: Boolean) = cache[key]?.boolean ?: defValue
 
-    fun getFloat(key: String) = cache[key]?.float
+    fun getInt(key: String, defValue: Int) = cache[key]?.long?.toInt() ?: defValue
 
-    fun getInt(key: String) = cache[key]?.long?.toInt()
+    fun getLong(key: String, defValue: Long) = cache[key]?.long ?: defValue
 
-    fun getLong(key: String) = cache[key]?.long
+    fun getString(key: String, defValue: String?) = cache[key]?.string ?: defValue
 
-    fun getString(key: String) = cache[key]?.string
+    fun getStringSet(key: String, defValue: Set<String>?) = cache[key]?.stringSet ?: defValue
 
-    fun getStringSet(key: String) = cache[key]?.stringSet
+    fun putBoolean(key: String, value: Boolean) = put(KeyValueEntity(key).put(value))
 
-    fun reset() {
-        val values = cache
-        synchronized(writeAccess) {
-            values.clear()
-            check(pendingWrites.trySend { kvPairDao.reset() }.isSuccess)
-        }
-    }
+    fun putInt(key: String, value: Int) = put(KeyValueEntity(key).put(value.toLong()))
 
-    override fun getBoolean(key: String, defValue: Boolean) = getBoolean(key) ?: defValue
+    fun putLong(key: String, value: Long) = put(KeyValueEntity(key).put(value))
 
-    override fun getFloat(key: String, defValue: Float) = getFloat(key) ?: defValue
-
-    override fun getInt(key: String, defValue: Int) = getInt(key) ?: defValue
-
-    override fun getLong(key: String, defValue: Long) = getLong(key) ?: defValue
-
-    override fun getString(key: String, defValue: String?) = getString(key) ?: defValue
-
-    override fun getStringSet(key: String, defValue: MutableSet<String>?) = getStringSet(key) ?: defValue
-
-    fun putBoolean(key: String, value: Boolean?) = if (value == null) remove(key) else putBoolean(key, value)
-
-    fun putFloat(key: String, value: Float?) = if (value == null) remove(key) else putFloat(key, value)
-
-    fun putInt(key: String, value: Int?) = if (value == null) remove(key) else putLong(key, value.toLong())
-
-    fun putLong(key: String, value: Long?) = if (value == null) remove(key) else putLong(key, value)
-
-    override fun putBoolean(key: String, value: Boolean) = put(KeyValueEntity(key).put(value))
-
-    override fun putFloat(key: String, value: Float) = put(KeyValueEntity(key).put(value))
-
-    override fun putInt(key: String, value: Int) = put(KeyValueEntity(key).put(value.toLong()))
-
-    override fun putLong(key: String, value: Long) = put(KeyValueEntity(key).put(value))
-
-    override fun putString(key: String, value: String?) = if (value == null) {
+    fun putString(key: String, value: String?) = if (value == null) {
         remove(key)
     } else {
         put(KeyValueEntity(key).put(value))
     }
 
-    override fun putStringSet(key: String, values: MutableSet<String>?) = if (values == null) {
+    fun putStringSet(key: String, values: Set<String>?) = if (values == null) {
         remove(key)
     } else {
         put(KeyValueEntity(key).put(values))

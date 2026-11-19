@@ -462,11 +462,6 @@ impl Page {
         self
     }
 
-    pub fn title_menu(mut self, f: impl Fn() -> Vec<MenuEntry> + 'static) -> Page {
-        self.title_menu = Some(Rc::new(f));
-        self
-    }
-
     pub fn keywords(mut self, keywords: Vec<(String, String, bool, bool, bool)>, f: impl Fn(String) + 'static) -> Page {
         self.keywords = keywords;
         self.on_keyword = Some(Rc::new(f));
@@ -499,6 +494,10 @@ struct Entry {
     builder: Builder,
     rows: Rc<VecModel<SettingRow>>,
     actions: Rc<VecModel<BarAction>>,
+    // Kept per page like rows and actions: a fresh ModelRc on every build
+    // never compares equal, so PageData would look changed (and the page be
+    // set again) on each projection.
+    keywords: Rc<VecModel<crate::Keyword>>,
     last: Page,
 }
 
@@ -521,7 +520,13 @@ fn register(id: i32, builder: Builder) {
     ENTRIES.with(|e| {
         e.borrow_mut().insert(
             id,
-            Entry { builder, rows: Rc::new(VecModel::default()), actions: Rc::new(VecModel::default()), last: Page::default() },
+            Entry {
+                builder,
+                rows: Rc::new(VecModel::default()),
+                actions: Rc::new(VecModel::default()),
+                keywords: Rc::new(VecModel::default()),
+                last: Page::default(),
+            },
         )
     });
 }
@@ -607,6 +612,53 @@ pub fn sync_model<T: Clone + PartialEq + 'static>(model: &VecModel<T>, next: Vec
     }
 }
 
+fn same_strings(a: &ModelRc<SharedString>, b: &ModelRc<SharedString>) -> bool {
+    a.row_count() == b.row_count() && a.iter().zip(b.iter()).all(|(x, y)| x == y)
+}
+
+/// How far ahead a shifted list is searched for the row it lines up with.
+const ALIGN_WINDOW: usize = 256;
+
+/// [sync_model] for a page's rows, which rebuild from scratch on every
+/// projection. A record row's labels and chain are new models each build and
+/// never compare equal, so the models of the row with the same key are kept
+/// when their contents match; and rows that left or joined the list at the
+/// first difference (the log ring dropping its oldest lines, a new connection
+/// sorted to the top) are removed or inserted there instead of every later
+/// row being set again. The final [sync_model] makes the model exactly `next`
+/// whatever the alignment did.
+fn sync_rows(model: &VecModel<SettingRow>, mut next: Vec<SettingRow>) {
+    let count = model.row_count();
+    if count > 0 {
+        let old: HashMap<SharedString, SettingRow> = model.iter().map(|r| (r.key.clone(), r)).collect();
+        for r in next.iter_mut() {
+            if let Some(o) = old.get(&r.key) {
+                if same_strings(&o.options, &r.options) {
+                    r.options = o.options.clone();
+                }
+                if same_strings(&o.chain, &r.chain) {
+                    r.chain = o.chain.clone();
+                }
+            }
+        }
+        let key = |i: usize| model.row_data(i).map(|r| r.key).unwrap_or_default();
+        if let Some(at) = (0..count.min(next.len())).find(|&i| key(i) != next[i].key) {
+            let first_old = key(at);
+            let window = |len: usize| (at + 1)..len.min(at + ALIGN_WINDOW);
+            if let Some(k) = window(count).find(|&k| key(k) == next[at].key) {
+                for _ in at..k {
+                    model.remove(at);
+                }
+            } else if let Some(j) = window(next.len()).find(|&j| next[j].key == first_old) {
+                for (i, r) in next[at..j].iter().enumerate() {
+                    model.insert(at + i, r.clone());
+                }
+            }
+        }
+    }
+    sync_model(model, next);
+}
+
 /// Updates a property's model in place when it is already a VecModel.
 pub fn update<T: Clone + PartialEq + 'static>(current: ModelRc<T>, next: Vec<T>) -> Option<ModelRc<T>> {
     if let Some(model) = current.as_any().downcast_ref::<VecModel<T>>() {
@@ -618,8 +670,8 @@ pub fn update<T: Clone + PartialEq + 'static>(current: ModelRc<T>, next: Vec<T>)
 }
 
 fn build(id: i32) -> Option<PageData> {
-    let entry = ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.builder.clone(), en.rows.clone(), en.actions.clone())));
-    let (builder, rows_model, actions_model) = entry?;
+    let entry = ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.builder.clone(), en.rows.clone(), en.actions.clone(), en.keywords.clone())));
+    let (builder, rows_model, actions_model, keywords_model) = entry?;
     let mut page = builder();
     for (i, r) in page.rows.iter_mut().enumerate() {
         if r.data.key.is_empty() {
@@ -646,7 +698,7 @@ fn build(id: i32) -> Option<PageData> {
     }
     let mut rows: Vec<SettingRow> = page.rows.iter().map(|r| r.data.clone()).collect();
     positions(&mut rows);
-    sync_model(&rows_model, rows);
+    sync_rows(&rows_model, rows);
     let actions: Vec<BarAction> = page
         .bar
         .iter()
@@ -660,6 +712,13 @@ fn build(id: i32) -> Option<PageData> {
         })
         .collect();
     sync_model(&actions_model, actions);
+    let keywords: Vec<crate::Keyword> = page
+        .keywords
+        .iter()
+        .map(|(key, label, removable, selected, section)| crate::Keyword { key: ss(key), label: ss(label), removable: *removable, selected: *selected, section_start: *section })
+        .collect();
+    let has_keywords = !keywords.is_empty();
+    sync_model(&keywords_model, keywords);
     let data = PageData {
         id,
         generic: true,
@@ -678,16 +737,7 @@ fn build(id: i32) -> Option<PageData> {
         foot_chip: page.foot.as_ref().map(|f| ss(&f.2)).unwrap_or_default(),
         foot_button: page.foot.as_ref().map(|f| ss(&f.3)).unwrap_or_default(),
         title_menu_key: if page.title_menu.is_some() { ss(format!("title:{id}")) } else { SharedString::new() },
-        keywords: if page.keywords.is_empty() {
-            ModelRc::default()
-        } else {
-            ModelRc::new(VecModel::from(
-                page.keywords
-                    .iter()
-                    .map(|(key, label, removable, selected, section)| crate::Keyword { key: ss(key), label: ss(label), removable: *removable, selected: *selected, section_start: *section })
-                    .collect::<Vec<_>>(),
-            ))
-        },
+        keywords: if has_keywords { ModelRc::from(keywords_model) } else { ModelRc::default() },
         reverse: page.reverse,
     };
     ENTRIES.with(|e| {
@@ -698,8 +748,14 @@ fn build(id: i32) -> Option<PageData> {
     Some(data)
 }
 
-/// Rebuilds every Rust-built page, aligned with the routes.
-pub fn project(w: &AppWindow) {
+/// Rebuilds the Rust-built pages, aligned with the routes. `m` is what
+/// changed: a projection that only carries the per-second marks (the clock,
+/// the rates, streamed records) rebuilds just what is on screen (the top
+/// route, or every route in the wide layout, and the shown home destination)
+/// instead of every page each second. Covered pages are rebuilt by the next
+/// full projection; opening, closing and switching pages all mark everything.
+pub fn project(w: &AppWindow, m: crate::pages::Mark) {
+    use crate::pages::Mark;
     let model = DATA.with(|d| {
         d.borrow_mut()
             .get_or_insert_with(|| {
@@ -709,27 +765,47 @@ pub fn project(w: &AppWindow) {
             })
             .clone()
     });
-    let routes: Vec<i32> = w.global::<Nav>().get_routes().iter().map(|r| r.id).collect();
-    let next: Vec<PageData> = routes.iter().map(|id| build(*id).unwrap_or(PageData { id: *id, ..Default::default() })).collect();
+    let light = m.0 & !(Mark::CLOCK.0 | Mark::RATES.0 | Mark::RECORDS.0) == 0;
+    let nav = w.global::<Nav>();
+    let mobile = nav.get_mobile();
+    let routes: Vec<i32> = nav.get_routes().iter().map(|r| r.id).collect();
+    let covered = mobile && !routes.is_empty();
+    let top = routes.len().saturating_sub(1);
+    let next: Vec<PageData> = routes
+        .iter()
+        .enumerate()
+        .map(|(i, id)| {
+            if light && mobile && i != top {
+                if let Some(kept) = model.row_data(i).filter(|p| p.id == *id) {
+                    return kept;
+                }
+            }
+            build(*id).unwrap_or(PageData { id: *id, ..Default::default() })
+        })
+        .collect();
     sync_model(&model, next);
-    if let Some(tools) = build(TOOLS_ID) {
-        if w.global::<Pages>().get_tools() != tools {
-            w.global::<Pages>().set_tools(tools);
+    let tab = nav.get_tab();
+    if !light || (tab == "Tools" && !covered && m.has(Mark::CLOCK)) {
+        if let Some(tools) = build(TOOLS_ID) {
+            if w.global::<Pages>().get_tools() != tools {
+                w.global::<Pages>().set_tools(tools);
+            }
         }
     }
     // Requests and Logs on the home pane only while they are the destination
-    // shown. Their rows are updated in place in the page's own models (build);
-    // the page itself is only replaced when something else on it changed, so
-    // the clock's tick does not set the property, and rebuild the list, each second.
-    let tab = w.global::<Nav>().get_tab();
-    if tab == "Requests" {
+    // shown, and in a light projection only when records arrived (they show
+    // nothing the clock or the rates change). Their rows are updated in place
+    // in the page's own models (build); the page itself is only replaced when
+    // something else on it changed.
+    let records = !light || (m.has(Mark::RECORDS) && !covered);
+    if tab == "Requests" && records {
         if let Some(p) = build(REQUESTS_ID) {
             if w.global::<Pages>().get_requests() != p {
                 w.global::<Pages>().set_requests(p);
             }
         }
     }
-    if tab == "Logs" {
+    if tab == "Logs" && records {
         if let Some(p) = build(LOGS_ID) {
             if w.global::<Pages>().get_logs() != p {
                 w.global::<Pages>().set_logs(p);
@@ -737,7 +813,6 @@ pub fn project(w: &AppWindow) {
         }
     }
 }
-
 fn find(id: i32, key: &str) -> Option<Row> {
     ENTRIES.with(|e| e.borrow().get(&id).and_then(|en| en.last.rows.iter().find(|r| r.data.key == key).cloned()))
 }
@@ -863,9 +938,4 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
         }
     }
     Vec::new()
-}
-
-/// Closes the Rust-built page `id`.
-pub fn close(id: i32) {
-    nav::close(id);
 }

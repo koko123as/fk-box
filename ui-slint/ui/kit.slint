@@ -1,10 +1,13 @@
-// The shared components (compose/ui/Kit.kt, Card.kt, AppIcons.kt, Forms.kt,
-// Scaffold.kt, NullStatus.kt): flat Material 3 surfaces, 12 dp corners,
-// Material icons, no shadows, no transitions.
+// The shared Material Design 3 components (ui/m3-rewrite): text in the M3
+// type roles, state layers (hover, focus, pressed) and focus rings, 48 dp
+// touch targets, icon buttons, common buttons, switch, radio, checkbox,
+// filter chips, segmented buttons, cards (filled, elevated, outlined), list
+// items, outlined text fields, the search bar and the small top app bar.
+// Colors, corners, type and spacing come from the tokens in theme.slint.
 
 import { Theme, TextRole } from "theme.slint";
 import { Icons, Glyph } from "icons.slint";
-import { Nav, BarAction, Keyword, NativeIme } from "globals.slint";
+import { Nav, BarAction, Keyword, NativeIme, Motion } from "globals.slint";
 import "fonts/MaterialIcons-Regular.ttf";
 import "fonts/MaterialIconsOutlined-Regular.otf";
 
@@ -143,7 +146,7 @@ export component Icon inherits Text {
     height: size;
     horizontal-alignment: center;
     vertical-alignment: center;
-    color: Theme.s.on-surface;
+    color: Theme.s.on-surface-variant;
     accessible-role: none;
 }
 
@@ -155,53 +158,382 @@ export component Mid {
     }
 }
 
-// Text in one of the AppTextStyle roles.
+// Text in one of the M3 type roles. `emphasized` is the role's emphasized
+// variant (medium weight), used sparingly for figures and key values.
 export component T inherits Text {
-    in property <TextRole> role: TextRole.body;
+    in property <TextRole> role: TextRole.body-large;
     in property <bool> emphasized;
     font-size: Theme.size(role);
     font-family: Theme.font-family;
-    font-weight: emphasized ? (role == TextRole.headline ? 600 : 500) : (role == TextRole.headline ? 500 : 400);
+    font-weight: emphasized ? max(500, Theme.weight(role)) : Theme.weight(role);
+    letter-spacing: Theme.tracking(role);
     color: Theme.s.on-surface;
     overflow: elide;
     vertical-alignment: center;
 }
 
-// The Material 3 indeterminate progress ring (CommonCircleLoading).
+// The M3 state layer: the content color over its container at the hover,
+// focus or pressed opacity. Fills its parent and takes its corners.
+//
+// A press whose release never reaches the owner's TouchArea (a gesture
+// handler above took the gesture, the window lost the pointer) would leave
+// `pressed` and `hover` true and the surface grey: after Theme.touch-press-max
+// without a change, or when the host resets gestures (Motion.gesture-resets),
+// the pressed and hover layers are dropped until either input changes again.
+export component StateLayer inherits Rectangle {
+    in property <color> ink: Theme.s.on-surface;
+    in property <bool> pressed;
+    in property <bool> hover;
+    in property <bool> focused;
+    in property <bool> enabled: true;
+    property <bool> stale;
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { self.stale = self.pressed || self.hover; }
+    changed pressed => { self.watch(); }
+    changed hover => { self.watch(); }
+    function watch() {
+        self.stale = false;
+        if (self.pressed || self.hover) {
+            guard.interval = Theme.touch-press-max;
+            if (guard.running) { guard.restart(); } else { guard.start(); }
+        } else {
+            guard.stop();
+        }
+    }
+    guard := Timer {
+        running: false;
+        interval: Theme.touch-press-max;
+        triggered => {
+            self.stop();
+            // A mouse resting over the surface is a real hover; only a press
+            // left behind turns both off.
+            root.stale = root.pressed;
+        }
+    }
+    background: enabled ? Theme.state(ink, pressed && !stale, hover && !stale, focused) : transparent;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+}
+
+// The M3 press ripple: a circle of the content color spreads from where the
+// press landed over its surface, clipped to the surface's corners, and fades
+// once the press ends. Placed like StateLayer (it fills its parent; give it
+// the parent's corners). The owner's TouchArea calls `down(x, y)` (in this
+// element's coordinates) from its pointer-event on a press, before any
+// delayed `pressed`, so a quick tap still ripples, and `up()` on release or
+// cancel and whenever the TouchArea's `pressed` or `has-hover` turns false
+// (the Exit a gesture handler sends when it takes the gesture over); a
+// release that never arrives fades after Theme.touch-press-max. Drawn from
+// animation-tick() only while a ripple is alive; nothing when motion is off
+// (Theme.motion-on), where the state layer alone shows the press.
+export component Ripple inherits Rectangle {
+    in property <color> ink: Theme.s.on-surface;
+    in property <bool> enabled: true;
+    // Spread from the centre whatever the press position (icon buttons,
+    // navigation destinations).
+    in property <bool> centered;
+    property <bool> live;
+    property <bool> held;
+    property <duration> start;
+    property <duration> fade-from;
+    property <length> cx;
+    property <length> cy;
+    property <length> reach: sqrt(pow(max(self.cx, self.width - self.cx) / 1px, 2) + pow(max(self.cy, self.height - self.cy) / 1px, 2)) * 1px;
+    // The clip takes its corners from bindings declared here: the compiler
+    // builds it from this component alone, so radii set only where a Ripple
+    // is used would leave it square and the ink would show past round shapes.
+    border-top-left-radius: self.border-radius;
+    border-top-right-radius: self.border-radius;
+    border-bottom-left-radius: self.border-radius;
+    border-bottom-right-radius: self.border-radius;
+    clip: true;
+    accessible-role: none;
+    // A ripple whose release never comes (a gesture handler above took it,
+    // the host reset gestures) fades by itself after Theme.touch-press-max.
+    property <int> resets: Motion.gesture-resets;
+    changed resets => { self.up(); }
+    public function down(x: length, y: length) {
+        if (!self.enabled || !Theme.motion-on) {
+            return;
+        }
+        guard.interval = Theme.touch-press-max;
+        if (guard.running) { guard.restart(); } else { guard.start(); }
+        self.cx = self.centered ? self.width / 2 : clamp(x, 0px, self.width);
+        self.cy = self.centered ? self.height / 2 : clamp(y, 0px, self.height);
+        self.start = animation-tick();
+        self.held = true;
+        self.live = true;
+        end.stop();
+    }
+    public function up() {
+        guard.stop();
+        if (!self.live || !self.held) {
+            return;
+        }
+        self.held = false;
+        // A ripple shows at least half its spread before it fades.
+        self.fade-from = max(animation-tick(), self.start + Theme.motion-ripple * 0.5);
+        end.interval = self.fade-from - animation-tick() + Theme.motion-ripple-fade + 16ms;
+        if (end.running) { end.restart(); } else { end.start(); }
+    }
+    guard := Timer {
+        running: false;
+        interval: Theme.touch-press-max;
+        triggered => {
+            self.stop();
+            root.up();
+        }
+    }
+    end := Timer {
+        running: false;
+        interval: Theme.motion-ripple-fade;
+        triggered => {
+            self.stop();
+            root.live = false;
+        }
+    }
+    if root.live: Rectangle {
+        property <duration> now: animation-tick();
+        property <float> grow: Theme.ease-out(Theme.progress(self.now, root.start, Theme.motion-ripple));
+        property <float> fade: root.held ? 1 : 1 - Theme.progress(self.now, root.fade-from, Theme.motion-ripple-fade);
+        property <length> r: root.reach * (0.25 + 0.75 * self.grow);
+        x: root.cx - self.r;
+        y: root.cy - self.r;
+        width: 2 * self.r;
+        height: 2 * self.r;
+        border-radius: self.r;
+        background: root.ink.with-alpha(Theme.state-pressed * self.fade);
+    }
+}
+
+// Surface: an opaque M3 surface for what floats over scrolling content
+// (the floating navigation bar, the top app bar once content is under it,
+// menus, dialogs, the rows' foot bar). `level` picks its tonal
+// surface-container role (Theme.level) and `elevation` (0–3) the shadow
+// where M3 gives the component one (Theme.shadow-*). No blur: nothing in
+// the UI reads back what lies under a surface (no backdrop-blur,
+// tools/verify_newui.py), so content scrolling under it costs no per-frame
+// filter, and moving or scaling it is cheap.
+export component Surface inherits Rectangle {
+    in property <int> level: 2;
+    in property <int> elevation: 0;
+    background: Theme.level(root.level);
+    drop-shadow-blur: Theme.shadow-blur(root.elevation);
+    drop-shadow-offset-y: Theme.shadow-offset(root.elevation);
+    drop-shadow-color: Theme.shadow-color(root.elevation);
+    // Set here so the corners follow a `border-radius` given where Surface is used.
+    border-top-left-radius: root.border-radius;
+    border-top-right-radius: root.border-radius;
+    border-bottom-left-radius: root.border-radius;
+    border-bottom-right-radius: root.border-radius;
+    @children
+}
+
+// Tap: the press feedback of a tappable surface in one piece: the M3 state
+// layer, the press ripple and the TouchArea that drives both. Fills its
+// parent (give it the parent's corners; per-corner radii work too); place
+// it where the parent's TouchArea would go. `centered` spreads the ripple
+// from the centre (round targets such as swatches and badges).
+export component Tap inherits Rectangle {
+    in property <color> ink: Theme.s.on-surface;
+    in property <bool> enabled: true;
+    in property <bool> centered;
+    in property <bool> focused;
+    out property <bool> pressed: touch.pressed;
+    out property <bool> has-hover: touch.has-hover;
+    out property <length> mouse-x: touch.mouse-x;
+    out property <length> mouse-y: touch.mouse-y;
+    callback clicked();
+    border-top-left-radius: root.border-radius;
+    border-top-right-radius: root.border-radius;
+    border-bottom-left-radius: root.border-radius;
+    border-bottom-right-radius: root.border-radius;
+    accessible-role: none;
+    StateLayer {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        ink: root.ink;
+        enabled: root.enabled;
+        pressed: touch.pressed;
+        hover: touch.has-hover;
+        focused: root.focused;
+    }
+    rip := Ripple {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        ink: root.ink;
+        enabled: root.enabled;
+        centered: root.centered;
+    }
+    touch := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
+    }
+}
+
+// List motion (FlClash's list feel, flclash.md "动效"): ListMotion watches a
+// list's length and says whether its items may move now, Entrance plays an
+// item's way in, and the lists use them like this: an item created while
+// `adding` grows into its place (height or a short rise) as it fades in; the
+// items after a removed one slide up from where they were while `removing`
+// (their content, since a layout's y cannot be animated); an item whose slot
+// now shows another entry (a model updated in place by position) replays a
+// short fade or slides in from the slot that entry had. Nothing moves until
+// the list has been shown for Theme.motion-medium (its first items arrive
+// still) or when more than Theme.motion-list-batch items come or go at once
+// (a reload, a search), and nothing at all when motion is off.
+export component ListMotion {
+    in property <int> count;
+    // The length before the latest change, kept until that change has been
+    // laid out and drawn (the items built for it read `adding` with it).
+    out property <int> before;
+    out property <int> delta: root.count - root.before;
+    out property <bool> on: root.settled && Theme.motion-on && root.delta != 0 && abs(root.delta) <= Theme.motion-list-batch;
+    out property <bool> adding: root.on && root.delta > 0;
+    out property <bool> removing: root.on && root.delta < 0;
+    property <bool> settled;
+    init => {
+        root.before = root.count;
+        warm.interval = Theme.motion-medium;
+        warm.start();
+    }
+    changed count => {
+        if (commit.running) { commit.restart(); } else { commit.start(); }
+    }
+    // A debounce, not motion: changes closer together than this count as one
+    // (a list changing all the time keeps a large delta and stays still).
+    commit := Timer {
+        running: false;
+        interval: 120ms;
+        triggered => {
+            self.stop();
+            root.before = root.count;
+        }
+    }
+    warm := Timer {
+        running: false;
+        interval: Theme.motion-medium;
+        triggered => {
+            self.stop();
+            root.settled = true;
+        }
+    }
+}
+
+// An item's way in: `t` goes 0 → 1 (ease-out) over Theme.motion-appear when
+// the item is created with `enter` set, or when `play()` is called; 1 at
+// rest and when motion is off. Read from animation-tick() only while it runs.
+export component Entrance {
+    in property <bool> enter;
+    out property <float> t: root.running ? Theme.ease-out(Theme.progress(animation-tick(), root.start, Theme.motion-appear)) : 1;
+    property <bool> running;
+    property <duration> start;
+    init => {
+        if (root.enter) { root.play(); }
+    }
+    public function play() {
+        if (!Theme.motion-on) {
+            return;
+        }
+        root.start = animation-tick();
+        root.running = true;
+        done.interval = Theme.motion-appear + 16ms;
+        if (done.running) { done.restart(); } else { done.start(); }
+    }
+    done := Timer {
+        running: false;
+        interval: Theme.motion-appear;
+        triggered => {
+            self.stop();
+            root.running = false;
+        }
+    }
+}
+
+// Content that fades in when it takes another's place (empty, loading and
+// loaded states, the splash and the home page): the incoming half of the
+// fade-through, fading in while it grows from Theme.motion-enter-scale.
+// Slint removes the content an `if` drops at once, so the outgoing half is
+// instant there; the home pager (home.slint) keeps its pages and fades both.
+export component Appear inherits Rectangle {
+    in property <duration> delay: 0ms;
+    property <bool> shown;
+    init => { self.shown = true; }
+    opacity: self.shown ? 1 : 0;
+    transform-scale: self.shown ? 1 : Theme.motion-enter-scale;
+    animate opacity, transform-scale { duration: Theme.motion-enter; delay: root.delay; easing: Theme.easing-decelerate; }
+    @children
+}
+
+// The M3 focus indicator: a 3 dp secondary ring 2 dp outside the control,
+// shown only while the control has keyboard focus.
+export component FocusRing inherits Rectangle {
+    in property <bool> shown;
+    in property <length> corner;
+    if root.shown: Rectangle {
+        x: -2px;
+        y: -2px;
+        width: root.width + 4px;
+        height: root.height + 4px;
+        border-radius: root.corner + 2px;
+        border-width: 3px;
+        border-color: Theme.s.secondary;
+    }
+}
+
+// The M3 circular progress indicator (indeterminate).
 export component Spinner inherits Rectangle {
     in property <length> size: 24px;
     in property <color> tint: Theme.s.primary;
     width: size;
     height: size;
+    accessible-role: progress-indicator;
     Path {
         width: root.size;
         height: root.size;
         viewbox-width: 100;
         viewbox-height: 100;
         stroke: root.tint;
-        stroke-width: root.size < 20px ? 2px : 3px;
-        fill: transparent;
+        stroke-width: root.size < 20px ? 2px : root.size < 40px ? 3px : 4px;
+        stroke-line-cap: round;
         commands: "M 50 6 A 44 44 0 1 1 6 50";
         transform-origin: { x: root.size / 2, y: root.size / 2 };
-        transform-rotation: mod(animation-tick() / 3ms, 360) * 1deg;
+        transform-rotation: mod(animation-tick() / Theme.motion-spin-period, 1) * 360deg;
     }
 }
 
-// The M3 linear progress indicator (indeterminate when value < 0).
+// The M3 linear progress indicator (indeterminate when value < 0): a 4 dp
+// track in secondary-container with a gap before the active indicator.
 export component ProgressBar inherits Rectangle {
     in property <float> value: -1;
     in property <color> tint: Theme.s.primary;
     height: 4px;
-    background: Theme.s.surface-container-highest;
+    border-radius: 2px;
+    background: Theme.s.secondary-container;
     clip: true;
+    accessible-role: progress-indicator;
+    accessible-value: root.value < 0 ? "" : round(clamp(root.value, 0, 1) * 100) + "%";
     Rectangle {
-        x: root.value < 0 ? (mod(animation-tick() / 2ms, 1400) / 1000 - 0.4) * root.width : 0;
+        x: root.value < 0 ? (mod(animation-tick() / Theme.motion-sweep-period, 1) * 1.4 - 0.4) * root.width : 0;
         width: root.value < 0 ? root.width * 0.4 : root.width * clamp(root.value, 0, 1);
+        // A determinate value moves to its new length (usage, quotas).
+        animate width { duration: root.value < 0 ? 0ms : Theme.motion-medium; easing: Theme.easing-standard; }
+        border-radius: 2px;
         background: root.tint;
     }
 }
 
-// AppIconButton: a 40 dp round icon button; disabled when !enabled.
+// M3 standard icon button: a 40 dp container (`size`) with a 24 dp icon and
+// at least a 48 dp touch target; keyboard focusable with Enter or Space.
 export component IconButton inherits Rectangle {
     in property <Glyph> glyph;
     in property <length> size: 40px;
@@ -212,22 +544,44 @@ export component IconButton inherits Rectangle {
     callback clicked();
     width: size;
     height: size;
-    border-radius: size / 2;
-    background: touch.pressed && enabled ? tint.with-alpha(0.12) : transparent;
+    border-radius: min(self.width, self.height) / 2;
     accessible-role: button;
     accessible-label: tooltip;
+    accessible-enabled: enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    StateLayer { border-radius: root.border-radius; ink: root.tint; enabled: root.enabled; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.tint; enabled: root.enabled; centered: true; }
     Icon {
         glyph: root.glyph;
         size: root.icon-size;
-        color: root.enabled ? root.tint : root.tint.with-alpha(0.38);
+        color: root.enabled ? root.tint : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+        animate color { duration: Theme.motion-short; easing: Theme.easing-standard; }
+    }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
     }
     touch := TouchArea {
+        width: max(root.width, Theme.min-target);
+        height: max(root.height, Theme.min-target);
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
-// TonalIconButton: filled when selected, tonal alone, plain when grouped.
+// M3 icon button variants: filled (selected, primary), tonal (secondary
+// container) and standard (`grouped`, inside a toolbar or header).
 export component TonalIconButton inherits Rectangle {
     in property <Glyph> glyph;
     in property <length> size: 40px;
@@ -237,75 +591,130 @@ export component TonalIconButton inherits Rectangle {
     in property <bool> grouped;
     in property <bool> loading;
     in property <string> tooltip;
+    // Turns the icon (animated): an expand arrow pointing the other way.
+    in property <angle> icon-rotation;
     callback clicked();
+    property <color> ink: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content)
+        : root.selected ? Theme.s.on-primary : root.grouped ? Theme.s.on-surface-variant : Theme.s.on-secondary-container;
     width: size;
     height: size;
     border-radius: size / 2;
-    background: selected ? Theme.s.primary : grouped ? (touch.pressed ? Theme.s.on-surface.with-alpha(0.1) : transparent)
-        : (enabled ? Theme.s.secondary-container : Theme.s.on-surface.with-alpha(0.12));
+    background: selected ? Theme.s.primary : grouped ? transparent
+        : (enabled ? Theme.s.secondary-container : Theme.s.on-surface.with-alpha(Theme.disabled-container));
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     accessible-role: button;
     accessible-label: tooltip;
-    if root.loading: Spinner { size: root.icon-size - 4px; }
+    accessible-enabled: enabled && !loading;
+    accessible-checked: selected;
+    accessible-action-default => { if (root.enabled && !root.loading) { root.clicked(); } }
+    StateLayer { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled && !root.loading; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled && !root.loading; centered: true; }
+    if root.loading: Spinner { size: root.icon-size - 4px; tint: root.ink; }
     if !root.loading: Icon {
         glyph: root.glyph;
         size: root.icon-size;
-        color: !root.enabled ? Theme.s.on-surface.with-alpha(0.38) : root.selected ? Theme.s.on-primary : root.grouped ? Theme.s.on-surface-variant : Theme.s.on-secondary-container;
+        color: root.ink;
+        transform-rotation: root.icon-rotation;
+        animate transform-rotation { duration: Theme.motion-medium; easing: Theme.easing-standard; }
+    }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        enabled: root.enabled && !root.loading;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
     }
     touch := TouchArea {
+        width: max(root.width, Theme.min-target);
+        height: max(root.height, Theme.min-target);
         enabled: root.enabled && !root.loading;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
-// TonalButton (FilledTonalButton), FilledPillButton (Button) and TextPillButton (TextButton).
+// M3 common buttons, by emphasis: 1 filled (the one primary action of a
+// region), 0 filled tonal, 3 outlined, 2 text, 4 elevated. 40 dp tall,
+// full corners, label-large, 24 dp side padding (16 with a leading icon,
+// 12 for text buttons); the touch target is at least 48 dp tall.
 export component Button inherits Rectangle {
     in property <string> label;
     in property <Glyph> glyph;
     in property <bool> has-glyph;
-    // 0 tonal, 1 filled, 2 text, 3 outlined
+    // 0 tonal, 1 filled, 2 text, 3 outlined, 4 elevated
     in property <int> kind;
     in property <bool> enabled: true;
-    in property <length> button-height: 36px;
+    in property <length> button-height: 40px;
     in property <color> text-color: kind == 1 ? Theme.s.on-primary : kind == 0 ? Theme.s.on-secondary-container : Theme.s.primary;
     callback clicked();
+    property <color> ink: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(Theme.disabled-content);
     height: max(button-height, label-text.preferred-height + 8px);
-    min-width: row.preferred-width;
+    min-width: max(row.preferred-width, 48px);
     border-radius: self.height / 2;
     border-width: kind == 3 ? 1px : 0;
-    border-color: Theme.s.outline;
-    background: !enabled ? (kind >= 2 ? transparent : Theme.s.on-surface.with-alpha(0.12))
-        : kind == 1 ? Theme.s.primary : kind == 0 ? Theme.s.secondary-container : transparent;
+    border-color: enabled ? Theme.s.outline-variant : Theme.s.on-surface.with-alpha(Theme.disabled-container);
+    background: !enabled ? (kind == 2 || kind == 3 ? transparent : Theme.s.on-surface.with-alpha(Theme.disabled-container))
+        : kind == 1 ? Theme.s.primary : kind == 0 ? Theme.s.secondary-container : kind == 4 ? Theme.s.surface-container-low : transparent;
+    animate background, border-color { duration: Theme.motion-short; easing: Theme.easing-standard; }
+    drop-shadow-blur: kind == 4 && enabled ? Theme.shadow-blur(1) : 0px;
+    drop-shadow-offset-y: kind == 4 && enabled ? Theme.shadow-offset(1) : 0px;
+    drop-shadow-color: kind == 4 && enabled ? Theme.shadow-color(1) : transparent;
     accessible-role: button;
     accessible-label: label;
-    Rectangle {
-        border-radius: parent.border-radius;
-        background: touch.pressed ? root.text-color.with-alpha(0.12) : transparent;
-    }
+    accessible-enabled: enabled;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    StateLayer { border-radius: root.border-radius; ink: root.text-color; enabled: root.enabled; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.text-color; enabled: root.enabled; }
     row := HorizontalLayout {
-        padding-left: root.kind == 2 ? 12px : 16px;
-        padding-right: self.padding-left;
+        padding-left: root.kind == 2 ? 12px : root.has-glyph ? 16px : 24px;
+        padding-right: root.kind == 2 ? (root.has-glyph ? 16px : 12px) : 24px;
         spacing: 8px;
         alignment: center;
         if root.has-glyph: Mid { Icon {
             glyph: root.glyph;
             size: 18px;
-            
-            color: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(0.38);
+            color: root.ink;
         } }
         label-text := T {
             text: root.label;
-            role: TextRole.subheadline;
-            emphasized: true;
-            color: root.enabled ? root.text-color : Theme.s.on-surface.with-alpha(0.38);
+            role: TextRole.label-large;
+            color: root.ink;
+            horizontal-alignment: center;
+        }
+    }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
         }
     }
     touch := TouchArea {
+        height: max(root.height, Theme.min-target);
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
-// The Material 3 switch (52 × 32 track).
+// The M3 switch: a 52 × 32 track; unselected an outlined track with a 16 dp
+// handle, selected a primary track with a 24 dp handle carrying a check
+// (state is not shown by color alone); the handle grows to 28 dp while
+// pressed. 48 dp touch target.
 export component Switch inherits Rectangle {
     in property <bool> checked;
     in property <bool> enabled: true;
@@ -313,60 +722,106 @@ export component Switch inherits Rectangle {
     width: 52px;
     height: 32px;
     border-radius: 16px;
-    opacity: enabled ? 1 : 0.38;
-    background: checked ? Theme.s.primary : Theme.s.surface-container-highest;
+    background: !enabled ? (checked ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : Theme.s.surface-container-highest.with-alpha(Theme.disabled-container))
+        : checked ? Theme.s.primary : Theme.s.surface-container-highest;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     border-width: checked ? 0 : 2px;
-    border-color: Theme.s.outline;
+    border-color: enabled ? Theme.s.outline : Theme.s.on-surface.with-alpha(Theme.disabled-container);
     accessible-role: switch;
     accessible-checked: checked;
-    Rectangle {
-        width: root.checked ? 24px : 16px;
-        height: self.width;
-        border-radius: self.width / 2;
-        x: root.checked ? parent.width - self.width - 4px : 8px;
+    accessible-enabled: enabled;
+    accessible-action-default => { if (root.enabled) { root.toggled(!root.checked); } }
+    handle := Rectangle {
+        property <length> d: touch.pressed && root.enabled ? 28px : root.checked ? 24px : 16px;
+        width: self.d;
+        height: self.d;
+        border-radius: self.d / 2;
+        x: root.checked ? parent.width - 16px - self.d / 2 : 16px - self.d / 2;
         y: (parent.height - self.height) / 2;
-        background: root.checked ? Theme.s.on-primary : Theme.s.outline;
+        background: !root.enabled ? (root.checked ? Theme.s.surface : Theme.s.on-surface.with-alpha(Theme.disabled-content))
+            : root.checked ? Theme.s.on-primary : Theme.s.outline;
+        // The handle slides and grows with the M3 standard curve.
+        animate x, y, width, height, border-radius { duration: Theme.motion-medium; easing: Theme.easing-standard; }
+        animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        // The 40 dp state layer around the handle.
+        Rectangle {
+            width: 40px;
+            height: 40px;
+            border-radius: 20px;
+            x: (parent.width - self.width) / 2;
+            y: (parent.height - self.height) / 2;
+            background: root.enabled ? Theme.state(root.checked ? Theme.s.primary : Theme.s.on-surface, touch.pressed, touch.has-hover, fs.has-focus) : transparent;
+            animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        }
         if root.checked: Icon {
             glyph: Icons.check;
             size: 16px;
-            color: Theme.s.primary;
+            color: root.enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(Theme.disabled-content);
         }
     }
-    TouchArea {
+    FocusRing { shown: fs.has-focus; corner: 16px; }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.toggled(!root.checked); return EventResult.accept; }
+            EventResult.reject
+        }
+    }
+    touch := TouchArea {
+        height: Theme.min-target;
         enabled: root.enabled;
         clicked => { root.toggled(!root.checked); }
     }
 }
 
-// The Material 3 radio button.
+// The M3 radio button: a 20 dp mark in a 40 dp state-layer box (the row
+// it sits in takes the tap).
 export component Radio inherits Rectangle {
     in property <bool> selected;
-    width: 20px;
-    height: 20px;
-    border-radius: 10px;
-    border-width: 2px;
-    border-color: selected ? Theme.s.primary : Theme.s.on-surface-variant;
+    in property <bool> enabled: true;
+    width: 40px;
+    height: 40px;
+    accessible-role: radio-button;
+    accessible-checked: selected;
     Rectangle {
-        width: 10px;
-        height: 10px;
-        border-radius: 5px;
-        background: root.selected ? Theme.s.primary : transparent;
+        width: 20px;
+        height: 20px;
+        border-radius: 10px;
+        border-width: 2px;
+        border-color: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : root.selected ? Theme.s.primary : Theme.s.on-surface-variant;
+        Rectangle {
+            width: root.selected ? 10px : 0px;
+            height: self.width;
+            border-radius: self.width / 2;
+            background: !root.selected ? transparent : root.enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+            animate width { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        }
     }
 }
 
-// A checkbox (ListItemCheckbox).
+// The M3 checkbox: an 18 dp box with 2 dp corners in a 40 dp box.
 export component CheckBox inherits Rectangle {
     in property <bool> checked;
-    width: 18px;
-    height: 18px;
-    border-radius: 2px;
-    border-width: checked ? 0 : 2px;
-    border-color: Theme.s.on-surface-variant;
-    background: checked ? Theme.s.primary : transparent;
-    if root.checked: Icon { glyph: Icons.check; size: 16px; color: Theme.s.on-primary; }
+    in property <bool> enabled: true;
+    width: 40px;
+    height: 40px;
+    accessible-role: checkbox;
+    accessible-checked: checked;
+    Rectangle {
+        width: 18px;
+        height: 18px;
+        border-radius: 2px;
+        border-width: root.checked ? 0 : 2px;
+        border-color: root.enabled ? Theme.s.on-surface-variant : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+        background: !root.checked ? transparent : root.enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(Theme.disabled-content);
+        animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+        if root.checked: Icon { glyph: Icons.check; size: 16px; color: root.enabled ? Theme.s.on-primary : Theme.s.surface; }
+    }
 }
 
-// SelectionBadge: a check on a primary circle.
+// SelectionBadge: a check (or pin) on a primary circle: the selected state
+// of a card, in addition to its container color.
 export component SelectionBadge inherits Rectangle {
     in property <length> size: 22px;
     in property <bool> preferred;
@@ -381,12 +836,12 @@ export component SelectionBadge inherits Rectangle {
     }
 }
 
-// IconBadge: an icon on a filled circle.
+// IconBadge: an icon on a filled circle (a list item's leading avatar).
 export component IconBadge inherits Rectangle {
     in property <Glyph> glyph;
     in property <length> size: 40px;
-    in property <color> container: Theme.level(2);
-    in property <color> tint: Theme.s.on-surface-variant;
+    in property <color> container: Theme.s.secondary-container;
+    in property <color> tint: Theme.s.on-secondary-container;
     width: size;
     height: size;
     border-radius: size / 2;
@@ -398,29 +853,37 @@ export component IconBadge inherits Rectangle {
     }
 }
 
-// SkeletonPill
+// A loading placeholder for a line of text.
 export component Skeleton inherits Rectangle {
     in property <length> pill-height: 16px;
     height: pill-height;
-    border-radius: pill-height / 2;
+    border-radius: Theme.corner-extra-small;
     background: Theme.s.surface-container-highest;
 }
 
-// DashboardChip: 0 idle, 1 ok, 2 warn.
+// A status label (not interactive, so not an M3 chip): 0 neutral, 1 ok,
+// 2 warning on their container roles, with an optional leading dot so the
+// state does not rest on color alone (the label names it).
 export component Chip inherits Rectangle {
     in property <string> label;
     in property <int> tone;
     in property <bool> dot;
     in property <bool> large;
     property <color> fg: tone == 1 ? Theme.s.on-success-container : tone == 2 ? Theme.s.on-warning-container : Theme.s.on-surface-variant;
-    height: large ? 28px : 24px;
-    border-radius: self.height / 2;
-    background: tone == 1 ? Theme.s.success-container : tone == 2 ? Theme.s.warning-container : Theme.level(2);
+    // 32 / 24 dp, taller with the label's line height at large font scales.
+    height: large ? Theme.chip-height-large : Theme.chip-height;
+    border-radius: Theme.corner-small;
+    // Neutral labels are outlined, so they read on any surface level.
+    background: tone == 1 ? Theme.s.success-container : tone == 2 ? Theme.s.warning-container : transparent;
+    border-width: tone == 1 || tone == 2 ? 0px : 1px;
+    border-color: Theme.s.outline-variant;
     // Its content's width also outside a layout (a positioned chip would otherwise fill its parent).
     width: lay.preferred-width;
     horizontal-stretch: 0;
+    accessible-role: AccessibleRole.text;
+    accessible-label: label;
     lay := HorizontalLayout {
-        padding-left: root.large ? 12px : 10px;
+        padding-left: root.large ? 12px : 8px;
         padding-right: self.padding-left;
         spacing: 6px;
         alignment: start;
@@ -433,79 +896,191 @@ export component Chip inherits Rectangle {
         }
         T {
             text: root.label;
-            role: TextRole.caption1;
-            emphasized: true;
+            role: root.large ? TextRole.label-large : TextRole.label-medium;
             color: root.fg;
         }
     }
 }
 
-// BoxPanel: a flat card for a dashboard panel.
-export component Panel inherits Rectangle {
-    in property <bool> clickable;
-    in property <length> pad: 16px;
-    // Where the content sits when a grid row makes the card taller than it.
-    in property <LayoutAlignment> content-alignment: start;
+// The M3 filter chip (and input chip when `removable`): 32 dp, small
+// corners; unselected outlined, selected secondary-container with a check.
+export component FilterChip inherits Rectangle {
+    in property <string> label;
+    in property <bool> selected;
+    in property <bool> removable;
+    in property <bool> enabled: true;
     callback clicked();
-    background: Theme.level(1);
-    border-radius: Theme.radius;
-    clip: true;
-    ta := TouchArea {
-        enabled: root.clickable;
+    height: 32px;
+    width: lay.preferred-width;
+    horizontal-stretch: 0;
+    border-radius: Theme.corner-small;
+    border-width: selected ? 0 : 1px;
+    border-color: Theme.s.outline-variant;
+    background: selected ? Theme.s.secondary-container : transparent;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+    accessible-role: button;
+    accessible-label: label;
+    accessible-checked: selected;
+    accessible-action-default => { root.clicked(); }
+    StateLayer { border-radius: root.border-radius; ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; pressed: touch.pressed; hover: touch.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; enabled: root.enabled; }
+    lay := HorizontalLayout {
+        padding-left: root.selected && !root.removable ? 8px : 16px;
+        padding-right: root.removable ? 8px : 16px;
+        spacing: 8px;
+        if root.selected && !root.removable: Mid { Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; } }
+        T { text: root.label; role: TextRole.label-large; color: root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; }
+        if root.removable: Mid { Icon { glyph: Icons.close; size: 18px; color: Theme.s.on-surface-variant; } }
+    }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
+    }
+    touch := TouchArea {
+        height: Theme.min-target;
+        enabled: root.enabled;
         clicked => { root.clicked(); }
-    }
-    Rectangle { background: ta.pressed && root.clickable ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
-    VerticalLayout {
-        padding: root.pad;
-        // Taller than its content in a dashboard grid row: the rest stays below.
-        alignment: root.content-alignment;
-        @children
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
-// PanelTitle: an 18 dp icon, the title and trailing content.
-export component PanelTitle inherits HorizontalLayout {
-    in property <string> title;
-    in property <Glyph> glyph;
-    height: max(26px, Theme.sp(26));
-    spacing: 8px;
-    Mid { Icon {
-        glyph: root.glyph;
-        size: 18px;
-        color: Theme.s.on-surface-variant;
-    } }
-    T {
-        text: root.title;
-        role: TextRole.subheadline;
-        emphasized: true;
-        horizontal-stretch: 1;
+// The M3 segmented button (single select): 40 dp, outlined, full corners at
+// the ends, the selected segment secondary-container with a check.
+export component SegmentedButton inherits Rectangle {
+    in property <[string]> labels;
+    in property <[Glyph]> glyphs;
+    in property <int> selected;
+    in property <bool> enabled: true;
+    callback picked(int);
+    height: 40px;
+    border-radius: self.height / 2;
+    HorizontalLayout {
+        for l[i] in root.labels: seg := Rectangle {
+            property <bool> on: i == root.selected;
+            background: on ? Theme.s.secondary-container : transparent;
+            animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+            // Equal widths; the ends carry the row's rounded corners.
+            horizontal-stretch: 1;
+            preferred-width: 0px;
+            min-width: 48px;
+            border-top-left-radius: i == 0 ? root.height / 2 : 0px;
+            border-bottom-left-radius: i == 0 ? root.height / 2 : 0px;
+            border-top-right-radius: i == root.labels.length - 1 ? root.height / 2 : 0px;
+            border-bottom-right-radius: i == root.labels.length - 1 ? root.height / 2 : 0px;
+            accessible-role: button;
+            accessible-label: l;
+            accessible-checked: on;
+            accessible-action-default => { if (root.enabled && !seg.on) { root.picked(i); } }
+            StateLayer {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                enabled: root.enabled;
+                pressed: sta.pressed;
+                hover: sta.has-hover;
+            }
+            srip := Ripple {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                enabled: root.enabled;
+            }
+            if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                padding-left: 12px;
+                padding-right: 12px;
+                if seg.on: Mid { Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container; } }
+                if !seg.on && i < root.glyphs.length: Mid { Icon { glyph: root.glyphs[i]; size: 18px; color: Theme.s.on-surface; } }
+                T {
+                    text: l;
+                    role: TextRole.label-large;
+                    horizontal-stretch: 0;
+                    color: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content)   : seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                }
+            }
+            sta := TouchArea {
+                height: max(parent.height, Theme.min-target);
+                enabled: root.enabled;
+                clicked => { if (!seg.on) { root.picked(i); } }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) { srip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+                    else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { srip.up(); }
+                }
+                changed pressed => { if (!self.pressed) { srip.up(); } }
+                changed has-hover => { if (!self.has-hover) { srip.up(); } }
+            }
+        }
     }
-    @children
+    Rectangle { border-radius: root.border-radius; border-width: 1px; border-color: Theme.s.outline; }
 }
 
-// CommonCard: a flat card one level up; selected cards take the primary container when `fills`.
+// A full-width M3 divider (1 dp outline-variant).
+export component Divider inherits Rectangle {
+    height: 1px;
+    background: Theme.s.outline-variant;
+}
+
+// Card: the M3 card variants — 0 filled (surface-container-highest),
+// 1 elevated (surface-container-low with a level 1 shadow), 2 outlined
+// (surface with an outline-variant border). Medium corners. A selected
+// card fills with secondary-container when `fills` (the card shows a
+// SelectionBadge as well); a clickable card has a state layer.
 export component Card inherits Rectangle {
     in property <bool> selected;
     in property <bool> fills;
     in property <bool> error;
-    in property <int> level: 1;
+    in property <int> variant: 0;
+    // The tonal level for nested blocks; -1 follows the variant.
+    in property <int> level: -1;
     in property <bool> enabled: true;
     in property <bool> long-press-menu;
+    in property <bool> interactive: true;
     callback clicked();
     callback long-pressed(length, length);
     border-radius: Theme.radius;
-    background: error ? Theme.s.error-container : (selected && fills) ? Theme.s.primary-container : Theme.level(level);
     clip: true;
+    background: error ? Theme.s.error-container : (selected && fills) ? Theme.s.secondary-container
+        : level >= 0 ? Theme.level(level)
+        : variant == 1 ? Theme.s.surface-container-low : variant == 2 ? Theme.s.surface : Theme.s.surface-container-highest;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+    border-width: variant == 2 && !(selected && fills) && !error ? 1px : 0px;
+    border-color: Theme.s.outline-variant;
+    drop-shadow-blur: variant == 1 ? Theme.shadow-blur(touch.pressed ? 1 : touch.has-hover ? 2 : 1) : 0px;
+    drop-shadow-offset-y: variant == 1 ? Theme.shadow-offset(1) : 0px;
+    drop-shadow-color: variant == 1 ? Theme.shadow-color(1) : transparent;
+    accessible-role: button;
+    accessible-checked: selected;
+    accessible-action-default => { if (root.enabled && root.interactive) { root.clicked(); } }
     touch := TouchArea {
-        enabled: root.enabled;
+        enabled: root.enabled && root.interactive;
         clicked => { root.clicked(); }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = root.long-press-menu;
+                rip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                rip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { hold.running = false; rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { hold.running = false; rip.up(); } }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
     }
     hold := Timer {
@@ -516,12 +1091,89 @@ export component Card inherits Rectangle {
             root.long-pressed(root.absolute-position.x + touch.mouse-x, root.absolute-position.y + touch.mouse-y);
         }
     }
-    Rectangle { background: touch.pressed && root.enabled ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
+    StateLayer {
+        border-radius: root.border-radius;
+        ink: (root.selected && root.fills) ? Theme.s.on-secondary-container : Theme.s.on-surface;
+        enabled: root.enabled && root.interactive;
+        pressed: touch.pressed;
+        hover: touch.has-hover;
+    }
+    rip := Ripple {
+        border-radius: root.border-radius;
+        ink: (root.selected && root.fills) ? Theme.s.on-secondary-container : Theme.s.on-surface;
+        enabled: root.enabled && root.interactive;
+    }
     @children
 }
 
-// Position of a row in a grouped list: 0 alone (no card), 1 start, 2 middle, 3 end, 4 start and end.
-// ListItem: grouped rows on a card one level up, with a divider between rows.
+// A dashboard panel: a filled card (content padded 16 dp) with an optional
+// state layer when it opens something.
+export component Panel inherits Rectangle {
+    in property <bool> clickable;
+    in property <length> pad: 16px;
+    // Where the content sits when a grid row makes the card taller than it.
+    in property <LayoutAlignment> content-alignment: start;
+    callback clicked();
+    background: Theme.s.surface-container-highest;
+    border-radius: Theme.radius;
+    clip: true;
+    accessible-role: groupbox;
+    accessible-action-default => { if (root.clickable) { root.clicked(); } }
+    ta := TouchArea {
+        enabled: root.clickable;
+        // A card that opened a page grows into it (Motion container transform).
+        clicked => {
+            let before = Nav.routes.length;
+            root.clicked();
+            if (Nav.routes.length > before) {
+                Motion.open-from(Nav.routes.length, root.absolute-position.x, root.absolute-position.y, root.width, root.height, Theme.radius, Theme.s.surface-container-highest);
+            }
+        }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { prip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { prip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { prip.up(); } }
+        changed has-hover => { if (!self.has-hover) { prip.up(); } }
+    }
+    StateLayer { enabled: root.clickable; pressed: ta.pressed; hover: ta.has-hover; }
+    prip := Ripple { border-radius: root.border-radius; enabled: root.clickable; }
+    VerticalLayout {
+        padding: root.pad;
+        padding-top: max(0px, root.pad - 4px);
+        // Taller than its content in a dashboard grid row: the rest stays below.
+        alignment: root.content-alignment;
+        @children
+    }
+}
+
+// The card header: a 20 dp icon, the title in title-medium and trailing
+// content (icon buttons keep their 48 dp target inside the 48 dp row).
+export component PanelTitle inherits HorizontalLayout {
+    in property <string> title;
+    in property <Glyph> glyph;
+    min-height: max(Theme.min-target, Theme.leading(TextRole.title-medium));
+    spacing: 8px;
+    Mid { Icon {
+        glyph: root.glyph;
+        size: 20px;
+        color: Theme.s.primary;
+    } }
+    T {
+        text: root.title;
+        role: TextRole.title-medium;
+        horizontal-stretch: 1;
+    }
+    @children
+}
+
+// The M3 list item in a grouped list: rows share one surface-container-low
+// container with large corners, an inset outline-variant divider between
+// rows (position: 0 alone without a container, 1 first, 2 middle, 3 last,
+// 4 first and last). One-line rows are 56 dp, two-line 72 dp: body-large
+// headline, body-medium supporting text, a 24 dp leading icon or a 40 dp
+// avatar, trailing supporting text in body-medium; a state layer when
+// clickable; disabled content at 38 %.
 export component ListItem inherits Rectangle {
     in property <string> title;
     in property <string> subtitle;
@@ -536,6 +1188,7 @@ export component ListItem inherits Rectangle {
     in property <bool> invalid;
     in property <bool> clickable;
     in property <bool> enabled: true;
+    // The tonal level of the group container (1 container-low ... 4 highest).
     in property <int> level: 1;
     in property <int> title-lines: 2;
     // The subtitle's lines at most (0: as many as it wraps to); one line is
@@ -548,25 +1201,51 @@ export component ListItem inherits Rectangle {
     callback long-pressed(length, length);
     property <bool> top: position == 1 || position == 4;
     property <bool> bottom: position == 3 || position == 4;
-    min-height: max(56px, lay.preferred-height);
-    border-top-left-radius: top ? Theme.radius : 0;
-    border-top-right-radius: top ? Theme.radius : 0;
-    border-bottom-left-radius: bottom ? Theme.radius : 0;
-    border-bottom-right-radius: bottom ? Theme.radius : 0;
-    background: position == 0 ? transparent : invalid ? Theme.s.error-container : Theme.level(level + 1);
+    property <length> corner: Theme.corner-large;
+    property <color> disabled-ink: Theme.s.on-surface.with-alpha(Theme.disabled-content);
+    min-height: max(root.subtitle != "" ? 72px : 56px, lay.preferred-height);
+    border-top-left-radius: top ? corner : Theme.corner-none;
+    border-top-right-radius: top ? corner : Theme.corner-none;
+    border-bottom-left-radius: bottom ? corner : Theme.corner-none;
+    border-bottom-right-radius: bottom ? corner : Theme.corner-none;
+    background: position == 0 ? transparent : invalid ? Theme.s.error-container : Theme.level(level);
     clip: true;
-    opacity: enabled ? 1 : 0.6;
-    if root.clickable: Rectangle { background: touch.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
+    accessible-role: list-item;
+    accessible-label: root.title;
+    accessible-description: root.subtitle;
+    accessible-enabled: root.enabled;
+    accessible-action-default => { if (root.clickable && root.enabled) { root.clicked(); } }
+    StateLayer { enabled: root.clickable && root.enabled; pressed: touch.pressed; hover: touch.has-hover; }
+    rip := Ripple {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
+        enabled: root.clickable && root.enabled;
+    }
     touch := TouchArea {
         enabled: (root.clickable || root.long-press-menu) && root.enabled;
-        clicked => { if (root.clickable) { root.clicked(); } }
+        clicked => {
+            if (root.clickable) {
+                let before = Nav.routes.length;
+                root.clicked();
+                // A row that opened a page (its chevron says it does) grows into it.
+                if (root.chevron && Nav.routes.length > before) {
+                    Motion.open-from(Nav.routes.length, root.absolute-position.x, root.absolute-position.y, root.width, root.height, Theme.corner-large, Theme.level(root.level));
+                }
+            }
+        }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = root.long-press-menu;
+                rip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                rip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { hold.running = false; rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { hold.running = false; rip.up(); } }
         moved => { if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) { hold.running = false; } }
     }
     hold := Timer {
@@ -580,19 +1259,18 @@ export component ListItem inherits Rectangle {
     lay := HorizontalLayout {
         padding-left: 16px;
         padding-right: 16px;
-        padding-top: 10px;
-        padding-bottom: 10px;
+        padding-top: 8px;
+        padding-bottom: 8px;
         spacing: 16px;
         if root.has-leading-image: Mid { Image {
             source: root.leading-image;
             width: 48px;
             height: 48px;
-            
+            opacity: root.enabled ? 1 : Theme.disabled-content;
         } }
         if root.has-leading && !root.has-leading-image: Mid { Icon {
             glyph: root.leading;
-            color: Theme.s.on-surface-variant;
-            
+            color: root.enabled ? Theme.s.on-surface-variant : root.disabled-ink;
         } }
         // Custom rows (usage, fields) leave the title empty and take the width themselves.
         // Each text sits in a box as tall as the text wraps at the width the
@@ -605,25 +1283,25 @@ export component ListItem inherits Rectangle {
             Rectangle {
                 min-width: title-text.min-width;
                 preferred-width: title-text.preferred-width;
-                height: min(title-text.preferred-height, root.title-lines * Theme.leading(TextRole.body));
+                height: min(title-text.preferred-height, root.title-lines * Theme.leading(TextRole.body-large));
                 title-text := T {
                     width: parent.width;
                     height: parent.height;
                     text: root.title;
-                    color: root.title-color;
+                    color: root.enabled ? root.title-color : root.disabled-ink;
                     wrap: root.title-lines == 1 ? no-wrap : word-wrap;
                 }
             }
             if root.subtitle != "": Rectangle {
                 min-width: subtitle-text.min-width;
                 preferred-width: subtitle-text.preferred-width;
-                height: root.subtitle-lines > 0 ? min(subtitle-text.preferred-height, root.subtitle-lines * Theme.leading(TextRole.subheadline)) : subtitle-text.preferred-height;
+                height: root.subtitle-lines > 0 ? min(subtitle-text.preferred-height, root.subtitle-lines * Theme.leading(TextRole.body-medium)) : subtitle-text.preferred-height;
                 subtitle-text := T {
                     width: parent.width;
                     height: parent.height;
                     text: root.subtitle;
-                    role: TextRole.subheadline;
-                    color: Theme.s.on-surface-variant;
+                    role: TextRole.body-medium;
+                    color: root.enabled ? Theme.s.on-surface-variant : root.disabled-ink;
                     wrap: root.subtitle-lines == 1 ? no-wrap : word-wrap;
                     // With no line limit the box is the text's full height: clip, since elide
                     // on wrapped lines drew them over each other.
@@ -633,20 +1311,19 @@ export component ListItem inherits Rectangle {
         }
         if root.trailing-text != "": T {
             text: root.trailing-text;
-            role: TextRole.subheadline;
-            color: Theme.s.on-surface-variant;
+            role: TextRole.body-medium;
+            color: root.enabled ? Theme.s.on-surface-variant : root.disabled-ink;
             horizontal-alignment: right;
             min-width: 24px;
         }
         @children
         if root.chevron: Mid { Icon {
             glyph: Icons.chevron-forward;
-            color: Theme.s.on-surface-variant;
-            
+            color: root.enabled ? Theme.s.on-surface-variant : root.disabled-ink;
         } }
     }
     if root.position != 0 && !root.bottom: Rectangle {
-        x: root.has-leading ? 56px : 16px;
+        x: root.has-leading || root.has-leading-image ? (root.has-leading-image ? 80px : 56px) : 16px;
         y: parent.height - 1px;
         width: parent.width - self.x - 16px;
         height: 1px;
@@ -654,24 +1331,25 @@ export component ListItem inherits Rectangle {
     }
 }
 
-// The section header (Section's title) in primary, 24 dp above, 8 dp below.
+// The list subheader: title-small in primary, 24 dp above (8 dp first), 8 dp below.
 export component SectionTitle inherits Rectangle {
     in property <string> text;
     in property <bool> first;
-    height: text == "" ? (first ? 8px : 24px) : t.preferred-height + (first ? 8px : 32px) + 8px;
+    height: text == "" ? (first ? 8px : 24px) : t.preferred-height + (first ? 8px : 24px) + 8px;
+    accessible-role: AccessibleRole.text;
+    accessible-label: text;
     t := T {
         x: 16px;
         y: parent.height - self.height - 8px;
         width: parent.width - 32px;
         height: self.preferred-height;
         text: root.text;
-        role: TextRole.subheadline;
-        emphasized: true;
+        role: TextRole.title-small;
         color: Theme.s.primary;
     }
 }
 
-// ListFooter
+// Supporting text under a list (body-small, on-surface-variant).
 export component Footer inherits VerticalLayout {
     in property <string> text;
     // In a layout, so the wrapped text gets its height for the real width.
@@ -680,17 +1358,17 @@ export component Footer inherits VerticalLayout {
     padding-top: 8px;
     T {
         text: root.text;
-        role: TextRole.footnote;
+        role: TextRole.body-small;
         color: Theme.s.on-surface-variant;
         vertical-alignment: top;
         wrap: word-wrap;
     }
 }
 
-// The 24 dp gap a Section without title leaves.
+// The 24 dp gap between list groups.
 export component SectionGap inherits Rectangle { height: 24px; }
 
-// EmptyState / NullStatus / ErrorState
+// Empty and error states: what it means, and the next action as a tonal button.
 export component EmptyState inherits VerticalLayout {
     in property <string> title;
     in property <string> message;
@@ -701,7 +1379,7 @@ export component EmptyState inherits VerticalLayout {
     padding-bottom: 64px;
     padding-left: 24px;
     padding-right: 24px;
-    spacing: 12px;
+    spacing: 16px;
     alignment: center;
     HorizontalLayout {
         alignment: center;
@@ -713,29 +1391,32 @@ export component EmptyState inherits VerticalLayout {
     }
     T {
         text: root.title;
-        role: TextRole.title3;
+        role: TextRole.title-large;
         horizontal-alignment: center;
         wrap: word-wrap;
     }
     if root.message != "": T {
         text: root.message;
-        role: TextRole.subheadline;
+        role: TextRole.body-medium;
         color: Theme.s.on-surface-variant;
         horizontal-alignment: center;
         wrap: word-wrap;
     }
     if root.action-label != "": HorizontalLayout {
         alignment: center;
-        padding-top: 4px;
+        padding-top: 8px;
         Button {
             label: root.action-label;
-            kind: 0;
             clicked => { root.action(); }
         }
     }
 }
 
-// A text field (OutlinedTextField / FormRowTextField) over the platform IME.
+// The M3 outlined text field over the platform IME: 56 dp, extra-small
+// corners, a 1 dp outline (2 dp primary when focused, error when invalid),
+// the label resting on the outline in body-small. `outlined: false` is the
+// bare field inside a list row or the search bar. `container` is the color
+// behind the field, which masks the outline under the label.
 export component Field inherits Rectangle {
     in-out property <string> text;
     in property <string> hint;
@@ -745,6 +1426,7 @@ export component Field inherits Rectangle {
     in property <bool> multiline;
     in property <bool> mono;
     in property <bool> enabled: true;
+    in property <color> container: Theme.s.surface;
     in property <InputType> input-type: InputType.text;
     in property <TextHorizontalAlignment> align: TextHorizontalAlignment.left;
     callback edited(string);
@@ -756,30 +1438,39 @@ export component Field inherits Rectangle {
         input.set-selection-offsets(2147483647, 2147483647);
     }
     in property <length> field-min: outlined ? 56px : 24px;
-    height: multiline ? field-min : max(field-min, input.preferred-height + (outlined ? 24px : 0px));
-    border-radius: outlined ? 12px : 0;
-    border-width: outlined ? (input.has-focus ? 2px : 1px) : 0;
-    border-color: invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.outline;
+    height: multiline ? field-min : max(field-min, input.preferred-height + (outlined ? 32px : 0px));
+    border-radius: outlined ? Theme.corner-extra-small : 0;
+    border-width: outlined ? (input.has-focus || invalid ? 2px : 1px) : 0;
+    border-color: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container)
+        : invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : hover.has-hover ? Theme.s.on-surface : Theme.s.outline;
+    // The TextInput inside is the screen reader's text field; the frame
+    // around it adds no second node.
+    hover := TouchArea {
+        enabled: root.enabled;
+        clicked => { root.focus-end(); }
+    }
     if root.outlined && root.label != "": Rectangle {
         x: 12px;
         y: -lab.preferred-height / 2;
         width: lab.preferred-width + 8px;
         height: lab.preferred-height;
-        background: Theme.s.surface;
+        background: root.container;
         lab := T {
             text: root.label;
-            role: TextRole.caption1;
-            color: root.invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.on-surface-variant;
+            role: TextRole.body-small;
+            color: !root.enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content)
+                : root.invalid ? Theme.s.error : input.has-focus ? Theme.s.primary : Theme.s.on-surface-variant;
         }
     }
     flick := Flickable {
         x: root.outlined ? 16px : 0;
-        y: root.outlined ? 12px : 0;
+        y: root.outlined ? 16px : 0;
         width: parent.width - 2 * self.x;
         height: parent.height - 2 * self.y;
         content-height: max(self.height, input.preferred-height);
         input := NativeTextInput {
             text <=> root.text;
+            accessible-label: root.label != "" ? root.label : root.hint;
             width: parent.width;
             height: max(flick.height, self.preferred-height);
             // The native editor covers the visible box, not the scrolled text.
@@ -788,9 +1479,9 @@ export component Field inherits Rectangle {
             frame-width: flick.width;
             frame-height: flick.height;
             mono: root.mono;
-            font-size: Theme.sp(16);
+            font-size: Theme.size(TextRole.body-large);
             font-family: root.mono ? Theme.mono : Theme.font-family;
-            ink: Theme.s.on-surface;
+            ink: root.enabled ? Theme.s.on-surface : Theme.s.on-surface.with-alpha(Theme.disabled-content);
             single-line: !root.multiline;
             wrap: root.multiline ? word-wrap : no-wrap;
             vertical-alignment: root.multiline ? top : center;
@@ -819,20 +1510,21 @@ export component Field inherits Rectangle {
     }
 }
 
-// The bar's search field (SearchField).
+// The M3 search bar: 56 dp, full corners, surface-container-high, a leading
+// search icon and a trailing clear button.
 export component SearchField inherits Rectangle {
     in-out property <string> text;
     in property <color> fill: Theme.s.surface-container-high;
     callback edited(string);
     public function focus-input() { f.focus-input(); }
-    height: 48px;
-    border-radius: 24px;
+    height: 56px;
+    border-radius: self.height / 2;
     background: fill;
     HorizontalLayout {
-        padding-left: 12px;
-        padding-right: 8px;
-        spacing: 8px;
-        Mid { Icon { glyph: Icons.search; color: Theme.s.on-surface-variant;  } }
+        padding-left: 16px;
+        padding-right: 4px;
+        spacing: 16px;
+        Mid { Icon { glyph: Icons.search; color: Theme.s.on-surface; } }
         f := Field {
             outlined: false;
             text <=> root.text;
@@ -842,18 +1534,20 @@ export component SearchField inherits Rectangle {
         }
         if root.text != "": Mid { IconButton {
             glyph: Icons.clear-field;
-            size: 32px;
-            icon-size: 20px;
-            
+            tooltip: @tr("Clear");
             clicked => { root.text = ""; root.edited(""); }
         } }
     }
 }
 
-// The TopAppBar of CommonScaffold: the leading button, the title (or the
-// title menu, or the search field), at most three bar buttons and the
-// overflow menu. Rust folds actions into the overflow (foldBarActions).
-export component TopBar inherits Rectangle {
+// The M3 small top app bar: 64 dp, the navigation icon (back or close), the
+// title in title-large (or the title menu, or the search bar), at most three
+// action icons and the overflow menu. Rust folds actions into the overflow
+// (foldBarActions). Filter chips (keywords) sit under the bar. Pages draw
+// their scrolling content under the bar (padded by its height); once it is
+// scrolled under (`scrolled`), the bar turns to the opaque surface-container
+// role over it (M3's on-scroll container color).
+export component TopBar inherits Surface {
     in property <string> title;
     // 0 none, 1 back, 2 close
     in property <int> leading;
@@ -868,22 +1562,25 @@ export component TopBar inherits Rectangle {
     in property <bool> loading;
     in property <[Keyword]> keywords;
     in property <color> bar-color: Theme.s.surface;
+    // Content is scrolled under the bar: the surface-container role.
+    in property <bool> scrolled;
     callback action(string);
     callback search(string);
     callback keyword(string, bool);
     height: lay.preferred-height;
-    background: bar-color;
+    background: root.scrolled ? Theme.level(2) : root.bar-color;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
     lay := VerticalLayout {
         HorizontalLayout {
             height: 64px;
             padding-left: root.leading == 0 && !root.searching ? 16px : 4px;
             padding-right: 4px;
-            spacing: 4px;
             if root.searching: Mid { IconButton {
                 glyph: Icons.back;
                 tooltip: @tr("Cancel");
                 tint: Theme.s.on-surface;
-                
+                width: 48px;
+                height: 48px;
                 clicked => {
                     root.searching = false;
                     root.query = "";
@@ -894,12 +1591,12 @@ export component TopBar inherits Rectangle {
                 glyph: root.leading == 2 ? Icons.close : Icons.back;
                 tooltip: root.leading == 2 ? @tr("Close") : @tr("Back");
                 tint: Theme.s.on-surface;
-                
+                width: 48px;
+                height: 48px;
                 clicked => { Nav.pop(); }
             } }
             if root.searching: Mid { horizontal-stretch: 1; sf := SearchField {
                 horizontal-stretch: 1;
-                
                 text <=> root.query;
                 edited(t) => { root.search(t); }
                 init => { self.focus-input(); }
@@ -907,19 +1604,19 @@ export component TopBar inherits Rectangle {
             if !root.searching: Rectangle {
                 horizontal-stretch: 1;
                 HorizontalLayout {
-                    padding-left: root.leading == 0 ? 0px : 8px;
+                    padding-left: root.leading == 0 ? 0px : 4px;
                     alignment: start;
                     spacing: 4px;
                     title-text := T {
                         text: root.title;
-                        role: TextRole.page-title;
+                        role: TextRole.title-large;
                         horizontal-stretch: 0;
                         max-width: root.width - 220px;
+                        accessible-role: AccessibleRole.text;
                     }
                     if root.title-menu-key != "": Mid { Icon {
                         glyph: Icons.caret-down;
                         color: Theme.s.on-surface-variant;
-                        
                     } }
                 }
                 if root.title-menu-key != "": TouchArea {
@@ -929,20 +1626,20 @@ export component TopBar inherits Rectangle {
             if !root.searching && root.searchable: Mid { IconButton {
                 glyph: Icons.search;
                 tooltip: @tr("Search");
-                tint: Theme.s.on-surface;
-                
+                tint: Theme.s.on-surface-variant;
+                width: 48px;
+                height: 48px;
                 clicked => { root.searching = true; }
             } }
             if !root.searching: HorizontalLayout {
-                spacing: 4px;
                 for a in root.actions: Rectangle {
                     width: 48px;
-                    if a.loading: Spinner { size: 24px; }
+                    if a.loading: Spinner { }
                     if !a.loading: IconButton {
                         glyph: a.glyph;
                         tooltip: a.tooltip;
                         enabled: a.enabled;
-                        tint: a.selected ? Theme.s.primary : Theme.s.on-surface;
+                        tint: a.selected ? Theme.s.primary : Theme.s.on-surface-variant;
                         clicked => { root.action(a.id); }
                     }
                 }
@@ -950,43 +1647,33 @@ export component TopBar inherits Rectangle {
             if !root.searching && root.menu-key != "": Mid { IconButton {
                 glyph: Icons.more;
                 tooltip: @tr("More");
-                tint: Theme.s.on-surface;
-                
+                tint: Theme.s.on-surface-variant;
+                width: 48px;
+                height: 48px;
                 clicked => { Nav.open-menu(root.menu-key, self.absolute-position.x + self.width, self.absolute-position.y + self.height); }
             } }
         }
-        if root.loading: ProgressBar { }
+        if root.loading: ProgressBar { border-radius: 0px; }
         if root.keywords.length > 0: Flickable {
-            height: 44px;
+            height: 48px;
             content-width: kw.preferred-width;
             kw := HorizontalLayout {
                 padding-left: 16px;
                 padding-right: 16px;
                 padding-bottom: 8px;
                 spacing: 8px;
-                for k in root.keywords: Rectangle {
-                    height: 32px;
-                    width: kl.preferred-width;
-                    border-radius: 8px;
-                    border-width: k.selected ? 0 : 1px;
-                    border-color: Theme.s.outline;
-                    background: k.selected ? Theme.s.secondary-container : transparent;
-                    kl := HorizontalLayout {
-                        padding-left: 12px;
-                        padding-right: k.removable ? 8px : 12px;
-                        spacing: 6px;
-                        if k.selected && !k.removable: Mid { Icon { glyph: Icons.check; size: 18px;  color: Theme.s.on-secondary-container; } }
-                        T { text: k.label; role: TextRole.subheadline; emphasized: true; color: k.selected ? Theme.s.on-secondary-container : Theme.s.on-surface-variant; }
-                        if k.removable: Mid { Icon { glyph: Icons.close; size: 18px;  color: Theme.s.on-surface-variant; } }
-                    }
-                    TouchArea { clicked => { root.keyword(k.key, k.removable); } }
+                for k in root.keywords: FilterChip {
+                    label: k.label;
+                    selected: k.selected;
+                    removable: k.removable;
+                    clicked => { root.keyword(k.key, k.removable); }
                 }
             }
         }
     }
 }
 
-// BoxPage: a scaffold whose body is a padded, scrolling column.
+// A page: the top app bar over a padded, scrolling column.
 export component ScrollPage inherits Rectangle {
     in property <string> title;
     in property <int> leading: 1;
@@ -996,6 +1683,19 @@ export component ScrollPage inherits Rectangle {
     in property <length> side: Nav.side(self.width);
     callback action(string);
     background: Theme.s.surface;
+    // The column scrolls under the top app bar.
+    flick := Flickable {
+        y: 0;
+        height: parent.height;
+        content-height: body.preferred-height;
+        body := VerticalLayout {
+            padding-left: root.side;
+            padding-right: root.side;
+            padding-top: bar.height + 8px;
+            padding-bottom: 24px + Nav.inset-bottom;
+            @children
+        }
+    }
     bar := TopBar {
         y: 0;
         title: root.title;
@@ -1003,18 +1703,7 @@ export component ScrollPage inherits Rectangle {
         actions: root.actions;
         menu-key: root.menu-key;
         loading: root.loading;
+        scrolled: flick.content-y < 0;
         action(id) => { root.action(id); }
-    }
-    Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
-        content-height: body.preferred-height;
-        body := VerticalLayout {
-            padding-left: root.side;
-            padding-right: root.side;
-            padding-top: 8px;
-            padding-bottom: 24px + Nav.inset-bottom;
-            @children
-        }
     }
 }

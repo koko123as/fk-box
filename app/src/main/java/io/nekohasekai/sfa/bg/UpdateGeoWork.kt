@@ -17,8 +17,9 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Scheduled geo updates (FlClash's geo-auto-update / geo-update-interval). Each
- * run updates the files whose last successful check is older than the
- * interval; a failed download keeps the installed file and retries later.
+ * run updates the installed files whose last successful check is older than
+ * the interval (a file no core has needed yet is not fetched); a failed
+ * download keeps the installed file and retries later.
  */
 object UpdateGeoWork {
     private const val WORK_NAME = "UpdateGeoResources"
@@ -47,7 +48,6 @@ object UpdateGeoWork {
         override suspend fun doWork(): Result {
             if (!Settings.geoAutoUpdate) return Result.success()
             Application.application.setupLibbox()
-            GeoResources.ensureBundled(applicationContext)
             var failed = false
             for (name in GeoResources.due(Settings.geoUpdateInterval)) {
                 try {

@@ -20,10 +20,6 @@ import kotlinx.coroutines.withContext
 class VPNService :
     VpnService(),
     PlatformInterfaceWrapper {
-    companion object {
-        private const val TAG = "VPNService"
-    }
-
     private val service = BoxService(this, this)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int) = service.onStartCommand()

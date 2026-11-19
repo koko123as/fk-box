@@ -75,15 +75,18 @@ export global Nav {
     in-out property <length> inset-left;
     in-out property <length> inset-right;
     in-out property <length> keyboard-height;
-    // The floating navigation bar (phones): its height, its margin, and the room
-    // the home pages leave under their content so the bar never covers it.
-    out property <length> bar-height: 64px;
+    // The floating navigation bar (phones): a 72 dp pill inset
+    // `bar-side` from the window's sides and `bar-margin` above the gesture
+    // inset. The home pages scroll their content under it and leave
+    // `home-bottom` under their last item so it can scroll clear of the bar.
+    out property <length> bar-height: 72px;
     out property <length> bar-margin: 12px;
-    out property <length> home-bottom: mobile ? inset-bottom + bar-height + 2 * bar-margin : inset-bottom;
-    // The navigation rail on wider windows; extended, it shows its labels
-    // beside the icons (saved as the railExtended preference).
+    out property <length> bar-side: 16px;
+    out property <length> home-bottom: mobile ? inset-bottom + bar-margin + bar-height : inset-bottom;
+    // The M3 navigation rail on wider windows (80 dp); expanded (220 dp) it
+    // shows its labels beside the icons (saved as the railExtended preference).
     in-out property <bool> rail-extended;
-    out property <length> rail-width: mobile ? 0px : rail-extended ? 220px : 88px;
+    out property <length> rail-width: mobile ? 0px : rail-extended ? 220px : 80px;
     // The side padding that keeps a reading column (lists, settings, forms)
     // at most 760 dp wide in a window of `width`. Only the window's width
     // decides the layout, so every platform shares it.
@@ -108,6 +111,8 @@ export global Nav {
     callback pop();
     // System back; false lets the activity handle it.
     callback back() -> bool;
+    // The route host finished animating route `id` out (Motion.leaving-id).
+    callback route-left(int);
     // Closes the form a scrim tap dismisses.
     callback dismiss-form(int);
     // Page actions, dispatched by name in Rust.
@@ -196,4 +201,59 @@ export global NativeIme {
     callback set-text(int, string);
     callback set-selection(int, int, int);
     callback end(int);
+}
+
+// Motion state shared by the home pages, the navigation bar and the route
+// host (UI-only, not part of the Rust interface; tokens in theme.slint).
+export global Motion {
+    // A vertical gesture took the touch (src/gesture.rs, decided before
+    // Slint's swipe threshold): the home pages' swipe handler stays off until
+    // the finger lifts, so the page's own scrolling keeps the touch.
+    in-out property <bool> vertical-lock;
+    // A home destination is moving (slide or fade-through), until it settles
+    // (the screenshot harness checks that it always comes back to rest).
+    in-out property <bool> pages-moving;
+    // A horizontal drag between home destinations is in progress (cards and
+    // lists under it ignore the gesture).
+    in-out property <bool> swiping;
+    // Where the shown home page sits horizontally (0 at rest; the pager
+    // writes it while a drag or a slide moves the page).
+    in-out property <length> home-offset;
+    // Bumped by the host's lifecycle (src/pages/mod.rs `reset_gestures`:
+    // background, foreground, the motion event sent on resume): every
+    // gesture in flight is dropped — the pager settles, press ripples and
+    // pressed state layers end — since its release may never arrive.
+    in-out property <int> gesture-resets;
+    // A dashboard card is being dragged in the editor: the page stops scrolling.
+    in-out property <bool> card-dragging;
+
+    // The container transform (phones): a card or list item that opens a
+    // page records its rectangle (window coordinates), corner and color; the
+    // route host grows a surface from it to the full window, then shows the
+    // page, and shrinks it back when that page closes.
+    in-out property <int> container-depth: -1;
+    in-out property <length> container-x;
+    in-out property <length> container-y;
+    in-out property <length> container-width;
+    in-out property <length> container-height;
+    in-out property <length> container-radius;
+    in-out property <color> container-color;
+    // Moves when a container opens (the route host starts the transform).
+    in-out property <int> container-tick;
+    // The top route on its way out (src/nav.rs `close`): it stays in
+    // Nav.routes, drawn fading, sinking or shrinking into its card, until the
+    // route host calls Nav.route-left; -1 when none.
+    in-out property <int> leaving-id: -1;
+    // Bumped by Rust when it drops a route that already animated out.
+    in-out property <int> left-count;
+    public function open-from(depth: int, x: length, y: length, w: length, h: length, radius: length, fill: color) {
+        self.container-depth = depth;
+        self.container-x = x;
+        self.container-y = y;
+        self.container-width = w;
+        self.container-height = h;
+        self.container-radius = radius;
+        self.container-color = fill;
+        self.container-tick += 1;
+    }
 }

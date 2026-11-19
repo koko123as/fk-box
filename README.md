@@ -1,12 +1,12 @@
-# FK-box
+# fk-box
 
 Rust + Slint 三内核客户端
 
-FK-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面为 Rust + Slint 编写的朴素 Material 3 风格（`ui-slint/`，编为 `libfkui.so`，由 Kotlin 的 `BoxActivity` 承载；对照表见 [slint-manifest.md](slint-manifest.md)）；页面布局参考 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，仓库中没有 Flutter/Dart 代码。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
+fk-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面为 Rust + Slint 编写的朴素 Material 3 风格（`ui-slint/`，编为 `libfkui.so`，由 Kotlin 的 `BoxActivity` 承载；对照表见 [slint-manifest.md](slint-manifest.md)）；页面布局参考 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，仓库中没有 Flutter/Dart 代码。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
 
 ## 致谢 / 来源
 
-FK-box 使用或参考了下列项目（许可证以各项目为准；本仓库保留的许可文本见 [licenses/](licenses)）：
+fk-box 使用或参考了下列项目（许可证以各项目为准；本仓库保留的许可文本见 [licenses/](licenses)）：
 
 | 项目 | 许可证 | 取用内容 |
 | --- | --- | --- |
@@ -39,7 +39,7 @@ FK-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 - JSON 配置支持 MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 和 JavaScript 请求/响应改写；[配置说明与示例](libbox.md#json-配置中的-http-改写)。
 - Tailscale、Taildrop、SSH、OpenConnect/OpenVPN 认证、USB/IP、网络诊断和报告通过新页面使用现有后端。
 - 支持配置和设置备份（`bbox-1` 格式，含每个配置的内核与订阅信息）。
-- 旧 Compose 页面、导航、编辑器及更新下载/静默安装链路已移除。关于页检查 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `FK-box-*` 发布资产；配置订阅更新继续保留。
+- 旧 Compose 页面、导航、编辑器及更新下载/静默安装链路已移除。关于页检查 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) 的 `fk-box-*` 发布资产（也接受改名前的 `FK-box-*`）；配置订阅更新继续保留。
 - Xposed/LSPosed 和 Android 5/6 支持已移除。
 
 项目约束：[AGENTS.md](AGENTS.md)。核心差异：[libbox.md](libbox.md)。界面实现与 FlClash 布局参考：[flclash.md](flclash.md)。Android 应用差异与构建发布：[app.md](app.md)。组件许可证：[licenses](licenses)。

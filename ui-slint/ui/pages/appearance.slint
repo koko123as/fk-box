@@ -6,7 +6,7 @@
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
 import { Nav } from "../globals.slint";
-import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field, NativeTextInput } from "../kit.slint";
+import { Mid, Icon, T, IconButton, Switch, Radio, ListItem, ScrollPage, Field, NativeTextInput, SegmentedButton, Tap, Ripple } from "../kit.slint";
 
 export struct Swatch {
     fill: color,
@@ -25,6 +25,9 @@ export global Look {
     in property <string> font-label;
     in property <bool> custom-scale;
     in property <float> scale: 1;
+    // How the phone's home destinations change: "slide" (a pager, also
+    // following a horizontal drag) or "fade" (fade-through); tabMotion.
+    in property <string> tab-motion: "slide";
     // The custom colour page.
     in property <color> pick;
     in property <string> hex;
@@ -54,51 +57,24 @@ component InfoHeader inherits HorizontalLayout {
     padding-right: 4px;
     padding-top: 8px;
     height: 56px;
-    spacing: 8px;
+    spacing: 12px;
     Mid { Icon { glyph: root.glyph; size: 20px; color: Theme.s.primary; } }
-    T { text: root.label; role: TextRole.subheadline; emphasized: true; color: Theme.s.primary; horizontal-stretch: 1; vertical-alignment: center; }
+    T { text: root.label; role: TextRole.title-small; color: Theme.s.primary; horizontal-stretch: 1; }
     @children
 }
 
-// SegmentedButton row.
-component Segmented inherits Rectangle {
-    in property <[string]> labels;
-    in property <int> selected;
-    callback picked(int);
-    height: 40px;
-    border-radius: 20px;
-    HorizontalLayout {
-        for l[i] in root.labels: Rectangle {
-            background: i == root.selected ? Theme.s.secondary-container : transparent;
-            // Equal widths (SegmentedButton weight 1); the ends carry the row's rounded corners.
-            horizontal-stretch: 1;
-            preferred-width: 0px;
-            border-top-left-radius: i == 0 ? 20px : 0px;
-            border-bottom-left-radius: i == 0 ? 20px : 0px;
-            border-top-right-radius: i == root.labels.length - 1 ? 20px : 0px;
-            border-bottom-right-radius: i == root.labels.length - 1 ? 20px : 0px;
-            border-width: 0;
-            if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
-            HorizontalLayout {
-                alignment: center;
-                spacing: 6px;
-                if i == root.selected: Mid { Icon { glyph: Icons.check; size: 18px; color: Theme.s.on-secondary-container;  } }
-                T { text: l; role: TextRole.subheadline; emphasized: true; vertical-alignment: center; horizontal-stretch: 0;
-                    color: i == root.selected ? Theme.s.on-secondary-container : Theme.s.on-surface; }
-            }
-            TouchArea { clicked => { root.picked(i); } }
-        }
-    }
-    Rectangle { border-radius: 20px; border-width: 1px; border-color: Theme.s.outline; }
-}
-
-// The swatch: a 32 px dot in a 44 px cell, a ring and a check when selected.
+// The swatch: a 36 dp dot in a 48 dp cell (the touch target), a ring and a
+// check when selected (not color alone).
 component SwatchView inherits Rectangle {
     in property <Swatch> s;
-    width: 44px;
-    height: 44px;
-    if s.selected: Rectangle { border-radius: 22px; border-width: 2.5px; border-color: s.fill; }
-    Rectangle { width: 32px; height: 32px; border-radius: 16px; background: s.fill; }
+    width: 48px;
+    height: 48px;
+    accessible-role: radio-button;
+    accessible-checked: s.selected;
+    accessible-label: s.system ? @tr("System") : s.value;
+    accessible-action-default => { Nav.act("look-select", root.s.value); }
+    if s.selected: Rectangle { border-radius: 24px; border-width: 3px; border-color: s.fill; }
+    Rectangle { width: 36px; height: 36px; border-radius: 18px; background: s.fill; }
     if s.system: Rectangle {
         x: parent.width - 20px;
         y: parent.height - 20px;
@@ -110,20 +86,25 @@ component SwatchView inherits Rectangle {
             width: 16px;
             height: 16px;
             border-radius: 8px;
-            background: Theme.level(2);
+            background: Theme.s.surface-container-highest;
             Icon { glyph: Icons.eyedropper; size: 12px; }
         }
     }
     if s.selected: Icon { glyph: Icons.check; size: 18px; color: s.light-check ? white : black; }
+    srip := Ripple { border-radius: 24px; centered: true; }
     touch := TouchArea {
         clicked => { Nav.act("look-select", root.s.value); }
         pointer-event(e) => {
             if (e.kind == PointerEventKind.down) {
                 hold.running = !root.s.system;
+                srip.down(self.mouse-x, self.mouse-y);
             } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
                 hold.running = false;
+                srip.up();
             }
         }
+        changed pressed => { if (!self.pressed) { srip.up(); } }
+        changed has-hover => { if (!self.has-hover) { srip.up(); } }
     }
     hold := Timer {
         interval: 450ms;
@@ -144,48 +125,50 @@ export component AppearancePage inherits ScrollPage {
         title: c.l;
         clickable: true;
         clicked => { Nav.act("look-theme", c.v); }
-        Mid { Radio { selected: Look.theme == c.v;  } }
+        Mid { Radio { selected: Look.theme == c.v; } }
     }
     Rectangle { height: 16px; }
     ListItem {
         title: @tr("Pure black mode");
         clickable: true;
         clicked => { Nav.act("look-pure-black", Look.pure-black ? "0" : "1"); }
-        Mid { Switch { checked: Look.pure-black;  toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } } }
+        Mid { Switch { checked: Look.pure-black; toggled(v) => { Nav.act("look-pure-black", v ? "1" : "0"); } } }
     }
     Rectangle { height: 16px; }
     // Accent colour
     InfoHeader {
         label: @tr("Accent color");
         glyph: Icons.palette;
-        Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-reset-colors", ""); } } }
+        Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); clicked => { Nav.act("look-reset-colors", ""); } } }
     }
     swatches := Rectangle {
         property <length> inner: self.width - 2 * 10px;
-        property <int> columns: max(1, floor((inner + 6px) / 50px));
-        property <length> gap: columns > 1 ? floor((inner - columns * 44px) / (columns - 1) / 1px) * 1px : 0px;
+        property <int> columns: max(1, floor((inner + 6px) / 54px));
+        property <length> gap: columns > 1 ? floor((inner - columns * 48px) / (columns - 1) / 1px) * 1px : 0px;
         property <int> count: Look.swatches.length + (Look.can-add ? 1 : 0);
-        height: ceil(count / columns) * (44px + gap) - gap + 20px;
-        border-radius: Theme.radius;
-        background: Theme.level(2);
+        height: ceil(count / columns) * (48px + gap) - gap + 20px;
+        border-radius: Theme.corner-large;
+        background: Theme.level(1);
         for s[i] in Look.swatches: SwatchView {
-            x: 10px + mod(i, swatches.columns) * (44px + swatches.gap);
-            y: 10px + floor(i / swatches.columns) * (44px + swatches.gap);
+            x: 10px + mod(i, swatches.columns) * (48px + swatches.gap);
+            y: 10px + floor(i / swatches.columns) * (48px + swatches.gap);
             s: s;
         }
         if Look.can-add: Rectangle {
-            x: 10px + mod(Look.swatches.length, swatches.columns) * (44px + swatches.gap);
-            y: 10px + floor(Look.swatches.length / swatches.columns) * (44px + swatches.gap);
-            width: 44px;
-            height: 44px;
+            x: 10px + mod(Look.swatches.length, swatches.columns) * (48px + swatches.gap);
+            y: 10px + floor(Look.swatches.length / swatches.columns) * (48px + swatches.gap);
+            width: 48px;
+            height: 48px;
+            accessible-role: button;
+            accessible-label: @tr("Custom color");
             Rectangle {
-                width: 32px;
-                height: 32px;
-                border-radius: 16px;
-                background: Theme.level(3);
+                width: 36px;
+                height: 36px;
+                border-radius: 18px;
+                background: Theme.s.surface-container-highest;
                 Icon { glyph: Icons.add; size: 20px; color: Theme.s.on-surface-variant; }
             }
-            TouchArea { clicked => { Nav.act("look-add", ""); } }
+            Tap { border-radius: 24px; centered: true; ink: Theme.s.on-surface-variant; clicked => { Nav.act("look-add", ""); } }
         }
     }
     Rectangle { height: 8px; }
@@ -209,17 +192,17 @@ export component AppearancePage inherits ScrollPage {
     InfoHeader {
         label: @tr("Font scale");
         glyph: Icons.text-size;
-        if Look.custom-scale && Look.scale != 1: Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset");  clicked => { Nav.act("look-scale", "1"); } } }
+        if Look.custom-scale && Look.scale != 1: Mid { IconButton { glyph: Icons.reset; tooltip: @tr("Reset"); clicked => { Nav.act("look-scale", "1"); } } }
     }
-    Segmented {
+    SegmentedButton {
         labels: [@tr("Follow system"), @tr("Custom")];
         selected: Look.custom-scale ? 1 : 0;
         picked(i) => { Nav.act("look-custom-scale", i == 1 ? "1" : "0"); }
     }
     Rectangle { height: 8px; }
     scalebox := Rectangle {
-        border-radius: Theme.radius;
-        background: Theme.level(2);
+        border-radius: Theme.corner-large;
+        background: Theme.level(1);
         height: sc.preferred-height;
         // The value while dragging, set imperatively (no binding through the layout).
         property <float> draft: -1;
@@ -234,23 +217,26 @@ export component AppearancePage inherits ScrollPage {
                 VerticalLayout {
                     horizontal-stretch: 1;
                     spacing: 4px;
-                    Text { text: "Aa"; font-size: Theme.size(TextRole.title3) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; }
-                    Text { text: @tr("Text size preview"); font-size: Theme.size(TextRole.subheadline) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; wrap: word-wrap; }
+                    Text { text: "Aa"; font-size: Theme.size(TextRole.title-large) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; }
+                    Text { text: @tr("Text size preview"); font-size: Theme.size(TextRole.body-medium) * scalebox.shown / Theme.text-scale; color: Theme.s.on-surface; wrap: word-wrap; }
                 }
-                T { text: round(scalebox.shown * 100) + "%"; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+                T { text: round(scalebox.shown * 100) + "%"; role: TextRole.body-medium; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
             }
             HorizontalLayout {
                 spacing: 12px;
-                T { text: "A"; role: TextRole.footnote; horizontal-stretch: 0; vertical-alignment: center; }
+                T { text: "A"; role: TextRole.body-small; horizontal-stretch: 0; }
                 track := Rectangle {
-                    height: 40px;
+                    height: 48px;
+                    accessible-role: slider;
+                    accessible-label: @tr("Font scale");
+                    accessible-value: round(scalebox.shown * 100) + "%";
                     horizontal-stretch: 1;
                     opacity: Look.custom-scale ? 1 : 0.38;
                     property <float> f: (scalebox.shown - 0.8) / 0.6;
-                    Rectangle { y: 18px; height: 4px; border-radius: 2px; background: Theme.s.secondary-container; }
-                    Rectangle { y: 18px; height: 4px; width: 14px + (parent.width - 28px) * track.f; border-radius: 2px; background: Theme.s.primary; }
-                    for t[i] in 13: Rectangle { x: 14px + (parent.width - 28px) * i / 12 - 2px; y: 18px; width: 4px; height: 4px; border-radius: 2px; background: Theme.s.on-surface-variant.with-alpha(0.38); }
-                    Rectangle { x: 14px + (parent.width - 28px) * track.f - 2px; y: 8px; width: 4px; height: 24px; border-radius: 2px; background: Theme.s.primary; }
+                    Rectangle { y: 22px; height: 4px; border-radius: 2px; background: Theme.s.secondary-container; }
+                    Rectangle { x: 0; y: 22px; height: 4px; width: 14px + (parent.width - 28px) * track.f; border-radius: 2px; background: Theme.s.primary; }
+                    for t[i] in 13: Rectangle { x: 14px + (parent.width - 28px) * i / 12 - 2px; y: 22px; width: 4px; height: 4px; border-radius: 2px; background: Theme.s.on-surface-variant.with-alpha(0.38); }
+                    Rectangle { x: 14px + (parent.width - 28px) * track.f - 2px; y: 2px; width: 4px; height: 44px; border-radius: 2px; background: Theme.s.primary; }
                     knob := TouchArea {
                         enabled: Look.custom-scale;
                         moved => {
@@ -268,13 +254,24 @@ export component AppearancePage inherits ScrollPage {
                         }
                     }
                 }
-                T { text: "A"; role: TextRole.title2; horizontal-stretch: 0; vertical-alignment: center; }
+                T { text: "A"; role: TextRole.headline-small; horizontal-stretch: 0; }
             }
         }
     }
+    Rectangle { height: 16px; }
+    // Switching destinations on a phone (FlClash's tab animation).
+    InfoHeader {
+        label: @tr("Page switching");
+        glyph: Icons.swap;
+    }
+    SegmentedButton {
+        labels: [@tr("Slide"), @tr("Fade")];
+        selected: Look.tab-motion == "fade" ? 1 : 0;
+        picked(i) => { Nav.act("look-tab-motion", i == 1 ? "fade" : "slide"); }
+    }
 }
 
-// The colour thumb: white ring with a hairline outline (no shadow), the colour inside.
+// The colour thumb: a white ring with a hairline outline, the colour inside.
 component Thumb inherits Rectangle {
     in property <color> fill;
     width: 28px;
@@ -292,8 +289,8 @@ component LabeledSlider inherits VerticalLayout {
     callback changed(float);
     spacing: 10px;
     HorizontalLayout {
-        T { text: root.label; role: TextRole.subheadline; emphasized: true; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
-        T { text: root.value; role: TextRole.subheadline; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
+        T { text: root.label; role: TextRole.title-small; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+        T { text: root.value; role: TextRole.body-medium; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
     }
     area := Rectangle {
         height: 28px;
@@ -312,8 +309,8 @@ export component CustomColorPage inherits ScrollPage {
     action(id) => { Nav.act("look-custom-save", ""); }
     Rectangle {
         height: 72px;
-        border-radius: Theme.radius;
-        background: Theme.level(2);
+        border-radius: Theme.corner-large;
+        background: Theme.level(1);
         HorizontalLayout {
             padding: 12px;
             spacing: 12px;
@@ -326,31 +323,32 @@ export component CustomColorPage inherits ScrollPage {
             }
             Rectangle {
                 horizontal-stretch: 1;
-                border-radius: Theme.radius;
+                border-radius: Theme.corner-extra-small;
                 background: Theme.s.surface;
+                border-width: hex.has-focus ? 2px : 1px;
+                border-color: hex.has-focus ? Theme.s.primary : Theme.s.outline;
                 HorizontalLayout {
                     padding-left: 12px;
                     padding-right: 12px;
                     spacing: 4px;
-                    T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; vertical-alignment: center; }
+                    T { text: "#"; color: Theme.s.on-surface-variant; horizontal-stretch: 0; }
                     hex := NativeTextInput {
                         horizontal-stretch: 1;
                         vertical-alignment: center;
-                        font-size: Theme.size(TextRole.body);
+                        font-size: Theme.size(TextRole.body-large);
                         ink: Theme.s.on-surface;
-                        single-line: true;
                         property <int> tick: Look.hex-tick;
                         changed tick => { if (self.text != Look.hex) { self.text = Look.hex; } }
                         init => { self.text = Look.hex; }
                         edited => { Nav.act("look-hex", self.text); }
                     }
-                    Mid { Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick;  } }
+                    Mid { Rectangle { width: 24px; height: 24px; border-radius: 12px; background: Look.pick; } }
                 }
             }
         }
     }
     Rectangle { height: 16px; }
-    Segmented {
+    SegmentedButton {
         labels: [@tr("Grid"), @tr("Spectrum"), @tr("Sliders")];
         selected: Look.mode == "grid" ? 0 : Look.mode == "spectrum" ? 1 : 2;
         picked(i) => { Look.mode = i == 0 ? "grid" : i == 1 ? "spectrum" : "sliders"; }
@@ -412,8 +410,8 @@ export component CustomColorPage inherits ScrollPage {
         }
     }
     if Look.mode == "sliders": Rectangle {
-        border-radius: Theme.radius;
-        background: Theme.level(2);
+        border-radius: Theme.corner-large;
+        background: Theme.level(1);
         height: sl.preferred-height;
         sl := VerticalLayout {
             padding-left: 16px;

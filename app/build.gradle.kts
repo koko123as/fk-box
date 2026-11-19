@@ -91,7 +91,7 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
-        base.archivesName.set("FK-box-${versionName}")
+        base.archivesName.set("fk-box-${versionName}")
     }
 
     signingConfigs {
@@ -209,10 +209,12 @@ android {
 }
 
 /**
- * Bundled geo data for Xray and mihomo (assets/geo, see libbox.md "地理数据"):
- * the files pinned in geo-assets.properties are downloaded once into a shared
- * cache, checked against their SHA-256 sums and copied with a manifest the app
- * reads to decide whether the bundle replaces an installed file.
+ * Geo data for Xray and mihomo (assets/geo, see app.md "地理数据资源"): the
+ * resources listed in GEO_BUNDLED of geo-assets.properties are downloaded once
+ * into a shared cache, checked against their SHA-256 sums and copied into the
+ * APK. manifest.json lists them under "files" (the app extracts them when a
+ * core needs them) and every other pinned resource under "remote" with its
+ * pinned URL and hash (the app downloads it on first use instead).
  */
 abstract class PrepareGeoAssets : DefaultTask() {
     @get:InputFile
@@ -235,12 +237,22 @@ abstract class PrepareGeoAssets : DefaultTask() {
         val out = outputDir.get().asFile.resolve("geo")
         out.deleteRecursively()
         out.mkdirs()
+        val resources = listOf("geoip", "geosite", "mmdb", "asn")
+        val bundled = props.getProperty("GEO_BUNDLED").orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        require(bundled.isNotEmpty() && resources.containsAll(bundled)) { "GEO_BUNDLED must list some of $resources" }
         val entries = mutableListOf<String>()
-        for (name in listOf("geoip", "geosite", "mmdb", "asn")) {
+        val remote = mutableListOf<String>()
+        for (name in resources) {
             val (source, file, sha256) = props.getProperty(name).split(":")
+            require(Regex("[0-9a-f]{64}").matches(sha256)) { "$name needs a SHA-256 in geo-assets.properties" }
+            val url = "https://raw.githubusercontent.com/$repository/$commit/$source"
+            if (name !in bundled) {
+                remote += "\"$name\":{\"file\":\"$file\",\"url\":\"$url\",\"sha256\":\"$sha256\"}"
+                continue
+            }
             val cached = cache.resolve(file)
             if (!cached.isFile || sha256Of(cached) != sha256) {
-                download("https://raw.githubusercontent.com/$repository/$commit/$source", cached)
+                download(url, cached)
                 val actual = sha256Of(cached)
                 if (actual != sha256) {
                     cached.delete()
@@ -251,7 +263,7 @@ abstract class PrepareGeoAssets : DefaultTask() {
             entries += "\"$name\":{\"file\":\"$file\",\"sha256\":\"$sha256\",\"size\":${cached.length()}}"
         }
         out.resolve("manifest.json").writeText(
-            "{\"source\":\"$repository\",\"commit\":\"$commit\",\"time\":$time,\"files\":{${entries.joinToString(",")}}}\n",
+            "{\"source\":\"$repository\",\"commit\":\"$commit\",\"time\":$time,\"files\":{${entries.joinToString(",")}},\"remote\":{${remote.joinToString(",")}}}\n",
         )
     }
 
@@ -316,7 +328,6 @@ dependencies {
     val lifecycleVersion = "2.11.0"
     val roomVersion = "2.8.4"
 
-    implementation("androidx.preference:preference-ktx:1.2.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
     implementation("com.android.tools.smali:smali-dexlib2:3.0.9") {
@@ -429,6 +440,10 @@ val buildRustUi = tasks.register<Exec>("buildRustUi") {
     outputs.dir(rustUiOut)
     val targets = apkAbis.flatMap { listOf("-t", it) }
     commandLine(listOf("cargo", "ndk") + targets + listOf("-P", "24", "-o", rustUiOut.get().asFile.absolutePath, "build", "--release"))
+    // Slint 1.19's prebuilt Skia needs NDK r30 or newer: linked with an older
+    // NDK's static libc++ the library has an unresolved std::__ndk1 symbol and
+    // fails to load at launch. CI sets FKUI_NDK_HOME (build-libbox action).
+    System.getenv("FKUI_NDK_HOME")?.let { environment("ANDROID_NDK_HOME", it) }
     onlyIf { !providers.gradleProperty("skipRustUi").orNull.toBoolean() }
 }
 tasks.named("preBuild") { dependsOn(buildRustUi) }

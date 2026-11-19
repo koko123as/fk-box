@@ -1,38 +1,144 @@
-// The dashboard and its panels (pages/DashboardPage.kt, StatusPanel.kt,
-// DashboardComponents.kt, DashboardEditor.kt; layout after FlClash, GPL-3.0).
+// The dashboard and its panels (layout after FlClash, GPL-3.0), in M3:
+// filled cards on the surface, card headers in title-medium, figures in the
+// display/headline roles, nested tiles on surface-container-low, the start
+// action as a large FAB, the outbound mode as a segmented button, toggles as
+// switches, and grouped lists for the detail pages.
 
 import { Theme, TextRole } from "../theme.slint";
 import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction } from "../globals.slint";
+import { Nav, BarAction, Motion } from "../globals.slint";
 import { App, Dash, ModeItem, KeyValue, ServiceItem } from "../data.slint";
-import { Mid, Icon, T, Spinner, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field } from "../kit.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, IconBadge, Skeleton, Chip, Panel, PanelTitle, ListItem, SectionTitle, Footer, TopBar, ScrollPage, Field, StateLayer, Ripple, Tap, FocusRing, Appear } from "../kit.slint";
 
-// StartToggle: a round filled button showing start or stop.
+// Figures that count to their new value (rates, memory, counts). The texts
+// Rust formats (src/format.rs bytes() and count()) are read back into a
+// number, animated, and formatted again the same way; a text that is not a
+// number ("—") shows as it is.
+global Tween {
+    public pure function unit-index(unit: string) -> int {
+        if (unit == "B") { return 0; }
+        if (unit == "KB") { return 1; }
+        if (unit == "MB") { return 2; }
+        if (unit == "GB") { return 3; }
+        if (unit == "TB") { return 4; }
+        return -1;
+    }
+    // A bytes() figure and unit as bytes; -1 when they are not numbers.
+    public pure function bytes-of(figure: string, unit: string) -> float {
+        return figure.is-float() && unit-index(unit) >= 0 ? figure.to-float() * pow(1024, unit-index(unit)) : -1;
+    }
+    public pure function unit-step(bytes: float) -> int {
+        return bytes < 1024 ? 0 : bytes < pow(1024, 2) ? 1 : bytes < pow(1024, 3) ? 2 : bytes < pow(1024, 4) ? 3 : 4;
+    }
+    public pure function unit(bytes: float) -> string {
+        return ["B", "KB", "MB", "GB", "TB"][unit-step(bytes)];
+    }
+    // bytes(): whole bytes, else one decimal.
+    public pure function figure(bytes: float) -> string {
+        return unit-step(bytes) == 0 ? round(bytes) + "" : one-decimal(bytes / pow(1024, unit-step(bytes)));
+    }
+    public pure function one-decimal(v: float) -> string {
+        return floor(round(v * 10) / 10) + "." + mod(round(v * 10), 10);
+    }
+    // figure()'s shape with every digit a "0" ("00.0", "000"): the width the
+    // figure keeps while its digits count, so the unit after it does not jump
+    // when "9.9" becomes "10.0" only at a new digit count.
+    public pure function pattern(bytes: float) -> string {
+        let v = unit-step(bytes) == 0 ? round(bytes) : round(bytes / pow(1024, unit-step(bytes)) * 10) / 10;
+        let whole = v < 10 ? "0" : v < 100 ? "00" : v < 1000 ? "000" : "0000";
+        return unit-step(bytes) == 0 ? whole : whole + ".0";
+    }
+}
+
+// A rate figure: Slint cannot select tabular figures, so the box is as wide
+// as the wider of the text and its digit pattern (Tween.pattern), plus room
+// for the last glyph's overhang (no negative tracking, which drew the last
+// glyph past the measured width), and as tall as the role's line height.
+// When `avail` is narrower than the widest figure (large font scales on a
+// phone) the figure shrinks, to 75 % at most, before it would be cut.
+component RateFigure inherits Rectangle {
+    in property <string> text;
+    in property <string> pattern;
+    in property <TextRole> role;
+    in property <length> avail;
+    property <length> natural: max(pattern-measure.preferred-width, text-measure.preferred-width) + root.overhang;
+    property <length> overhang: 0.08 * Theme.size(root.role);
+    // Fit for the widest figure a rate shows (three digits and a decimal),
+    // so both tiles and every value keep one size.
+    property <float> fit: clamp(root.avail / max(1px, max(root.natural, widest-measure.preferred-width + root.overhang)), 0.75, 1);
+    width: root.natural * root.fit;
+    height: Theme.leading(root.role);
+    horizontal-stretch: 0;
+    widest-measure := T { visible: false; text: "000.0"; role: root.role; emphasized: true; }
+    pattern-measure := T { visible: false; text: root.pattern; role: root.role; emphasized: true; }
+    text-measure := T { visible: false; text: root.text; role: root.role; emphasized: true; }
+    T {
+        x: 0;
+        width: parent.width;
+        height: parent.height;
+        text: root.text;
+        role: root.role;
+        emphasized: true;
+        font-size: Theme.size(root.role) * root.fit;
+        vertical-alignment: bottom;
+        accessible-role: none;
+    }
+}
+
+// The service's start/stop: the screen's dominant action, an M3 large FAB
+// (extra-large corners) in primary-container whether running or not; the
+// icon (start or stop) and the corner morph carry the state. It sits in
+// the status card, so it is lowered (level 1 shadow).
 component StartToggle inherits Rectangle {
-    in property <length> size: 88px;
+    in property <length> size: 96px;
     in property <bool> enabled: true;
     in property <bool> running;
     in property <bool> busy;
     callback clicked();
+    property <color> ink: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-content) : Theme.s.on-primary-container;
+    // Starting and stopping morph the button with an overshoot (ease-out-back,
+    // FlClash's status decoration): the corners tighten and the icon turns.
+    property <float> morph: root.running ? 1 : 0;
+    animate morph { duration: Theme.motion-long; easing: Theme.easing-back; }
     width: size;
     height: size;
-    border-radius: size / 2;
-    background: enabled ? Theme.s.primary : Theme.s.on-surface.with-alpha(0.12);
+    border-radius: Theme.corner-extra-large - (Theme.corner-extra-large - Theme.corner-large) * root.morph;
+    background: !enabled ? Theme.s.on-surface.with-alpha(Theme.disabled-container) : Theme.s.primary-container;
+    animate background { duration: Theme.motion-short; easing: Theme.easing-standard; }
+    drop-shadow-blur: enabled ? Theme.shadow-blur(ta.has-hover ? 2 : 1) : 0px;
+    drop-shadow-offset-y: enabled ? Theme.shadow-offset(1) : 0px;
+    drop-shadow-color: enabled ? Theme.shadow-color(1) : transparent;
     accessible-role: button;
     accessible-label: running ? @tr("Stop") : @tr("Start");
-    Rectangle {
-        border-radius: parent.border-radius;
-        background: ta.pressed ? Theme.s.on-primary.with-alpha(0.12) : transparent;
-    }
-    if root.busy: Spinner { size: root.size * 0.36; tint: Theme.s.on-primary; }
+    accessible-enabled: enabled && !busy;
+    accessible-action-default => { if (root.enabled) { root.clicked(); } }
+    StateLayer { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled; pressed: ta.pressed; hover: ta.has-hover; focused: fs.has-focus; }
+    rip := Ripple { border-radius: root.border-radius; ink: root.ink; enabled: root.enabled; }
+    if root.busy: Spinner { size: root.size * 0.36; tint: root.ink; }
     if !root.busy: Icon {
         glyph: root.running ? Icons.pause : Icons.start;
-        size: root.size * 0.4;
-        color: root.enabled ? Theme.s.on-primary : Theme.s.on-surface.with-alpha(0.38);
+        size: 36px;
+        color: root.ink;
+        transform-rotation: root.morph * 180deg;
+    }
+    FocusRing { shown: fs.has-focus; corner: root.border-radius; }
+    fs := FocusScope {
+        enabled: root.enabled;
+        focus-on-click: false;
+        key-pressed(e) => {
+            if (e.text == Key.Return || e.text == Key.Space) { root.clicked(); return EventResult.accept; }
+            EventResult.reject
+        }
     }
     ta := TouchArea {
         enabled: root.enabled;
         clicked => { root.clicked(); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { rip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { rip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { rip.up(); } }
+        changed has-hover => { if (!self.has-hover) { rip.up(); } }
     }
 }
 
@@ -44,56 +150,100 @@ component CountryBadge inherits Rectangle {
     in property <bool> checking;
     in property <bool> can-retry;
     callback retry();
-    property <color> fg: active ? Theme.s.on-surface : Theme.s.on-surface-variant;
+    property <color> fg: active ? Theme.s.on-secondary-container : Theme.s.on-secondary-container.with-alpha(0.72);
     width: size;
     height: size;
     border-radius: size / 2;
-    background: Theme.level(3);
-    if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
-    if !root.checking && root.country != "": T {
-        text: root.country;
-        role: TextRole.footnote;
-        emphasized: true;
-        color: root.fg;
-        horizontal-alignment: center;
+    accessible-role: button;
+    accessible-label: root.country;
+    // A new exit (another outbound, country or check) pops in with an
+    // overshoot (ease-out-back) from 60 %.
+    property <bool> popping;
+    property <duration> pop-start;
+    changed country => {
+        if (Theme.motion-on) {
+            self.pop-start = animation-tick();
+            self.popping = true;
+            pop-end.interval = Theme.motion-long + 16ms;
+            if (pop-end.running) { pop-end.restart(); } else { pop-end.start(); }
+        }
     }
-    if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
-    TouchArea {
-        enabled: root.can-retry;
-        clicked => { root.retry(); }
+    pop-end := Timer {
+        running: false;
+        interval: Theme.motion-long;
+        triggered => {
+            self.stop();
+            root.popping = false;
+        }
+    }
+    // Scaled inside the root: a root element's own transform-scale is ignored.
+    face := Rectangle {
+        border-radius: root.border-radius;
+        background: Theme.s.secondary-container;
+        transform-scale: root.popping ? 0.6 + 0.4 * Theme.ease-out-back(Theme.progress(animation-tick(), root.pop-start, Theme.motion-long)) : 1;
+        if root.checking: Spinner { size: root.size * 0.5; tint: root.fg; }
+        if !root.checking && root.country != "": T {
+            text: root.country;
+            role: TextRole.label-medium;
+            color: root.fg;
+            horizontal-alignment: center;
+        }
+        if !root.checking && root.country == "": Icon { glyph: Icons.proxies; size: root.size * 0.42; color: root.fg; }
+        Tap {
+            border-radius: root.border-radius;
+            ink: Theme.s.on-secondary-container;
+            centered: true;
+            enabled: root.can-retry;
+            clicked => { root.retry(); }
+        }
     }
 }
 
+// A label over a value. `keep`: the value keeps its whole width (the run
+// time); otherwise the cell takes what is left and the value elides (the
+// organization's name).
 component StatusCell inherits VerticalLayout {
     in property <string> label;
     in property <string> value;
     in property <bool> loading;
+    in property <bool> keep;
     spacing: 2px;
-    T { text: root.label; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+    horizontal-stretch: root.keep ? 0 : 1;
+    T {
+        text: root.label;
+        role: TextRole.body-small;
+        color: Theme.s.on-surface-variant;
+        min-width: root.keep ? self.preferred-width : 0px;
+    }
     if root.loading: Skeleton { width: 96px; pill-height: Theme.sp(14); }
-    if !root.loading: T { text: root.value; role: TextRole.subheadline; emphasized: true; }
+    if !root.loading: T {
+        text: root.value;
+        role: TextRole.title-small;
+        height: Theme.leading(TextRole.title-small);
+        // Room for the last glyph's overhang so it is never trimmed.
+        min-width: root.keep ? self.preferred-width + 0.08 * Theme.size(TextRole.title-small) : 0px;
+    }
 }
 
 export component StatusPanel inherits Rectangle {
-    background: Theme.level(1);
+    background: Theme.s.surface-container-highest;
     border-radius: Theme.radius;
     min-height: lay.min-height;
     preferred-height: lay.preferred-height;
     lay := HorizontalLayout {
-        padding-left: 20px;
-        padding-top: 18px;
-        padding-bottom: 18px;
+        padding-left: 16px;
+        padding-top: 12px;
+        padding-bottom: 16px;
         padding-right: 16px;
-        spacing: 10px;
+        spacing: 12px;
         VerticalLayout {
             horizontal-stretch: 1;
-            spacing: 0px;
             alignment: start;
             HorizontalLayout {
-                height: max(26px, Theme.sp(26));
+                height: max(Theme.min-target, Theme.leading(TextRole.title-medium));
                 spacing: 8px;
-                Mid { Icon { glyph: Icons.status; size: 18px; color: Theme.s.on-surface-variant;  } }
-                T { text: @tr("Status"); role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
+                Mid { Icon { glyph: Icons.status; size: 20px; color: Theme.s.primary; } }
+                T { text: @tr("Status"); role: TextRole.title-medium; horizontal-stretch: 0; }
                 Rectangle {
                     horizontal-stretch: 1;
                     Chip {
@@ -121,7 +271,7 @@ export component StatusPanel inherits Rectangle {
                     // Title2 on a phone (DashboardDensity.Mobile), Title1 wider; the IP
                     // shrinks to fit down to 75% (TextAutoSize.StepBased), then elides.
                     ip-box := Rectangle {
-                        property <TextRole> ip-role: Nav.mobile ? TextRole.title2 : TextRole.title1;
+                        property <TextRole> ip-role: Nav.mobile ? TextRole.headline-small : TextRole.headline-medium;
                         height: Theme.leading(self.ip-role);
                         ip-measure := T {
                             visible: false;
@@ -137,7 +287,7 @@ export component StatusPanel inherits Rectangle {
                             emphasized: true;
                             font-size: clamp(Theme.size(parent.ip-role) * parent.width / max(1px, ip-measure.preferred-width), Theme.size(parent.ip-role) * 0.75, Theme.size(parent.ip-role));
                             color: App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
-                            TouchArea { clicked => { Nav.form("egress", ""); } }
+                            Tap { border-radius: Theme.corner-small; clicked => { Nav.form("egress", ""); } }
                         }
                         if Dash.egress-ip == "" && Dash.egress-skeleton: Skeleton {
                             x: 0;
@@ -153,20 +303,23 @@ export component StatusPanel inherits Rectangle {
                             color: Dash.egress-failed ? Theme.s.error : App.running ? Theme.s.on-surface : Theme.s.on-surface-variant;
                         }
                     }
+                    // As tall as the chips it holds (they grow with the font
+                    // scale), so their borders are never cut; the clip only
+                    // trims a row too wide for the card.
                     Rectangle {
-                        height: 28px;
+                        height: Theme.chip-height-large;
                         clip: true;
                         if Dash.egress-failed && Dash.egress-ip == "": T {
                             x: 0;
                             text: @tr("Tap icon to retry");
-                            role: TextRole.caption1;
+                            role: TextRole.body-small;
                             color: Theme.s.on-surface-variant;
                         }
                         if !(Dash.egress-failed && Dash.egress-ip == ""): HorizontalLayout {
                             alignment: start;
                             spacing: 6px;
-                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 48px; pill-height: 28px; }
-                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 72px; pill-height: 28px; }
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 48px; pill-height: Theme.chip-height-large; }
+                            if Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == ""): Skeleton { width: 72px; pill-height: Theme.chip-height-large; }
                             if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")): Chip { label: Dash.egress-type; large: true; }
                             if !(Dash.egress-skeleton || (Dash.organization-loading && Dash.egress-ip == "")) && Dash.egress-quality != "": Chip {
                                 label: @tr("Quality") + " " + Dash.egress-quality;
@@ -180,8 +333,7 @@ export component StatusPanel inherits Rectangle {
             Rectangle { height: 16px; }
             HorizontalLayout {
                 spacing: 24px;
-                alignment: start;
-                StatusCell { label: @tr("Run time"); value: Dash.runtime; }
+                StatusCell { label: @tr("Run time"); value: Dash.runtime; keep: true; }
                 StatusCell {
                     label: @tr("Organization");
                     value: Dash.organization == "" ? "—" : Dash.organization;
@@ -191,7 +343,7 @@ export component StatusPanel inherits Rectangle {
         }
         // The start and stop button sits in the card on every width.
         Rectangle {
-            property <length> size: Nav.mobile ? 88px : 112px;
+            property <length> size: Nav.mobile ? 80px : 96px;
             width: self.size + (Nav.mobile ? 0px : 24px);
             if App.remote: Icon { glyph: Icons.proxies; size: 60px; }
             if !App.remote: StartToggle {
@@ -220,27 +372,17 @@ component LineChart inherits Rectangle {
     if root.area != "": Path {
         x: 0;
         y: 0;
-        width: root.width;
-        height: root.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: root.width / 1px;
         viewbox-height: root.height / 1px;
         commands: root.area;
         fill: root.tint.with-alpha(0.14);
-        stroke-width: 0;
     }
     if root.line != "": Path {
         x: 0;
         y: 0;
-        width: root.width;
-        height: root.height;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: root.width / 1px;
         viewbox-height: root.height / 1px;
         commands: root.line;
-        fill: transparent;
         stroke: root.tint;
         stroke-width: 2px;
         stroke-line-cap: round;
@@ -250,13 +392,19 @@ component LineChart inherits Rectangle {
 
 component SpeedTile inherits Rectangle {
     in property <bool> upload;
-    property <color> fg: upload ? Theme.s.on-surface-variant : Theme.s.primary;
-    property <length> text-height: 14px + 4px + Theme.leading(TextRole.footnote) + Theme.leading(TextRole.title1) + Theme.leading(TextRole.caption1);
+    // The rate in bytes, counting to each new sample.
+    property <float> rate: Tween.bytes-of(root.upload ? Dash.up-figure : Dash.down-figure, root.upload ? Dash.up-unit : Dash.down-unit);
+    property <float> shown: max(0, root.rate);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
+    property <color> fg: upload ? Theme.s.tertiary : Theme.s.primary;
+    // The top padding, the label row, the gap, the figure's and the total's
+    // line heights, all from the type scale so they grow with the font scale.
+    property <length> text-height: 14px + max(16px, Theme.leading(TextRole.label-medium)) + 4px + Theme.leading(TextRole.headline-medium) + Theme.leading(TextRole.body-small);
     // Square-ish on a phone; capped on wider windows, where the card spans
     // two grid columns.
     property <length> chart-height: Nav.mobile ? max(36px, self.width / 1.06 - text-height - 12px + 2px) : clamp(self.width / 1.06 - text-height - 12px + 2px, 36px, 84px);
-    border-radius: Theme.radius;
-    background: Theme.level(2);
+    border-radius: Theme.corner-medium;
+    background: Theme.s.surface-container-low;
     clip: true;
     height: chart-height - 2px + 12px + text-height;
     LineChart {
@@ -267,7 +415,7 @@ component SpeedTile inherits Rectangle {
         reports-size: root.upload;
         line: root.upload ? Dash.up-line : Dash.down-line;
         area: root.upload ? Dash.up-area : Dash.down-area;
-        tint: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
+        tint: root.upload ? Theme.s.tertiary : Theme.s.primary;
     }
     VerticalLayout {
         x: 16px;
@@ -279,32 +427,28 @@ component SpeedTile inherits Rectangle {
             spacing: 4px;
             alignment: start;
             Icon { glyph: root.upload ? Icons.arrow-up : Icons.arrow-down; size: 16px; color: root.fg; y: (parent.height - 16px) / 2; }
-            T { text: root.upload ? @tr("Upload") : @tr("Download"); role: TextRole.footnote; emphasized: true; color: Theme.s.on-surface-variant; }
+            T { text: root.upload ? @tr("Upload") : @tr("Download"); role: TextRole.label-medium; color: Theme.s.on-surface-variant; }
         }
         Rectangle { height: 4px; }
         HorizontalLayout {
             alignment: start;
-            spacing: 0px;
-            T {
-                text: root.upload ? Dash.up-figure : Dash.down-figure;
-                role: TextRole.title1;
-                emphasized: true;
-                letter-spacing: -0.02 * Theme.size(TextRole.title1);
-                overflow: clip;
-                vertical-alignment: bottom;
+            RateFigure {
+                text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
+                pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
+                role: TextRole.headline-medium;
+                avail: root.width - 32px - tile-unit.preferred-width;
             }
-            T {
-                text: " " + (root.upload ? Dash.up-unit : Dash.down-unit) + "/s";
-                role: TextRole.footnote;
-                emphasized: true;
+            tile-unit := T {
+                text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
+                role: TextRole.label-medium;
                 color: Theme.s.on-surface-variant;
                 vertical-alignment: bottom;
-                height: Theme.leading(TextRole.title1) - 4px;
+                height: Theme.leading(TextRole.headline-medium) - 4px;
             }
         }
         T {
             text: @tr("Total") + " " + (root.upload ? Dash.up-total : Dash.down-total);
-            role: TextRole.caption1;
+            role: TextRole.body-small;
             color: Theme.s.on-surface-variant;
         }
     }
@@ -325,7 +469,10 @@ export component SpeedPanel inherits Panel {
 // the bottom edge.
 component SpeedCard inherits Rectangle {
     in property <bool> upload;
-    background: Theme.level(1);
+    property <float> rate: Tween.bytes-of(root.upload ? Dash.up-figure : Dash.down-figure, root.upload ? Dash.up-unit : Dash.down-unit);
+    property <float> shown: max(0, root.rate);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
+    background: Theme.s.surface-container-highest;
     border-radius: Theme.radius;
     clip: true;
     min-height: lay.preferred-height + 56px;
@@ -337,152 +484,144 @@ component SpeedCard inherits Rectangle {
         reports-size: root.upload;
         line: root.upload ? Dash.up-line : Dash.down-line;
         area: root.upload ? Dash.up-area : Dash.down-area;
-        tint: root.upload ? Theme.s.primary.mix(Theme.level(1), 0.45) : Theme.s.primary;
+        tint: root.upload ? Theme.s.tertiary : Theme.s.primary;
     }
     lay := VerticalLayout {
         y: 0;
         height: self.preferred-height;
-        padding-left: 20px;
-        padding-right: 20px;
-        padding-top: 18px;
-        spacing: 0px;
+        padding-left: 16px;
+        padding-right: 16px;
+        padding-top: 12px;
         HorizontalLayout {
-            height: max(26px, Theme.sp(26));
+            height: max(Theme.min-target, Theme.leading(TextRole.title-medium));
             spacing: 8px;
             Mid { Icon {
                 glyph: root.upload ? Icons.arrow-up : Icons.arrow-down;
-                size: 18px;
-                color: root.upload ? Theme.s.on-surface-variant : Theme.s.primary;
+                size: 20px;
+                color: root.upload ? Theme.s.tertiary : Theme.s.primary;
             } }
-            T { text: root.upload ? @tr("Upload") : @tr("Download"); role: TextRole.subheadline; emphasized: true; horizontal-stretch: 0; }
+            T { text: root.upload ? @tr("Upload") : @tr("Download"); role: TextRole.title-medium; horizontal-stretch: 0; }
             T {
                 text: @tr("Peak") + " " + (root.upload ? Dash.up-peak : Dash.down-peak) + "/s";
-                role: TextRole.caption1;
+                role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
                 horizontal-alignment: right;
-                vertical-alignment: center;
-                overflow: elide;
                 horizontal-stretch: 1;
             }
         }
         Rectangle { height: 10px; }
         HorizontalLayout {
             alignment: start;
-            spacing: 0px;
-            T {
-                text: root.upload ? Dash.up-figure : Dash.down-figure;
-                role: TextRole.display;
-                emphasized: true;
-                letter-spacing: -0.02 * Theme.size(TextRole.display);
-                overflow: clip;
-                vertical-alignment: bottom;
+            RateFigure {
+                text: root.rate < 0 ? (root.upload ? Dash.up-figure : Dash.down-figure) : Tween.figure(root.shown);
+                pattern: root.rate < 0 ? self.text : Tween.pattern(root.shown);
+                role: TextRole.display-small;
+                avail: root.width - 32px - card-unit.preferred-width;
             }
             // On the figure's baseline: bottom-aligned, raised by the
             // difference of the two descents (about a quarter of the size).
             VerticalLayout {
                 alignment: end;
-                padding-bottom: 0.25 * (Theme.size(TextRole.display) - Theme.size(TextRole.subheadline));
-                T {
-                    text: " " + (root.upload ? Dash.up-unit : Dash.down-unit) + "/s";
-                    role: TextRole.subheadline;
-                    emphasized: true;
+                padding-bottom: 0.25 * (Theme.size(TextRole.display-small) - Theme.size(TextRole.body-medium));
+                card-unit := T {
+                    text: " " + (root.rate < 0 ? (root.upload ? Dash.up-unit : Dash.down-unit) : Tween.unit(root.shown)) + "/s";
+                    role: TextRole.title-small;
                     color: Theme.s.on-surface-variant;
                 }
             }
         }
         T {
             text: @tr("Total") + " " + (root.upload ? Dash.up-total : Dash.down-total);
-            role: TextRole.caption1;
+            role: TextRole.body-small;
             color: Theme.s.on-surface-variant;
         }
     }
 }
 
-// The outbound mode buttons. In the grid the card is one row: the title,
-// then the buttons with the icon beside the label.
+// The outbound mode: an M3 segmented button (single select, outlined, full
+// corners at the ends; the selected segment secondary-container with a
+// check in place of its icon). In the grid the card is one row: the title,
+// then the segments.
+component ModeSegments inherits Rectangle {
+    height: 40px;
+    border-radius: self.height / 2;
+    HorizontalLayout {
+        for m[i] in Dash.modes: seg := Rectangle {
+            property <bool> on: m.key == Dash.mode;
+            horizontal-stretch: 1;
+            preferred-width: 0px;
+            min-width: 48px;
+            background: on ? Theme.s.secondary-container : transparent;
+            border-top-left-radius: i == 0 ? root.height / 2 : 0px;
+            border-bottom-left-radius: i == 0 ? root.height / 2 : 0px;
+            border-top-right-radius: i == Dash.modes.length - 1 ? root.height / 2 : 0px;
+            border-bottom-right-radius: i == Dash.modes.length - 1 ? root.height / 2 : 0px;
+            accessible-role: button;
+            accessible-label: m.label;
+            accessible-checked: on;
+            accessible-action-default => { if (!seg.on) { Nav.act("set-mode", m.mode); } }
+            StateLayer {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                pressed: mta.pressed;
+                hover: mta.has-hover;
+            }
+            mrip := Ripple {
+                border-top-left-radius: seg.border-top-left-radius;
+                border-bottom-left-radius: seg.border-bottom-left-radius;
+                border-top-right-radius: seg.border-top-right-radius;
+                border-bottom-right-radius: seg.border-bottom-right-radius;
+                ink: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+            }
+            if i > 0: Rectangle { x: 0; width: 1px; background: Theme.s.outline; }
+            HorizontalLayout {
+                alignment: center;
+                spacing: 8px;
+                padding-left: 8px;
+                padding-right: 8px;
+                Mid { Icon { glyph: seg.on ? Icons.check : m.glyph; size: 18px; color: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface; } }
+                T {
+                    text: m.label;
+                    role: TextRole.label-large;
+                    horizontal-stretch: 0;
+                    color: seg.on ? Theme.s.on-secondary-container : Theme.s.on-surface;
+                }
+            }
+            mta := TouchArea {
+                height: max(parent.height, Theme.min-target);
+                clicked => { if (!seg.on) { Nav.act("set-mode", m.mode); } }
+                pointer-event(e) => {
+                    if (e.kind == PointerEventKind.down) { mrip.down(self.x + self.mouse-x, self.y + self.mouse-y); }
+                    else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { mrip.up(); }
+                }
+                changed pressed => { if (!self.pressed) { mrip.up(); } }
+                changed has-hover => { if (!self.has-hover) { mrip.up(); } }
+            }
+        }
+    }
+    Rectangle { border-radius: root.border-radius; border-width: 1px; border-color: Theme.s.outline; }
+}
+
 export component ModePanel inherits Panel {
     in property <bool> compact;
     content-alignment: compact ? center : start;
     if !root.compact: PanelTitle { title: @tr("Outbound mode"); glyph: Icons.split; }
-    if !root.compact: Rectangle { height: 12px; }
+    if !root.compact: Rectangle { height: 4px; }
     if root.compact: HorizontalLayout {
-        spacing: 12px;
+        spacing: 16px;
         HorizontalLayout {
             horizontal-stretch: 0;
             spacing: 8px;
-            Mid { Icon { glyph: Icons.split; size: 18px; color: Theme.s.on-surface-variant; } }
-            T { text: @tr("Outbound mode"); role: TextRole.subheadline; emphasized: true; vertical-alignment: center; }
+            Mid { Icon { glyph: Icons.split; size: 20px; color: Theme.s.primary; } }
+            T { text: @tr("Outbound mode"); role: TextRole.title-medium; }
         }
-        HorizontalLayout {
-            horizontal-stretch: 1;
-            spacing: 4px;
-            for m in Dash.modes: Rectangle {
-                property <bool> selected: m.key == Dash.mode;
-                horizontal-stretch: 1;
-                height: 48px;
-                border-radius: Theme.radius;
-                background: selected ? Theme.s.primary : Theme.level(2);
-                accessible-role: button;
-                accessible-label: m.label;
-                Rectangle {
-                    border-radius: parent.border-radius;
-                    background: cta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
-                }
-                HorizontalLayout {
-                    alignment: center;
-                    spacing: 6px;
-                    Mid { Icon { glyph: m.glyph; size: 18px; color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant; } }
-                    T {
-                        text: m.label;
-                        role: TextRole.subheadline;
-                        emphasized: true;
-                        vertical-alignment: center;
-                        overflow: elide;
-                        color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
-                    }
-                }
-                cta := TouchArea { clicked => { if (!selected) { Nav.act("set-mode", m.mode); } } }
-            }
-        }
+        Mid { horizontal-stretch: 1; ModeSegments { } }
     }
-    if !root.compact: HorizontalLayout {
-        spacing: 2px;
-        for m in Dash.modes: Rectangle {
-            property <bool> selected: m.key == Dash.mode;
-            horizontal-stretch: 1;
-            height: 52px;
-            border-radius: Theme.radius;
-            background: selected ? Theme.s.primary : Theme.level(2);
-            accessible-role: button;
-            accessible-label: m.label;
-            Rectangle {
-                border-radius: parent.border-radius;
-                background: mta.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent;
-            }
-            // The icon over the label, centred as one block (not a layout, so the
-            // fixed-size icon does not cap the button's width).
-            property <length> block: 18px + 2px + mlabel.preferred-height;
-            Icon {
-                glyph: m.glyph;
-                size: 18px;
-                x: (parent.width - self.width) / 2;
-                y: (parent.height - parent.block) / 2;
-                color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
-            }
-            mlabel := T {
-                x: 4px;
-                width: parent.width - 8px;
-                y: (parent.height - parent.block) / 2 + 20px;
-                height: self.preferred-height;
-                text: m.label;
-                role: TextRole.footnote;
-                emphasized: true;
-                horizontal-alignment: center;
-                color: selected ? Theme.s.on-primary : Theme.s.on-surface-variant;
-            }
-            mta := TouchArea { clicked => { if (!selected) { Nav.act("set-mode", m.mode); } } }
-        }
-    }
+    if !root.compact: ModeSegments { }
+    if !root.compact: Rectangle { height: 4px; }
 }
 
 // SubscriptionUsageMeter
@@ -493,20 +632,12 @@ export component UsageMeter inherits VerticalLayout {
     in property <string> percent;
     spacing: 6px;
     HorizontalLayout {
-        T { text: root.used + " / " + root.total; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
-        T { text: root.percent; role: TextRole.caption1; emphasized: true; color: root.ratio >= 0.9 ? Theme.s.error : Theme.s.on-surface-variant; }
+        T { text: root.used + " / " + root.total; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+        T { text: root.percent; role: TextRole.label-medium; color: root.ratio >= 0.9 ? Theme.s.error : Theme.s.on-surface-variant; }
     }
-    Rectangle {
-        height: 8px;
-        border-radius: 4px;
-        background: Theme.level(3);
-        clip: true;
-        Rectangle {
-            x: 0;
-            width: parent.width * clamp(root.ratio, 0, 1);
-            border-radius: 4px;
-            background: root.ratio >= 0.9 ? Theme.s.error : root.ratio >= 0.7 ? Theme.s.warning : Theme.s.primary;
-        }
+    ProgressBar {
+        value: clamp(root.ratio, 0, 1);
+        tint: root.ratio >= 0.9 ? Theme.s.error : root.ratio >= 0.7 ? Theme.s.warning : Theme.s.primary;
     }
 }
 
@@ -515,8 +646,8 @@ component StatFigure inherits VerticalLayout {
     in property <string> label;
     in property <bool> loading;
     if root.loading: Skeleton { width: 34px; pill-height: Theme.sp(22); }
-    if !root.loading: T { text: root.value; role: TextRole.title3; emphasized: true; }
-    T { text: root.label; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+    if !root.loading: T { text: root.value; role: TextRole.title-large; emphasized: true; }
+    T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; }
 }
 
 export component ProfilePanel inherits Panel {
@@ -526,26 +657,24 @@ export component ProfilePanel inherits Panel {
         title: @tr("Profile");
         glyph: Icons.profiles;
         if Dash.profile-remote: Rectangle {
-            width: 26px;
-            if Dash.profile-updating: Spinner { size: 18px; }
+            width: 40px;
+            if Dash.profile-updating: Spinner { size: 20px; }
             if !Dash.profile-updating: IconButton {
                 glyph: Icons.sync;
                 tooltip: @tr("Update");
-                size: 26px;
-                icon-size: 18px;
+                icon-size: 20px;
                 clicked => { Nav.act("update-selected-profile", ""); }
             }
         }
-        Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
-    Rectangle { height: 12px; }
+    Rectangle { height: 4px; }
     // Compose: the name (weight 1, fill = false), 8 dp, the core chip, then the 32 dp switch button right after it.
     HorizontalLayout {
-        spacing: 0px;
         alignment: start;
         T {
             text: App.remote ? @tr("Remote configuration") : Dash.has-profile ? Dash.profile-name : @tr("Add profile");
-            role: TextRole.headline;
+            role: TextRole.title-medium;
             emphasized: true;
             horizontal-stretch: 0;
         }
@@ -554,20 +683,17 @@ export component ProfilePanel inherits Panel {
             width: core-chip.preferred-width + 16px;
             core-chip := T {
                 text: Dash.profile-core;
-                role: TextRole.caption1;
-                emphasized: true;
-                color: Theme.s.secondary;
+                role: TextRole.label-medium;
+                color: Theme.s.on-secondary-container;
             }
             height: core-chip.preferred-height + 4px;
-            
-            border-radius: self.height / 2;
-            background: Theme.s.secondary.with-alpha(0.15);
+            border-radius: Theme.corner-small;
+            background: Theme.s.secondary-container;
         } }
         if !App.remote && App.profile-count > 1: Mid { IconButton {
             glyph: Icons.swap;
             tooltip: @tr("Switch profile");
-            size: 32px;
-            icon-size: 18px;
+            icon-size: 20px;
             enabled: !App.transitioning;
             
             clicked => { Nav.form("profiles-picker", ""); }
@@ -576,10 +702,10 @@ export component ProfilePanel inherits Panel {
     if Dash.has-profile || App.remote: VerticalLayout {
         HorizontalLayout {
             spacing: 12px;
-            T { text: Dash.profile-updated; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
+            T { text: Dash.profile-updated; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-stretch: 1; }
             T {
                 text: Dash.profile-days != "" ? Dash.profile-days : Dash.profile-source;
-                role: TextRole.caption1;
+                role: TextRole.body-small;
                 color: Dash.profile-days-tone == 2 ? Theme.s.error : Dash.profile-days-tone == 1 ? Theme.s.warning : Theme.s.on-surface-variant;
                 horizontal-stretch: 0;
             }
@@ -615,16 +741,16 @@ component GroupIconStack inherits Rectangle {
         y: -3px;
         width: root.size + 6px;
         height: root.size + 6px;
-        border-radius: Theme.radius + 3px;
-        background: Theme.level(1);
+        border-radius: Theme.corner-medium + 3px;
+        background: Theme.s.surface-container-highest;
         Rectangle {
             x: 3px;
             y: 3px;
             width: root.size;
             height: root.size;
-            border-radius: Theme.radius;
-            background: Theme.level(3);
-            T { text: l; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+            border-radius: Theme.corner-medium;
+            background: Theme.s.secondary-container;
+            T { text: l; role: TextRole.label-medium; color: Theme.s.on-secondary-container; horizontal-alignment: center; }
         }
     }
     if root.rest > 0: Rectangle {
@@ -632,16 +758,16 @@ component GroupIconStack inherits Rectangle {
         y: -3px;
         width: root.size + 6px;
         height: root.size + 6px;
-        border-radius: Theme.radius + 3px;
-        background: Theme.level(1);
+        border-radius: Theme.corner-medium + 3px;
+        background: Theme.s.surface-container-highest;
         Rectangle {
             x: 3px;
             y: 3px;
             width: root.size;
             height: root.size;
-            border-radius: Theme.radius;
-            background: Theme.level(2);
-            T { text: "+" + root.rest; role: TextRole.caption1; emphasized: true; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
+            border-radius: Theme.corner-medium;
+            background: Theme.s.surface-container-high;
+            T { text: "+" + root.rest; role: TextRole.label-medium; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
         }
     }
 }
@@ -654,11 +780,11 @@ export component GroupsPanel inherits Panel {
         glyph: Icons.layers;
         HorizontalLayout {
             spacing: 6px;
-            if Dash.timeout-count > 0: Mid { Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2;  } }
-            if Dash.group-count > 0: Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
+            if Dash.timeout-count > 0: Mid { Chip { label: @tr("Timeout") + " " + Dash.timeout-count; tone: 2; } }
+            if Dash.group-count > 0: Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
         }
     }
-    Rectangle { height: 12px; }
+    Rectangle { height: 4px; }
     if Dash.group-count == 0: VerticalLayout {
         padding-left: 24px;
         padding-right: 24px;
@@ -668,8 +794,7 @@ export component GroupsPanel inherits Panel {
         IconBadge { glyph: Icons.layers; size: 56px; x: (parent.width - 56px) / 2; }
         T {
             text: App.running ? @tr("No proxy groups in this configuration") : @tr("Start the service to view proxy groups");
-            role: TextRole.subheadline;
-            emphasized: true;
+            role: TextRole.title-small;
             horizontal-alignment: center;
             wrap: word-wrap;
         }
@@ -679,18 +804,22 @@ export component GroupsPanel inherits Panel {
         HorizontalLayout {
             horizontal-stretch: 1;
             alignment: start;
-            T { text: Dash.group-count; role: TextRole.display; emphasized: true; vertical-alignment: bottom; }
-            T { text: " " + @tr("Groups"); role: TextRole.subheadline; color: Theme.s.on-surface-variant; vertical-alignment: bottom; height: Theme.leading(TextRole.display) - 8px; }
+            T { text: Dash.group-count; role: TextRole.display-small; emphasized: true; vertical-alignment: bottom; }
+            T { text: " " + @tr("Groups"); role: TextRole.body-medium; color: Theme.s.on-surface-variant; vertical-alignment: bottom; height: Theme.leading(TextRole.display-small) - 8px; }
         }
-        Mid { GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest;  } }
+        Mid { GroupIconStack { letters: Dash.group-letters; rest: Dash.group-rest; } }
     }
 }
 
 // MemoryBar + legend (MemorySummary)
 export component MemorySummary inherits VerticalLayout {
+    // The total counts to each new sample.
+    property <float> mem: Dash.memory-empty ? -1 : Tween.bytes-of(Dash.memory-figure, Dash.memory-unit);
+    property <float> mem-shown: max(0, root.mem);
+    animate mem-shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     T {
-        text: Dash.memory-figure + (Dash.memory-empty ? "" : " " + Dash.memory-unit);
-        role: TextRole.title1;
+        text: root.mem < 0 ? Dash.memory-figure + (Dash.memory-empty ? "" : " " + Dash.memory-unit) : Tween.figure(root.mem-shown) + " " + Tween.unit(root.mem-shown);
+        role: TextRole.headline-medium;
         emphasized: true;
     }
     Rectangle { height: 14px; }
@@ -698,7 +827,7 @@ export component MemorySummary inherits VerticalLayout {
         height: 8px;
         border-radius: 4px;
         clip: true;
-        background: Theme.level(3);
+        background: Theme.s.secondary-container;
         property <float> sum: Dash.memory-app-weight + Dash.memory-core-weight;
         if bar.sum > 0 && !Dash.memory-remote: Rectangle {
             x: 0;
@@ -708,7 +837,7 @@ export component MemorySummary inherits VerticalLayout {
         if bar.sum > 0: Rectangle {
             width: (bar.width - (Dash.memory-core-weight > 0 && Dash.memory-app-weight > 0 && !Dash.memory-remote ? 2px : 0)) * Dash.memory-core-weight / bar.sum;
             x: bar.width - self.width;
-            background: Theme.s.primary.mix(Theme.level(1), 0.45);
+            background: Theme.s.tertiary;
         }
     }
     Rectangle { height: 10px; }
@@ -718,14 +847,14 @@ export component MemorySummary inherits VerticalLayout {
         if !Dash.memory-remote: HorizontalLayout {
             spacing: 6px;
             Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.s.primary; y: (parent.height - 8px) / 2; }
-            T { text: @tr("App"); role: TextRole.caption1; color: Theme.s.on-surface-variant; }
-            T { text: Dash.memory-app; role: TextRole.footnote; emphasized: true; }
+            T { text: @tr("App"); role: TextRole.body-small; color: Theme.s.on-surface-variant; }
+            T { text: Dash.memory-app; role: TextRole.label-medium; }
         }
         HorizontalLayout {
             spacing: 6px;
-            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.s.primary.mix(Theme.level(1), 0.45); y: (parent.height - 8px) / 2; }
-            T { text: @tr("Core"); role: TextRole.caption1; color: Theme.s.on-surface-variant; }
-            T { text: Dash.memory-core; role: TextRole.footnote; emphasized: true; }
+            Rectangle { width: 8px; height: 8px; border-radius: 4px; background: Theme.s.tertiary; y: (parent.height - 8px) / 2; }
+            T { text: @tr("Core"); role: TextRole.body-small; color: Theme.s.on-surface-variant; }
+            T { text: Dash.memory-core; role: TextRole.label-medium; }
         }
     }
 }
@@ -736,9 +865,9 @@ export component MemoryPanel inherits Panel {
     PanelTitle {
         title: @tr("Memory");
         glyph: Icons.memory;
-        Mid { Icon { glyph: Icons.chevron-forward; size: 18px;  color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
-    Rectangle { height: 12px; }
+    Rectangle { height: 4px; }
     MemorySummary { }
 }
 
@@ -747,10 +876,15 @@ export component LanProxyRow inherits Rectangle {
     in property <bool> value;
     in property <string> subtitle;
     in property <bool> enabled;
-    border-radius: Theme.radius;
-    background: Theme.level(2);
+    border-radius: Theme.corner-large;
+    background: Theme.s.surface-container-low;
     height: lay.preferred-height;
-    lta := TouchArea {
+    clip: true;
+    accessible-role: switch;
+    accessible-label: @tr("LAN proxy");
+    accessible-checked: root.value;
+    Tap {
+        border-radius: root.border-radius;
         enabled: root.enabled;
         clicked => { Nav.act("lan-toggle", root.value ? "0" : "1"); }
     }
@@ -763,15 +897,15 @@ export component LanProxyRow inherits Rectangle {
         Mid { IconBadge {
             glyph: Icons.wifi;
             size: 38px;
-            container: root.value ? Theme.s.primary : Theme.level(1);
+            container: root.value ? Theme.s.primary : Theme.s.surface-container-highest;
             tint: root.value ? Theme.s.on-primary : Theme.s.on-surface-variant;
             
         } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T { text: @tr("LAN proxy"); role: TextRole.subheadline; emphasized: true; }
-            T { text: root.subtitle; role: TextRole.caption1; color: Theme.s.on-surface-variant; }
+            T { text: @tr("LAN proxy"); }
+            T { text: root.subtitle; role: TextRole.body-small; color: Theme.s.on-surface-variant; }
         }
         Mid { Switch {
             checked: root.value;
@@ -789,32 +923,29 @@ export component IntranetPanel inherits Panel {
         Mid { IconButton {
             glyph: Icons.copy;
             tooltip: @tr("Copy");
-            size: 32px;
-            icon-size: 18px;
+            icon-size: 20px;
             enabled: Dash.lan-can-copy;
             
             clicked => { Nav.act("lan-copy", ""); }
         } }
     }
-    Rectangle { height: 12px; }
+    Rectangle { height: 4px; }
     Rectangle {
-        height: Theme.leading(TextRole.title1);
+        height: Theme.leading(TextRole.headline-medium);
         if Dash.lan-loading: Skeleton { x: 0; width: 120px; pill-height: Theme.sp(24); }
         if !Dash.lan-loading: T {
             x: 0;
             width: parent.width;
             text: Dash.lan-address == "" ? @tr("No network") : Dash.lan-address;
-            role: TextRole.title1;
+            role: TextRole.headline-medium;
             emphasized: true;
             color: Dash.lan-address == "" ? Theme.s.on-surface-variant : Theme.s.on-surface;
-            font-size: self.text.character-count > 18 ? Theme.size(TextRole.title1) * 0.7 : Theme.size(TextRole.title1);
+            font-size: self.text.character-count > 18 ? Theme.size(TextRole.headline-medium) * 0.7 : Theme.size(TextRole.headline-medium);
         }
-        TouchArea { clicked => { Nav.form("intranet", ""); } }
+        Tap { border-radius: Theme.corner-small; clicked => { Nav.form("intranet", ""); } }
     }
     Rectangle { height: 14px; }
     if App.remote: ListItem {
-        position: 4;
-        level: 1;
         title: @tr("This device");
         subtitle: @tr("Device network addresses");
         has-leading: true;
@@ -841,15 +972,15 @@ export component SystemProxyPanel inherits Panel {
         Mid { IconBadge {
             glyph: Icons.system-proxy;
             size: 48px;
-            container: Dash.system-proxy ? Theme.s.primary : Theme.level(2);
+            container: Dash.system-proxy ? Theme.s.primary : Theme.s.surface-container-high;
             tint: Dash.system-proxy ? Theme.s.on-primary : Theme.s.on-surface-variant;
             
         } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T { text: @tr("System HTTP proxy"); role: TextRole.callout; emphasized: true; wrap: word-wrap; }
-            T { text: Dash.system-proxy ? @tr("Enabled") : @tr("Disabled"); role: TextRole.footnote; color: Theme.s.on-surface-variant; }
+            T { text: @tr("System HTTP proxy"); emphasized: true; wrap: word-wrap; }
+            T { text: Dash.system-proxy ? @tr("Enabled") : @tr("Disabled"); role: TextRole.body-small; color: Theme.s.on-surface-variant; }
         }
         Mid { Switch {
             checked: Dash.system-proxy;
@@ -875,16 +1006,16 @@ export component VpnPanel inherits Panel {
         Mid { IconBadge {
             glyph: Icons.vpn;
             size: 44px;
-            container: App.running ? Theme.s.primary : Theme.level(2);
+            container: App.running ? Theme.s.primary : Theme.s.surface-container-high;
             tint: App.running ? Theme.s.on-primary : Theme.s.on-surface-variant;
         } }
         VerticalLayout {
             horizontal-stretch: 1;
             alignment: center;
-            T { text: "VPN"; role: TextRole.headline; emphasized: true; }
+            T { text: "VPN"; role: TextRole.title-medium; }
             T {
                 text: App.transitioning ? Dash.status-label : App.running ? @tr("Turned on") : @tr("Turned off");
-                role: TextRole.footnote;
+                role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
             }
         }
@@ -909,19 +1040,16 @@ component ServiceBadge inherits Rectangle {
     property <color> ink: root.enabled ? Theme.s.on-surface-variant : Theme.s.on-surface-variant.with-alpha(0.38);
     width: root.size;
     height: root.size;
-    border-radius: root.size * 0.28;
-    background: Theme.level(1);
+    border-radius: Theme.corner-small;
+    background: Theme.s.surface-container-high;
     if root.fill-path != "": Path {
         x: root.size * 0.22;
         y: root.size * 0.22;
         width: root.size * 0.56;
         height: root.size * 0.56;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: 24;
         viewbox-height: 24;
         fill: root.ink;
-        stroke-width: 0;
         commands: root.fill-path;
     }
     if root.stroke-path != "": Path {
@@ -929,11 +1057,8 @@ component ServiceBadge inherits Rectangle {
         y: root.size * 0.22;
         width: root.size * 0.56;
         height: root.size * 0.56;
-        viewbox-x: 0;
-        viewbox-y: 0;
         viewbox-width: 24;
         viewbox-height: 24;
-        fill: transparent;
         stroke: root.ink;
         stroke-width: root.size * 0.56 / 12;
         stroke-line-cap: round;
@@ -962,24 +1087,21 @@ component ServiceBadge inherits Rectangle {
 // or why it is not available.
 component ServiceCell inherits Rectangle {
     in property <ServiceItem> s;
-    height: 46px;
+    height: 48px;
     horizontal-stretch: 1;
-    border-radius: Theme.radius;
-    background: Theme.level(2);
-    accessible-role: text;
+    border-radius: Theme.corner-medium;
+    background: Theme.s.surface-container-low;
+    accessible-role: AccessibleRole.text;
     accessible-label: root.s.label + " " + root.s.status;
     HorizontalLayout {
         padding-left: 7px;
         padding-right: 12px;
         spacing: 8px;
-        Mid { ServiceBadge { fill-path: root.s.fill; stroke-path: root.s.stroke; tone: root.s.loading ? 0 : root.s.tone; ring: Theme.level(2); } }
+        Mid { ServiceBadge { fill-path: root.s.fill; stroke-path: root.s.stroke; tone: root.s.loading ? 0 : root.s.tone; ring: Theme.s.surface-container-low; } }
         if root.s.loading: Mid { Skeleton { width: 44px; pill-height: Theme.sp(12); } }
         if !root.s.loading: T {
             text: root.s.status;
-            role: TextRole.footnote;
-            emphasized: true;
-            vertical-alignment: center;
-            overflow: elide;
+            role: TextRole.label-medium;
             horizontal-stretch: 1;
             color: root.s.tone == 3 ? Theme.s.error : root.s.tone == 2 ? Theme.s.warning : Theme.s.on-surface-variant;
         }
@@ -996,9 +1118,9 @@ export component ServicePanel inherits Panel {
         glyph: Icons.verified;
         if Dash.services-checking && Dash.service-verdict == "": Mid { Spinner { size: 16px; } }
         if Dash.service-verdict != "": Mid { Chip { label: Dash.service-verdict; tone: Dash.service-verdict-tone; } }
-        Mid { Icon { glyph: Icons.chevron-forward; size: 18px; color: Theme.s.on-surface-variant; } }
+        Mid { Icon { glyph: Icons.chevron-forward; color: Theme.s.on-surface-variant; } }
     }
-    Rectangle { height: 12px; }
+    Rectangle { height: 4px; }
     VerticalLayout {
         spacing: 8px;
         for row in ceil(Dash.services.length / 2): HorizontalLayout {
@@ -1022,17 +1144,20 @@ component ServiceRow inherits Rectangle {
     callback clicked();
     property <bool> top: position == 1 || position == 4;
     property <bool> bottom: position == 3 || position == 4;
-    min-height: max(64px, lay.preferred-height);
-    border-top-left-radius: top ? Theme.radius : 0;
-    border-top-right-radius: top ? Theme.radius : 0;
-    border-bottom-left-radius: bottom ? Theme.radius : 0;
-    border-bottom-right-radius: bottom ? Theme.radius : 0;
-    background: Theme.level(2);
+    min-height: max(72px, lay.preferred-height);
+    border-top-left-radius: top ? Theme.corner-large : Theme.corner-none;
+    border-top-right-radius: top ? Theme.corner-large : Theme.corner-none;
+    border-bottom-left-radius: bottom ? Theme.corner-large : Theme.corner-none;
+    border-bottom-right-radius: bottom ? Theme.corner-large : Theme.corner-none;
+    background: Theme.level(1);
     clip: true;
     accessible-role: button;
     accessible-label: root.s.label + " " + root.s.status;
-    if root.clickable: Rectangle { background: touch.pressed ? Theme.s.on-surface.with-alpha(0.08) : transparent; }
-    touch := TouchArea {
+    Tap {
+        border-top-left-radius: root.border-top-left-radius;
+        border-top-right-radius: root.border-top-right-radius;
+        border-bottom-left-radius: root.border-bottom-left-radius;
+        border-bottom-right-radius: root.border-bottom-right-radius;
         enabled: root.clickable;
         clicked => { root.clicked(); }
     }
@@ -1048,7 +1173,7 @@ component ServiceRow inherits Rectangle {
             stroke-path: root.s.stroke;
             enabled: root.s.enabled;
             tone: root.manage ? 0 : root.s.loading ? 4 : root.s.tone;
-            ring: Theme.level(2);
+            ring: Theme.level(1);
         } }
         VerticalLayout {
             horizontal-stretch: 1;
@@ -1056,29 +1181,25 @@ component ServiceRow inherits Rectangle {
             spacing: 2px;
             T {
                 text: root.s.label;
-                overflow: elide;
                 color: root.s.enabled ? Theme.s.on-surface : Theme.s.on-surface-variant;
             }
             if root.manage && root.s.on-card: T {
                 text: @tr("Shown on dashboard");
-                role: TextRole.footnote;
+                role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
             }
             // The line is always there so a check does not resize the row.
             if !root.manage && root.s.loading: Skeleton { width: 96px; pill-height: Theme.sp(12); }
             if !root.manage && !root.s.loading: T {
                 text: root.s.subtitle == "" ? "—" : root.s.subtitle;
-                role: TextRole.footnote;
+                role: TextRole.body-small;
                 color: Theme.s.on-surface-variant;
-                overflow: elide;
             }
         }
         if !root.manage && root.s.loading: Mid { Skeleton { width: 44px; pill-height: Theme.sp(12); } }
         if !root.manage && !root.s.loading: T {
             text: root.s.status;
-            role: TextRole.footnote;
-            emphasized: true;
-            vertical-alignment: center;
+            role: TextRole.label-medium;
             horizontal-alignment: right;
             max-width: 150px;
             wrap: word-wrap;
@@ -1086,16 +1207,12 @@ component ServiceRow inherits Rectangle {
         }
         if root.manage: Mid { IconButton {
             glyph: Icons.arrow-up;
-            size: 36px;
-            icon-size: 20px;
             enabled: !root.first;
             tooltip: @tr("Move up");
             clicked => { Nav.act("service-up", root.s.id); }
         } }
         if root.manage: Mid { IconButton {
             glyph: Icons.arrow-down;
-            size: 36px;
-            icon-size: 20px;
             enabled: !root.last;
             tooltip: @tr("Move down");
             clicked => { Nav.act("service-down", root.s.id); }
@@ -1156,29 +1273,40 @@ component ConnStat inherits Rectangle {
     in property <string> value;
     in property <string> label;
     in property <string> feed;
+    // Whole counts count to their new value; "12.3k" and "—" show as they are.
+    property <float> n: root.value.is-float() ? root.value.to-float() : -1;
+    property <float> shown: max(0, root.n);
+    animate shown { duration: Theme.motion-medium; easing: Theme.easing-decelerate; }
     horizontal-stretch: 1;
-    border-radius: Theme.radius;
-    background: cta.pressed && root.feed != "" ? Theme.s.on-surface.with-alpha(0.08) : transparent;
+    border-radius: Theme.corner-medium;
     accessible-role: button;
     accessible-label: root.label + " " + root.value;
+    StateLayer { border-radius: root.border-radius; enabled: root.feed != ""; pressed: cta.pressed; hover: cta.has-hover; }
+    crip := Ripple { border-radius: root.border-radius; enabled: root.feed != ""; }
     VerticalLayout {
         alignment: center;
-        padding-top: 10px;
-        padding-bottom: 10px;
-        spacing: 2px;
-        T { text: root.value; role: TextRole.title2; emphasized: true; horizontal-alignment: center; }
-        T { text: root.label; role: TextRole.caption1; color: Theme.s.on-surface-variant; horizontal-alignment: center; overflow: elide; }
+        padding-top: 12px;
+        padding-bottom: 12px;
+        spacing: 4px;
+        T { text: root.n < 0 ? root.value : round(root.shown) + ""; role: TextRole.headline-small; emphasized: true; horizontal-alignment: center; }
+        T { text: root.label; role: TextRole.body-small; color: Theme.s.on-surface-variant; horizontal-alignment: center; }
     }
     cta := TouchArea {
         enabled: root.feed != "";
         clicked => { Nav.act("open-requests", root.feed); }
+        pointer-event(e) => {
+            if (e.kind == PointerEventKind.down) { crip.down(self.mouse-x, self.mouse-y); }
+            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { crip.up(); }
+        }
+        changed pressed => { if (!self.pressed) { crip.up(); } }
+        changed has-hover => { if (!self.has-hover) { crip.up(); } }
     }
 }
 
 // Connection statistics (FlClash ConnectionStatsCard): live connections and
 // recent requests, each opening its list, and the DNS lookups.
 export component ConnStatsPanel inherits Rectangle {
-    background: Theme.level(1);
+    background: Theme.s.surface-container-highest;
     border-radius: Theme.radius;
     min-height: lay.min-height;
     preferred-height: lay.preferred-height;
@@ -1266,37 +1394,250 @@ component DashboardCard inherits Rectangle {
     }
 }
 
-// The dashboard editor (DashboardEditor.kt): the shown cards with move
-// and remove buttons, then the hidden ones with add buttons.
+// The dashboard editor (FlClash dashboard/edit.dart), in place: the shown
+// cards as they are, swaying slightly (Theme.motion-sway-*, driven by
+// animation-tick()) and not interactive; a long press lifts a card, which
+// then follows the finger while the cards it passes make room for it
+// (Theme.motion-yield), and on release it settles into its new place before
+// the order is saved (dash-move). The minus badge removes a card: it fades
+// (Theme.motion-appear), then its room closes (Theme.motion-yield); a card
+// added from the hidden list first makes its room, then appears. Status
+// cannot be removed. The cards' places come from the layout; the drag only
+// offsets the cards inside their slots, so nothing reads back a layout it
+// changes.
 component DashboardEditor inherits VerticalLayout {
-    spacing: 0px;
-    SectionTitle { text: @tr("Shown"); first: true; }
-    for c[i] in Dash.edit-shown: ListItem {
-        position: Dash.edit-shown.length == 1 ? 4 : i == 0 ? 1 : i == Dash.edit-shown.length - 1 ? 3 : 2;
-        title: c.value;
-        HorizontalLayout {
-            spacing: 0px;
-            Mid { IconButton {
-                glyph: Icons.arrow-up;
-                tooltip: @tr("Move up");
-                enabled: i > 0;
-                
-                clicked => { Nav.act2("dash-move", c.key, "-1"); }
-            } }
-            Mid { IconButton {
-                glyph: Icons.arrow-down;
-                tooltip: @tr("Move down");
-                enabled: i < Dash.edit-shown.length - 1;
-                
-                clicked => { Nav.act2("dash-move", c.key, "1"); }
-            } }
-            Mid { IconButton {
-                glyph: Icons.remove;
-                tooltip: @tr("Remove");
-                enabled: c.key != "Status";
-                
-                clicked => { Nav.act2("dash-hide", c.key, ""); }
-            } }
+    property <length> gap: Nav.gap;
+    // The lifted card: its index and key, how far the finger moved it, its
+    // slot's top and height (with the gap under it).
+    property <int> from: -1;
+    property <string> from-key;
+    property <length> drag-dy;
+    property <length> from-top;
+    property <length> drag-h;
+    // The slot the lifted card is over, and its edges.
+    property <int> target: -1;
+    property <length> target-top;
+    property <length> target-bottom;
+    // Released: the card glides to `settle-dy`, then the move is saved.
+    property <bool> settling;
+    property <length> settle-dy;
+    property <bool> pending;
+    // One frame without animation while the reordered list lands under the cards.
+    property <bool> snap;
+    // After the first frame: cards created from now on make an entrance.
+    property <bool> ready;
+    init => { if (ready-next.running) { ready-next.restart(); } else { ready-next.start(); } }
+    ready-next := Timer {
+        running: false;
+        interval: 1ms;
+        triggered => {
+            self.stop();
+            root.ready = true;
+        }
+    }
+    function lift(index: int, key: string, top: length, h: length) {
+        root.from = index;
+        root.from-key = key;
+        root.from-top = top;
+        root.drag-h = h;
+        root.drag-dy = 0px;
+        root.target = index;
+        root.target-top = top;
+        root.target-bottom = top + h;
+        root.settling = false;
+        Motion.card-dragging = true;
+    }
+    function drop() {
+        if (root.from < 0 || root.settling) { return; }
+        Motion.card-dragging = false;
+        root.settle-dy = root.target > root.from ? root.target-bottom - root.drag-h - root.from-top
+            : root.target < root.from ? root.target-top - root.from-top : 0px;
+        root.settling = true;
+        settle-end.interval = Theme.motion-yield + 16ms;
+        if (settle-end.running) { settle-end.restart(); } else { settle-end.start(); }
+    }
+    // The cards changed under the slots (moved, removed, added): drop the
+    // drag offsets at once, without animating them.
+    function reflow() {
+        root.snap = true;
+        root.from = -1;
+        root.target = -1;
+        root.settling = false;
+        root.pending = false;
+        if (snap-end.running) { snap-end.restart(); } else { snap-end.start(); }
+    }
+    settle-end := Timer {
+        running: false;
+        interval: Theme.motion-yield;
+        triggered => {
+            self.stop();
+            if (root.target != root.from && root.target >= 0) {
+                root.pending = true;
+                if (give-up.running) { give-up.restart(); } else { give-up.start(); }
+                Nav.act2("dash-move", root.from-key, root.target - root.from);
+            } else {
+                root.reflow();
+            }
+        }
+    }
+    // The saved order did not arrive (a failed save): put the cards back.
+    give-up := Timer {
+        running: false;
+        interval: 1000ms;
+        triggered => {
+            self.stop();
+            if (root.pending) { root.reflow(); }
+        }
+    }
+    snap-end := Timer {
+        running: false;
+        interval: 32ms;
+        triggered => {
+            self.stop();
+            root.snap = false;
+        }
+    }
+    SectionTitle { text: @tr("Long-press a card to drag it"); first: true; }
+    for c[i] in Dash.edit-shown: slot := Rectangle {
+        property <string> k: c.key;
+        property <bool> lifted: root.from == i;
+        // Entrance and exit (FlClash _Presence): room, then the card.
+        property <bool> entered: !root.ready;
+        property <bool> removing;
+        init => { self.entered = true; }
+        changed k => {
+            self.removing = false;
+            root.reflow();
+        }
+        // The lifted card's centre decides which slot it is over.
+        property <length> center: root.from-top + root.drag-dy + root.drag-h / 2;
+        property <bool> hit: root.from >= 0 && !root.settling && self.center >= self.y && self.center < self.y + self.height;
+        changed hit => {
+            if (self.hit) {
+                root.target = i;
+                root.target-top = self.y;
+                root.target-bottom = self.y + self.height;
+            }
+        }
+        // The cards between the lifted card's place and the slot it is over
+        // move one place towards where it came from.
+        property <length> shift: root.from < 0 || self.lifted ? 0px
+            : root.target > root.from && i > root.from && i <= root.target ? -root.drag-h
+            : root.target < root.from && i >= root.target && i < root.from ? root.drag-h : 0px;
+        // How open the slot's room is. Only this factor animates: an animated
+        // height would keep the content height it had when its animation
+        // started, so a card arriving in a reused slot (a move, a removal)
+        // would sit in a room sized for the previous card.
+        property <float> room: self.entered && !self.removing ? 1 : 0;
+        animate room {
+            duration: root.snap ? 0ms : Theme.motion-yield;
+            delay: self.removing ? Theme.motion-appear : 0ms;
+            easing: Theme.easing-standard;
+        }
+        height: self.room * (holder.preferred-height + root.gap);
+        clip: self.room < 0.999;
+        z: self.lifted ? 1 : 0;
+        accessible-role: list-item;
+        accessible-label: c.value;
+        holder := Rectangle {
+            y: slot.lifted ? (root.settling ? root.settle-dy : root.drag-dy) : slot.shift;
+            animate y {
+                duration: (slot.lifted && !root.settling) || root.snap ? 0ms : Theme.motion-yield;
+                easing: Theme.easing-standard;
+            }
+            height: self.preferred-height;
+            preferred-height: card.preferred-height;
+            opacity: slot.entered && !slot.removing ? 1 : 0;
+            transform-scale: slot.lifted ? 1.03 : slot.entered && !slot.removing ? 1 : Theme.motion-enter-scale;
+            animate opacity, transform-scale {
+                duration: Theme.motion-appear;
+                delay: slot.entered && !slot.removing && !slot.lifted && !root.snap ? Theme.motion-yield : 0ms;
+                easing: Theme.easing-decelerate;
+            }
+            // A shadow needs a fill of its own; the card covers it.
+            background: slot.lifted ? Theme.s.surface-container-highest : transparent;
+            drop-shadow-blur: slot.lifted ? Theme.shadow-blur(3) : 0px;
+            drop-shadow-offset-y: slot.lifted ? Theme.shadow-offset(3) : 0px;
+            drop-shadow-color: slot.lifted ? Theme.shadow-color(3) : transparent;
+            border-radius: Theme.radius;
+            // The sway: each card turns and bobs on its own phase while editing.
+            swayer := Rectangle {
+                property <bool> swaying: Theme.motion-on && !slot.lifted && !slot.removing;
+                property <angle> turn: self.swaying
+                    ? (mod(animation-tick() / Theme.motion-sway-period, 1) * [6, 7, 5][mod(i, 3)] * 360 + i * 97.4) * 1deg
+                    : 0deg;
+                y: self.swaying ? cos(self.turn) * Theme.motion-sway-bob : 0px;
+                height: card.preferred-height;
+                transform-rotation: self.swaying ? sin(self.turn) * Theme.motion-sway-turn : 0deg;
+                card := DashboardCard { card: c.key; }
+                // The card's own controls do not react while editing.
+                TouchArea {
+                    pointer-event(e) => {
+                        if (e.kind == PointerEventKind.down) {
+                            if (hold.running) { hold.restart(); } else { hold.start(); }
+                        } else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) {
+                            hold.stop();
+                            if (slot.lifted) { root.drop(); }
+                        }
+                    }
+                    moved => {
+                        if (slot.lifted && !root.settling) {
+                            root.drag-dy = self.mouse-y - self.pressed-y;
+                        } else if (abs(self.mouse-x - self.pressed-x) > 12px || abs(self.mouse-y - self.pressed-y) > 12px) {
+                            hold.stop();
+                        }
+                    }
+                }
+                hold := Timer {
+                    running: false;
+                    interval: 450ms;
+                    triggered => {
+                        self.stop();
+                        root.lift(i, c.key, slot.y, slot.height);
+                    }
+                }
+                // On the card's top corner, over its edge (FlClash's remove badge).
+                if c.key != "Status": Rectangle {
+                    x: parent.width - self.width + 6px;
+                    y: -8px;
+                    width: 28px;
+                    height: 28px;
+                    border-radius: 14px;
+                    background: Theme.s.error-container;
+                    drop-shadow-blur: Theme.shadow-blur(1);
+                    drop-shadow-offset-y: Theme.shadow-offset(1);
+                    drop-shadow-color: Theme.shadow-color(1);
+                    accessible-role: button;
+                    accessible-label: @tr("Remove");
+                    accessible-action-default => { if (remove-now.running) { remove-now.restart(); } else { remove-now.start(); } slot.removing = true; }
+                    Icon { glyph: Icons.remove; size: 18px; color: Theme.s.on-error-container; }
+                    xrip := Ripple { border-radius: parent.border-radius; ink: Theme.s.on-error-container; centered: true; }
+                    TouchArea {
+                        width: Theme.min-target;
+                        height: Theme.min-target;
+                        enabled: !slot.removing && root.from < 0;
+                        pointer-event(e) => {
+                            if (e.kind == PointerEventKind.down) { xrip.down(0px, 0px); }
+                            else if (e.kind == PointerEventKind.up || e.kind == PointerEventKind.cancel) { xrip.up(); }
+                        }
+                        changed pressed => { if (!self.pressed) { xrip.up(); } }
+                        changed has-hover => { if (!self.has-hover) { xrip.up(); } }
+                        clicked => {
+                            slot.removing = true;
+                            remove-now.interval = Theme.motion-appear + Theme.motion-yield + 16ms;
+                            if (remove-now.running) { remove-now.restart(); } else { remove-now.start(); }
+                        }
+                    }
+                }
+                remove-now := Timer {
+                    running: false;
+                    interval: Theme.motion-yield;
+                    triggered => {
+                        self.stop();
+                        Nav.act2("dash-hide", c.key, "");
+                    }
+                }
+            }
         }
     }
     if Dash.edit-hidden.length > 0: SectionTitle { text: @tr("Hidden"); }
@@ -1306,7 +1647,7 @@ component DashboardEditor inherits VerticalLayout {
         Mid { IconButton {
             glyph: Icons.add;
             tooltip: @tr("Add");
-            
+
             clicked => { Nav.act2("dash-show", c.key, ""); }
         } }
     }
@@ -1314,15 +1655,6 @@ component DashboardEditor inherits VerticalLayout {
 
 export component DashboardPage inherits Rectangle {
     background: Theme.s.surface;
-    bar := TopBar {
-        y: 0;
-        title: Dash.editing ? @tr("Edit dashboard") : @tr("Dashboard");
-        loading: Dash.saving;
-        actions: Dash.editing
-            ? [{ id: "dash-done", glyph: Icons.check, tooltip: @tr("Done"), enabled: !Dash.saving }]
-            : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
-        action(id) => { Nav.act(id, ""); }
-    }
     // Phones: one column. Wider windows: a grid of 2 to 4 columns at least
     // 260 dp wide (FlClash's dashboard grid), the cards packed into rows by
     // dashboard.rs pack(). The editor keeps a reading width.
@@ -1330,19 +1662,22 @@ export component DashboardPage inherits Rectangle {
     property <length> grid-width: root.width - 2 * grid-side;
     property <int> columns: Nav.mobile ? 1 : clamp(floor((grid-width + Nav.gap) / (260px + Nav.gap)), 2, 4);
     property <length> unit: (grid-width - (columns - 1) * Nav.gap) / columns;
-    Flickable {
-        y: bar.height;
-        height: parent.height - bar.height;
+    // The cards scroll under the top app bar and the floating navigation bar.
+    flick := Flickable {
+        y: 0;
+        height: parent.height;
         content-height: body.preferred-height;
+        // A dragged card (the editor) moves instead of the page.
+        interactive: !Motion.card-dragging;
         body := VerticalLayout {
             property <length> side: Dash.editing || Nav.mobile ? Nav.side(root.width) : root.grid-side;
             padding-left: side;
             padding-right: side;
-            padding-top: 8px;
+            padding-top: bar.height + 8px;
             padding-bottom: 16px + Nav.home-bottom;
             spacing: Dash.editing ? 0px : Nav.gap;
             if Dash.editing: DashboardEditor { }
-            if !Dash.editing && (App.remote || Dash.apply-required): Banners { top: true; }
+            if !Dash.editing && (App.remote || Dash.apply-required): Banners { }
             if !Dash.editing && Nav.mobile: VerticalLayout {
                 spacing: Nav.gap;
                 for c in Dash.cards: DashboardCard { card: c; }
@@ -1361,6 +1696,16 @@ export component DashboardPage inherits Rectangle {
             if !Dash.editing && Dash.deprecated.length > 0: Banners { top: false; }
         }
     }
+    bar := TopBar {
+        y: 0;
+        title: Dash.editing ? @tr("Edit dashboard") : @tr("Dashboard");
+        loading: Dash.saving;
+        actions: Dash.editing
+            ? [{ id: "dash-done", glyph: Icons.check, tooltip: @tr("Done"), enabled: !Dash.saving }]
+            : [{ id: "dash-edit", glyph: Icons.edit, tooltip: @tr("Dashboard cards"), enabled: true }];
+        scrolled: flick.content-y < 0;
+        action(id) => { Nav.act(id, ""); }
+    }
 }
 
 // MemoryDetails
@@ -1372,14 +1717,14 @@ export component MemoryPage inherits ScrollPage {
         : [];
     action(id) => { Nav.act(id, ""); }
     Rectangle { height: 8px; }
-    T { text: @tr("Total"); role: TextRole.headline; }
+    T { text: @tr("Total"); role: TextRole.title-medium; }
     Rectangle { height: 4px; }
     MemorySummary { }
     Rectangle { height: 12px; }
     T {
         text: Dash.memory-remote ? @tr("Memory reported by the remote core. Detailed accounting is unavailable.")
             : @tr("App and core share one process. Core runtime memory is separated from process RSS, not added twice.");
-        role: TextRole.caption1;
+        role: TextRole.body-small;
         color: Theme.s.on-surface-variant;
         wrap: word-wrap;
     }
@@ -1441,8 +1786,8 @@ export component IntranetPage inherits ScrollPage {
     if !App.remote && Dash.lan-error != "": VerticalLayout {
         padding-top: 16px;
         spacing: 8px;
-        T { text: Dash.lan-error; role: TextRole.subheadline; color: Theme.s.error; wrap: word-wrap; horizontal-alignment: center; }
-        HorizontalLayout { alignment: center; Button { label: @tr("Retry"); kind: 0; clicked => { Nav.act("lan-refresh", ""); } } }
+        T { text: Dash.lan-error; role: TextRole.body-medium; color: Theme.s.error; wrap: word-wrap; horizontal-alignment: center; }
+        HorizontalLayout { alignment: center; Button { label: @tr("Retry"); clicked => { Nav.act("lan-refresh", ""); } } }
     }
     if !App.remote: SectionTitle { text: @tr("Local proxy listeners"); }
     if !App.remote: VerticalLayout {
@@ -1483,7 +1828,7 @@ export component NewLanProxyPage inherits ScrollPage {
         input-type: number;
         edited => { Nav.act("lan-port-edited", ""); }
     }
-    if Dash.lan-port-invalid: T { text: @tr("Invalid proxy port"); role: TextRole.caption1; color: Theme.s.error; x: 16px; }
+    if Dash.lan-port-invalid: HorizontalLayout { padding-left: 16px; T { text: @tr("Invalid proxy port"); role: TextRole.body-small; color: Theme.s.error; } }
     Rectangle { height: 16px; }
-    T { text: @tr("Adds an HTTP and SOCKS proxy to the selected profile."); role: TextRole.caption1; color: Theme.s.on-surface-variant; wrap: word-wrap; }
+    T { text: @tr("Adds an HTTP and SOCKS proxy to the selected profile."); role: TextRole.body-small; color: Theme.s.on-surface-variant; wrap: word-wrap; }
 }

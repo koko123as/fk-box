@@ -300,10 +300,6 @@ fn validate_rule(rule: &Value, core: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn rule_summary(rule: &Value) -> String {
-    rule_summary_with(rule, true)
-}
-
 /// The summary under a rule; without the app names when the title already shows them.
 fn rule_summary_with(rule: &Value, app_names: bool) -> String {
     let content = s(rule, "content");

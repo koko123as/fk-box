@@ -15,7 +15,6 @@ use crate::i18n::tr;
 use crate::nav::{self, MenuEntry};
 use crate::pages::{mark, Mark};
 use crate::rows::{self, Bar, Page, Row};
-use crate::AppWindow;
 
 fn setting(key: &str) -> Value {
     data(|d| d.settings.get(key).cloned().unwrap_or(Value::Null))
@@ -118,7 +117,7 @@ pub fn open_about() {
         let busy = *c.borrow();
         let mut rows = Vec::new();
         // The hero: the icon, the name, the version and license pills, the update button.
-        let mut hero = Row::title("FK-box", &tr("Rust + Slint three-core client"));
+        let mut hero = Row::title("fk-box", &tr("Rust + Slint three-core client"));
         hero.data.kind = "hero".into();
         hero.data.value = format!("v{version}").into();
         hero.data.hint = "GPL-3.0".into();
@@ -164,7 +163,7 @@ fn check_updates(checking: &Rc<RefCell<bool>>) {
 fn update_dialog(result: Value) {
     let available = truthy(&result["available"]);
     let no_metadata = result["hasMetadata"] == Value::Bool(false);
-    let mut message = if available { format!("FK-box {}", text(&result["version"])) } else { tr(if no_metadata { "No release metadata available" } else { "You are up to date" }) };
+    let mut message = if available { format!("fk-box {}", text(&result["version"])) } else { tr(if no_metadata { "No release metadata available" } else { "You are up to date" }) };
     let notes = result.get("notes").and_then(Value::as_str).unwrap_or("");
     if available && !notes.is_empty() {
         message = format!("{message}\n\n{notes}");
@@ -185,7 +184,7 @@ fn update_dialog(result: Value) {
 
 /// showLicensePage: the projects FK-box ships or borrows from.
 const LICENSES: [(&str, &str, &str, &str); 17] = [
-    ("FK-box", "GPL-3.0", "This app", "https://github.com/koko123as/fk-box"),
+    ("fk-box", "GPL-3.0", "This app", "https://github.com/koko123as/fk-box"),
     ("sing-box-for-android", "GPL-3.0", "Base Android app and backend", "https://github.com/SagerNet/sing-box-for-android"),
     ("B-box", "GPL-3.0", "Direct predecessor: core extensions, MITM, multi-core", "https://github.com/giturass/B-box"),
     ("sing-box", "GPL-3.0", "Proxy core (libbox)", "https://github.com/SagerNet/sing-box"),
@@ -207,7 +206,7 @@ const LICENSES: [(&str, &str, &str, &str); 17] = [
 fn open_licenses() {
     rows::push(|| {
         let version = data(|d| d.version.clone());
-        let mut rows = vec![Row::title(&format!("FK-box {version}"), "")];
+        let mut rows = vec![Row::title(&format!("fk-box {version}"), "")];
         for (name, license, taken, url) in LICENSES {
             rows.push(Row::item(name).subtitle(&format!("{license} · {}", tr(taken))).key(name).trailing("open-external", move || app::act("openUrl", json!({ "url": url }))).on(move |_| app::act("openUrl", json!({ "url": url }))));
         }

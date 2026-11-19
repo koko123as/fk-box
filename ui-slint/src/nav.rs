@@ -11,7 +11,7 @@ use slint::{ComponentHandle, Model, ModelRc, SharedString, Timer, VecModel};
 
 use crate::app::{ss, with_window};
 use crate::i18n::tr;
-use crate::{AppWindow, Glyph, MenuItem, Nav, Route};
+use crate::{AppWindow, Glyph, MenuItem, Motion, Nav, Route};
 
 // ---------------------------------------------------------------------------
 // Icons (icons.slint, read once so Rust can name glyphs)
@@ -58,6 +58,12 @@ struct NavState {
     /// Busy routes refuse to close.
     busy: HashMap<i32, Guard>,
     on_closed: HashMap<i32, Box<dyn FnOnce()>>,
+    /// The route on its way out (`close`): still in the model while the host
+    /// fades it (or sinks it, or shrinks it into its card), dropped by
+    /// `route_left` or the next navigation.
+    leaving: Option<i32>,
+    /// Drops `leaving` if the host never reports the end of its transition.
+    leave_guard: Option<slint::Timer>,
     menu: Vec<MenuEntry>,
     menu_stack: Vec<Vec<MenuEntry>>,
     dialogs: Vec<Dialog>,
@@ -81,7 +87,42 @@ fn all_routes() -> Vec<Route> {
 }
 
 pub fn top() -> Option<Route> {
-    all_routes().last().cloned()
+    let leaving = NAV.with(|n| n.borrow().leaving);
+    all_routes().into_iter().rev().find(|r| Some(r.id) != leaving)
+}
+
+/// Whether the host animates a route out before it is dropped: with motion
+/// on, it keeps the page drawn while it leaves instead of a blank surface.
+fn animates_leave() -> bool {
+    crate::app::window().map(|w| w.global::<crate::Theme>().get_motion_on()).unwrap_or(false)
+}
+
+/// Drops the route that is on its way out, if any.
+fn finish_leaving() {
+    let Some(id) = NAV.with(|n| {
+        let mut n = n.borrow_mut();
+        n.leave_guard = None;
+        n.leaving.take()
+    }) else {
+        return;
+    };
+    with_window(|w| w.global::<Motion>().set_leaving_id(-1));
+    if let Some(index) = all_routes().iter().position(|r| r.id == id) {
+        with_window(|w| {
+            let motion = w.global::<Motion>();
+            motion.set_left_count(motion.get_left_count() + 1);
+        });
+        remove_at(index);
+    }
+    refocus();
+    crate::pages::mark(crate::pages::Mark::ALL);
+}
+
+/// Nav.route-left: the host finished the way out of `id`.
+fn route_left(id: i32) {
+    if NAV.with(|n| n.borrow().leaving) == Some(id) {
+        finish_leaving();
+    }
 }
 
 pub fn mobile() -> bool {
@@ -105,6 +146,7 @@ pub fn next_id() -> i32 {
 }
 
 fn add(kind: &str, arg: &str, form: bool) -> i32 {
+    finish_leaving();
     let model = routes();
     let id = NAV.with(|n| {
         let mut n = n.borrow_mut();
@@ -161,6 +203,7 @@ fn remove_at(index: usize) {
         n.on_closed.remove(&route.id)
     });
     crate::pages::closed(&route.kind, &route.arg, route.id);
+    crate::memory::release_when_idle();
     if let Some(closed) = closed {
         closed();
     }
@@ -168,6 +211,7 @@ fn remove_at(index: usize) {
 
 /// Closes the innermost route without asking its guard.
 pub fn pop() {
+    finish_leaving();
     let count = routes().row_count();
     if count > 0 {
         remove_at(count - 1);
@@ -178,8 +222,26 @@ pub fn pop() {
 
 /// Closes the route `id` (and anything above it).
 pub fn close(id: i32) {
+    if NAV.with(|n| n.borrow().leaving) == Some(id) {
+        return;
+    }
+    finish_leaving();
     let list = all_routes();
     if let Some(index) = list.iter().position(|r| r.id == id) {
+        // The top route alone leaves animated: the host draws it fading (a
+        // page), sinking (a phone sheet) or shrinking into the card that
+        // opened it, then calls Nav.route-left, which drops it.
+        if index + 1 == list.len() && animates_leave() {
+            let guard = Timer::default();
+            guard.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), move || route_left(id));
+            NAV.with(|n| {
+                let mut n = n.borrow_mut();
+                n.leaving = Some(id);
+                n.leave_guard = Some(guard);
+            });
+            with_window(|w| w.global::<Motion>().set_leaving_id(id));
+            return;
+        }
         for i in (index..list.len()).rev() {
             remove_at(i);
         }
@@ -236,6 +298,8 @@ pub fn dismiss_form(id: i32) {
 /// System back: closes the menu, the dialog, then the top route.
 fn back() -> bool {
     let Some(w) = crate::app::window() else { return false };
+    // A second Back while a page is still leaving goes on from the page under it.
+    finish_leaving();
     let nav = w.global::<Nav>();
     if nav.get_menu_open() {
         close_menu();
@@ -293,10 +357,6 @@ impl MenuEntry {
 
     pub fn plain(label: &str, f: impl Fn() + 'static) -> Self {
         Self::new(label, None, Some(Rc::new(f)))
-    }
-
-    pub fn disabled(label: &str, icon: &'static str) -> Self {
-        Self::new(label, Some(icon), None)
     }
 
     pub fn when(self, enabled: bool) -> Self {
@@ -804,6 +864,7 @@ pub fn install(window: &AppWindow) {
     });
     nav.on_pop(maybe_pop);
     nav.on_back(back);
+    nav.on_route_left(route_left);
     nav.on_dismiss_form(dismiss_form);
     nav.on_menu_dismiss(close_menu);
     nav.on_menu_pick(menu_pick);

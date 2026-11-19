@@ -8,13 +8,10 @@ data class QRCodeCropArea(
     val top: Int,
     val right: Int,
     val bottom: Int,
-    val imageWidth: Int,
-    val imageHeight: Int,
-    val rotationDegrees: Int,
 )
 
 object QRCodeSmartCrop {
-    fun findCropArea(yData: ByteArray, width: Int, height: Int, rotationDegrees: Int): QRCodeCropArea? {
+    fun findCropArea(yData: ByteArray, width: Int, height: Int): QRCodeCropArea? {
         val minDim = min(width, height)
         if (minDim <= 0) return null
 
@@ -76,7 +73,7 @@ object QRCodeSmartCrop {
                 minBrightSamples,
             ) ?: continue
 
-            val area = buildCropArea(component, step, width, height, rotationDegrees) ?: continue
+            val area = buildCropArea(component, step, width, height) ?: continue
             val areaRatio = ((area.right - area.left) * (area.bottom - area.top)).toFloat() / (width * height)
             val maxRatio = if (i == thresholds.lastIndex) 0.9f else 0.82f
             if (areaRatio <= maxRatio) return area
@@ -205,7 +202,7 @@ object QRCodeSmartCrop {
                 score *= 1f - 0.35f * aspectPenalty
                 score *= 1f - 0.15f * edgeTouches
 
-                if (best == null || score > best!!.score) {
+                if (best == null || score > best.score) {
                     best = CropComponent(
                         minX = minX,
                         minY = minY,
@@ -221,7 +218,7 @@ object QRCodeSmartCrop {
         return best
     }
 
-    private fun buildCropArea(component: CropComponent, step: Int, width: Int, height: Int, rotationDegrees: Int): QRCodeCropArea? {
+    private fun buildCropArea(component: CropComponent, step: Int, width: Int, height: Int): QRCodeCropArea? {
         val left = component.minX * step
         val top = component.minY * step
         val right = min(width, (component.maxX + 1) * step)
@@ -249,9 +246,6 @@ object QRCodeSmartCrop {
             top = cropTop,
             right = cropRight,
             bottom = cropBottom,
-            imageWidth = width,
-            imageHeight = height,
-            rotationDegrees = rotationDegrees,
         )
     }
 

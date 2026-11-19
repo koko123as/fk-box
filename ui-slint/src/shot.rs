@@ -14,6 +14,25 @@
 //! `insets:T,B,L,R` (the host's insets, physical px), `nav` (print the insets
 //! the UI uses and the scale factor), `fling:COUNT,DY` (COUNT fast drags of DY
 //! px with icons arriving on reused rows and a frame drawn every 16 ms).
+//!
+//! Motion keyframes (nothing settles in between, so an animation can be
+//! caught midway): `down:X,Y`, `move:X,Y`, `up:X,Y` (one pointer event each),
+//! `ms:N` (N ms of timers and animations in 16 ms frames), `frame:NAME` (a
+//! screenshot of the current frame without letting animations finish),
+//! `motion:SCALE` (the system's animator duration scale, 0 = animations off),
+//! `pref:KEY=VALUE` (an interface preference, e.g. `pref:proxyLayout=List`).
+//!
+//! Checks (they panic, so the unit tests below fail): `rest:NAME` lets
+//! everything settle, then requires the home page at x = 0, no page drag or
+//! slide in progress (Motion.pages-moving, Motion.swiping) and nothing still
+//! animating (a press ripple left behind keeps animating); `textscale:F`
+//! sets the font scale (Theme.text-scale, as the system or the appearance
+//! page does).
+//!
+//! With the `shot-skia` feature and `SHOT_RENDERER=skia`, the frames are drawn
+//! by the Skia renderer (the one Android uses) rasterized on the CPU instead of
+//! Slint's software renderer, so the screenshots show what Skia draws on the
+//! device (shadows, anti-aliasing, text shaping).
 
 use std::cell::{Cell, RefCell};
 use std::collections::VecDeque;
@@ -26,13 +45,20 @@ use slint::Rgb8Pixel;
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
 use slint::{ComponentHandle, LogicalPosition, PhysicalSize};
 
-use crate::{AppWindow, Nav, Theme};
+use crate::{AppWindow, Motion, Nav, Theme};
 
 thread_local! {
+    static PREFS: RefCell<serde_json::Map<String, Value>> = RefCell::new(
+        serde_json::from_str(r#"{ "hiddenCards": [] }"#).expect("fixture preferences"),
+    );
     static QUEUE: RefCell<VecDeque<(i64, String, String)>> = const { RefCell::new(VecDeque::new()) };
     /// While a fling runs, icon answers wait here and arrive a few per frame,
     /// out of order, as the host's IO thread answers them on a phone.
     static ICONS_LATER: RefCell<Option<VecDeque<(i64, String, String)>>> = const { RefCell::new(None) };
+    /// Row actions (`Nav.act2`) seen since `watchtaps`.
+    static TAPS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+    /// The frame `mark` drew, for `moved`.
+    static MARK: RefCell<Vec<Rgb8Pixel>> = const { RefCell::new(Vec::new()) };
 }
 
 pub fn queue(id: i64, method: &str, args: &str) {
@@ -58,14 +84,161 @@ fn answer_call(id: i64, method: &str, args: &str) {
     crate::app::on_reply(id, ok, &json!({ "v": value }).to_string());
 }
 
+/// The window the harness draws: Slint's software renderer, or (feature
+/// `shot-skia`, `SHOT_RENDERER=skia`) the Skia renderer on the CPU.
+#[derive(Clone)]
+enum ShotWindow {
+    Software(Rc<MinimalSoftwareWindow>),
+    #[cfg(feature = "shot-skia")]
+    Skia(Rc<skia::SkiaShotWindow>),
+}
+
+impl ShotWindow {
+    fn new() -> Self {
+        #[cfg(feature = "shot-skia")]
+        if std::env::var("SHOT_RENDERER").as_deref() == Ok("skia") {
+            return Self::Skia(skia::SkiaShotWindow::new());
+        }
+        Self::Software(MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer))
+    }
+
+    fn adapter(&self) -> Rc<dyn WindowAdapter> {
+        match self {
+            Self::Software(w) => w.clone(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.clone(),
+        }
+    }
+
+    fn window(&self) -> &slint::Window {
+        match self {
+            Self::Software(w) => w.window(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.window(),
+        }
+    }
+
+    fn has_active_animations(&self) -> bool {
+        match self {
+            Self::Software(w) => w.has_active_animations(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.window().has_active_animations(),
+        }
+    }
+
+    fn request_redraw(&self) {
+        match self {
+            Self::Software(w) => w.request_redraw(),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.request_redraw(),
+        }
+    }
+
+    fn set_size(&self, size: PhysicalSize) {
+        match self {
+            Self::Software(w) => w.set_size(size),
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(w) => w.set_size(size),
+        }
+    }
+
+    /// Draws the window into `buffer` (w × h).
+    fn render(&self, buffer: &mut [Rgb8Pixel], w: usize) {
+        match self {
+            Self::Software(win) => {
+                win.draw_if_needed(|renderer| {
+                    renderer.render(buffer, w);
+                });
+            }
+            #[cfg(feature = "shot-skia")]
+            Self::Skia(win) => {
+                let snapshot = win.window().take_snapshot().expect("skia snapshot");
+                for (dst, src) in buffer.iter_mut().zip(snapshot.as_slice()) {
+                    *dst = Rgb8Pixel::new(src.r, src.g, src.b);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "shot-skia")]
+mod skia {
+    use std::cell::Cell;
+    use std::rc::{Rc, Weak};
+
+    use i_slint_renderer_skia::software_surface::{RenderBuffer, SoftwareSurface};
+    use i_slint_renderer_skia::{SkiaRenderer, SkiaSharedContext};
+    use slint::platform::{Renderer, WindowAdapter, WindowEvent};
+    use slint::{PhysicalSize, Window};
+
+    /// Never presented: the harness reads frames with Window::take_snapshot,
+    /// which Skia renders into a CPU raster surface of its own.
+    struct NoBuffer;
+
+    impl RenderBuffer for NoBuffer {
+        fn with_buffer(
+            &self,
+            _window: &Window,
+            _size: PhysicalSize,
+            _render: &mut dyn FnMut(
+                std::num::NonZeroU32,
+                std::num::NonZeroU32,
+                i_slint_renderer_skia::skia_safe::ColorType,
+                u8,
+                &mut [u8],
+            ) -> Result<Option<i_slint_core::partial_renderer::DirtyRegion>, slint::PlatformError>,
+        ) -> Result<(), slint::PlatformError> {
+            Ok(())
+        }
+    }
+
+    pub struct SkiaShotWindow {
+        window: Window,
+        renderer: SkiaRenderer,
+        size: Cell<PhysicalSize>,
+    }
+
+    impl SkiaShotWindow {
+        pub fn new() -> Rc<Self> {
+            Rc::new_cyclic(|weak: &Weak<Self>| SkiaShotWindow {
+                window: Window::new(weak.clone() as Weak<dyn WindowAdapter>),
+                renderer: SkiaRenderer::new_with_surface(&SkiaSharedContext::default(), Box::new(SoftwareSurface::from(NoBuffer))),
+                size: Cell::new(PhysicalSize::new(1, 1)),
+            })
+        }
+
+        pub fn request_redraw(&self) {}
+
+        pub fn set_size(&self, size: PhysicalSize) {
+            self.size.set(size);
+            self.window.dispatch_event(WindowEvent::Resized { size: size.to_logical(self.window.scale_factor()) });
+        }
+    }
+
+    impl WindowAdapter for SkiaShotWindow {
+        fn window(&self) -> &Window {
+            &self.window
+        }
+        fn size(&self) -> PhysicalSize {
+            self.size.get()
+        }
+        fn set_size(&self, size: slint::WindowSize) {
+            SkiaShotWindow::set_size(self, size.to_physical(self.window.scale_factor()));
+        }
+        fn renderer(&self) -> &dyn Renderer {
+            &self.renderer
+        }
+    }
+}
+
 struct ShotPlatform {
-    window: Rc<MinimalSoftwareWindow>,
+    window: ShotWindow,
     clock: Rc<Cell<Duration>>,
 }
 
 impl Platform for ShotPlatform {
     fn create_window_adapter(&self) -> Result<Rc<dyn WindowAdapter>, slint::PlatformError> {
-        Ok(self.window.clone())
+        Ok(self.window.adapter())
     }
     fn duration_since_start(&self) -> Duration {
         self.clock.get()
@@ -86,14 +259,23 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         "locale" => json!({ "language": std::env::var("SHOT_LANG").unwrap_or("zh".into()), "utcOffsetMinutes": 480, "fontScale": 1.0 }),
         "attach" => Value::Null,
         // The saved preferences are the values just set.
-        "setPreferences" => args["values"].clone(),
+        // Merged into the saved ones and all of them returned, as BoxPreferences does.
+        "setPreferences" => PREFS.with(|p| {
+            let mut p = p.borrow_mut();
+            if let Some(values) = args["values"].as_object() {
+                for (key, value) in values {
+                    p.insert(key.clone(), value.clone());
+                }
+            }
+            Value::Object(p.clone())
+        }),
         "ready" => json!({
             "version": "1.15.6", "coreVersion": "1.13.0", "xrayVersion": "25.10.15", "mihomoVersion": "1.19.15",
             "systemAccentColor": 0xff007aff_u32,
             "dashboard": dashboard(now),
             "profiles": profiles(now),
             "settings": {},
-            "preferences": { "hiddenCards": [] },
+            "preferences": PREFS.with(|p| Value::Object(p.borrow().clone())),
             "lan": { "addresses": ["192.168.1.23", "fd00::23"], "running": false, "enabled": false, "bindings": [], "canToggle": true, "profileId": 1 },
             "tools": {},
             "diagnostics": { "stun": {}, "quality": {} },
@@ -219,7 +401,7 @@ fn event(kind: &str, value: Value) {
 }
 
 struct Harness {
-    window: Rc<MinimalSoftwareWindow>,
+    window: ShotWindow,
     clock: Rc<Cell<Duration>>,
     app: AppWindow,
     _timer: Rc<slint::Timer>,
@@ -254,8 +436,15 @@ impl Harness {
         slint::platform::update_timers_and_animations();
     }
 
-    /// Lets animations finish (up to 2 s) so the frame is settled.
+    /// Lets animations finish (up to 2 s) so the frame is settled. Motion
+    /// driven by animation-tick() (the home pager, ripples, the container
+    /// transform, the editor) only reports itself while a frame is drawn, so
+    /// the clock first runs on for the longest of those (timers end them).
     fn settle(&self) {
+        for _ in 0..50 {
+            self.advance(Duration::from_millis(16));
+            self.pump_now();
+        }
         for _ in 0..125 {
             self.pump();
             if !self.window.has_active_animations() {
@@ -280,14 +469,40 @@ impl Harness {
         }
     }
 
+    /// Replies and timers due now, without moving the clock.
+    fn pump_now(&self) {
+        for _ in 0..50 {
+            slint::platform::update_timers_and_animations();
+            match QUEUE.with(|q| q.borrow_mut().pop_front()) {
+                Some((id, method, args)) => answer_call(id, &method, &args),
+                None => break,
+            }
+        }
+    }
+
+    /// `ms` of frames: the clock moves 16 ms at a time and each frame is drawn.
+    fn run_ms(&self, ms: u64) {
+        let mut buffer = Vec::new();
+        let mut left = ms;
+        while left > 0 {
+            let step = left.min(16);
+            self.advance(Duration::from_millis(step));
+            self.pump_now();
+            self.frame(&mut buffer);
+            left -= step;
+        }
+    }
+
     fn shot(&self, path: &str) {
         self.settle();
+        self.write_frame(path);
+    }
+
+    fn write_frame(&self, path: &str) {
         self.window.request_redraw();
         let (w, h) = (self.width as usize, self.height as usize);
         let mut buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
-        self.window.draw_if_needed(|renderer| {
-            renderer.render(&mut buffer, w);
-        });
+        self.window.render(&mut buffer, w);
         let file = std::fs::File::create(path).expect("create png");
         let mut encoder = png::Encoder::new(std::io::BufWriter::new(file), w as u32, h as u32);
         encoder.set_color(png::ColorType::Rgb);
@@ -306,9 +521,7 @@ impl Harness {
             *buffer = vec![Rgb8Pixel::new(0, 0, 0); w * h];
         }
         self.window.request_redraw();
-        self.window.draw_if_needed(|renderer| {
-            renderer.render(buffer, w);
-        });
+        self.window.render(buffer, w);
     }
 
     /// One 16 ms frame of a fling: timers and animations advance, up to
@@ -389,6 +602,28 @@ impl Harness {
         frames
     }
 
+    /// `rest:NAME`: after everything settles the home pager is at rest (the
+    /// shown page at x = 0, no drag or slide in progress) and
+    /// no ripple or other animation is left running.
+    fn expect_rest(&self, name: &str) {
+        self.settle();
+        // Drawn frames, as a device draws them: a binding that read
+        // animation-tick() only drops it once it is evaluated again.
+        for _ in 0..3 {
+            self.frame(&mut Vec::new());
+            self.advance(Duration::from_millis(16));
+            self.pump_now();
+        }
+        let motion = self.app.global::<Motion>();
+        let (offset, moving, swiping) = (motion.get_home_offset(), motion.get_pages_moving(), motion.get_swiping());
+        let animating = self.window.has_active_animations();
+        eprintln!("rest ({name}): offset {offset} pages-moving {moving} swiping {swiping} animating {animating}");
+        assert!(offset.abs() < 0.01, "{name}: the home page stays shifted by {offset} px");
+        assert!(!moving, "{name}: Motion.pages-moving stuck");
+        assert!(!swiping, "{name}: Motion.swiping stuck");
+        assert!(!animating, "{name}: an animation (a press ripple) never ends");
+    }
+
     fn pointer(&self, event: WindowEvent) {
         self.window.window().dispatch_event(event);
         self.pump();
@@ -410,7 +645,7 @@ pub fn main() {
 pub fn run(args: Vec<String>) {
     let out = args.first().cloned().unwrap_or_else(|| ".".into());
     std::fs::create_dir_all(&out).ok();
-    let window = MinimalSoftwareWindow::new(RepaintBufferType::NewBuffer);
+    let window = ShotWindow::new();
     let clock = Rc::new(Cell::new(Duration::ZERO));
     slint::platform::set_platform(Box::new(ShotPlatform { window: window.clone(), clock: clock.clone() })).unwrap();
     crate::fonts::install();
@@ -446,6 +681,116 @@ pub fn run(args: Vec<String>) {
         let (cmd, rest) = step.split_once(':').unwrap_or((step.as_str(), ""));
         match cmd {
             "shot" => h.shot(&format!("{out}/{rest}.png")),
+            "frame" => {
+                h.pump_now();
+                h.write_frame(&format!("{out}/{rest}.png"));
+            }
+            "ms" => h.run_ms(rest.parse().unwrap_or(16)),
+            // An interface preference (JSON value, else a string), as the menus save it.
+            "pref" => {
+                let (key, value) = rest.split_once('=').unwrap_or((rest, ""));
+                let value = serde_json::from_str(value).unwrap_or_else(|_| Value::String(value.to_string()));
+                crate::app::set_preference(key, value);
+                h.settle();
+            }
+            "motion" => {
+                crate::theme_apply::set_motion_scale(crate::theme_apply::motion_scale(rest.parse().unwrap_or(1.0)));
+                h.pump_now();
+            }
+            "down" | "move" | "up" => {
+                let (x, y) = rest.split_once(',').unwrap_or(("0", "0"));
+                let position = LogicalPosition::new(x.parse().unwrap_or(0.0), y.parse().unwrap_or(0.0));
+                let button = slint::platform::PointerEventButton::Left;
+                crate::gesture::touch(
+                    match cmd {
+                        "down" => crate::gesture::Phase::Down,
+                        "move" => crate::gesture::Phase::Move,
+                        _ => crate::gesture::Phase::Up,
+                    },
+                    position.x,
+                    position.y,
+                );
+                let event = match cmd {
+                    "down" => {
+                        h.window.window().dispatch_event(WindowEvent::PointerMoved { position });
+                        WindowEvent::PointerPressed { position, button }
+                    }
+                    "move" => WindowEvent::PointerMoved { position },
+                    _ => WindowEvent::PointerReleased { position, button },
+                };
+                h.window.window().dispatch_event(event);
+                // A lifted finger leaves no hover behind (Slint's Android
+                // backend sends the exit with the release).
+                if cmd == "up" {
+                    h.window.window().dispatch_event(WindowEvent::PointerExited);
+                }
+                h.pump_now();
+                // A device draws the frame the event changed before the next
+                // tick, so what it creates starts from its first state.
+                h.frame(&mut Vec::new());
+            }
+            "rest" => h.expect_rest(rest),
+            // Row actions are counted from here on instead of run.
+            "watchtaps" => {
+                h.app.global::<Nav>().on_act2(|_, _, _| TAPS.with(|t| t.set(t.get() + 1)));
+            }
+            // Remembers the settled frame; `moved:why` then asserts the
+            // content below the top bar changed (the list scrolled).
+            "mark" | "moved" => {
+                h.settle();
+                let mut buffer = Vec::new();
+                h.frame(&mut buffer);
+                if cmd == "mark" {
+                    MARK.with(|m| *m.borrow_mut() = buffer);
+                } else {
+                    let skip = (h.width as usize) * (h.height as usize) / 8;
+                    let same = MARK.with(|m| m.borrow()[skip..] == buffer[skip..]);
+                    eprintln!("moved ({rest}): {}", !same);
+                    assert!(!same, "{rest}: the list did not scroll");
+                }
+            }
+            // Exactly N row actions since `watchtaps`.
+            "taps" => {
+                let count = TAPS.with(|t| t.get());
+                eprintln!("taps ({rest}): {count}");
+                let (n, why) = rest.split_once(':').unwrap_or((rest, ""));
+                assert_eq!(count, n.parse::<usize>().unwrap_or(0), "{why}: wrong number of row taps");
+            }
+            // The route stack holds exactly N routes.
+            "routes" => {
+                let count = slint::Model::row_count(&h.app.global::<Nav>().get_routes());
+                eprintln!("routes ({rest}): {count}");
+                let (n, why) = rest.split_once(':').unwrap_or((rest, ""));
+                assert_eq!(count, n.parse::<usize>().unwrap_or(0), "{why}: wrong number of routes");
+            }
+            // System back as the Android backend sends it (press and release):
+            // both halves must be accepted while a route is open, or the host
+            // finishes the activity (back to the launcher).
+            "back" => {
+                let text: slint::SharedString = slint::platform::Key::Back.into();
+                let pressed = h.window.window().dispatch_event_with_result(WindowEvent::KeyPressed { text: text.clone() });
+                let released = h.window.window().dispatch_event_with_result(WindowEvent::KeyReleased { text });
+                let accepted = |r: &Result<slint::platform::WindowEventDispatchResult, slint::PlatformError>| {
+                    matches!(r, Ok(slint::platform::WindowEventDispatchResult::Accepted))
+                };
+                eprintln!("back ({rest}): pressed {} released {}", accepted(&pressed), accepted(&released));
+                let expect = rest != "exit";
+                assert_eq!(accepted(&pressed), expect, "back press ({rest})");
+                assert_eq!(accepted(&released), expect, "back release ({rest})");
+                h.settle();
+            }
+            // While a finger is down: the page scrolls, the pager stays out.
+            "scrolling" => {
+                let motion = h.app.global::<Motion>();
+                let (offset, swiping, lock) = (motion.get_home_offset(), motion.get_swiping(), motion.get_vertical_lock());
+                eprintln!("scrolling ({rest}): offset {offset} swiping {swiping} vertical-lock {lock}");
+                assert!(lock, "{rest}: a diagonal scroll did not lock the pager out");
+                assert!(!swiping && offset.abs() < 0.01, "{rest}: the pager took a scroll (offset {offset}, swiping {swiping})");
+            }
+            "textscale" => {
+                h.app.global::<Theme>().set_text_scale(rest.parse().unwrap_or(1.0));
+                h.settle();
+            }
             "tab" => {
                 h.app.global::<Nav>().invoke_select_tab(rest.into());
                 h.pump();
@@ -584,6 +929,99 @@ pub fn run(args: Vec<String>) {
 
 #[cfg(test)]
 mod tests {
+    fn steps(name: &str, steps: &[&str]) {
+        let out = std::env::temp_dir().join(name);
+        let mut args = vec![out.to_string_lossy().into_owned()];
+        args.extend(steps.iter().map(|s| s.to_string()));
+        super::run(args);
+    }
+
+    /// A tap with a few pixels of jitter (press, move 5 px, release) on the
+    /// dashboard, on a row of the tools page and on the last page: Slint's
+    /// swipe handler reports such moves but never the release, which left
+    /// the pager dragging (the page shifted left) and
+    /// the row's ripple and pressed layer on (Meizu 20 Pro). Then a real
+    /// swipe to the next page and back still works and ends at rest.
+    #[test]
+    fn tap_jitter_leaves_pages_at_rest() {
+        steps("fkui-shot-tap", &[
+            "tab:Dashboard", "down:120,420", "move:125,420", "move:125,423", "up:125,423", "rest:dashboard tap",
+            "down:200,480", "move:205,480", "up:205,480", "rest:dashboard tap on the speed card", "pop", "rest:back to the dashboard",
+            "tab:Tools", "rest:tools", "down:200,517", "move:205,517", "up:205,517",
+            "pop", "rest:tools after the row's page (its ripple gone)",
+            "down:200,300", "move:204,302", "ms:40", "up:204,302", "rest:tools last page tap",
+            // A swipe still turns the page: from Tools (the last page) right to Profiles.
+            "down:60,500", "move:100,500", "move:180,500", "move:260,500", "move:320,500", "up:320,500", "rest:after the swipe",
+        ]);
+    }
+
+    /// A slightly diagonal scroll (more than half as far across as down, which
+    /// Slint's swipe handler takes on its own) stays with the page's list:
+    /// the pager is locked out until the finger lifts (src/gesture.rs), and a
+    /// clear swipe afterwards still turns the page.
+    #[test]
+    fn diagonal_scroll_stays_with_the_list() {
+        steps("fkui-shot-diagonal", &[
+            "tab:Tools", "rest:tools",
+            "down:200,600", "move:203,597", "move:209,588", "move:216,560", "move:224,500", "move:230,440",
+            "scrolling:diagonal scroll up", "up:230,440", "rest:after the diagonal scroll",
+            "down:150,300", "move:160,312", "move:172,340", "move:180,380", "scrolling:diagonal scroll down", "up:180,380", "rest:after the scroll down",
+            "down:60,500", "move:100,502", "move:180,505", "move:260,505", "move:320,505", "up:320,505", "rest:a swipe still turns the page",
+        ]);
+    }
+
+    /// Steps from FKUI_SHOT_STEPS (space separated), for trying a gesture
+    /// without rebuilding; does nothing when unset.
+    #[test]
+    fn steps_from_env() {
+        let Ok(list) = std::env::var("FKUI_SHOT_STEPS") else { return };
+        let list: Vec<&str> = list.split_whitespace().collect();
+        steps("fkui-shot-env", &list);
+    }
+
+    /// A fast flick (down, a few large moves and up before Slint's 100 ms
+    /// press delay ends) scrolls the list. Upstream, the pager's
+    /// SwipeGestureHandler held the press back, the first move locked the
+    /// pager out (src/gesture.rs) and dropped the held press, so the page's
+    /// Flickable never saw a press and the list stayed still; only a drag that
+    /// waited out the delay scrolled. The flick must not tap a row either. Back closes the page it would have opened and
+    /// leaves the app only from the home pages.
+    #[test]
+    fn fast_flick_is_not_a_tap() {
+        steps("fkui-shot-flick", &[
+            "tab:Tools", "rest:tools", "routes:0:start", "watchtaps",
+            "down:200,300", "up:200,300", "rest:after a tap", "taps:1:a plain tap on a row did not reach it",
+            "mark", "down:200,420", "move:200,400", "move:201,340", "move:202,260", "up:202,250", "rest:after a fast flick up",
+            "taps:1:a fast flick up tapped a row", "moved:a fast flick up",
+            "mark", "down:200,300", "move:200,330", "move:199,420", "up:199,430", "rest:after a fast flick down",
+            "taps:1:a fast flick down tapped a row", "moved:a fast flick down",
+            "push:memory:", "routes:1:pushed", "back:page", "rest:back from the page", "routes:0:back did not close the page",
+            "back:exit",
+        ]);
+    }
+
+    /// A page drag whose release never arrives (the finger stays down; the
+    /// handler sends neither swiped nor cancelled) settles after
+    /// Theme.touch-drag-idle; a rubber-band pull past the first page springs
+    /// back to 0 when released; a drag in flight when the app leaves the
+    /// foreground settles too.
+    #[test]
+    fn page_drag_without_release_settles() {
+        steps("fkui-shot-drag", &[
+            "tab:Profiles", "rest:start",
+            "down:320,500", "move:300,500", "move:260,500", "move:220,500", "move:200,500", "ms:1600", "rest:drag held without a release",
+            "up:200,500", "rest:released late",
+            "tab:Dashboard", "rest:dashboard",
+            "down:40,500", "move:80,500", "move:160,500", "move:240,500", "up:240,500", "rest:rubber band springs back",
+            "down:320,500", "move:280,500", "move:220,500", "bg", "fg", "rest:background mid-drag",
+            "up:220,500", "rest:released after the foreground",
+            // Page push and back (fade), a form sheet (rise and sink): their
+            // ghosts and timers end too.
+            "push:memory:", "rest:pushed page", "pop", "rest:back from the page",
+            "form:egress:", "rest:form sheet", "pop", "rest:back from the sheet",
+        ]);
+    }
+
     /// Access control with a long list of apps: thousands of px of fast drags
     /// and flings down and back up, icon answers landing on rows the list
     /// reuses, a frame drawn every 16 ms; then closed (the memory release

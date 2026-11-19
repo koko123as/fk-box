@@ -17,6 +17,8 @@ internal object BoxPreferences {
         "restoreStrategy" to setOf("Compatible", "Override"),
         // The requests page's feed: recent and live connections, or captured HTTP.
         "requestFeed" to setOf("recent", "live", "captured"),
+        // How the phone's home destinations change (ui-slint home.slint Pages).
+        "tabMotion" to setOf("slide", "fade"),
     )
 
     // Service status targets (libbox/ui_service_check.go, FlClash ServiceTarget ids).

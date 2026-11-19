@@ -11,7 +11,7 @@
 
 use std::sync::Arc;
 
-use slint::fontique_011::fontique;
+use slint::fontique_012::fontique;
 
 /// One face: a font file and its index in a collection.
 #[derive(Clone, Debug, Default)]
@@ -84,7 +84,7 @@ fn log(message: &str) {
 }
 
 pub fn apply(spec: &Spec) {
-    let mut collection = slint::fontique_011::shared_collection();
+    let mut collection = slint::fontique_012::shared_collection();
     let sans = families(&mut collection, &spec.sans);
     let cjk = families(&mut collection, &spec.cjk);
     let mono = families(&mut collection, &spec.mono);

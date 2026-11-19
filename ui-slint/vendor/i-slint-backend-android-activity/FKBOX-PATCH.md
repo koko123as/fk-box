@@ -1,6 +1,6 @@
-# i-slint-backend-android-activity 1.18.1, patched for FK-box
+# i-slint-backend-android-activity 1.19.0, patched for FK-box
 
-Unmodified crates.io source of `i-slint-backend-android-activity` 1.18.1
+Unmodified crates.io source of `i-slint-backend-android-activity` 1.19.0
 (GPL-3.0-only OR the Slint licenses, see LICENSES/; `Cargo.toml.orig` and the
 registry's `.cargo_vcs_info.json`/`Cargo.lock` left out) with the changes
 below, used through `[patch.crates-io]` in ui-slint/Cargo.toml. FK-box builds
@@ -74,6 +74,34 @@ The Kotlin host adds a last guard (BoxActivity.dispatchKeyEvent orders the
 editable's selection before GameTextInput handles a key, and a remaining
 IndexOutOfBoundsException there is logged instead of closing the app).
 
+Rebased on 1.19.0 (2026-11-18) by a three-way merge of the 1.18.1 patches.
+Upstream 1.19 rewrote the Java helper (package `dev.slint.android`, lambdas,
+cursor-handle ids); hunk 4 was re-applied by hand to the new `SlintInputView`
+constructor, `onCheckIsTextEditor` and `show_keyboard`. The other hunks applied
+unchanged.
+
 To update Slint: copy the new crate version over this directory (without
 `Cargo.toml.orig`, `.cargo_vcs_info.json`, `Cargo.lock`), keep `fkbox_ime.rs`
-and this file, and re-apply the hunks marked "FK-box patch".
+and this file, and re-apply the hunks marked "FK-box patch" (a three-way merge
+against the previous upstream crate does it: `git merge-file NEW OLD_UPSTREAM
+THIS_COPY` per file).
+
+## Touch observer
+
+`lib.rs` `fkbox_set_touch_observer(f)`: `f(phase, x, y)` sees the primary
+touch pointer (logical coordinates; 0 down, 1 move, 2 up, 3 cancel) before
+`androidwindowadapter.rs` dispatches the Down, Move, Up and Cancel/Outside
+touch events. FK-box decides each touch's axis there (ui-slint/src/gesture.rs)
+so a slightly diagonal scroll locks the home pager's SwipeGestureHandler out
+before Slint's 8 px swipe threshold lets it take the touch from the page's
+Flickable.
+
+## Back release
+
+`androidwindowadapter.rs`, the `InputEvent::KeyEvent` arm: when the UI
+accepted a Back key press (`FKBOX_BACK_TAKEN`), the matching Back release is
+reported `Handled` too, whatever the UI answers for it. GameActivity passes an
+unhandled key to `super.onKeyUp`, which takes a Back release as the system
+Back and finishes the activity: a Back that closed a page also left the app
+for the launcher. The UI accepts the release itself as well (`ui/app.slint`,
+`back-taken`); this keeps it from depending on where key focus is.

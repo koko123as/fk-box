@@ -26,7 +26,6 @@ use ndk_08 as ndk;
 use ndk_09 as ndk;
 
 pub use android_activity::AndroidApp;
-
 use android_activity::PollEvent;
 use androidwindowadapter::AndroidWindowAdapter;
 use core::ops::ControlFlow;
@@ -40,6 +39,24 @@ use std::sync::{Arc, Mutex};
 
 thread_local! {
     static CURRENT_WINDOW: RefCell<Weak<AndroidWindowAdapter>> = RefCell::new(Default::default());
+    // FK-box patch: see fkbox_set_touch_observer.
+    pub(crate) static FKBOX_TOUCH_OBSERVER: RefCell<Option<Box<dyn Fn(u8, f32, f32)>>> = RefCell::new(None);
+}
+
+/// FK-box patch: `f(phase, x, y)` sees the primary touch pointer before each
+/// touch event is dispatched to the window, in logical coordinates; phase is
+/// 0 down, 1 move, 2 up, 3 cancel. FK-box decides the gesture axis there
+/// (ui-slint/src/gesture.rs) before Slint's swipe handler can take a scroll.
+pub fn fkbox_set_touch_observer(f: impl Fn(u8, f32, f32) + 'static) {
+    FKBOX_TOUCH_OBSERVER.with(|o| *o.borrow_mut() = Some(Box::new(f)));
+}
+
+pub(crate) fn fkbox_observe_touch(phase: u8, x: f32, y: f32) {
+    FKBOX_TOUCH_OBSERVER.with(|o| {
+        if let Some(f) = o.borrow().as_ref() {
+            f(phase, x, y);
+        }
+    });
 }
 
 pub struct AndroidPlatform {
@@ -169,12 +186,10 @@ impl i_slint_core::platform::Platform for AndroidPlatform {
 
     fn clipboard_text(&self, clipboard: Clipboard) -> Option<String> {
         if clipboard == Clipboard::DefaultClipboard {
-            Some(
-                self.window
-                    .java_helper
-                    .get_clipboard()
-                    .unwrap_or_else(|e| javahelper::print_jni_error(&self.app, e)),
-            )
+            self.window
+                .java_helper
+                .get_clipboard()
+                .unwrap_or_else(|e| javahelper::print_jni_error(&self.app, e))
         } else {
             None
         }
@@ -183,20 +198,13 @@ impl i_slint_core::platform::Platform for AndroidPlatform {
     fn bind_context(&self, ctx: i_slint_core::SlintContextWeak, _: i_slint_core::InternalToken) {
         let _ = self.context.set(ctx.clone());
         let ctx = ctx.upgrade().expect("bind_context called while the SlintContext is still alive");
-        let color_scheme = match self
+        let night_mode = self
             .window
             .java_helper
             .color_scheme()
-            .unwrap_or_else(|e| javahelper::print_jni_error(&self.app, e))
-        {
-            0x10 => i_slint_core::items::ColorScheme::Light, // UI_MODE_NIGHT_NO
-            0x20 => i_slint_core::items::ColorScheme::Dark,  // UI_MODE_NIGHT_YES
-            _ => i_slint_core::items::ColorScheme::Unknown,
-        };
-        ctx.set_color_scheme(color_scheme);
-        if let Ok(accent) = self.window.java_helper.accent_color() {
-            ctx.set_accent_color(accent);
-        }
+            .unwrap_or_else(|e| javahelper::print_jni_error(&self.app, e));
+        self.window.java_helper.set_system_colors(&ctx, night_mode);
+        self.window.java_helper.set_motion_preference(&ctx);
         if let Ok(scale) = self.window.java_helper.font_scale()
             && let Some(size) = javahelper::font_scale_to_logical_length(scale)
         {

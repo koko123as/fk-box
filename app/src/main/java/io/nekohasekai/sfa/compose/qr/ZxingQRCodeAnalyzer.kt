@@ -15,19 +15,15 @@ import com.google.zxing.qrcode.QRCodeReader
 class ZxingQRCodeAnalyzer(
     private val onSuccess: ((String) -> Unit),
     private val onFailure: ((Exception) -> Unit),
-    private val onCropArea: ((QRCodeCropArea?) -> Unit)? = null,
 ) : ImageAnalysis.Analyzer {
     private val qrCodeReader = QRCodeReader()
     private var yDataBuffer: ByteArray? = null
-
-    var qrsMode: Boolean = false
 
     override fun analyze(image: ImageProxy) {
         try {
             val yData = image.toYUVData()
             val width = image.width
             val height = image.height
-            val rotationDegrees = image.imageInfo.rotationDegrees
             val source = PlanarYUVLuminanceSource(yData, width, height, 0, 0, width, height, false)
 
             // Fast path: HybridBinarizer
@@ -36,8 +32,7 @@ class ZxingQRCodeAnalyzer(
                 return
             }
 
-            val cropArea = QRCodeSmartCrop.findCropArea(yData, width, height, rotationDegrees)
-            onCropArea?.invoke(cropArea)
+            val cropArea = QRCodeSmartCrop.findCropArea(yData, width, height)
             if (cropArea != null) {
                 val cropWidth = cropArea.right - cropArea.left
                 val cropHeight = cropArea.bottom - cropArea.top
@@ -56,9 +51,6 @@ class ZxingQRCodeAnalyzer(
                     return
                 }
             }
-
-            // In QRS mode, skip additional binarizer attempts for performance
-            if (qrsMode) return
 
             // Inverted HybridBinarizer (uses ZXing's native invert)
             tryDecode(BinaryBitmap(HybridBinarizer(source.invert())))?.let {

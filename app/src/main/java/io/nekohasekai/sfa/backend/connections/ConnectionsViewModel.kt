@@ -23,7 +23,6 @@ data class ConnectionsUiState(
     // DNS lookups the store holds (live, or closed within its five-minute
     // window); kept out of [allConnections], counted for the dashboard.
     val dnsCount: Int = 0,
-    val isLoading: Boolean = false,
 )
 
 class ConnectionsViewModel :
@@ -68,7 +67,6 @@ class ConnectionsViewModel :
                 shouldConnect to remoteServerId
             }.distinctUntilChanged().collect { (shouldConnect, _) ->
                 if (shouldConnect) {
-                    updateState { copy(isLoading = true) }
                     commandClient.connect()
                 } else {
                     commandClient.disconnect()
@@ -96,7 +94,7 @@ class ConnectionsViewModel :
                 connectionsGeneration.incrementAndGet()
             }
             updateState {
-                copy(allConnections = emptyList(), dnsCount = 0, isLoading = false)
+                copy(allConnections = emptyList(), dnsCount = 0)
             }
         }
     }
@@ -116,7 +114,7 @@ class ConnectionsViewModel :
             connectionsGeneration.incrementAndGet()
             withContext(Dispatchers.Main) {
                 updateState {
-                    copy(allConnections = emptyList(), dnsCount = 0, isLoading = false)
+                    copy(allConnections = emptyList(), dnsCount = 0)
                 }
             }
         }
@@ -135,7 +133,6 @@ class ConnectionsViewModel :
                     copy(
                         allConnections = snapshot,
                         dnsCount = dnsCount,
-                        isLoading = false,
                     )
                 }
             }

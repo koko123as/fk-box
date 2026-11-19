@@ -129,6 +129,8 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 uiAttached = true
                 lastInsets = null
                 pushInsets()
+                lastMotion = null
+                pushMotion()
                 return@launch
             }
             // The native text editor over the Slint field (NativeEditor.kt).
@@ -147,7 +149,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 "locale" -> {
                     val locale = resources.configuration.locales[0]
                     val offset = java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis()) / 60_000
-                    reply(true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset, "fontScale" to resources.configuration.fontScale)))
+                    reply(true, SlintHost.wire(mapOf("language" to locale.language, "utcOffsetMinutes" to offset, "fontScale" to resources.configuration.fontScale, "animatorScale" to animatorScale())))
                     return@launch
                 }
                 "copyText" -> {
@@ -303,9 +305,33 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         }
     }
 
+    /**
+     * The system's animator duration scale (developer options, or 0 with
+     * accessibility's Remove animations). The UI multiplies all of its motion
+     * by it (ui-slint theme.slint `motion-scale`); Slint's own reduced-motion
+     * query is not used.
+     */
+    private fun animatorScale(): Float = try {
+        android.provider.Settings.Global.getFloat(contentResolver, android.provider.Settings.Global.ANIMATOR_DURATION_SCALE, 1f)
+    } catch (_: Exception) {
+        1f
+    }
+
+    private var lastMotion: Float? = null
+
+    /** Sends the animator duration scale when it changed (checked on resume and attach). */
+    private fun pushMotion() {
+        if (!uiAttached) return
+        val scale = animatorScale()
+        if (scale == lastMotion) return
+        lastMotion = scale
+        SlintHost.nativeEvent(SlintHost.wire(mapOf("type" to "motion", "value" to mapOf("scale" to scale))))
+    }
+
     override fun onResume() {
         super.onResume()
         resendInsets()
+        pushMotion()
     }
 
     /**

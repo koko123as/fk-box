@@ -2,10 +2,13 @@ package libbox
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	mihomoRouter "github.com/metacubex/mihomo/component/geodata/router"
@@ -259,5 +262,42 @@ func TestCoreGeoUpdateRejectsShortBody(t *testing.T) {
 	}
 	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
 		t.Fatalf("files left behind: %v", entries)
+	}
+}
+
+func TestCoreGeoFetchExpected(t *testing.T) {
+	dir := t.TempDir()
+	data := testGeoIPData(t, 24)
+	digest := sha256.Sum256(data)
+	sum := hex.EncodeToString(digest[:])
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(data)
+	}))
+	defer server.Close()
+	target := filepath.Join(dir, "geoip.dat")
+	if _, err := NewGeoUpdate().FetchExpected(dir, GeoResourceGeoIP, server.URL, strings.Repeat("0", 64)); err == nil {
+		t.Fatal("body with another SHA-256 accepted")
+	}
+	if _, err := os.Stat(target); !os.IsNotExist(err) {
+		t.Fatalf("rejected body installed (err %v)", err)
+	}
+	if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+		t.Fatalf("temporary files left behind: %v", entries)
+	}
+	for _, bad := range []string{"", "abc", strings.Repeat("z", 64)} {
+		if _, err := NewGeoUpdate().FetchExpected(dir, GeoResourceGeoIP, server.URL, bad); err == nil {
+			t.Fatalf("expected hash %q accepted", bad)
+		}
+	}
+	result, err := NewGeoUpdate().FetchExpected(dir, GeoResourceGeoIP, server.URL, strings.ToUpper(sum))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Skipped || result.Sha256 != sum || result.Size != int64(len(data)) {
+		t.Fatalf("unexpected result: %+v", result)
+	}
+	current, err := os.ReadFile(target)
+	if err != nil || !bytes.Equal(current, data) {
+		t.Fatalf("file not installed (err %v)", err)
 	}
 }

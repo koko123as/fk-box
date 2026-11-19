@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.graphics.Bitmap
 import android.net.Uri
 import android.net.http.SslError
-import android.os.Build
 import android.os.Message
 import android.view.ViewGroup
 import android.webkit.CookieManager

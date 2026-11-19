@@ -15,3 +15,15 @@ Kotlin service and bridge layer are reused unchanged; only the UI is rewritten.
 Phase 1 pages: Home (start/stop, profile, rates, uptime, mode), Proxies (groups,
 select, URL test), Profiles (select, update, delete, add subscription URL), Logs.
 The Compose sources stay in the tree as reference until every page is ported.
+
+Slint 1.19 (`backdrop-blur` for the glass surfaces); the Skia renderer and the
+Android backend are vendored with FK-box patches (`vendor/*/FKBOX-PATCH.md`,
+`[patch.crates-io]` in Cargo.toml). Host screenshots: `cargo run --features shot
+--example shot -- OUT step...` (software renderer), or `--features shot-skia` with
+`SHOT_RENDERER=skia` to draw with Skia as on Android (the blur shows only there).
+
+Slint 1.19's prebuilt Skia binaries need NDK r30 or newer. The Android build
+gives cargo-ndk `FKUI_NDK_HOME` (NDK 30.0.16248370 in CI, set by the
+build-libbox action) while the core keeps NDK 28; with an older NDK libfkui.so
+links but leaves `std::__ndk1::__hash_memory` unresolved and the app closes at
+launch. `tools/verify_release.py` rejects such a library.

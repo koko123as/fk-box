@@ -1,4 +1,4 @@
-# FK-box app Baseline Profile (hand-written startup profile).
+# fk-box app Baseline Profile (hand-written startup profile).
 #
 # AGP merges this file into assets/dexopt/baseline.prof together with the
 # library profiles (Compose, AndroidX); R8 rewrites the rules to the minified

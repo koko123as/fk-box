@@ -54,17 +54,24 @@ def main():
             'Existing release tags are never moved.'
         )
 
-    apk = Path('app/build/outputs/apk/other/release') / f'FK-box-{version}-arm64-v8a.apk'
-    metadata = apk.parent / 'FK-box-version-metadata.json'
-    metadata.write_text(json.dumps({
+    apk = Path('app/build/outputs/apk/other/release') / f'fk-box-{version}-arm64-v8a.apk'
+    metadata = apk.parent / 'fk-box-version-metadata.json'
+    metadata_json = json.dumps({
         'version_code': int(properties['VERSION_CODE']),
         'version_name': version,
         'application_id': 'io.fkbox.app',
-    }, indent=2) + '\n')
+    }, indent=2) + '\n'
+    metadata.write_text(metadata_json)
+    # Installs from before the lowercase rename look only for this name; a copy
+    # lets them see the new release (their APK match needs FK-box-*, so they
+    # are sent to the release page instead of a direct download).
+    legacy_metadata = apk.parent / 'legacy' / 'FK-box-version-metadata.json'
+    legacy_metadata.parent.mkdir(exist_ok=True)
+    legacy_metadata.write_text(metadata_json)
     prerelease = bool(re.search(r'(alpha|beta|rc)', version, re.IGNORECASE))
     release_options = [
         '--repo', repository,
-        '--title', f'FK-box {version}',
+        '--title', f'fk-box {version}',
         f'--prerelease={str(prerelease).lower()}',
         f'--latest={str(not prerelease).lower()}',
     ]
@@ -88,6 +95,14 @@ def main():
              '--notes', f'Signed ARM64 APK built from {commit}.', *release_options],
             check=True
         )
+    # Separate and non-fatal: GitHub may refuse an asset name that differs from
+    # fk-box-version-metadata.json only in case; the release itself stands.
+    legacy = subprocess.run(
+        ['gh', 'release', 'upload', version, str(legacy_metadata), '--repo', repository, '--clobber']
+    )
+    if legacy.returncode != 0:
+        print(f'::warning::Legacy {legacy_metadata.name} was not uploaded; '
+              'installs from before the fk-box rename will not see this release')
     print(f'Published {version} from {commit}: {apk.name}')
 
 

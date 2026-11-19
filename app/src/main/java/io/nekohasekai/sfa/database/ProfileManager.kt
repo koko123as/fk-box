@@ -30,15 +30,13 @@ object ProfileManager {
                 Path.PROFILES_DATABASE_PATH,
             )
             .addMigrations(ProfileDatabase.MIGRATION_1_2, ProfileDatabase.MIGRATION_2_3)
-            .fallbackToDestructiveMigrationOnDowngrade()
+            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
             .enableMultiInstanceInvalidation()
             .setQueryExecutor { GlobalScope.launch { it.run() } }
             .build()
     }
 
     suspend fun nextOrder(): Long = instance.profileDao().nextOrder() ?: 0
-
-    suspend fun nextFileID(): Long = instance.profileDao().nextFileID() ?: 1
 
     suspend fun get(id: Long): Profile? = instance.profileDao().get(id)
 

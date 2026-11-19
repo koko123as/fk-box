@@ -14,9 +14,9 @@ import org.junit.Test
 
 class ConnectionStoreTest {
     private fun connection(id: String, outboundType: String = "direct", closedAt: Long? = null) = Connection(
-        id = id, inbound = "tun-in", inboundType = "tun", ipVersion = 4, network = "tcp",
+        id = id, inbound = "tun-in", network = "tcp",
         source = "10.0.0.2:1000", destination = "1.1.1.1:443", domain = "", displayDestination = "1.1.1.1:443",
-        protocolName = "tls", user = "", fromOutbound = "", createdAt = 1, closedAt = closedAt,
+        protocolName = "tls", user = "", createdAt = 1, closedAt = closedAt,
         upload = 5, download = 7, uploadTotal = 100, downloadTotal = 200, rule = "final",
         outbound = "proxy", outboundType = outboundType, chain = listOf("proxy"), processInfo = null,
     )
