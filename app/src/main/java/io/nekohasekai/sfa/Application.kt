@@ -143,6 +143,8 @@ class Application : Application() {
         // Go reads the core switches (and later other settings) through this;
         // every libbox caller that needs them waits on setupLibbox first.
         Libbox.setUISettingsStore(GoSettingsStore)
+        // The update check (libbox core_updates.go) compares releases with this install.
+        Libbox.setUIAppInfo(BuildConfig.APPLICATION_ID, BuildConfig.VERSION_CODE.toLong(), Build.SUPPORTED_ABIS.joinToString("\n"))
         val dir = installWorkingDir() ?: error("android: external storage unavailable")
         Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))
         setupCompleted = true

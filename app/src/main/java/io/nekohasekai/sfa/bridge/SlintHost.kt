@@ -79,7 +79,6 @@ private suspend fun BoxBridge.hostDispatch(method: String, args: JSONObject): An
     "startService" -> startService()
     "stopService" -> stopService()
     "reloadService" -> reloadService(args.optBoolean("restart"))
-    "checkUpdates" -> checkUpdates()
     // Resources
     "geoList" -> geoList()
     "geoUpdate" -> geoUpdate(args.getString("name"))

@@ -8,7 +8,7 @@ var uiProtocolMethods = map[string]string{
 	"startService": "host",
 	"stopService": "host",
 	"reloadService": "host",
-	"checkUpdates": "host",
+	"checkUpdates": "go",
 	"geoList": "host",
 	"geoUpdate": "host",
 	"geoSetUrl": "host",

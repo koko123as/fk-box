@@ -246,8 +246,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     // "Missing argument" message.
     // -----------------------------------------------------------------------
 
-    suspend fun checkUpdates() = withContext(Dispatchers.IO) { BoxUpdates.check() }
-
     suspend fun geoList() = GeoResources.list(activity)
 
     suspend fun geoUpdate(name: String): Boolean = GeoResources.update(name)

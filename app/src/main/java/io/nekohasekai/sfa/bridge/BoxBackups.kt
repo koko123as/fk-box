@@ -30,11 +30,8 @@ internal class BoxBackups(
     private fun origin(): String = preferences.getString("backupOrigin", null) ?: UUID.randomUUID().toString().also {
         check(preferences.edit().putString("backupOrigin", it).commit()) { "Unable to save backup identity" }
     }
-    private fun profileKey(profile: Profile, origin: String): String {
-        val name = File(profile.typed.path).nameWithoutExtension
-        return runCatching { UUID.fromString(name).toString().takeIf { it == name } }.getOrNull()
-            ?: UUID.nameUUIDFromBytes("$origin:${profile.id}".toByteArray()).toString()
-    }
+    // The file name when it is a UUID, else a name UUID of origin and ID (libbox core_backup.go).
+    private fun profileKey(profile: Profile, origin: String): String = Libbox.uiBackupProfileKey(profile.typed.path, origin, profile.id)
     private fun readPreferences() = BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
     private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }
 
@@ -85,36 +82,25 @@ internal class BoxBackups(
         return backup
     }
 
+    /**
+     * The document, profile and identity checks are libbox's (core_backup.go),
+     * run on the backup as [encode] writes it; the subscription address and the
+     * scope "all" parts (java.net.URI, Android settings) are checked here, each
+     * in the order the checks always ran, so the first fault reported is the same.
+     */
     @Suppress("UNCHECKED_CAST")
     private suspend fun validate(backup: Map<String, Any?>, scope: String): List<Map<String, Any?>> {
         require(scope in setOf("all", "profiles")) { "Invalid restore scope" }
-        require(backup["format"] == "bbox-1") { "Unsupported B-box backup format" }
-        backup["origin"]?.let { require(validUUID(it)) { "Invalid backup origin" } }
-        backup["createdAt"]?.let { require(integer(it, 0)) { "Invalid backup timestamp" } }
-        val entries = rows(backup["profiles"] ?: error("Backup has no profiles"))
-        require(entries.size <= 1000) { "Backup contains too many profiles" }
-        entries.forEach { entry ->
-            require((entry["name"] as? String)?.let { it.isNotBlank() && it.length <= 4096 } == true) { "Profile name is required" }
-            ProfileWireFields.validate(entry)
-            val content = entry["content"] as? String ?: error("Missing profile content")
-            // Each profile is checked by the core it declares; old backups declare none (auto).
-            ProfileContent.validate(Libbox.resolveProfileCore(ProfileWireFields.declaredCore(entry), content), content)
-            require(entry["url"] == null || entry["url"] is String) { "Invalid profile URL" }
+        val document = Libbox.newUIBackupCheck(JSONObject(backup).toString().toByteArray())
+        val entries = rows(backup["profiles"])
+        check(entries.size == document.entryCount()) { "Backup changed while it was checked" }
+        entries.forEachIndexed { index, entry ->
+            document.checkEntry(index)
             val url = entry["url"] as? String ?: ""
             if (url.isNotEmpty()) BoxProfiles.validateUrl(url)
-            entry["key"]?.let { require(validUUID(it)) { "Invalid profile backup identity" } }
-            entry["id"]?.let { require(integer(it, 1)) { "Invalid profile ID" } }
-            entry["interval"]?.let { require(it is Number && it.toDouble() == it.toInt().toDouble() && it.toInt() >= 15) { "Invalid update interval" } }
-            entry["autoUpdate"]?.let { require(it is Boolean) { "Invalid auto update option" } }
-            entry["updatedAt"]?.let { require(integer(it, 0)) { "Invalid update timestamp" } }
+            document.checkEntryIdentity(index)
         }
-        val keys = entries.mapNotNull { it["key"] }
-        val ids = entries.mapNotNull { (it["id"] as? Number)?.toLong() }
-        require(keys.distinct().size == keys.size && ids.distinct().size == ids.size) { "Backup contains duplicate profiles" }
-        backup["selectedProfile"]?.let {
-            require(integer(it, -1) && ((it as Number).toLong() == -1L || it.toLong() in ids)) { "Invalid selected profile" }
-        }
-        encode(backup)
+        document.finish()
         if (scope == "all") {
             BoxPreferences.validate(objectValue(backup, "preferences") ?: emptyMap())
             BoxSettings.validate(objectValue(backup, "settings") ?: emptyMap())
@@ -268,9 +254,6 @@ internal class BoxBackups(
 
     companion object {
         const val MAX_BYTES = 64 * 1024 * 1024
-        private fun validUUID(value: Any?) = value is String && runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
-        private fun integer(value: Any?, minimum: Long): Boolean = value is Number && value.toDouble().isFinite() &&
-            value.toDouble() == value.toLong().toDouble() && value.toLong() >= minimum && value.toDouble() <= 9007199254740991.0
         @Suppress("UNCHECKED_CAST")
         private fun rows(value: Any?): List<Map<String, Any?>> = if (value == null) emptyList() else
             (value as? List<*>)?.map { it as? Map<String, Any?> ?: error("Invalid backup entry") } ?: error("Invalid backup list")

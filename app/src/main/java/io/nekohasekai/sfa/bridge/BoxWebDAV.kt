@@ -30,32 +30,32 @@ internal class BoxWebDAV(activity: BoxActivity) {
         check(preferences.edit().putString("value", stored?.let { JSONObject(it).toString() }).commit()) { "Unable to save WebDAV account" }
     }
 
+    // The requests and their status rules are libbox's (core_webdav.go); the
+    // account and the addresses, resolved with java.net.URI, stay here.
     fun check(): Boolean {
         val props = snapshot() ?: error("Configure a WebDAV account first")
-        request(props, "OPTIONS", "")
+        Libbox.uiWebDAVCheck(url(props, ""), props["user"] as String, props["password"] as String)
         return true
     }
 
     fun upload(content: ByteArray) {
         val props = snapshot() ?: error("Configure a WebDAV account first")
         require(content.size <= BoxBackups.MAX_BYTES) { "Backup exceeds 64 MiB" }
-        request(props, "MKCOL", "B-box/", acceptExisting = true)
-        request(props, "PUT", "B-box/" + props.getValue("fileName"), content)
+        val directory = url(props, "B-box/")
+        Libbox.uiWebDAVUpload(directory, url(props, "B-box/" + props.getValue("fileName")),
+            props["user"] as String, props["password"] as String, content)
     }
 
     fun download(): ByteArray {
         val props = snapshot() ?: error("Configure a WebDAV account first")
-        return request(props, "GET", "B-box/" + props.getValue("fileName"))
+        return Libbox.uiWebDAVDownload(url(props, "B-box/" + props.getValue("fileName")),
+            props["user"] as String, props["password"] as String) ?: ByteArray(0)
     }
 
-    private fun request(props: Map<String, Any?>, method: String, path: String, content: ByteArray = byteArrayOf(), acceptExisting: Boolean = false): ByteArray {
+    private fun url(props: Map<String, Any?>, path: String): String {
         validate(props)
         val root = URI((props["uri"] as String).trimEnd('/') + "/")
-        val url = root.resolve(URI(null, null, path, null, null)).toASCIIString()
-        val response = Libbox.uiWebDAVRequest(method, url, props["user"] as String, props["password"] as String, content)
-        require(response.status in 200..299 || acceptExisting && response.status == 405) { "WebDAV $method failed: HTTP ${response.status}" }
-        if (method == "GET") require(response.status == 200) { "WebDAV download failed: HTTP ${response.status}" }
-        return response.content
+        return root.resolve(URI(null, null, path, null, null)).toASCIIString()
     }
 
     companion object {

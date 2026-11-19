@@ -29,7 +29,7 @@
   },
   {
    "name": "checkUpdates",
-   "owner": "host",
+   "owner": "go",
    "target": "core",
    "args": []
   },

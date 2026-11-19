@@ -29,15 +29,8 @@ internal object ProfileWireFields {
         put("intervalUserSet", typed.intervalUserSet)
     }
 
-    /** Rejects malformed values; every key is optional. */
-    fun validate(entry: Map<String, Any?>) {
-        entry["core"]?.let { require(it is String && it in TypedProfile.CORES) { "Invalid profile core" } }
-        for (key in listOf("upload", "download", "total", "expire")) {
-            entry[key]?.let { require(it is Number && it.toDouble().isFinite() && it.toDouble() >= 0) { "Invalid subscription $key" } }
-        }
-        entry["webPageUrl"]?.let { require(it is String) { "Invalid subscription website" } }
-        entry["intervalUserSet"]?.let { require(it is Boolean) { "Invalid update interval option" } }
-    }
+    // Malformed values are rejected by libbox's backup check (core_backup.go,
+    // UIBackupCheck.CheckEntry); every key is optional.
 
     fun declaredCore(entry: Map<String, Any?>): String =
         (entry["core"] as? String)?.takeIf { it in TypedProfile.CORES } ?: TypedProfile.CORE_AUTO
