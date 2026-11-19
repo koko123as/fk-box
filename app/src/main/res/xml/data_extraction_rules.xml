@@ -22,6 +22,9 @@
             path="profiles.db" />
         <include
             domain="database"
+            path="profiles-store.json" />
+        <include
+            domain="database"
             path="settings.db" />
         <include
             domain="file"
