@@ -1,7 +1,14 @@
 package io.nekohasekai.sfa.bridge
 
+import io.nekohasekai.libbox.Libbox
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import org.json.JSONTokener
+
+/** A JSON value libbox already encoded (a [Libbox.uiInvoke] result or a Go event), passed to the UI unchanged. */
+internal class GoWire(val json: String)
 
 /**
  * JNI entry points of the Rust + Slint UI (ui-slint, libfkui.so). Rust calls
@@ -24,6 +31,7 @@ object SlintHost {
         is Float -> if (value.isFinite()) value.toDouble() else JSONObject.NULL
         is Number, is Boolean, is String -> value
         is Enum<*> -> value.name
+        is GoWire -> JSONTokener(value.json).nextValue()
         else -> value.toString()
     }
 }
@@ -56,8 +64,17 @@ private fun JSONObject.any(key: String): Any? = if (has(key) && !isNull(key)) {
 /**
  * Maps the Slint UI's method names onto [BoxBridge] commands: every command the
  * Compose pages ran through `box.call { ... }` (compose/BoxController.kt).
+ * Methods protocol/methods.json gives to Go are forwarded to libbox unchanged;
+ * tools/protocol.py checks this table against the protocol.
  */
-internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): Any? = when (method) {
+internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): Any? {
+    if (method in ProtocolGen.GO_METHODS) {
+        return GoWire(withContext(Dispatchers.IO) { Libbox.uiInvoke(method, args.toString()) })
+    }
+    return hostDispatch(method, args)
+}
+
+private suspend fun BoxBridge.hostDispatch(method: String, args: JSONObject): Any? = when (method) {
     "ready" -> ready()
     "startService" -> startService()
     "stopService" -> stopService()
@@ -97,7 +114,6 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "decodeProfileIntent" -> decodeProfileIntent(args.getString("value"))
     "takeIntent" -> takeIntent()
     "checkConfig" -> checkConfig(args.str("core"), args.getString("content"))
-    "formatConfig" -> formatConfig(args.str("core"), args.getString("content"))
     "saveDocument" -> saveDocument(args.getString("name"), args.getString("content"))
     "shareText" -> shareText(args.getString("content"))
     // Proxies, mode, connections, logs

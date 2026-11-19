@@ -48,3 +48,5 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Compose source guards
         run: python3 tools/verify_newui.py
+      - name: UI protocol (protocol/methods.json against Go, Kotlin and Rust)
+        run: python3 tools/protocol.py check

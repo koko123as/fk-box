@@ -1,0 +1,1476 @@
+{
+ "version": 1,
+ "methods": [
+  {
+   "name": "ready",
+   "owner": "host",
+   "target": "core",
+   "args": []
+  },
+  {
+   "name": "startService",
+   "owner": "host",
+   "target": "core",
+   "args": []
+  },
+  {
+   "name": "stopService",
+   "owner": "host",
+   "target": "core",
+   "args": []
+  },
+  {
+   "name": "reloadService",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "restart"
+   ]
+  },
+  {
+   "name": "checkUpdates",
+   "owner": "host",
+   "target": "core",
+   "args": []
+  },
+  {
+   "name": "geoList",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Resources"
+  },
+  {
+   "name": "geoUpdate",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "name"
+   ],
+   "section": "Resources"
+  },
+  {
+   "name": "geoSetUrl",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "name",
+    "url"
+   ],
+   "section": "Resources"
+  },
+  {
+   "name": "egress",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "openProbe",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "probeGet",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id",
+    "url",
+    "timeoutMillis"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "serviceCheck",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id",
+    "name",
+    "timeoutMillis"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "closeProbe",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "readQualityCache",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "ip"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "writeQualityCache",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "ip",
+    "value"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "releaseMemory",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "setMemoryVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "setLanVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "refreshLan",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "setLanProxy",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "profileId",
+    "revision",
+    "enabled",
+    "port"
+   ],
+   "section": "Dashboard details"
+  },
+  {
+   "name": "readProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "profileRevision",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "profileConfig",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "profileStats",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "writeProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id",
+    "content",
+    "revision"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "selectProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "saveProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "profile"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "saveProfiles",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "entries",
+    "core"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "decodeProfileText",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "content",
+    "name"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "updateProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "deleteProfile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "reorderProfiles",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "ids"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "importProfileFile",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "Profiles"
+  },
+  {
+   "name": "decodeProfileIntent",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "value"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "takeIntent",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "Profiles"
+  },
+  {
+   "name": "checkConfig",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "core",
+    "content"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "formatConfig",
+   "owner": "go",
+   "target": "core",
+   "args": [
+    "core",
+    "content"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "saveDocument",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "name",
+    "content"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "shareText",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "content"
+   ],
+   "section": "Profiles"
+  },
+  {
+   "name": "selectOutbound",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "group",
+    "tag"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "urlTest",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "tag"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setMode",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "mode"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setSystemProxy",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "enabled"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setConnectionsVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setConnectionStatsVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "closeConnection",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "closeConnections",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setLogsVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setTrafficVisible",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "visible"
+   ],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "clearLogs",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Proxies, mode, connections, logs"
+  },
+  {
+   "name": "setPreferences",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "values"
+   ],
+   "section": "Settings"
+  },
+  {
+   "name": "setSetting",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "key",
+    "value",
+    "restart"
+   ],
+   "section": "Settings"
+  },
+  {
+   "name": "saveRouting",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "value"
+   ],
+   "section": "Settings"
+  },
+  {
+   "name": "routingPreview",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "draft"
+   ],
+   "section": "Settings"
+  },
+  {
+   "name": "routingTargets",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "core"
+   ],
+   "section": "Settings"
+  },
+  {
+   "name": "routingStatus",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "updateSettings",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "values"
+   ],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "listApps",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "refresh",
+    "system",
+    "nonInternet"
+   ],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "appLabels",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "packages"
+   ],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "releaseApps",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "requestAppsPermission",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "rescanApps",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "openBatterySettings",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "openUrl",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "url"
+   ],
+   "section": "BoxService.routingStatus, which the Compose pages collected directly."
+  },
+  {
+   "name": "remoteServers",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Remote control"
+  },
+  {
+   "name": "saveRemoteServer",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id",
+    "name",
+    "url",
+    "secret"
+   ],
+   "section": "Remote control"
+  },
+  {
+   "name": "deleteRemoteServer",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Remote control"
+  },
+  {
+   "name": "connectRemoteServer",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Remote control"
+  },
+  {
+   "name": "disconnectRemoteServer",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Remote control"
+  },
+  {
+   "name": "exportBackup",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "name"
+   ],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "readBackup",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "scope"
+   ],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "restoreBackup",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "token",
+    "scope",
+    "strategy"
+   ],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "webdavAccount",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "setWebdavAccount",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "value"
+   ],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "checkWebdav",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "uploadWebdavBackup",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "readWebdavBackup",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "scope"
+   ],
+   "section": "Backups and WebDAV"
+  },
+  {
+   "name": "setTerminalSetting",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "key",
+    "value"
+   ],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "importTerminalFont",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "deleteTerminalFont",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "path"
+   ],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "terminalSettings",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "terminalThemes",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "dark"
+   ],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "terminalFonts",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Terminal settings"
+  },
+  {
+   "name": "configureCapture",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "revision",
+    "config"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "startCapture",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "stopCapture",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.caSnapshot",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.caGenerate",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "revision"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.snapshot",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "limit",
+    "query"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.settings",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.logs",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.clearLogs",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.clear",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.domains",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "query"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.detail",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.export",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "format",
+    "id",
+    "query"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.exportCertificate",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "revision",
+    "module"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "capture.installCertificate",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "revision"
+   ],
+   "section": "Capture"
+  },
+  {
+   "name": "reports.list",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.clear",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.delete",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind",
+    "id"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.files",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind",
+    "id"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.read",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind",
+    "id",
+    "name"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.save",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind",
+    "id",
+    "name"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "reports.export",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "kind",
+    "id",
+    "config",
+    "logs",
+    "encrypt"
+   ],
+   "section": "Reports (crash and power)"
+  },
+  {
+   "name": "tools.startStun",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "server",
+    "outbound"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.stopStun",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.startQuality",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "url",
+    "outbound",
+    "serial",
+    "http3",
+    "seconds"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.confirmQuality",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.dismissQuality",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.stopQuality",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.setTailscaleExitNode",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "peer"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.tailscaleLogout",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.tailscalePing",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "peer"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.stopTailscalePing",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.subscribeTaildrop",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.unsubscribeTaildrop",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.deleteTaildropFile",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "name"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.cancelTaildropReceive",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "sender",
+    "name"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.saveTaildropFile",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "endpoint",
+    "name"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.discardShare",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "token"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.sendShare",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "token",
+    "endpoint",
+    "peer"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.sendTaildropFile",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "endpoint",
+    "peer"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.cancelTaildropSend",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.dismissTaildropSend",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.submitOpenConnect",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "challenge",
+    "values"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.cancelOpenConnect",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "challenge"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.submitOpenVPN",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "challenge",
+    "username",
+    "password",
+    "secret"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.cancelOpenVPN",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "challenge"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.usbDevices",
+   "owner": "host",
+   "target": "android",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.attachUsb",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "server",
+    "device"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "tools.detachUsb",
+   "owner": "host",
+   "target": "android",
+   "args": [
+    "id"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.snapshot",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.options",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "peer"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.start",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "endpoint",
+    "peer",
+    "username",
+    "terminalType",
+    "remember"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.select",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.duplicate",
+   "owner": "host",
+   "target": "core",
+   "args": [],
+   "section": "Tools"
+  },
+  {
+   "name": "ssh.closeSession",
+   "owner": "host",
+   "target": "core",
+   "args": [
+    "id"
+   ],
+   "section": "Tools"
+  },
+  {
+   "name": "attach",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "locale",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "copyText",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "clipboardText",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "openConnectBrowser",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "scanQrCode",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "openTerminalView",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "closeBrowser",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "appIcon",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "menuShow",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "menuHide",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "dialogShow",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "dialogHide",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "dialogError",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "toast",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "textViewer",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "imeBegin",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "imeFrame",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "imeText",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "imeSelect",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  },
+  {
+   "name": "imeEnd",
+   "owner": "ui",
+   "target": "ui",
+   "args": []
+  }
+ ],
+ "events": [
+  {
+   "name": "browserComplete",
+   "owner": "host"
+  },
+  {
+   "name": "connectionStats",
+   "owner": "host"
+  },
+  {
+   "name": "connections",
+   "owner": "host"
+  },
+  {
+   "name": "dashboard",
+   "owner": "host"
+  },
+  {
+   "name": "error",
+   "owner": "host"
+  },
+  {
+   "name": "foreground",
+   "owner": "host"
+  },
+  {
+   "name": "groups",
+   "owner": "host"
+  },
+  {
+   "name": "inbox",
+   "owner": "host"
+  },
+  {
+   "name": "intentAvailable",
+   "owner": "host"
+  },
+  {
+   "name": "lan",
+   "owner": "host"
+  },
+  {
+   "name": "logs",
+   "owner": "host"
+  },
+  {
+   "name": "memory",
+   "owner": "host"
+  },
+  {
+   "name": "outbounds",
+   "owner": "host"
+  },
+  {
+   "name": "ping",
+   "owner": "host"
+  },
+  {
+   "name": "preferences",
+   "owner": "host"
+  },
+  {
+   "name": "profiles",
+   "owner": "host"
+  },
+  {
+   "name": "quality",
+   "owner": "host"
+  },
+  {
+   "name": "rates",
+   "owner": "host"
+  },
+  {
+   "name": "settings",
+   "owner": "host"
+  },
+  {
+   "name": "stun",
+   "owner": "host"
+  },
+  {
+   "name": "systemAccent",
+   "owner": "host"
+  },
+  {
+   "name": "terminal",
+   "owner": "host"
+  },
+  {
+   "name": "tools",
+   "owner": "host"
+  },
+  {
+   "name": "transfers",
+   "owner": "host"
+  },
+  {
+   "name": "usbDevices",
+   "owner": "host"
+  },
+  {
+   "name": "ime",
+   "owner": "ui"
+  },
+  {
+   "name": "insets",
+   "owner": "ui"
+  },
+  {
+   "name": "motion",
+   "owner": "ui"
+  },
+  {
+   "name": "ui",
+   "owner": "ui"
+  }
+ ]
+}

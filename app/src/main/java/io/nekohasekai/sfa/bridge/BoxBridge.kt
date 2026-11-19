@@ -157,6 +157,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     /** Former EventChannel onListen: starts streaming state to [eventSink]. */
     fun listen(eventSink: EventSink) {
         sink = eventSink
+        // Events libbox raises for the UI (protocol/methods.json) take the same path.
+        Libbox.setUIEventSink { kind, payload -> emit(kind, GoWire(payload)) }
         streamJob?.cancel()
         streamJob = scope.launch {
             try {
@@ -411,11 +413,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun checkConfig(core: String?, content: String): Boolean = withContext(Dispatchers.IO) {
         ProfileContent.prepare(core ?: "auto", content)
         true
-    }
-
-    suspend fun formatConfig(core: String?, content: String): String = withContext(Dispatchers.IO) {
-        val resolved = Libbox.resolveProfileCore(core ?: "auto", content)
-        Libbox.formatCoreConfig(resolved, content).value
     }
 
     /** False when the user dismissed the file picker. */
@@ -926,6 +923,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         qrScanner.close()
         streamJob?.cancel()
         sink = null
+        Libbox.setUIEventSink(null)
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
             dashboard.setTrafficVisible(false)
