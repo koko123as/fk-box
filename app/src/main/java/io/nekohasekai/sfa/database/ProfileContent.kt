@@ -25,20 +25,12 @@ internal object ProfileContent {
     /**
      * Turns what a user imported or a subscription returned into a profile for [declaredCore]
      * ("auto" detects): share links / Base64 node lists are converted, sing-box JSON drops the
-     * retired capture options, and every result is checked by its own core's parser.
+     * retired capture options, and every result is checked by its own core's parser
+     * (libbox PrepareCoreProfile, given the cores left on in Settings).
      */
     fun prepare(declaredCore: String, content: String): Prepared {
-        require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
-        val prepared = if (Libbox.detectCoreConfig(content) == Libbox.CoreLinks) {
-            val converted = Libbox.convertCoreShareLinksEnabled(declaredCore, Settings.enabledCores(), content)
-            Prepared(converted.core, converted.content)
-        } else {
-            val core = Libbox.resolveProfileCore(declaredCore, content)
-            Prepared(core, if (core == TypedProfile.CORE_SING_BOX) Libbox.removeUIRetiredCaptureOptions(content) else content)
-        }
-        Settings.requireCoreEnabled(prepared.core)
-        validate(prepared.core, prepared.content)
-        return prepared
+        val prepared = Libbox.prepareCoreProfile(declaredCore, Settings.enabledCores(), content)
+        return Prepared(prepared.core, prepared.content)
     }
 
     /**
