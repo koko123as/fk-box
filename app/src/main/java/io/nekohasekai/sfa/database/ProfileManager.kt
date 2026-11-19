@@ -145,7 +145,7 @@ object ProfileManager {
 
         override suspend fun updateServers(servers: List<RemoteServer>): Int = database.remoteServerDao().update(servers)
 
-        override suspend fun deleteServers(servers: List<RemoteServer>): Int = database.remoteServerDao().delete(servers)
+        override suspend fun deleteServers(servers: List<RemoteServer>): Int = servers.sumOf { database.remoteServerDao().delete(it) }
 
         override suspend fun <T> transaction(block: suspend () -> T): T = database.withTransaction(block)
     }
