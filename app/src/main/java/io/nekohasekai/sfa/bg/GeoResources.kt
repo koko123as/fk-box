@@ -6,7 +6,6 @@ import io.nekohasekai.libbox.GeoUpdate
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.TypedProfile
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -352,7 +351,12 @@ object GeoResources {
     }
 }
 
-/** The decisions behind [GeoResources], free of Android and libbox for unit tests. */
+/**
+ * The decisions behind [GeoResources]. Which files a core needs, whether the bundle replaces
+ * a file and when an update is due are libbox's (core_geo_policy.go); the state file, the
+ * custom URLs (with java.net.URI's idea of a valid URL) and the APK manifest are the host's
+ * own storage formats and stay here, where their unit tests run on the JVM without libbox.
+ */
 object GeoPolicy {
     const val GEOIP = "geoip"
     const val GEOSITE = "geosite"
@@ -405,50 +409,22 @@ object GeoPolicy {
     )
 
     /**
-     * Whether the bundled copy should replace what is installed. A missing file
-     * is always restored; otherwise the bundle only replaces data older than
-     * itself, so a newer download (or a file mihomo fetched) is never
-     * overwritten, while an app upgrade with a newer bundle replaces an older
-     * bundled or downloaded file.
+     * Whether the bundled copy should replace what is installed (libbox GeoShouldExtract):
+     * a missing file is always restored; otherwise the bundle only replaces data older than
+     * itself, so a newer download (or a file mihomo fetched) is never overwritten.
      */
-    fun shouldExtract(exists: Boolean, installed: Installed?, bundledSha256: String, bundleTime: Long, fileModified: Long): Boolean {
-        if (!exists) return true
-        if (installed == null) return fileModified in 1 until bundleTime
-        if (installed.sha256 == bundledSha256) return false
-        return installed.time < bundleTime
-    }
+    fun shouldExtract(exists: Boolean, installed: Installed?, bundledSha256: String, bundleTime: Long, fileModified: Long): Boolean =
+        Libbox.geoShouldExtract(exists, installed != null, installed?.sha256.orEmpty(), installed?.time ?: 0L, bundledSha256, bundleTime, fileModified)
 
     /**
-     * The resources [core] reads for [text] (its profile content plus the
-     * routing rules compiled for it). sing-box uses rule sets, none of these.
-     * Xray loads geoip.dat / geosite.dat only for the geoip:/geosite: (or
-     * ext:geoip.dat:…) entries it is given. mihomo may read GeoSite and the
-     * MMDB lazily (GEOSITE/GEOIP rules, DNS fallback-filter), so both bundled
-     * files are always prepared; ASN.mmdb only for IP-ASN rules and geoip.dat
-     * only in geodata-mode. A reference this check misses still has mihomo's
-     * own download or the Resources page to fall back on.
+     * The resources [core] reads for [text] (its profile content plus the routing rules
+     * compiled for it), in libbox GeoResourcesNeeded's order. A reference this check misses
+     * still has mihomo's own download or the Resources page to fall back on.
      */
-    fun needed(core: String, text: String): Set<String> {
-        val lower = text.lowercase()
-        return when (core) {
-            TypedProfile.CORE_XRAY -> buildSet {
-                if ("geosite:" in lower || "geosite.dat" in lower) add(GEOSITE)
-                if ("geoip:" in lower || "geoip.dat" in lower) add(GEOIP)
-            }
-            TypedProfile.CORE_MIHOMO -> buildSet {
-                add(GEOSITE)
-                add(MMDB)
-                if ("ip-asn" in lower) add(ASN)
-                if (GEODATA_MODE.containsMatchIn(lower)) add(GEOIP)
-            }
-            else -> emptySet()
-        }
-    }
+    fun needed(core: String, text: String): Set<String> =
+        Libbox.geoResourcesNeeded(core, text).split(',').filter { it.isNotEmpty() }.toCollection(LinkedHashSet())
 
-    private val GEODATA_MODE = Regex("""geodata-mode["']?\s*:\s*true""")
-
-    fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean =
-        lastChecked <= 0L || now - lastChecked >= intervalHours.coerceAtLeast(1) * 3_600_000L
+    fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean = Libbox.geoUpdateDue(lastChecked, intervalHours, now)
 
     fun validUrl(value: String): Boolean = try {
         val uri = URI(value)
