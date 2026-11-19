@@ -52,6 +52,11 @@ import java.io.Closeable
  * bridge is initialized, and state is streamed as events ([listen]).
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
+    private companion object {
+        /** The bridge whose sink libbox holds (Libbox.setUIEventSink is process-wide). */
+        val uiEventOwner = java.util.concurrent.atomic.AtomicReference<BoxBridge?>(null)
+    }
+
     fun interface EventSink {
         fun success(event: Map<String, Any?>)
     }
@@ -158,6 +163,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun listen(eventSink: EventSink) {
         sink = eventSink
         // Events libbox raises for the UI (protocol/methods.json) take the same path.
+        uiEventOwner.set(this)
         Libbox.setUIEventSink { kind, payload -> emit(kind, GoWire(payload)) }
         streamJob?.cancel()
         streamJob = scope.launch {
@@ -923,7 +929,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         qrScanner.close()
         streamJob?.cancel()
         sink = null
-        Libbox.setUIEventSink(null)
+        // Only the bridge that installed the sink removes it: a recreated
+        // activity's bridge may already have installed its own.
+        if (uiEventOwner.compareAndSet(this, null)) Libbox.setUIEventSink(null)
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
             dashboard.setTrafficVisible(false)
