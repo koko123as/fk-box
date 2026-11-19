@@ -44,19 +44,16 @@ internal object ProfileContent {
     }
 
     /**
-     * One profile per element, named by its remarks (or "[source] #n"), each prepared for
-     * [declaredCore] ("auto" detects every element separately). Fails on the first element
-     * that does not pass its core's check, naming it, so nothing is saved half-way.
+     * One profile per element of a JSON array of configs in [content], named by its remarks
+     * (or "[source] #n"), each prepared for [declaredCore] ("auto" detects every element
+     * separately); null when [content] is not such an array. Fails on the first element that
+     * does not pass its core's check, naming it, so nothing is saved half-way
+     * (libbox PrepareCoreProfileArray, given the cores left on in Settings).
      */
-    fun prepareArray(declaredCore: String, source: String, elements: List<ProfileArray.Element>): List<ProfileArray.Entry> =
-        ProfileArray.entries(source, elements).mapIndexed { index, entry ->
-            val prepared = try {
-                prepare(declaredCore, entry.content)
-            } catch (e: Exception) {
-                throw IllegalArgumentException("Configuration ${index + 1} (${entry.name}): ${e.message}", e)
-            }
-            entry.copy(content = prepared.content, core = prepared.core)
-        }
+    fun prepareArray(declaredCore: String, source: String, content: String): List<ProfileArray.Entry>? {
+        val prepared = Libbox.prepareCoreProfileArray(declaredCore, Settings.enabledCores(), source, content) ?: return null
+        return (0 until prepared.len()).map { ProfileArray.Entry(prepared.name(it), prepared.content(it), prepared.core(it)) }
+    }
 
     /**
      * A subscription that returns an array keeps each profile on its own element

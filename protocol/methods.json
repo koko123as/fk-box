@@ -248,7 +248,7 @@
   },
   {
    "name": "decodeProfileText",
-   "owner": "host",
+   "owner": "go",
    "target": "core",
    "args": [
     "content",
@@ -308,7 +308,7 @@
   },
   {
    "name": "checkConfig",
-   "owner": "host",
+   "owner": "go",
    "target": "core",
    "args": [
     "core",

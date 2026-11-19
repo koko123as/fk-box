@@ -361,9 +361,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         saved
     }
 
-    suspend fun decodeProfileText(content: String, name: String = "Imported profile") =
-        withContext(Dispatchers.IO) { profiles.decodeText(content, name) }
-
     suspend fun updateProfile(id: Long?) {
         localProfiles {
             profiles.update(required(id))
@@ -415,11 +412,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     }
 
     fun takeIntent() = activity.takeIntent()
-
-    suspend fun checkConfig(core: String?, content: String): Boolean = withContext(Dispatchers.IO) {
-        ProfileContent.prepare(core ?: "auto", content)
-        true
-    }
 
     /** False when the user dismissed the file picker. */
     suspend fun saveDocument(name: String, content: String): Boolean {

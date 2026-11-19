@@ -22,6 +22,7 @@ import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.backend.tools.TaildropFiles
 import io.nekohasekai.sfa.constant.Bugs
+import io.nekohasekai.sfa.database.GoSettingsStore
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import kotlinx.coroutines.Dispatchers
@@ -139,6 +140,9 @@ class Application : Application() {
     suspend fun setupLibbox() = setupAccess.withLock {
         if (setupCompleted) return@withLock
         applyLocale()
+        // Go reads the core switches (and later other settings) through this;
+        // every libbox caller that needs them waits on setupLibbox first.
+        Libbox.setUISettingsStore(GoSettingsStore)
         val dir = installWorkingDir() ?: error("android: external storage unavailable")
         Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))
         setupCompleted = true
