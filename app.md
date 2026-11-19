@@ -42,7 +42,7 @@
 | 通道与命令 | `bridge/BoxBridge.kt` | 沿用原 MethodChannel 命令与 EventChannel 消息名，经 `call()` / `listen()`（不注册平台通道）对接配置、工具和设置 |
 | 原生状态 | `backend/` | 仪表盘、分组、连接、日志、Tailscale/Taildrop、诊断和认证状态模型 |
 | 平台视图 | `bridge/BoxBrowserFactory.kt`、`bridge/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以原生视图叠加在 Slint 页面上 |
-| 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、Room、订阅更新及本地/远程命令目标 |
+| 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、订阅更新及本地/远程命令目标；配置行在 libbox 配置存储，设置在 Room 键值库 |
 | 应用查询 | [vendor/](app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
 配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
@@ -52,6 +52,8 @@
 Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/Shizuku 终端、Ghostty 设置和导入字体、OpenConnect/OpenVPN 认证、USB/IP、网络诊断、崩溃/OOM/电量报告均通过新页面使用现有后端。报告导出的“为 sing-box 维护者加密”开关默认关闭：上游 `Libbox.createZipArchive` 的 age 收件人是 sing-box 维护者的密钥，加密后的 `.zip.age` 只有他们能解开；崩溃报告导出总是包含 `jvm.log`（崩溃堆栈，“包含日志”只控制 `go.log`），并附带界面（libfkui）最近一次 panic 的 `fkui-panic.txt`（panic 钩子写入应用 files 目录，被捕获的 panic 也会写入）。历史 MOD-014 的功能移除已回退，不能按旧裁剪记录删除这些能力。
 
 ## 配置、服务应用与备份
+
+配置与远程服务器的行由 libbox 的配置存储持有（格式与语义见 [libbox.md](libbox.md#配置存储core_profile_storego)）。[ProfileManager.kt](app/src/main/java/io/nekohasekai/sfa/database/ProfileManager.kt) 与 `RemoteServerManager` 保持原有接口和变更回调，只是转调 libbox（行经 [ProfileStoreCodec.kt](app/src/main/java/io/nekohasekai/sfa/database/ProfileStoreCodec.kt) 编解码），`transaction` 对应存储事务。新版本首次访问时从 Room `profiles.db` 一次性导入：读出全部行和 `sqlite_sequence`，libbox 暂存并读回后逐字段比对，一致才放到位；导入失败时本进程继续使用 Room（行为与旧版相同），下次启动重试。Room 数据库只读不改、不删：降级到旧版 APK 时仍能看到导入时的配置，但导入后的新增、修改和删除旧版看不到；再次升级时沿用配置存储，不合并旧版期间在 Room 中的改动。设备间迁移规则同时包含 `profiles.db` 与 `profiles-store.json`。
 
 [BoxProfiles.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxProfiles.kt) 负责导入、编辑、手动订阅更新、配置切换及局域网代理保存；[ProfileContent.kt](app/src/main/java/io/nekohasekai/sfa/database/ProfileContent.kt) 的互斥锁和内容替换流程由前台编辑和后台订阅更新共用。
 
@@ -71,7 +73,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 - [DashboardConfigCache.kt](app/src/main/java/io/nekohasekai/sfa/bridge/DashboardConfigCache.kt) 仅缓存选中配置和已启动配置的内容、修订及最近一组接口地址的 LAN 解析结果，相同内容共用缓存。前台两秒轮询保留网络/热点检测，以配置 ID、路径、文件时间/大小及写入代次检查保存配置；未变化时不重读内容、计算哈希或调用 LAN 解析。地址变化复用内容和修订，重新调用 LAN 解析；运行配置按成功启动快照更新。普通写入及备份恢复/回滚共用 `ProfileContent.write` 推进代次，避免同大小、同时间戳的修改漏刷。解析错误也缓存，配置/地址变化或手动刷新时重试，取消不缓存。缓存条目同时保存 `Libbox.detectCoreConfig` 的结果（每份内容只识别一次），判断 LAN 开关是否可用时不再每次轮询解析整份配置。启动快照 `ready()` 并行读取配置列表与设置，不再扫描 LAN；内网 IP 卡片的可见轮询负责加载。
 - 二进制 `.bpf` 导入保留订阅 URL、更新间隔、自动更新及时间戳。动态 QRS 通过 [BoxQrScanner.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxQrScanner.kt) 按相机会话收集有界帧、校验 CRC，并支持原压缩文件封装。
 
-[BoxBackups.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用 Room 事务；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
+[BoxBackups.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用配置存储事务；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
 
 界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受仪表盘的全部卡片键（含 `VPN`、`Service status`、`Connection stats`、`System HTTP proxy` 及已退役仍被接受的 `Connections`）；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）；新的页面切换偏好为 `tabMotion`（`slide`/`fade`），与退役的 `tabAnimation` 无关。`BoxActivity` 读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，在 `locale` 回复中以 `animatorScale` 提供，回到前台或重新连接界面时若有变化再发 `motion` 事件（`{"scale": …}`），界面按其缩放全部动效（见 [flclash.md](flclash.md#动效)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
 

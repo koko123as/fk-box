@@ -149,6 +149,14 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 ## 新增接口与行为
 
+### 配置存储（[core_profile_store.go](libbox/core_profile_store.go)）
+
+配置与远程服务器的行（原 Room `profiles.db` 第 3 版的 `profiles`、`remote_servers` 两表）由 libbox 持有，保存在应用 `databases/profiles-store.json`（`format` `fk-box-profile-store`，`version` 1），每次写入为临时文件、fsync、rename 再 fsync 目录。`TypedProfile` 不再以 Parcel 二进制保存，而是逐字段写出（path、type 序号、remoteURL、lastUpdated 毫秒、autoUpdate、autoUpdateInterval、core、upload/download/total/expire、webPageUrl、intervalUserSet）；`icon` 的 null 与空串分开保存。配置内容文件仍在原路径，存储只记录路径。
+
+语义沿用 Room DAO：id 不复用（导入时带上 `sqlite_sequence`），插入 id 为 0 时取下一个 id、带 id 时保留该 id（已存在则报 `UNIQUE constraint failed`），更新/删除返回匹配的行数，列表按 `userOrder` 升序、相同时按 id，`nextOrder` 为最大 `userOrder`+1，空表为 0。`UIProfileStoreBegin`/`Commit`/`Rollback` 对应 Room 的 `withTransaction`：事务内的调用带令牌，读写私有副本，提交时一次写盘；事务进行中，不带令牌的读看到已提交状态，不带令牌的写和新的事务等待其结束；提交写盘失败时变更丢弃、事务结束。
+
+首次运行由应用从 Room 一次性导入：`UIProfileStoreStageImport` 写出并读回 `profiles-store.json.import`，应用逐行逐字段与 Room 比对，`UIProfileStoreCommitImport` 校验同一份字节的 SHA-256 后 rename 到位。rename 之前存储不存在，中断后下次重新导入；之后不再导入。存储文件存在但无法读取（损坏或版本更新）时报错，不重新导入，也不覆盖。不使用 SQLite：gomobile 构建开启 CGO，但核心准备步骤要求 `go.mod` 依赖与固定版本一致（新增 modernc.org/sqlite 或 mattn/go-sqlite3 会改动上游依赖并增加数 MB 原生代码），配置行数很少，单个原子写入的 JSON 文件即可满足一致性。回归为 [core_profile_store_test.go](libbox/core_profile_store_test.go)（CRUD、排序、Room 形状数据导入、幂等与中断导入、事务、写盘失败、并发）。
+
 ### 运行时内存
 
 `ReadUIRuntimeMemory` 返回 `UIRuntimeMemory`，包含总量、在用/空闲堆、栈、其他运行时内存及 goroutine 数；总量为 `Sys - HeapReleased`。`CollectUIRuntimeMemory` 调用 `debug.FreeOSMemory`。Android 的 `BoxDashboard` 将这些值与同进程 RSS 结合显示；它们不是独立核心进程的系统内存统计。

@@ -9,6 +9,10 @@
         requireFlags="deviceToDeviceTransfer" />
     <include
         domain="database"
+        path="profiles-store.json"
+        requireFlags="deviceToDeviceTransfer" />
+    <include
+        domain="database"
         path="settings.db"
         requireFlags="deviceToDeviceTransfer" />
     <include
