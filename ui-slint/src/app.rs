@@ -11,7 +11,7 @@ use serde_json::{json, Map, Value};
 use slint::{ComponentHandle, SharedString};
 
 use crate::format;
-use crate::host;
+use crate::platform;
 use crate::i18n::tr;
 use crate::pages::{self, Mark};
 use crate::{AppWindow, Nav};
@@ -242,7 +242,7 @@ pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>)
         c.pending.insert(id, Box::new(reply));
         id
     });
-    if let Err(error) = host::invoke(id, method, &args.to_string()) {
+    if let Err(error) = platform::invoke(id, method, &args.to_string()) {
         on_reply(id, false, &json!({ "v": error }).to_string());
     }
 }

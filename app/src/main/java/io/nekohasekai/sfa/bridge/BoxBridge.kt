@@ -52,6 +52,11 @@ import java.io.Closeable
  * bridge is initialized, and state is streamed as events ([listen]).
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
+    private companion object {
+        /** The bridge whose sink libbox holds (Libbox.setUIEventSink is process-wide). */
+        val uiEventOwner = java.util.concurrent.atomic.AtomicReference<BoxBridge?>(null)
+    }
+
     fun interface EventSink {
         fun success(event: Map<String, Any?>)
     }
@@ -157,6 +162,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     /** Former EventChannel onListen: starts streaming state to [eventSink]. */
     fun listen(eventSink: EventSink) {
         sink = eventSink
+        // Events libbox raises for the UI (protocol/methods.json) take the same path.
+        uiEventOwner.set(this)
+        Libbox.setUIEventSink { kind, payload -> emit(kind, GoWire(payload)) }
         streamJob?.cancel()
         streamJob = scope.launch {
             try {
@@ -411,11 +419,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun checkConfig(core: String?, content: String): Boolean = withContext(Dispatchers.IO) {
         ProfileContent.prepare(core ?: "auto", content)
         true
-    }
-
-    suspend fun formatConfig(core: String?, content: String): String = withContext(Dispatchers.IO) {
-        val resolved = Libbox.resolveProfileCore(core ?: "auto", content)
-        Libbox.formatCoreConfig(resolved, content).value
     }
 
     /** False when the user dismissed the file picker. */
@@ -926,6 +929,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         qrScanner.close()
         streamJob?.cancel()
         sink = null
+        // Only the bridge that installed the sink removes it: a recreated
+        // activity's bridge may already have installed its own.
+        if (uiEventOwner.compareAndSet(this, null)) Libbox.setUIEventSink(null)
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
             dashboard.setTrafficVisible(false)

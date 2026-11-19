@@ -77,10 +77,7 @@ fn families(collection: &mut fontique::Collection, faces: &[Face]) -> Vec<fontiq
 }
 
 fn log(message: &str) {
-    #[cfg(target_os = "android")]
-    log::info!("{message}");
-    #[cfg(not(target_os = "android"))]
-    eprintln!("{message}");
+    crate::platform::log_info(message);
 }
 
 pub fn apply(spec: &Spec) {
@@ -136,16 +133,8 @@ pub fn read_spec(path: &std::path::Path) -> Option<Spec> {
     Some(Spec { sans: faces(&value["sans"]), cjk: faces(&value["cjk"]), mono: faces(&value["mono"]) })
 }
 
-#[cfg(target_os = "android")]
-pub fn install(files_dir: Option<std::path::PathBuf>) {
-    match files_dir.map(|d| d.join("fkui-fonts.json")).and_then(|p| read_spec(&p)) {
-        Some(spec) => apply(&spec),
-        None => log("system fonts: no spec, using fontique defaults"),
-    }
-}
-
 /// The harness: `SHOT_FONTS` is a JSON spec file like the one on Android.
-#[cfg(not(target_os = "android"))]
+#[cfg(feature = "shot")]
 pub fn install() {
     if let Some(spec) = std::env::var_os("SHOT_FONTS").and_then(|p| read_spec(std::path::Path::new(&p))) {
         apply(&spec);

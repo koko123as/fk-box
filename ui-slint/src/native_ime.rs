@@ -46,7 +46,7 @@ pub fn scale() -> f32 {
 /// Menus, dialogs, messages and text selection go to the platform's own
 /// widgets (src/nav.rs) where the host has them.
 pub fn native_ui() -> bool {
-    cfg!(target_os = "android")
+    crate::platform::NATIVE_UI
 }
 
 /// The UTF-16 offset of a byte offset (clamped to the text and a character).
@@ -60,8 +60,8 @@ pub fn utf16_offset(text: &str, byte: i32) -> usize {
 
 pub fn install(w: &AppWindow) {
     let ime = w.global::<NativeIme>();
-    #[cfg(target_os = "android")]
-    {
+    // The platform's own text editor over Slint fields, where the host has one.
+    if crate::platform::NATIVE_UI {
         ime.set_enabled(true);
     }
     ime.on_begin(|spec: NativeImeSpec| {

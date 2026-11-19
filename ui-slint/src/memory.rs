@@ -22,8 +22,7 @@ pub fn release() {
     // After the closing route's projection, so the purge frame draws the page
     // underneath and nothing of the closed one is cached again.
     slint::Timer::single_shot(Duration::from_millis(50), || {
-        #[cfg(target_os = "android")]
-        i_slint_renderer_skia::fkbox_request_purge();
+        crate::platform::purge_renderer();
         crate::app::with_window(|w| w.window().request_redraw());
     });
     // After the purge frame and the host's GC have run.
@@ -42,32 +41,8 @@ pub fn release_when_idle() {
     IDLE_RELEASE.with(|t| t.start(slint::TimerMode::SingleShot, Duration::from_millis(1500), release));
 }
 
-/// Gives the native heap's free pages back to the system: bionic's
-/// M_PURGE_ALL (API 34) or M_PURGE (API 28), glibc's malloc_trim on a host.
+/// Gives the native heap's free pages back to the system (platform::trim_heap:
+/// bionic's M_PURGE_ALL or M_PURGE on Android, glibc's malloc_trim on a host).
 pub fn trim() {
-    #[cfg(target_os = "android")]
-    {
-        extern "C" {
-            fn mallopt(param: std::os::raw::c_int, value: std::os::raw::c_int) -> std::os::raw::c_int;
-        }
-        const M_PURGE: std::os::raw::c_int = -101;
-        const M_PURGE_ALL: std::os::raw::c_int = -104;
-        // SAFETY: mallopt with a purge parameter only releases free pages; an
-        // allocator that does not know it returns 0.
-        unsafe {
-            if mallopt(M_PURGE_ALL, 0) == 0 {
-                mallopt(M_PURGE, 0);
-            }
-        }
-    }
-    #[cfg(all(target_os = "linux", target_env = "gnu"))]
-    {
-        extern "C" {
-            fn malloc_trim(pad: usize) -> std::os::raw::c_int;
-        }
-        // SAFETY: malloc_trim only releases free heap pages.
-        unsafe {
-            malloc_trim(0);
-        }
-    }
+    crate::platform::trim_heap();
 }
