@@ -44,7 +44,7 @@ func PrepareCoreProfile(declared string, enabledCores string, content string) (*
 		}
 	}
 	if !coreEnabledIn(enabledCores, prepared.Core) {
-		return nil, fmt.Errorf("The %s core is turned off. Turn it on in Settings › General › Core, or pick another core for this profile.", coreLabel(prepared.Core))
+		return nil, coreTurnedOffError(prepared.Core)
 	}
 	if err := validateCoreProfile(prepared.Core, prepared.Content); err != nil {
 		return nil, err
@@ -86,4 +86,65 @@ func coreLabel(core string) string {
 	default:
 		return "sing-box"
 	}
+}
+
+// UIProfileArrayEntries is the result of PrepareCoreProfileArray: the
+// profiles to create, read by index (gomobile cannot return slices).
+type UIProfileArrayEntries struct {
+	entries []uiProfileArrayEntry
+}
+
+type uiProfileArrayEntry struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+	Core    string `json:"core"`
+}
+
+func (e *UIProfileArrayEntries) Len() int32 { return int32(len(e.entries)) }
+
+// Name is the profile's name (ProfileArrayNames).
+func (e *UIProfileArrayEntries) Name(index int32) string { return e.entries[index].Name }
+
+// Content is the element prepared by PrepareCoreProfile.
+func (e *UIProfileArrayEntries) Content(index int32) string { return e.entries[index].Content }
+
+// Core is the core that runs the prepared element.
+func (e *UIProfileArrayEntries) Core(index int32) string { return e.entries[index].Core }
+
+// PrepareCoreProfileArray splits a JSON array of configs into one profile
+// per element, named by ProfileArrayNames from source and each prepared with
+// PrepareCoreProfile for declared ("auto" detects every element separately).
+// It fails on the first element that does not pass, naming it, so nothing is
+// saved half-way; nil when content is not such an array. Moved from the
+// Android app's ProfileContent.splitArray + prepareArray.
+func PrepareCoreProfileArray(declared string, enabledCores string, source string, content string) (*UIProfileArrayEntries, error) {
+	entries, err := prepareCoreProfileArray(declared, enabledCores, source, content)
+	if err != nil || entries == nil {
+		return nil, err
+	}
+	return &UIProfileArrayEntries{entries: entries}, nil
+}
+
+func prepareCoreProfileArray(declared string, enabledCores string, source string, content string) ([]uiProfileArrayEntry, error) {
+	if DetectCoreConfig(content) != CoreArray {
+		return nil, nil
+	}
+	split, err := SplitCoreConfigArray(content)
+	if err != nil {
+		return nil, err
+	}
+	remarks := make([]string, len(split.entries))
+	for index, element := range split.entries {
+		remarks[index] = element.remarks
+	}
+	names := profileArrayNames(source, remarks)
+	entries := make([]uiProfileArrayEntry, len(split.entries))
+	for index, element := range split.entries {
+		prepared, err := PrepareCoreProfile(declared, enabledCores, element.content)
+		if err != nil {
+			return nil, fmt.Errorf("Configuration %d (%s): %s", index+1, names[index], err.Error())
+		}
+		entries[index] = uiProfileArrayEntry{Name: names[index], Content: prepared.Content, Core: prepared.Core}
+	}
+	return entries, nil
 }

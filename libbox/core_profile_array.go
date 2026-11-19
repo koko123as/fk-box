@@ -57,6 +57,11 @@ func ProfileArrayNames(source string, remarksJSON string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	data, err := json.Marshal(profileArrayNames(source, remarks))
+	return string(data), err
+}
+
+func profileArrayNames(source string, remarks []string) []string {
 	names := make([]string, len(remarks))
 	if len(remarks) == 1 && kotlinTrim(remarks[0]) == "" {
 		names[0] = kotlinTrim(source)
@@ -68,8 +73,7 @@ func ProfileArrayNames(source string, remarksJSON string) (string, error) {
 			names[index] = profileArrayName(source, element, int32(index))
 		}
 	}
-	data, err := json.Marshal(names)
-	return string(data), err
+	return names
 }
 
 // ProfileArraySelect returns the element a subscription profile follows, or
