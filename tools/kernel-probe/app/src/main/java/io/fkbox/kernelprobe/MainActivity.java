@@ -34,6 +34,7 @@ public class MainActivity extends Activity {
                 Intent intent = new Intent(this, ProbeVpnService.class);
                 intent.putExtra("kernel", kernel);
                 intent.putExtra("stack", getIntent().getStringExtra("stack"));
+                intent.putExtra("exclude", getIntent().getStringExtra("exclude"));
                 startService(intent);
             }
         }).start();

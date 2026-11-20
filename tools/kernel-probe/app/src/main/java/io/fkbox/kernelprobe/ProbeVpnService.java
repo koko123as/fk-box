@@ -28,18 +28,20 @@ public class ProbeVpnService extends VpnService {
     public int onStartCommand(Intent intent, int flags, int startId) {
         final String kernel = intent.getStringExtra("kernel");
         final String stack = intent.getStringExtra("stack");
-        new Thread(() -> probe(kernel, stack == null ? "gvisor" : stack)).start();
+        final boolean exclude = !"false".equals(intent.getStringExtra("exclude"));
+        new Thread(() -> probe(kernel, stack == null ? "gvisor" : stack, exclude)).start();
         return START_NOT_STICKY;
     }
 
-    private void probe(String kernel, String stack) {
+    private void probe(String kernel, String stack, boolean exclude) {
         try {
             boolean mihomo = "mihomo".equals(kernel);
             Builder builder = new Builder().setSession("kernel-probe").setMtu(1500);
             // mihomo derives its TUN address from dns.fake-ip-range (198.18.0.1/16 -> 198.18.0.1/30).
             builder.addAddress(mihomo ? "198.18.0.1" : "172.19.0.1", 30);
             builder.addRoute("10.233.0.0", 16);
-            builder.addDisallowedApplication(getPackageName());
+            if (exclude) builder.addDisallowedApplication(getPackageName());
+            Log.i(MainActivity.TAG, "PROBE exclude self from VPN: " + exclude);
             ParcelFileDescriptor tun = builder.establish();
             if (tun == null) {
                 Log.i(MainActivity.TAG, "PROBE establish returned null");

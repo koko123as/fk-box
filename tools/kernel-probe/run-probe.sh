@@ -10,11 +10,11 @@ pkg=io.fkbox.kernelprobe
 adb install -r -g "$apk"
 adb shell appops set "$pkg" ACTIVATE_VPN allow
 failed=0
-probe() { # kernel stack expect
-  local name="$1-$2"
+probe() { # kernel stack exclude
+  local name="$1-$2-exclude-${3:-true}"
   adb shell am force-stop "$pkg"
   adb logcat -c
-  adb shell am start -W -n "$pkg/.MainActivity" --es kernel "$1" --es stack "$2" >/dev/null
+  adb shell am start -W -n "$pkg/.MainActivity" --es kernel "$1" --es stack "$2" --es exclude "${3:-true}" >/dev/null
   sleep 12
   for i in 1 2 3; do adb shell "toybox nc -w 2 10.233.0.5 80 </dev/null" >/dev/null 2>&1; sleep 1; done
   sleep 16
@@ -31,6 +31,7 @@ probe() { # kernel stack expect
 probe xray -
 probe mihomo gvisor
 probe mihomo system
+probe mihomo system false
 {
   echo "### Emulator (API 34, x86_64)"
   for f in "$logs"/*.txt; do
