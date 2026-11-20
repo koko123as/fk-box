@@ -6,46 +6,20 @@ package libbox
 // running core directly; every outbound socket of Xray and mihomo is passed to
 // PlatformInterface.AutoDetectInterfaceControl, which calls VpnService.protect.
 //
-// References:
-//   - Xray Android TUN: xray-core proxy/tun (tun_android.go reads xray.tun.fd)
-//   - Xray protect hook: libXray controller/controller_android.go
-//   - mihomo fd TUN and socket hook: mihomo listener/sing_tun (file-descriptor),
-//     component/dialer.DefaultSocketHook, and ClashMetaForAndroid's use of the
-//     cmfa build tag.
+// The kernels themselves are in core_kernel_singbox.go, core_kernel_xray.go
+// and core_kernel_mihomo.go (one interface, core_kernel.go); they reach the
+// app only through the host services in core_host.go.
 
 import (
-	"context"
-	"encoding/json"
 	"fmt"
 	"net/netip"
-	"os"
-	"strconv"
-	"strings"
 	"sync"
-	"sync/atomic"
 	"syscall"
 	"time"
 
-	mihomoDialer "github.com/metacubex/mihomo/component/dialer"
-	mihomoResolver "github.com/metacubex/mihomo/component/resolver"
-	mihomoConfig "github.com/metacubex/mihomo/config"
-	mihomoConstant "github.com/metacubex/mihomo/constant"
-	mihomoExecutor "github.com/metacubex/mihomo/hub/executor"
-	mihomoListener "github.com/metacubex/mihomo/listener"
-	mihomoLog "github.com/metacubex/mihomo/log"
-	mihomoTunnel "github.com/metacubex/mihomo/tunnel"
-	mDNS "github.com/miekg/dns"
 	"github.com/sagernet/sing-box/daemon"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	tun "github.com/sagernet/sing-tun"
 	E "github.com/sagernet/sing/common/exceptions"
-	xrayLogApp "github.com/xtls/xray-core/app/log"
-	xrayCommonLog "github.com/xtls/xray-core/common/log"
-	xrayPlatform "github.com/xtls/xray-core/common/platform"
 	xrayCore "github.com/xtls/xray-core/core"
-	xraySerial "github.com/xtls/xray-core/infra/conf/serial"
-	xrayInternet "github.com/xtls/xray-core/transport/internet"
 )
 
 // The TUN every non-sing-box core gets. sing-box keeps using its own profile's
@@ -66,6 +40,8 @@ type runningCore struct {
 	startedAt time.Time
 	// The level the core runs at, for GetDefaultLogLevel.
 	logLevel daemon.LogLevel
+	// unwatchNetwork ends the kernel's default-network watch.
+	unwatchNetwork func()
 
 	access           sync.Mutex
 	xrayBalancers    []xrayBalancer
@@ -91,60 +67,7 @@ var (
 	coreLifecycle sync.Mutex
 	coreAccess    sync.Mutex
 	activeCore    *runningCore
-	coreProtector atomic.Pointer[PlatformInterface]
-	coreLogSink   atomic.Pointer[CommandServer]
 )
-
-func init() {
-	// Both hooks are process-global and cannot be unregistered, so they are
-	// installed once and look up the current platform interface each time.
-	_ = xrayInternet.RegisterDialerController(func(network, address string, conn syscall.RawConn) error {
-		return protectCoreSocket(conn)
-	})
-	mihomoDialer.DefaultSocketHook = func(network, address string, conn syscall.RawConn) error {
-		return protectCoreSocket(conn)
-	}
-	// Xray's console log goes to the service log instead of stdout.
-	_ = xrayLogApp.RegisterHandlerCreator(xrayLogApp.LogType_Console, func(xrayLogApp.LogType, xrayLogApp.HandlerCreatorOptions) (xrayCommonLog.Handler, error) {
-		return xrayLogHandler{}, nil
-	})
-}
-
-func protectCoreSocket(conn syscall.RawConn) error {
-	platform := coreProtector.Load()
-	if platform == nil {
-		return nil
-	}
-	var protectErr error
-	err := conn.Control(func(fd uintptr) {
-		protectErr = (*platform).AutoDetectInterfaceControl(int32(fd))
-	})
-	if err != nil {
-		return err
-	}
-	return protectErr
-}
-
-type xrayLogHandler struct{}
-
-func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
-	server := coreLogSink.Load()
-	if server == nil {
-		return
-	}
-	level := log.LevelInfo
-	if general, ok := message.(*xrayCommonLog.GeneralMessage); ok {
-		switch general.Severity {
-		case xrayCommonLog.Severity_Error:
-			level = log.LevelError
-		case xrayCommonLog.Severity_Warning:
-			level = log.LevelWarn
-		case xrayCommonLog.Severity_Debug:
-			level = log.LevelDebug
-		}
-	}
-	server.StartedService.WriteMessage(level, "[xray] "+message.String())
-}
 
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
 // core ran before. sing-box goes through StartOrReloadService unchanged.
@@ -167,57 +90,47 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	beginCoreSwitch()
 	defer endCoreSwitch()
 	resetUIDNSQueryCount()
-	if core == CoreSingBox || core == "" {
+	kernel := kernelFor(core)
+	if kernel == nil {
+		return fmt.Errorf("unknown core: %s", core)
+	}
+	host := s.kernelHost()
+	kernelOpts := kernelOptions{host: options}
+	if !kernel.NeedsTun() {
 		// Not held across sing-box's own start: CloseService interrupts a
 		// slow one (rule-set downloads) and must not wait for it here.
 		s.stopOtherCore()
-		return s.StartOrReloadService(withDefaultSingBoxLogLevel(dropUnbuiltTunStack(configContent)), options)
+		return kernel.Start(host, nil, configContent, nil, kernelOpts)
 	}
-	if core != CoreXray && core != CoreMihomo {
-		return fmt.Errorf("unknown core: %s", core)
-	}
-	// mihomo: the YAML is parsed once here and the checked raw config is
-	// handed to the core, instead of parsing it again at start.
-	var mihomoRaw *mihomoConfig.RawConfig
-	if core == CoreMihomo {
-		raw, err := parseCheckedMihomoConfig(configContent)
-		if err != nil {
-			return err
-		}
-		mihomoRaw = raw
-	} else if err := CheckCoreConfig(core, configContent); err != nil {
+	// Checked before anything is stopped (mihomo parses its YAML once here
+	// and hands the checked raw config to its start).
+	prepared, err := kernel.Prepare(configContent)
+	if err != nil {
 		return err
 	}
 	coreLifecycle.Lock()
 	defer coreLifecycle.Unlock()
 	// Stop sing-box (if it was running) before its TUN is replaced.
-	_ = s.CloseService()
+	singBoxKernel{}.Stop(host, nil)
 	s.stopOtherCoreLocked()
 
-	platform := s.platformInterface
-	coreProtector.Store(&platform)
-	coreLogSink.Store(s)
-	fd, err := s.openCoreTun(options)
+	useKernelHost(host)
+	fd, err := host.Platform.OpenTun(hostTunRequest{Inet4: coreTunInet4, Inet6: coreTunInet6, MTU: coreTunMTU}, kernelOpts)
 	if err != nil {
 		return E.Cause(err, "open tun")
 	}
-	running := &runningCore{core: core, tunFd: fd}
-	switch core {
-	case CoreXray:
-		err = startXrayCore(running, configContent)
-	case CoreMihomo:
-		err = startMihomoCore(s, running, configContent, mihomoRaw)
-	}
-	if err != nil {
+	running := &runningCore{core: kernel.Name(), tunFd: fd}
+	if err := kernel.Start(host, running, configContent, prepared, kernelOpts); err != nil {
 		_ = syscall.Close(fd)
-		return E.Cause(err, "start ", core)
+		return E.Cause(err, "start ", running.core)
 	}
 	running.startedAt = time.Now()
+	running.unwatchNetwork = host.Platform.WatchDefaultNetwork(func() { kernel.DefaultNetworkChanged(running) })
 	coreAccess.Lock()
 	activeCore = running
 	coreAccess.Unlock()
-	s.StartedService.WriteMessage(log.LevelInfo, core+" started")
-	go notifyCoreChange()
+	host.Log.Write(hostLogInfo, running.core+" started")
+	go host.Commands.CoreChanged()
 	// Config parsing (rule sets, geo matchers) leaves garbage behind; give
 	// it back now, as sing-box does after starting its instance.
 	go releaseCoreMemory()
@@ -250,323 +163,19 @@ func (s *CommandServer) stopOtherCoreLocked() bool {
 	if running == nil {
 		return false
 	}
-	switch running.core {
-	case CoreXray:
-		if running.xray != nil {
-			_ = running.xray.Close()
-		}
-	case CoreMihomo:
-		mihomoExecutor.Shutdown()
-		mihomoCloseListeners()
-		mihomoReleaseState()
-		if running.mihomoLog != nil {
-			close(running.mihomoLog)
-		}
+	host := s.kernelHost()
+	if running.unwatchNetwork != nil {
+		running.unwatchNetwork()
+	}
+	if kernel := kernelFor(running.core); kernel != nil {
+		kernel.Stop(host, running)
 	}
 	// running.tunFd is our own dup of the VpnService descriptor (Xray never
 	// closes the fd it reads; mihomo closed its separate dup in Shutdown), so
 	// it is closed exactly once here. Closing a descriptor twice could hit a
 	// number Android reused for a tracked fd, which aborts the whole app.
 	_ = syscall.Close(running.tunFd)
-	s.StartedService.WriteMessage(log.LevelInfo, running.core+" stopped")
-	go notifyCoreChange()
+	host.Log.Write(hostLogInfo, running.core+" stopped")
+	go host.Commands.CoreChanged()
 	return true
 }
-
-func (s *CommandServer) openCoreTun(options *OverrideOptions) (int, error) {
-	opts := tun.Options{
-		Inet4Address: []netip.Prefix{coreTunInet4},
-		Inet6Address: []netip.Prefix{coreTunInet6},
-		MTU:          coreTunMTU,
-		AutoRoute:    true,
-		DNSMode:      tun.DNSModeHijack,
-	}
-	if options != nil {
-		opts.IncludePackage = iteratorToArray(options.IncludePackage)
-		opts.ExcludePackage = iteratorToArray(options.ExcludePackage)
-	}
-	routeRanges, err := opts.BuildAutoRouteRanges(true)
-	if err != nil {
-		return -1, err
-	}
-	tunFd, err := s.platformInterface.OpenTun(&tunOptions{&opts, routeRanges, option.TunPlatformOptions{}})
-	if err != nil {
-		return -1, err
-	}
-	if name, err := getTunnelName(tunFd); err == nil {
-		s.platformInterface.RegisterMyInterface(name)
-	}
-	return dup(int(tunFd))
-}
-
-// Xray: the profile's inbounds are replaced by the TUN inbound; DNS sent to
-// the TUN's DNS address goes to a dns outbound. xrayStartRoot builds the JSON
-// the core is started with (also used by the routing tests, which start the
-// same configuration with xrayCore.New).
-func xrayStartRoot(content string) (map[string]any, map[string]any, error) {
-	var root map[string]any
-	if err := json.Unmarshal([]byte(normalizeCoreContent(content)), &root); err != nil {
-		return nil, nil, err
-	}
-	root["inbounds"] = []any{map[string]any{
-		"tag":      "tun-in",
-		"protocol": "tun",
-		"settings": map[string]any{"name": "xray0", "MTU": coreTunMTU},
-		"sniffing": map[string]any{"enabled": true, "destOverride": []string{"http", "tls", "quic"}},
-	}}
-	outbounds, _ := root["outbounds"].([]any)
-	hasDNS := false
-	for _, item := range outbounds {
-		if outbound, ok := item.(map[string]any); ok && outbound["tag"] == "dns-out" {
-			hasDNS = true
-		}
-	}
-	if !hasDNS {
-		root["outbounds"] = append(outbounds, map[string]any{"tag": "dns-out", "protocol": "dns"})
-	}
-	routing, _ := root["routing"].(map[string]any)
-	if routing == nil {
-		routing = map[string]any{}
-	}
-	rules, _ := routing["rules"].([]any)
-	routing["rules"] = append([]any{map[string]any{
-		"inboundTag": []string{"tun-in"}, "port": "53", "outboundTag": "dns-out",
-	}}, rules...)
-	root["routing"] = routing
-	logConfig := xrayLogConfigWithDefault(root)
-	// Console output goes to the service log; files are not writable here.
-	xrayApplyAccessLog(logConfig)
-	delete(logConfig, "error")
-	root["log"] = logConfig
-	return root, logConfig, nil
-}
-
-func startXrayCore(running *runningCore, content string) error {
-	root, logConfig, err := xrayStartRoot(content)
-	if err != nil {
-		return err
-	}
-	encoded, err := json.Marshal(root)
-	if err != nil {
-		return err
-	}
-	_ = os.Setenv(xrayPlatform.TunFdKey, strconv.Itoa(running.tunFd))
-	// geoip.dat / geosite.dat: the shared geo directory (core_geo.go).
-	_ = os.Setenv("xray.location.asset", GeoDataDir())
-	config, err := xraySerial.LoadJSONConfig(strings.NewReader(string(encoded)))
-	if err != nil {
-		return err
-	}
-	instance, err := xrayCore.New(config)
-	if err != nil {
-		return err
-	}
-	// Connection list and traffic: wrap the TUN inbound's dispatcher first.
-	if tracker, err := installXrayTracker(instance, "tun-in"); err == nil {
-		running.xrayTrack = tracker
-	} else {
-		running.xrayTrack = newXrayTracker()
-		log.Warn("xray connection tracking unavailable: ", err)
-	}
-	if err := instance.Start(); err != nil {
-		_ = instance.Close()
-		return err
-	}
-	running.xray = instance
-	running.logLevel = xrayDaemonLogLevel(fmt.Sprint(logConfig["loglevel"]))
-	readXrayLayout(running, root)
-	return nil
-}
-
-// readXrayLayout records outbound tags and balancers (selectors are tag
-// prefixes, as Xray matches them) for the groups view.
-func readXrayLayout(running *runningCore, root map[string]any) {
-	running.xrayProtocols = map[string]string{}
-	outbounds, _ := root["outbounds"].([]any)
-	for _, item := range outbounds {
-		outbound, _ := item.(map[string]any)
-		tag, _ := outbound["tag"].(string)
-		protocol, _ := outbound["protocol"].(string)
-		if tag == "" {
-			continue
-		}
-		running.xrayProtocols[tag] = protocol
-		if protocol != "dns" && protocol != "blackhole" && protocol != "freedom" {
-			running.xrayOutboundTags = append(running.xrayOutboundTags, tag)
-		}
-	}
-	routing, _ := root["routing"].(map[string]any)
-	balancers, _ := routing["balancers"].([]any)
-	for _, item := range balancers {
-		balancer, _ := item.(map[string]any)
-		tag, _ := balancer["tag"].(string)
-		if tag == "" {
-			continue
-		}
-		strategy := "random"
-		if config, ok := balancer["strategy"].(map[string]any); ok {
-			if kind, ok := config["type"].(string); ok && kind != "" {
-				strategy = kind
-			}
-		}
-		selectors, _ := balancer["selector"].([]any)
-		var members []string
-		for _, outboundTag := range running.xrayOutboundTags {
-			for _, selector := range selectors {
-				if prefix, ok := selector.(string); ok && strings.HasPrefix(outboundTag, prefix) {
-					members = append(members, outboundTag)
-					break
-				}
-			}
-		}
-		running.xrayBalancers = append(running.xrayBalancers, xrayBalancer{tag: tag, strategy: strategy, members: members})
-	}
-}
-
-// mihomo: the profile's tun section is replaced by an fd TUN without
-// auto-route or interface detection (the VpnService owns routing, and netlink
-// is not available to apps on recent Android). External controllers are
-// turned off; the app reads mihomo in process.
-func startMihomoCore(s *CommandServer, running *runningCore, content string, raw *mihomoConfig.RawConfig) error {
-	mihomoConstant.SetHomeDir(coreAssetDir(sWorkingPath, CoreMihomo))
-	if raw == nil {
-		parsed, err := mihomoConfig.UnmarshalRawConfig([]byte(normalizeCoreContent(content)))
-		if err != nil {
-			return err
-		}
-		raw = parsed
-	}
-	if !mihomoSetsLogLevel(content) {
-		raw.LogLevel = mihomoLog.WARNING
-	}
-	raw.Tun.Enable = true
-	// The real descriptor is set after parsing: mihomo gets a dup of its own,
-	// since its TUN closes the descriptor it is given.
-	raw.Tun.FileDescriptor = running.tunFd
-	raw.Tun.Device = ""
-	raw.Tun.Stack = mihomoConstant.TunSystem
-	raw.Tun.AutoRoute = false
-	raw.Tun.AutoRedirect = false
-	raw.Tun.AutoDetectInterface = false
-	raw.Tun.MTU = coreTunMTU
-	raw.Tun.Inet6Address = []netip.Prefix{coreTunInet6}
-	if len(raw.Tun.DNSHijack) == 0 {
-		raw.Tun.DNSHijack = []string{"0.0.0.0:53"}
-	}
-	// redir/tproxy need root and iptables, which a VpnService app lacks.
-	raw.RedirPort = 0
-	raw.TProxyPort = 0
-	raw.Interface = ""
-	raw.RoutingMark = 0
-	raw.ExternalController = ""
-	raw.ExternalControllerTLS = ""
-	raw.ExternalControllerUnix = ""
-	raw.ExternalControllerPipe = ""
-	raw.ExternalUI = ""
-	config, err := mihomoConfig.ParseRawConfig(raw)
-	if err != nil {
-		return err
-	}
-	// parseTun derives the TUN address from the fake-ip range; the VpnService
-	// assigned coreTunInet4, and the system stack must listen there.
-	config.General.Tun.Inet4Address = []netip.Prefix{coreTunInet4}
-	config.General.Tun.Inet6Address = []netip.Prefix{coreTunInet6}
-	running.logLevel = mihomoDaemonLogLevel(config.General.LogLevel)
-	running.mihomoLog = make(chan struct{})
-	subscription := mihomoLog.Subscribe()
-	go func(done chan struct{}) {
-		defer mihomoLog.UnSubscribe(subscription)
-		for {
-			select {
-			case <-done:
-				return
-			case event, ok := <-subscription:
-				if !ok {
-					return
-				}
-				// mihomo publishes every event whatever its level and only
-				// filters its own stdout print; apply the same rule here so
-				// debug/info lines below the configured level are not
-				// formatted into the service log.
-				if event.LogLevel < mihomoLog.Level() {
-					continue
-				}
-				level := log.LevelInfo
-				switch event.LogLevel {
-				case mihomoLog.ERROR:
-					level = log.LevelError
-				case mihomoLog.WARNING:
-					level = log.LevelWarn
-				case mihomoLog.DEBUG:
-					level = log.LevelDebug
-				}
-				s.StartedService.WriteMessage(level, "[mihomo] "+event.Payload)
-			}
-		}
-	}(running.mihomoLog)
-	mihomoFd, err := dup(running.tunFd)
-	if err != nil {
-		close(running.mihomoLog)
-		running.mihomoLog = nil
-		return E.Cause(err, "dup tun")
-	}
-	config.General.Tun.FileDescriptor = mihomoFd
-	if remote := mihomoRemoteProviders(raw); remote > 0 {
-		// executor.loadProvider waits for each one that has no cached copy
-		// yet (up to 20 s each): on a profile's first start this is what
-		// the start is waiting for.
-		s.StartedService.WriteMessage(log.LevelInfo, fmt.Sprintf("[mihomo] loading %d remote providers; a first start downloads them", remote))
-	}
-	// The TUN starts only once ApplyConfig has returned and the DNS counter
-	// wraps the resolver ApplyConfig installed: the TUN's DNS hijack reads
-	// resolver.DefaultService on every query, so replacing it while the
-	// TUN already served would race those reads.
-	tunConf := config.General.Tun
-	config.General.Tun.Enable = false
-	mihomoExecutor.ApplyConfig(config, true)
-	countMihomoDNS()
-	config.General.Tun = tunConf
-	mihomoListener.ReCreateTun(tunConf, mihomoTunnel.Tunnel)
-	if !mihomoListener.GetTunConf().Enable {
-		// ReCreateTun logs its error and leaves the TUN off; without it
-		// nothing is routed, so the start fails instead of looking fine.
-		mihomoExecutor.Shutdown()
-		mihomoCloseListeners()
-		mihomoReleaseState()
-		close(running.mihomoLog)
-		running.mihomoLog = nil
-		return E.New("mihomo TUN did not start; see the log")
-	}
-	return nil
-}
-
-// mihomoRemoteProviders counts the profile's http proxy and rule providers.
-func mihomoRemoteProviders(raw *mihomoConfig.RawConfig) int {
-	count := 0
-	for _, providers := range []map[string]map[string]any{raw.ProxyProvider, raw.RuleProvider} {
-		for _, provider := range providers {
-			if kind, _ := provider["type"].(string); kind == "http" {
-				count++
-			}
-		}
-	}
-	return count
-}
-
-// countingMihomoDNS counts the queries mihomo's dns-hijack answers: the TUN
-// relays them through resolver.ServeMsg, i.e. resolver.DefaultService, which
-// ApplyConfig has just replaced (or cleared when DNS is disabled).
-type countingMihomoDNS struct{ mihomoResolver.Service }
-
-func (c countingMihomoDNS) ServeMsg(ctx context.Context, msg *mDNS.Msg) (*mDNS.Msg, error) {
-	uiOtherDNSQueries.Add(1)
-	return c.Service.ServeMsg(ctx, msg)
-}
-
-func countMihomoDNS() {
-	service := mihomoResolver.DefaultService
-	if _, counted := service.(countingMihomoDNS); service != nil && !counted {
-		mihomoResolver.DefaultService = countingMihomoDNS{service}
-	}
-}
-

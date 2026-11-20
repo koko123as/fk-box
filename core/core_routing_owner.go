@@ -6,8 +6,9 @@ package libbox
 // names; it asks process.DefaultPackageNameResolver, which ClashMetaForAndroid
 // implements with ConnectivityManager.getConnectionOwnerUid and the package
 // manager. libbox answers it the same way through
-// PlatformInterface.FindConnectionOwner, which the app already implements for
-// sing-box's package_name rules, so PROCESS-NAME,<package> matches.
+// the host's Platform.ConnectionOwner (libbox: PlatformInterface.FindConnectionOwner,
+// which the app already implements for sing-box's package_name rules), so
+// PROCESS-NAME,<package> matches.
 
 import (
 	"fmt"
@@ -34,8 +35,8 @@ func mihomoAddrPort(raw interface{ String() string }, ip netip.Addr, port uint16
 }
 
 func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
-	platform := coreProtector.Load()
-	if platform == nil || *platform == nil {
+	host := kernelHostInUse.Load()
+	if host == nil || host.Platform == nil {
 		return "", mihomoProcess.ErrPlatformNotSupport
 	}
 	protocol := int32(syscall.IPPROTO_TCP)
@@ -56,15 +57,18 @@ func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
 	if !src.IsValid() || !dst.IsValid() {
 		return "", mihomoProcess.ErrNotFound
 	}
-	owner, err := (*platform).FindConnectionOwner(protocol, src.String(), int32(srcPort), dst.String(), int32(dstPort))
+	owner, supported, err := host.Platform.ConnectionOwner(protocol, netip.AddrPortFrom(src, srcPort), netip.AddrPortFrom(dst, dstPort))
+	if !supported {
+		return "", mihomoProcess.ErrPlatformNotSupport
+	}
 	if err != nil {
 		return "", err
 	}
 	if owner == nil {
 		return "", mihomoProcess.ErrNotFound
 	}
-	if len(owner.androidPackageNames) > 0 {
-		return owner.androidPackageNames[0], nil
+	if len(owner.PackageNames) > 0 {
+		return owner.PackageNames[0], nil
 	}
 	if owner.UserName != "" {
 		return owner.UserName, nil
