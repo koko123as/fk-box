@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.sfa.backend.model.Connection
 import io.nekohasekai.sfa.backend.model.Group
 import io.nekohasekai.sfa.backend.dashboard.DashboardUiState
 import io.nekohasekai.sfa.database.Settings
@@ -28,33 +27,3 @@ internal fun Group.toWire(): Map<String, Any?> = mapOf(
     "expanded" to isExpand,
     "items" to items.map { mapOf("tag" to it.tag, "type" to it.displayType, "delay" to it.urlTestDelay, "testedAt" to it.urlTestTime) },
 )
-
-internal fun Connection.toWire(): Map<String, Any?> = mapOf(
-    "id" to id, "inbound" to inbound,
-    "network" to network, "source" to source, "destination" to destination,
-    "domain" to domain, "displayDestination" to displayDestination,
-    "protocol" to protocolName, "user" to user, "createdAt" to createdAt,
-    "closedAt" to closedAt, "upload" to upload, "download" to download,
-    "uploadTotal" to uploadTotal, "downloadTotal" to downloadTotal,
-    "rule" to rule, "outbound" to outbound,
-    "chain" to chain, "process" to processInfo?.let {
-        mapOf("id" to it.processId, "path" to it.processPath, "user" to it.userName, "packages" to it.packageNames)
-    },
-)
-
-/**
- * Connection rows for the "connections" event. The connection store keeps an
- * unchanged row's instance across batches, so its wire map is reused instead of
- * rebuilt, and the UI sees the same map for a row that did not change.
- */
-internal class ConnectionWire {
-    private var last = java.util.IdentityHashMap<Connection, Map<String, Any?>>()
-
-    @Synchronized
-    fun rows(connections: List<Connection>): List<Map<String, Any?>> {
-        val next = java.util.IdentityHashMap<Connection, Map<String, Any?>>(connections.size)
-        val rows = connections.map { connection -> (last[connection] ?: connection.toWire()).also { next[connection] = it } }
-        last = next
-        return rows
-    }
-}

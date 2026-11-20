@@ -11,7 +11,6 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
-import io.nekohasekai.sfa.backend.connections.ConnectionsUiState
 import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
@@ -36,8 +35,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
@@ -82,7 +81,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private lateinit var dashboardDetails: BoxDashboard
     private var connectionsVisible = false
     private var connectionStatsVisible = false
-    private val connectionWire = ConnectionWire()
     private val logsVisible = MutableStateFlow(false)
     private val operations = Mutex()
     private val apps = AppListCache {
@@ -181,17 +179,18 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     coroutineScope {
                         launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
                         launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
-                        // The streamed lists reach the UI about once a second:
-                        // after a send the collector waits, and the StateFlow
-                        // keeps only the newest state meanwhile. Showing a
-                        // page sends its current state at once (the
-                        // set*Visible commands, and the log stream restarting).
-                        launch { connections.uiState.collect { state ->
-                            val sent = connectionsVisible || connectionStatsVisible
-                            if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
-                            if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
-                            if (sent) delay(UI_UPDATE_INTERVAL_MILLIS)
-                        } }
+                        // libbox's connection stream sends "connections" and
+                        // "connectionStats" (each at once when shown, then each
+                        // changed state at most once a second) while in the
+                        // foreground.
+                        launch {
+                            try {
+                                withContext(Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(true) }
+                                awaitCancellation()
+                            } finally {
+                                withContext(NonCancellable + Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(false) }
+                            }
+                        }
                         // libbox's log stream sends "logs" (snapshot on show,
                         // then increments at most once a second) through the
                         // UI event sink while shown and in the foreground.
@@ -224,13 +223,19 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             dashboardDetails.setMemoryVisible(false)
             dashboardDetails.setLanVisible(false)
         }
-        if (::connections.isInitialized && connectionsVisible) {
+        if (::connections.isInitialized) hideConnectionStreams()
+    }
+
+    private fun hideConnectionStreams() {
+        if (connectionsVisible) {
             connectionsVisible = false
             connections.setVisible(false)
+            Libbox.uiConnectionStreamSetRowsVisible(false)
         }
-        if (::connections.isInitialized && connectionStatsVisible) {
+        if (connectionStatsVisible) {
             connectionStatsVisible = false
             connections.setVisible(false)
+            Libbox.uiConnectionStreamSetStatsVisible(false)
         }
     }
 
@@ -456,8 +461,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (visible != connectionsVisible) {
             connectionsVisible = visible
             connections.setVisible(visible)
+            Libbox.uiConnectionStreamSetRowsVisible(visible)
+        } else if (visible) {
+            Libbox.uiConnectionStreamResendRows()
         }
-        if (visible) emit("connections", connectionWire.rows(connections.uiState.value.allConnections))
     }
 
     /** The dashboard's connection statistics card: counts only, no rows. */
@@ -465,21 +472,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (visible != connectionStatsVisible) {
             connectionStatsVisible = visible
             connections.setVisible(visible)
+            Libbox.uiConnectionStreamSetStatsVisible(visible)
+        } else if (visible) {
+            Libbox.uiConnectionStreamResendStats()
         }
-        if (visible) emit("connectionStats", connectionStats(connections.uiState.value))
-    }
-
-    private fun connectionStats(state: ConnectionsUiState): Map<String, Any?> {
-        var active = 0
-        var recent = 0
-        for (connection in state.allConnections) {
-            if (connection.closedAt == null) active++ else recent++
-        }
-        // DNS: the queries the local core answered since it started, counted
-        // inside the core (hijack-dns never becomes a connection). A remote
-        // session only has its connection list to go by.
-        val dns = if (CommandTarget.isRemote) state.dnsCount.toLong() else Libbox.readUIDNSQueryCount()
-        return mapOf("active" to active, "recent" to recent, "dns" to dns)
     }
 
     suspend fun closeConnection(id: String?) {
@@ -924,17 +920,13 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             dashboard.setTrafficVisible(false)
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
-            if (connectionsVisible) connections.setVisible(false)
-            if (connectionStatsVisible) connections.setVisible(false)
+            hideConnectionStreams()
             logs.setVisible(false)
             toolBridge.close()
             dashboardDetails.close()
         }
     }
 }
-
-/** The streamed connection list reaches the UI at most this often (logs: core_log_stream.go). */
-private const val UI_UPDATE_INTERVAL_MILLIS = 1000L
 
 internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
 private fun jsonValue(value: Any?): Any? = when (value) {
