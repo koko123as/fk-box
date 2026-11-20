@@ -76,7 +76,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 - `StartOrReloadCoreService(core, content, options)`：sing-box 照旧走 `StartOrReloadService`；Xray/mihomo 先停掉 sing-box 和上一个内核，再经 `PlatformInterface.OpenTun`（即 VpnService.Builder）建 TUN（`172.19.0.1/30`、`fdfe:dcba:9876::1/126`、MTU 9000、DNS `172.19.0.2`，分应用代理沿用设置），把 dup 后的 fd 直接交给内核，不经本地转发。`CloseCoreService` 停止当前内核。Xray/mihomo 的启停由 `coreLifecycle` 串行化；`coreAccess` 只保护 `activeCore` 的读写，启停期间不持有，因此首次启动 mihomo 时 `ApplyConfig` 等待远程代理/规则提供者下载（每个最多约 20 秒，日志会提示数量）也不会卡住仪表盘数据流、探测和 `CoreDefaultNetworkChanged`。mihomo 的 TUN 在 `ApplyConfig` 返回、DNS 计数包装好解析器之后才经 `listener.ReCreateTun` 创建，TUN 未能启动时本次启动失败。
 - 切换内核与重载：`StartOrReloadCoreService` 与 `StartOrReloadCoreServiceWithRouting` 在整个切换期间（含规则回退时的第二次启动）标记“正在切换”（[core_api.go](core/core_api.go) 的 `beginCoreSwitch`/`endCoreSwitch`）。切换期间旧内核已停、新内核未起，界面的 groups、mode、status、connections、outbounds 数据流若在此时结束（sing-box 空闲或停止中回 `invalid argument`），或底下内核已变，不再结束订阅，而是等待切换结束；每次切换结束（成功或失败，sing-box 到 sing-box 也一样）都把所有流移到当时运行的内核。未在切换中时流的错误照旧返回。应用侧 `BoxService.reloadGeneration` 在每次成功重载（及失败后回退到上一个配置）后加一，代理组、仪表盘（模式、状态、启动时间）和连接页据此重新订阅；切到另一个内核的配置时 `BoxActivity` 完整停止再启动；重载失败且未能回退时服务停止并报错，不会停在“运行中”。测试为 [core_switch_test.go](core/core_switch_test.go) 的 `TestUICoreSwitch*`。
-- 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到 `AutoDetectInterfaceControl`（`VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取当前平台接口。
+- 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到宿主的 `Platform.Protect`（libbox 实现为 `AutoDetectInterfaceControl`，即 `VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取最近一次启动的内核所用的宿主（见下文“内核适配器与宿主接口”）。
 - Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；`xray.location.asset` 指向共享地理数据目录（见下文“地理数据”）。MASQUE 出站经 `internet.DialSystem` 拨号，同样走上述保护钩子。
 - 默认日志级别（[core_loglevel.go](core/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。Xray 的访问日志（每个连接和 DNS 查询一行，同步写入服务日志）默认为 `access: "none"`，仅在配置自行设置 `access`（其 `"none"` 原样保留，文件路径仍写入服务日志）或 `loglevel` 为 info/debug 时输出。mihomo 无论级别都会发布全部日志事件，转发时按 `log.Level()` 丢弃低于运行级别的事件（与 mihomo 自身 `print()` 规则一致），避免格式化和阻塞日志通道。
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（setup-core 写入 build_libbox 的标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。启动/重载只解析一次 YAML：`parseCheckedMihomoConfig` 做导入时同样的检查并把原始配置交给启动流程；是否显式设置 `log-level` 以行扫描判断顶层键（JSON/flow 风格回退完整解析）。
@@ -100,17 +100,49 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - `GeoResourceFileName`、`GeoResourceDefaultURL`、`GeoDataDir` 供应用使用。APK 内置哪些文件、何时解压/按需下载和自动更新见 [app.md](app.md#地理数据资源)。
 - 测试 [core_geo_test.go](core/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理、`FetchExpected` 拒绝哈希不符或非法的期望值且不留文件；[core_memory_test.go](core/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
 
+### 内核适配器与宿主接口
+
+三个内核实现同一个内部接口 `coreKernel`（[core_kernel.go](core/core_kernel.go)：`Name`、`NeedsTun`、`Prepare`、`Start`、`Stop`、`DefaultNetworkChanged`），`StartOrReloadCoreService`/`stopOtherCoreLocked`（[core_service.go](core/core_service.go)）只经这个接口启停内核。内核不直接读 libbox 的全局变量或类型（`PlatformInterface`、`CommandServer`、`OverrideOptions`、HTTP 客户端），所需服务都经 fk-box 自己的宿主接口 `kernelHost`（[core_host.go](core/core_host.go)）传入；宿主接口目前全部委托给 libbox（`libboxHost`），行为不变。`OverrideOptions` 以不透明的 `kernelOptions` 经过内核交回宿主（只有建 TUN 与 sing-box 启动读取它，其应用列表迭代器只能读一次）。
+
+| 内核 | 适配器（启动、停止、日志、保护钩子） | 其余与该内核相关的文件 | 测试 |
+| --- | --- | --- | --- |
+| sing-box | [core_kernel_singbox.go](core/core_kernel_singbox.go)：交给宿主 `Lifecycle.StartSingBox`/`StopSingBox`（即 libbox 的 `StartOrReloadService`/`CloseService`），自己的 TUN 来自配置的 tun 入站 | [core_loglevel.go](core/core_loglevel.go)、[core_tunstack.go](core/core_tunstack.go)、[core_api.go](core/core_api.go)/[core_extra.go](core/core_extra.go) 中转发给 `daemon.StartedService` 的部分、[core_touch_singbox.go](core/core_touch_singbox.go)、补丁（`core/*.patch`、`tools/patch_*.py`） | `TestUIKernelSingBox*`、`TestUICoreSwitch*` |
+| Xray | [core_kernel_xray.go](core/core_kernel_xray.go)：TUN 入站与 `xray.tun.fd`、拨号保护、控制台日志 | [core_xray_track.go](core/core_xray_track.go)、[core_routing_xray.go](core/core_routing_xray.go)、[core_array_merge.go](core/core_array_merge.go)、[core_profile.go](core/core_profile.go)（检查与链接转换）、[core_api.go](core/core_api.go)（分组、连接、测速） | `TestUIKernelXray*`、`TestCoreInternals*`、`TestCoreRouting*` |
+| mihomo | [core_kernel_mihomo.go](core/core_kernel_mihomo.go)：fd TUN、socket 钩子、日志转发、DNS 计数、停止时释放端口与状态 | [core_routing_mihomo.go](core/core_routing_mihomo.go)、[core_routing_owner.go](core/core_routing_owner.go)（`PROCESS-NAME`）、[core_dns_cmfa.go](core/core_dns_cmfa.go)、[core_memory.go](core/core_memory.go)（`mihomoReleaseState`）、[core_extra.go](core/core_extra.go)（`mihomoCloseListeners`）、[core_api.go](core/core_api.go) | `TestUIKernelMihomo*`、`TestCoreInternals*`、`TestCoreRouting*` |
+
+宿主接口与当前实现：
+
+| 接口 | 方法 | 现在由 libbox 提供 |
+| --- | --- | --- |
+| `Platform` | `OpenTun`、`Protect`、`ConnectionOwner`、`WatchDefaultNetwork` | `PlatformInterface.OpenTun`（VpnService.Builder）+ `RegisterMyInterface` + dup；`AutoDetectInterfaceControl`（`VpnService.protect`）；`FindConnectionOwner`；应用的网络回调调用的 `CoreDefaultNetworkChanged` |
+| `CommandService` | `CoreChanged`、`GroupsChanged` | `CommandServer` 的 StartedService gRPC 服务及 [core_api.go](core/core_api.go) 的切换通知 |
+| `Lifecycle` | `StartSingBox`、`StopSingBox`、`WorkingDirectory` | `CommandServer.StartOrReloadService`、`CloseService`、`Setup` 设置的工作目录 |
+| `HTTP` | `NewClient` | libbox `NewHTTPClient`（平台证书库、Modern TLS）；内核暂未使用 |
+| `Log` | `Write`、`Diagnostic` | `StartedService.WriteMessage`（应用日志页）；sing-box 进程日志 `log.Warn` |
+
+接口之外仍由 libbox 提供、尚未接入宿主接口的服务：gomobile 入口与全部导出绑定（`Libbox.*`）、`Setup` 与路径、`CommandServer`/`CommandClient` 控制通道本身、sing-box 自己的平台包装（它的 TUN、默认网卡监听、Wi-Fi 状态、通知、邻居表、Root/Shizuku 终端等）、日志环与 OOM/电量报告、崩溃报告、`ui_*.go` 的 HTTP/WebDAV/订阅/出口探测（基于 libbox HTTP 客户端）和 sing-box 配置的检查与格式化。后续把它们逐个搬出 libbox 的计划见 [core/README.md](core/README.md)。
+
 ### 升级内核
 
-一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。
+一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。升级防护：
 
-1. `python3 tools/bump_core.py <sing-box|xray|mihomo|libxray> <版本>`（可先加 `--dry-run`）。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写 [version.properties](version.properties)。需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
-2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`（两者在非 `main` 分支都需 `workflow_dispatch` 指定 ref）。CI 会拦下：
-   - 编译错误：libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
+- [core_touch_singbox.go](core/core_touch_singbox.go) 引用 fk-box 用到的每个 sing-box、sing-tun 与 libbox 符号（libbox 宿主相关的写明签名），上游改名、删除或改类型时在这里编译失败并给出符号名；[verify_touchpoints.py](tools/verify_touchpoints.py)（newui.yml 的 core 任务，`--core .core`）检查清单完整。
+- 四个补丁脚本（[patch_sing_tun.py](tools/patch_sing_tun.py)、[patch_httpdebug.py](tools/patch_httpdebug.py)、[patch_multicore.py](tools/patch_multicore.py)、[patch_dns_count.py](tools/patch_dns_count.py)）都有 `--check`：不改源码树，在临时副本上试，失败时写明哪个补丁、哪个文件、第几个 hunk（`@@` 头与第一处改动），或哪个文件里的哪段锚点文本出现了几次；覆盖文件与上游同名也会报出。`libbox-no-legacy.patch` 用 [patchcheck.py](tools/patchcheck.py) 同样检查。
+- [bump_core.py](tools/bump_core.py) 输出偏差报告：上游在旧版与新版之间改动了哪些 fk-box 依赖的文件（core/ 导入的该内核各包；sing-box 另加补丁改动的文件、`experimental/libbox/`、daemon 的 gRPC 服务、`go.mod` 与 sing-tun 版本）。
+- 按内核的测试 `TestUIKernel<名字>*`（`TestUIKernelSingBox*`、`TestUIKernelXray*`、`TestUIKernelMihomo*`）随 `^TestUI` 在 newui.yml 运行。
+
+升级清单：
+
+1. 在 Actions 中手动运行 [bump-core.yml](.github/workflows/bump-core.yml)，输入 `kernel`（sing-box、xray、mihomo、libxray）和 `version`。它在 `bump/<kernel>-<version>` 分支用 `bump_core.py` 改写 [version.properties](version.properties)，开一个 DRAFT PR，正文含 `bump_core.py` 输出、偏差报告，以及（sing-box）各补丁脚本 `--check` 与 [verify_multicore.py](tools/verify_multicore.py) 的结果；它从不合并、打标签或发布。本地可先运行 `python3 tools/bump_core.py <内核> <版本> --dry-run`。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写；需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
+2. 逐行看偏差报告：每个改动过的文件对照上表中该内核的适配器与相关文件；sing-box 的 sing-tun 版本变化时先重做 [sing-tun-android-ingress.patch](core/sing-tun-android-ingress.patch) 并改 `patch_sing_tun.py` 的 `VERSION`；`--check` 报错的补丁按报出的文件与 hunk 重做。
+3. 工作流推送的分支不会自动触发其他工作流：在该分支上手动运行 `newui.yml` 与 `build-apk.yml`（或 `build-debug-apk.yml`）。CI 会拦下：
+   - 编译错误：`core_touch_singbox.go` 中的符号；libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
+   - [verify_touchpoints.py](tools/verify_touchpoints.py)：新用到的 sing-box/libbox 符号未写进接触点文件。
    - [verify_multicore.py](tools/verify_multicore.py)：sing-box 新增的 StartedService gRPC 方法必须在 `coreStartedService` 中处理，或经审核后写入 [core_grpc_passthrough.txt](core/core_grpc_passthrough.txt)。否则 Xray/mihomo 运行时它会打到空闲的 sing-box，返回 `invalid argument`。
-   - `TestCoreInternals*`：Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
+   - `TestUIKernel*`、`TestUICoreSwitch*`、`TestCoreInternals*`：内核适配器、切换期间的数据流、Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
    - `core-module-bumps.txt`：被抬高的共用模块；`github.com/sagernet/sing` 不能变。
-3. 实机检查（CI 测不到）：三个内核分别启动、暂停、互相切换不闪退；切换后 7890 等端口已释放；连接页、流量、IP 检测、网络质量有数据；分流规则命中正常；日志中没有新的 Warn/Error。mihomo 的 TUN 由它自己关闭描述符，所以它拿到的是单独的 dup；升级后如果再次出现无崩溃记录的闪退，先查描述符是否被重复关闭。
+4. 实机检查（CI 测不到）：三个内核分别启动、暂停、互相切换不闪退；同内核与跨内核切换配置后代理组可切换节点，速度与运行时长刷新；切换后 7890 等端口已释放；连接页、流量、IP 检测、网络质量有数据；分流规则命中正常；日志中没有新的 Warn/Error。mihomo 的 TUN 由它自己关闭描述符，所以它拿到的是单独的 dup；升级后如果再次出现无崩溃记录的闪退，先查描述符是否被重复关闭。
+5. 全部通过后再把 DRAFT PR 标为可审查并合并，合并后确认 `main` 的 CI 也是绿的。
 
 ## 分流规则
 
