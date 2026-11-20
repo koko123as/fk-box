@@ -5,10 +5,11 @@ package libbox
 // fk-box's own types; they never read libbox globals or libbox types (the
 // PlatformInterface, the CommandServer, OverrideOptions, the HTTP client).
 //
-// Today every host service is still provided by libbox: libboxHost below
-// delegates each call to the libbox code that did the job before, so behavior
-// is unchanged. core/README.md describes the plan to move these services out
-// of libbox one by one.
+// The services are fk-box's own (experimental/fkhost): log, HTTP, platform,
+// working directory. On Android libbox still provides what only it can give
+// (the app's PlatformInterface object, the StartedService log the app reads,
+// sing-box's start and stop, the command service); core/README.md has the
+// status of moving the rest out of libbox.
 
 import (
 	"net/http"
@@ -115,7 +116,7 @@ type hostLog interface {
 	Diagnostic(message string)
 }
 
-// ---- libbox implementation ----
+// ---- the CommandServer host (Android) ----
 
 // kernelHost returns the host services of this CommandServer.
 func (s *CommandServer) kernelHost() kernelHost {
@@ -169,10 +170,10 @@ type libboxCommandService struct{}
 func (libboxCommandService) CoreChanged()   { notifyCoreChange() }
 func (libboxCommandService) GroupsChanged() { notifyGroupsChange() }
 
-// Lifecycle: sing-box still starts and stops inside this CommandServer
-// (daemon.StartedService); moving that out is step 3 of the plan in
-// core/README.md, which is not done (see there). Xray and mihomo are started
-// and stopped by fk-box itself (core_service.go).
+// Lifecycle: on Android sing-box still starts and stops inside this
+// CommandServer (daemon.StartedService); core/README.md says why (step 3).
+// Xray and mihomo are started and stopped by fk-box itself (core_service.go),
+// and the standalone host starts sing-box itself (core_standalone.go).
 type libboxLifecycle struct{ server *CommandServer }
 
 func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) error {

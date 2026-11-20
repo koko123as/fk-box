@@ -18,6 +18,7 @@
 | 出口探测绑定 | [ui_egress.go](core/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询、质量请求传输与只读响应头的可达性探测 |
 | 服务状态检测 | [ui_service_check.go](core/ui_service_check.go) | FlClash 13 项服务检测规则，经出口探测会话发送 |
 | DNS 查询计数 | [patch_dns_count.py](tools/patch_dns_count.py)、[dns/](core/dns/)、[ui_dns.go](core/ui_dns.go) | 仪表盘 DNS 查询数，见[仪表盘 DNS 查询计数](#仪表盘-dns-查询计数) |
+| fk-box 自己的包 | [patch_entry.py](tools/patch_entry.py)、[core/fkhost](core/fkhost/)、[core/fkbox](core/fkbox/)、[core/fkcore](core/fkcore/) | 宿主服务（`experimental/fkhost`）、与 libbox 一起绑定进 `libbox.aar` 的 gomobile 入口包（`experimental/fkbox`，Java `io.nekohasekai.fkbox.Fkbox`）和桌面核心进程（`cmd/fk-core`），见 [core/README.md](core/README.md) |
 | 局域网代理配置绑定 | [ui_lan.go](core/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
 | HTTP/HTTPS 请求抓取 | [httpdebug.patch](core/httpdebug.patch)、[httpdebug/](core/httpdebug/)、[route/](core/route/)、[ui_capture.go](core/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
 | JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](core/http_rewrite.patch)、[rewrite_config.go](core/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](core/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
@@ -102,7 +103,7 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 ### 内核适配器与宿主接口
 
-三个内核实现同一个内部接口 `coreKernel`（[core_kernel.go](core/core_kernel.go)：`Name`、`NeedsTun`、`Prepare`、`Start`、`Stop`、`DefaultNetworkChanged`），`StartOrReloadCoreService`/`stopOtherCoreLocked`（[core_service.go](core/core_service.go)）只经这个接口启停内核。内核不直接读 libbox 的全局变量或类型（`PlatformInterface`、`CommandServer`、`OverrideOptions`、HTTP 客户端），所需服务都经 fk-box 自己的宿主接口 `kernelHost`（[core_host.go](core/core_host.go)）传入；宿主接口目前全部委托给 libbox（`libboxHost`），行为不变。`OverrideOptions` 以不透明的 `kernelOptions` 经过内核交回宿主（只有建 TUN 与 sing-box 启动读取它，其应用列表迭代器只能读一次）。
+三个内核实现同一个内部接口 `coreKernel`（[core_kernel.go](core/core_kernel.go)：`Name`、`NeedsTun`、`Prepare`、`Start`、`Stop`、`DefaultNetworkChanged`），`startOrReloadCore`/`stopOtherCoreLocked`（[core_service.go](core/core_service.go)）只经这个接口启停内核，并对任意宿主工作：Android 上是 libbox 的 `CommandServer`（`StartOrReloadCoreService`/`CloseCoreService`），桌面上是 fk-box 自己的独立宿主（[core_standalone.go](core/core_standalone.go)，不编进 Android）。内核不直接读 libbox 的全局变量或类型（`PlatformInterface`、`CommandServer`、`OverrideOptions`、HTTP 客户端），所需服务都经 fk-box 自己的宿主接口 `kernelHost`（[core_host.go](core/core_host.go)）传入，其实现在 fk-box 自己的包 [core/fkhost](core/fkhost/)（构建时成为 `experimental/fkhost`，不导入 libbox）。`OverrideOptions` 以不透明的 `kernelOptions` 经过内核交回宿主（只有建 TUN 与 sing-box 启动读取它，其应用列表迭代器只能读一次）。
 
 | 内核 | 适配器（启动、停止、日志、保护钩子） | 其余与该内核相关的文件 | 测试 |
 | --- | --- | --- | --- |
@@ -110,24 +111,24 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 | Xray | [core_kernel_xray.go](core/core_kernel_xray.go)：TUN 入站与 `xray.tun.fd`、拨号保护、控制台日志 | [core_xray_track.go](core/core_xray_track.go)、[core_routing_xray.go](core/core_routing_xray.go)、[core_array_merge.go](core/core_array_merge.go)、[core_profile.go](core/core_profile.go)（检查与链接转换）、[core_api.go](core/core_api.go)（分组、连接、测速） | `TestUIKernelXray*`、`TestCoreInternals*`、`TestCoreRouting*` |
 | mihomo | [core_kernel_mihomo.go](core/core_kernel_mihomo.go)：fd TUN、socket 钩子、日志转发、DNS 计数、停止时释放端口与状态 | [core_routing_mihomo.go](core/core_routing_mihomo.go)、[core_routing_owner.go](core/core_routing_owner.go)（`PROCESS-NAME`）、[core_dns_cmfa.go](core/core_dns_cmfa.go)、[core_memory.go](core/core_memory.go)（`mihomoReleaseState`）、[core_extra.go](core/core_extra.go)（`mihomoCloseListeners`）、[core_api.go](core/core_api.go) | `TestUIKernelMihomo*`、`TestCoreInternals*`、`TestCoreRouting*` |
 
-宿主接口与当前实现：
+宿主接口与当前实现（Android）：
 
-| 接口 | 方法 | 现在由 libbox 提供 |
+| 接口 | 方法 | 实现 |
 | --- | --- | --- |
-| `Platform` | `OpenTun`、`Protect`、`ConnectionOwner`、`WatchDefaultNetwork` | `PlatformInterface.OpenTun`（VpnService.Builder）+ `RegisterMyInterface` + dup；`AutoDetectInterfaceControl`（`VpnService.protect`）；`FindConnectionOwner`；应用的网络回调调用的 `CoreDefaultNetworkChanged` |
-| `CommandService` | `CoreChanged`、`GroupsChanged` | `CommandServer` 的 StartedService gRPC 服务及 [core_api.go](core/core_api.go) 的切换通知 |
-| `Lifecycle` | `StartSingBox`、`StopSingBox`、`WorkingDirectory` | `CommandServer.StartOrReloadService`、`CloseService`、`Setup` 设置的工作目录 |
-| `HTTP` | `NewClient` | libbox `NewHTTPClient`（平台证书库、Modern TLS）；内核暂未使用 |
-| `Log` | `Write`、`Diagnostic` | `StartedService.WriteMessage`（应用日志页）；sing-box 进程日志 `log.Warn` |
+| `Platform` | `OpenTun`、`Protect`、`ConnectionOwner`、`WatchDefaultNetwork` | `fkhost.Platform`（按构建标签分 [platform_android.go](core/fkhost/platform_android.go)、`_linux`、`_darwin`、`_windows`、`_other`）。Android 版自己构造 TUN 选项与路由范围、dup 描述符、保护套接字，经 `fkhost.AndroidVPN` 直接调用应用的平台实现（libbox 在 [core_host_android.go](core/core_host_android.go) 把应用已传入的 `PlatformInterface` 适配过去：`OpenTun`+`RegisterMyInterface`、`AutoDetectInterfaceControl`、`FindConnectionOwner`）；默认网络变化由应用调用 `Fkbox.defaultNetworkChanged()`（`Libbox.coreDefaultNetworkChanged` 仍转发） |
+| `CommandService` | `CoreChanged`、`GroupsChanged` | Android 仍是 `CommandServer` 的 StartedService gRPC 服务及 [core_api.go](core/core_api.go) 的切换通知；fk-box 自己的协议服务 `fkhost.ProtocolServer` 供桌面进程 `fk-core` 使用 |
+| `Lifecycle` | `StartSingBox`、`StopSingBox`、`WorkingDirectory` | Android：`CommandServer.StartOrReloadService`、`CloseService`；工作目录取 `fkhost.WorkingDirectory()`，未设置时为 `Setup` 的路径。独立宿主自己创建并启动 `box.Box` |
+| `HTTP` | `NewClient` | `fkhost.NewHTTPClient`（TLS 1.2+、全部安全套件、无 keep-alive，Android 上用 sing-box 证书库，与原 libbox 客户端相同）；geo、订阅、WebDAV/更新检查、出口探测也用它 |
+| `Log` | `Write`、`Diagnostic` | `fkhost.Log`（行环、订阅者）；Android 上每行再转发到 `StartedService.WriteMessage`（应用日志页读取它），诊断写 sing-box 的 `log.Warn` |
 
-接口之外仍由 libbox 提供、尚未接入宿主接口的服务：gomobile 入口与全部导出绑定（`Libbox.*`）、`Setup` 与路径、`CommandServer`/`CommandClient` 控制通道本身、sing-box 自己的平台包装（它的 TUN、默认网卡监听、Wi-Fi 状态、通知、邻居表、Root/Shizuku 终端等）、日志环与 OOM/电量报告、崩溃报告、`ui_*.go` 的 HTTP/WebDAV/订阅/出口探测（基于 libbox HTTP 客户端）和 sing-box 配置的检查与格式化。后续把它们逐个搬出 libbox 的计划见 [core/README.md](core/README.md)。
+接口之外仍由 libbox 提供的服务：`Libbox.*` 的全部既有绑定（gomobile 入口包 [core/fkbox](core/fkbox/) 与它一起绑定，见 [core/README.md](core/README.md)）、`Setup` 与路径、`CommandServer`/`CommandClient` 控制通道本身（含远程会话）、sing-box 在 Android 上的平台包装（它的 TUN、默认网卡监听、Wi-Fi 状态、通知、邻居表、Root/Shizuku 终端等）、OOM/电量报告、崩溃报告和 sing-box 配置的检查与格式化。为什么 Android 上的 sing-box 与控制通道还留在 libbox，见 [core/README.md](core/README.md#moving-the-host-out-of-libbox-status)。
 
 ### 升级内核
 
 一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。升级防护：
 
 - [core_touch_singbox.go](core/core_touch_singbox.go) 引用 fk-box 用到的每个 sing-box、sing-tun 与 libbox 符号（libbox 宿主相关的写明签名），上游改名、删除或改类型时在这里编译失败并给出符号名；[verify_touchpoints.py](tools/verify_touchpoints.py)（newui.yml 的 core 任务，`--core .core`）检查清单完整。
-- 四个补丁脚本（[patch_sing_tun.py](tools/patch_sing_tun.py)、[patch_httpdebug.py](tools/patch_httpdebug.py)、[patch_multicore.py](tools/patch_multicore.py)、[patch_dns_count.py](tools/patch_dns_count.py)）都有 `--check`：不改源码树，在临时副本上试，失败时写明哪个补丁、哪个文件、第几个 hunk（`@@` 头与第一处改动），或哪个文件里的哪段锚点文本出现了几次；覆盖文件与上游同名也会报出。`libbox-no-legacy.patch` 用 [patchcheck.py](tools/patchcheck.py) 同样检查。
+- 五个补丁脚本（[patch_sing_tun.py](tools/patch_sing_tun.py)、[patch_httpdebug.py](tools/patch_httpdebug.py)、[patch_multicore.py](tools/patch_multicore.py)、[patch_dns_count.py](tools/patch_dns_count.py)、[patch_entry.py](tools/patch_entry.py)）都有 `--check`：不改源码树，在临时副本上试，失败时写明哪个补丁、哪个文件、第几个 hunk（`@@` 头与第一处改动），或哪个文件里的哪段锚点文本出现了几次；覆盖文件与上游同名也会报出。`libbox-no-legacy.patch` 用 [patchcheck.py](tools/patchcheck.py) 同样检查。
 - [bump_core.py](tools/bump_core.py) 输出偏差报告：上游在旧版与新版之间改动了哪些 fk-box 依赖的文件（core/ 导入的该内核各包；sing-box 另加补丁改动的文件、`experimental/libbox/`、daemon 的 gRPC 服务、`go.mod` 与 sing-tun 版本）。
 - 按内核的测试 `TestUIKernel<名字>*`（`TestUIKernelSingBox*`、`TestUIKernelXray*`、`TestUIKernelMihomo*`）随 `^TestUI` 在 newui.yml 运行。
 
