@@ -96,7 +96,7 @@ runs:
       env:
         GOTOOLCHAIN: local
       run: |
-        cp ../core/core_*.go experimental/libbox/
+        cp ../legacy/core/core_*.go experimental/libbox/
         xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
         mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
         libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
