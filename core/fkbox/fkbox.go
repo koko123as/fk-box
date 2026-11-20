@@ -9,6 +9,7 @@
 package fkbox
 
 import (
+	"github.com/sagernet/sing-box/experimental/fkhost"
 	"github.com/sagernet/sing-box/experimental/libbox"
 )
 
@@ -46,3 +47,8 @@ func SetEventSink(sink EventSink) {
 	}
 	libbox.SetUIEventSink(sink)
 }
+
+// DefaultNetworkChanged is called by the app's platform implementation when
+// the underlying default network is replaced (Wi-Fi to cellular and back);
+// the running Xray or mihomo closes connections bound to the old network.
+func DefaultNetworkChanged() { fkhost.DefaultNetworkChanged() }
