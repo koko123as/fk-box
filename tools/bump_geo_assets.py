@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Pin the bundled geo data (app/geo-assets.properties) to a meta-rules-dat commit.
+"""Pin the bundled geo data (clients/android/app/geo-assets.properties) to a meta-rules-dat commit.
 
 Usage: python3 tools/bump_geo_assets.py [<commit>] [--dry-run]
 
 Without a commit the current head of the release branch is used. Each file is
 downloaded once to compute its SHA-256; nothing is written into the
 repository except the properties file. The app build downloads and checks the
-files listed in GEO_BUNDLED (prepare*GeoAssets in app/build.gradle.kts); the
+files listed in GEO_BUNDLED (prepare*GeoAssets in clients/android/app/build.gradle.kts); the
 others keep their pinned hash in the APK's manifest and the app downloads them
 on first use, so every resource needs a current hash.
 """
@@ -18,7 +18,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-PINS = Path(__file__).resolve().parent.parent / 'app' / 'geo-assets.properties'
+PINS = Path(__file__).resolve().parent.parent / 'clients' / 'android' / 'app' / 'geo-assets.properties'
 
 
 def fetch(url, accept=None):

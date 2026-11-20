@@ -5,7 +5,7 @@
     python3 tools/protocol.py check   fail when a table is stale or an implementation disagrees
 
 Owners:
-    go    answered by libbox (libbox/core_method.go); the Kotlin host forwards it unchanged
+    go    answered by libbox (core/core_method.go); the Kotlin host forwards it unchanged
     host  answered by the platform host (Android: BoxBridge, bridge/SlintHost.kt)
     ui    a platform UI service (menus, dialogs, IME, clipboard; Android: BoxActivity, NativeUi)
 
@@ -19,14 +19,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "protocol" / "methods.json"
-GO_OUT = ROOT / "libbox" / "core_protocol_gen.go"
-KT_OUT = ROOT / "app/src/main/java/io/nekohasekai/sfa/bridge/ProtocolGen.kt"
-KT_DISPATCH = ROOT / "app/src/main/java/io/nekohasekai/sfa/bridge/SlintHost.kt"
-KT_ACTIVITY = ROOT / "app/src/main/java/io/nekohasekai/sfa/bridge/BoxActivity.kt"
-KT_SOURCES = ROOT / "app/src/main/java"
-GO_METHODS = ROOT / "libbox" / "core_method.go"
-GO_SOURCES = ROOT / "libbox"
-RUST_SOURCES = ROOT / "ui-slint" / "src"
+GO_OUT = ROOT / "core" / "core_protocol_gen.go"
+KT_OUT = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProtocolGen.kt"
+KT_DISPATCH = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/SlintHost.kt"
+KT_ACTIVITY = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxActivity.kt"
+KT_SOURCES = ROOT / "clients/android/app/src/main/java"
+GO_METHODS = ROOT / "core" / "core_method.go"
+GO_SOURCES = ROOT / "core"
+RUST_SOURCES = ROOT / "ui" / "src"
 
 OWNERS = {"go", "host", "ui"}
 TARGETS = {"core", "android", "ui"}
@@ -175,9 +175,9 @@ def check(spec):
 
     handlers = go_handlers()
     for m in sorted(go - handlers):
-        errors.append(f"go method {m} has no handler in libbox/core_method.go")
+        errors.append(f"go method {m} has no handler in core/core_method.go")
     for m in sorted(handlers - go):
-        errors.append(f"libbox/core_method.go handles {m}, which the protocol does not give to go")
+        errors.append(f"core/core_method.go handles {m}, which the protocol does not give to go")
 
     activity = kotlin_activity()
     ui = set(names(spec, "methods", "ui"))
@@ -197,7 +197,7 @@ def check(spec):
         errors.append(f"event {e} is listed for the host but nothing in Kotlin emits it")
 
     for m in sorted(rust_references(methods) - set(methods)):
-        errors.append(f"ui-slint calls {m}, which the protocol does not list")
+        errors.append(f"ui/ calls {m}, which the protocol does not list")
     return errors
 
 

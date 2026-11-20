@@ -54,7 +54,7 @@ def main():
             'Existing release tags are never moved.'
         )
 
-    apk = Path('app/build/outputs/apk/other/release') / f'fk-box-{version}-arm64-v8a.apk'
+    apk = Path('clients/android/app/build/outputs/apk/other/release') / f'fk-box-{version}-arm64-v8a.apk'
     metadata = apk.parent / 'fk-box-version-metadata.json'
     metadata_json = json.dumps({
         'version_code': int(properties['VERSION_CODE']),

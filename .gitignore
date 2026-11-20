@@ -2,16 +2,19 @@
 .gradle
 .kotlin/
 /local.properties
+/clients/android/local.properties
 /.idea/
+/clients/android/.idea/
 .DS_Store
 build/
 /captures
+/clients/android/captures
 .externalNativeBuild
 .cxx
 local.properties
-/app/libs/
+/clients/android/app/libs/
 /.core/
-/service-account-credentials.json
+/clients/android/service-account-credentials.json
 /CLAUDE.md
 /.claude/
 /.local-signing/
@@ -20,8 +23,8 @@ local.properties
 *.jks
 *.p12
 *.keystore
-# Public CI debug key (see app/build.gradle.kts ciDebug)
-!/app/debug-ci.p12
+# Public CI debug key (see clients/android/app/build.gradle.kts ciDebug)
+!/clients/android/app/debug-ci.p12
 
 # Retired capture helper; keep stale local binaries out of version control
-/app/src/main/jniLibs/**/libbbox_capture.so
+/clients/android/app/src/main/jniLibs/**/libbbox_capture.so
