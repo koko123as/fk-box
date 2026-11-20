@@ -60,6 +60,20 @@ func uiEmit(kind string, value any) error {
 	return nil
 }
 
+// uiEmitRaw raises an event whose payload is already JSON.
+func uiEmitRaw(kind string, payload string) error {
+	if _, known := uiProtocolEvents[kind]; !known {
+		return fmt.Errorf("unknown UI event: %s", kind)
+	}
+	uiEventAccess.RLock()
+	sink := uiEventSink
+	uiEventAccess.RUnlock()
+	if sink != nil {
+		sink.Emit(kind, payload)
+	}
+	return nil
+}
+
 // UIHandlesMethod reports whether Go answers method (owner "go").
 func UIHandlesMethod(method string) bool {
 	_, ok := uiMethods[method]

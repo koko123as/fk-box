@@ -1434,7 +1434,7 @@
   },
   {
    "name": "stun",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "systemAccent",

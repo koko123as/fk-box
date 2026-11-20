@@ -3,6 +3,9 @@ package io.nekohasekai.sfa.bridge
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.UIToolHost
+import io.nekohasekai.sfa.backend.base.GlobalEventBus
+import io.nekohasekai.sfa.backend.base.UiEvent
 import io.nekohasekai.sfa.backend.tools.MaxRuntimeOption
 import io.nekohasekai.sfa.backend.tools.NetworkQualityViewModel
 import io.nekohasekai.sfa.backend.tools.OpenConnectStatusViewModel
@@ -35,6 +38,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     val openConnect = provider[OpenConnectStatusViewModel::class.java]
     private val openVPN = provider[OpenVPNStatusViewModel::class.java]
     private val usb = provider[USBIPStatusViewModel::class.java]
+    // Scopes the Go STUN tool to this activity (reset on create, stopped on clear).
     private val stun = provider[STUNTestViewModel::class.java]
     private val quality = provider[NetworkQualityViewModel::class.java]
     private val ping = provider[TailscalePingViewModel::class.java]
@@ -50,6 +54,14 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
             emit("outbounds", outbounds.map { mapOf("tag" to it.tag, "type" to it.type) })
         }
     })
+
+    private val toolHost = object : UIToolHost {
+        override fun commandClient(): io.nekohasekai.libbox.CommandClient = CommandTarget.standaloneClient()
+
+        override fun reportError(message: String) {
+            scope.launch { GlobalEventBus.emit(UiEvent.ErrorMessage(message)) }
+        }
+    }
 
     val running: Boolean
         get() = if (CommandTarget.isRemote) RemoteControlManager.isConnected.value else activity.serviceStatus.value == Status.Started
@@ -69,7 +81,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 usb.cancel()
                 outbounds.disconnect()
                 if (sessionKey != target || !available) {
-                    stun.onVpnDisconnected()
+                    Libbox.uiStunStop()
                     quality.onVpnDisconnected()
                     ping.stopPing()
                     inbox.cancel()
@@ -92,7 +104,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         jobs += scope.launch { openConnect.uiState.collect { emit("tools", snapshot()) } }
         jobs += scope.launch { openVPN.uiState.collect { emit("tools", snapshot()) } }
         jobs += scope.launch { usb.uiState.collect { emit("tools", snapshot()) } }
-        jobs += scope.launch { stun.uiState.collect { emit("stun", it.toWire() + mapOf("mapping" to Libbox.formatNATMapping(it.natMapping), "filtering" to Libbox.formatNATFiltering(it.natFiltering))) } }
+        // Later STUN states are sent by Go (the "stun" event).
+        emit("stun", GoWire(Libbox.uiStunPayload()))
         jobs += scope.launch { quality.uiState.collect { emit("quality", it.toWire()) } }
         jobs += scope.launch { ping.uiState.collect { emit("ping", it.toWire()) } }
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
@@ -117,18 +130,15 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         "usbip" to usb.uiState.value.servers.map { it.toWire() },
     )
 
-    fun diagnostics(): Map<String, Any?> = mapOf("quality" to quality.uiState.value.toWire(), "stun" to stun.uiState.value.toWire())
+    fun diagnostics(): Map<String, Any?> = mapOf("quality" to quality.uiState.value.toWire(), "stun" to GoWire(Libbox.uiStunDiagnostics()))
 
     private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
 
     suspend fun startStun(server: String?, outbound: String?) {
-        require(!stun.uiState.value.isRunning) { "A STUN test is already running" }
-        stun.updateServer(required(server, "server"))
-        stun.selectOutbound(outbound ?: "")
-        stun.startTest(running)
+        Libbox.uiStunStart(running, required(server, "server"), outbound ?: "", toolHost)
     }
 
-    suspend fun stopStun() { stun.cancelTest() }
+    suspend fun stopStun() { Libbox.uiStunStop() }
 
     suspend fun startQuality(url: String?, outbound: String?, serial: Boolean, http3: Boolean, seconds: Int?) {
         require(!quality.uiState.value.isRunning) { "A network quality test is already running" }
@@ -259,7 +269,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         outbounds.disconnect()
         inbox.cancel()
         ping.stopPing()
-        stun.cancelTest()
+        Libbox.uiStunStop()
         quality.cancelTest()
         usbController.close()
         ssh.close()
