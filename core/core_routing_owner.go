@@ -18,7 +18,6 @@ import (
 
 	mihomoProcess "github.com/metacubex/mihomo/component/process"
 	mihomoConstant "github.com/metacubex/mihomo/constant"
-	"github.com/sagernet/sing-box/log"
 )
 
 func init() {
@@ -106,7 +105,7 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 			return nil, err
 		}
 		failed := &CoreRoutingResult{Content: configContent, Error: routingErr.Error()}
-		s.StartedService.WriteMessage(log.LevelError, "分流规则未应用："+failed.Error)
+		s.hostLog().Write(hostLogError, "分流规则未应用："+failed.Error)
 		return failed, nil
 	}
 	if !result.Active {
@@ -135,11 +134,11 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 			reason = label + " did not start with the rules: " + reason
 		}
 		fallback := &CoreRoutingResult{Content: configContent, Warnings: result.Warnings, Error: reason, Fallback: true}
-		s.StartedService.WriteMessage(log.LevelError, "分流规则未应用，已按原配置启动："+reason)
+		s.hostLog().Write(hostLogError, "分流规则未应用，已按原配置启动："+reason)
 		s.writeRoutingWarnings(fallback)
 		return fallback, nil
 	}
-	s.StartedService.WriteMessage(log.LevelInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
+	s.hostLog().Write(hostLogInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
 	s.writeRoutingWarnings(result)
 	return result, nil
 }
@@ -168,7 +167,7 @@ func routingStartErrorFromRules(message string) bool {
 func (s *CommandServer) writeRoutingWarnings(result *CoreRoutingResult) {
 	for _, warning := range strings.Split(result.Warnings, "\n") {
 		if warning != "" {
-			s.StartedService.WriteMessage(log.LevelWarn, "分流规则："+warning)
+			s.hostLog().Write(hostLogWarn, "分流规则："+warning)
 		}
 	}
 }

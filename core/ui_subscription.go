@@ -8,6 +8,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sagernet/sing-box/experimental/fkhost"
 )
 
 const (
@@ -59,11 +61,10 @@ func UISubscriptionGet(link string, userAgent string) (*UISubscriptionResponse, 
 	if userAgent != "" {
 		request.Header.Set("User-Agent", userAgent)
 	}
-	client := NewHTTPClient().(*httpClient)
+	client := fkhost.NewHTTPClient()
 	defer client.Close()
-	client.ModernTLS()
-	client.client.Timeout = uiSubscriptionTimeout
-	response, err := client.client.Do(request)
+	client.Client.Timeout = uiSubscriptionTimeout
+	response, err := client.Client.Do(request)
 	if err != nil {
 		return nil, err
 	}

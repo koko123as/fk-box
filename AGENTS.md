@@ -17,7 +17,7 @@
 
 | 目录 | 内容 |
 | --- | --- |
-| `core/` | fk-box 的 Go 扩展与补丁；CI 将其覆盖到 sing-box 的 `experimental/libbox`，Go 包名与 gomobile 产物（`libbox.aar`、`Libbox`）不变 |
+| `core/` | fk-box 的 Go 扩展与补丁；CI 将 `core_*.go`、`ui_*.go` 覆盖到 sing-box 的 `experimental/libbox`，Go 包名与 gomobile 产物（`libbox.aar`、`Libbox`）不变；fk-box 自己的包 `core/fkhost`（宿主服务）、`core/fkbox`（与 libbox 一起绑定的 gomobile 入口 `Fkbox`）、`core/fkcore`（桌面核心进程 `fk-core`）由 [patch_entry.py](tools/patch_entry.py) 放入同一源码树（见 [core/README.md](core/README.md)） |
 | `protocol/` | UI 协议定义（`methods.json`），由 [protocol.py](tools/protocol.py) 生成 Go/Kotlin 代码并检查 Rust |
 | `ui/` | Rust + Slint 界面 crate，编为 `libfkui.so` |
 | `clients/android/` | Android Gradle 工程根（`app/`、`baselineprofile/`、Gradle Wrapper）；Android Studio 打开此目录，命令行在此目录运行 `./gradlew` |

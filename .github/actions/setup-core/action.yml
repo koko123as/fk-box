@@ -77,6 +77,10 @@ runs:
         python3 tools/patch_multicore.py .core
         python3 tools/patch_dns_count.py .core
         cp core/ui_*.go .core/experimental/libbox/
+        # fk-box's own packages (core/fkhost, core/fkbox, core/fkcore) and the
+        # gomobile bind of the entry package experimental/fkbox next to libbox.
+        # Before the first tidy: ui_*.go import experimental/fkhost.
+        python3 tools/patch_entry.py .core
     - name: Resolve the pinned HTTP rewrite runtime
       shell: bash
       working-directory: .core

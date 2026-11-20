@@ -5,22 +5,21 @@ package libbox
 // fk-box's own types; they never read libbox globals or libbox types (the
 // PlatformInterface, the CommandServer, OverrideOptions, the HTTP client).
 //
-// Today every host service is still provided by libbox: libboxHost below
-// delegates each call to the libbox code that did the job before, so behavior
-// is unchanged. core/README.md describes the plan to move these services out
-// of libbox one by one.
+// The services are fk-box's own (experimental/fkhost): log, HTTP, platform,
+// working directory. On Android libbox still provides what only it can give
+// (the app's PlatformInterface object, the StartedService log the app reads,
+// sing-box's start and stop, the command service); core/README.md has the
+// status of moving the rest out of libbox.
 
 import (
 	"net/http"
 	"net/netip"
-	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
 
+	"github.com/sagernet/sing-box/experimental/fkhost"
 	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	tun "github.com/sagernet/sing-tun"
 )
 
 // kernelHost bundles the host services one kernel start uses.
@@ -98,13 +97,14 @@ type hostHTTP interface {
 	NewClient(timeout time.Duration) (*http.Client, func())
 }
 
-type hostLogLevel uint8
+// hostLogLevel is fk-box's log level (fkhost.Level).
+type hostLogLevel = fkhost.Level
 
 const (
-	hostLogError hostLogLevel = iota
-	hostLogWarn
-	hostLogInfo
-	hostLogDebug
+	hostLogError = fkhost.LevelError
+	hostLogWarn  = fkhost.LevelWarn
+	hostLogInfo  = fkhost.LevelInfo
+	hostLogDebug = fkhost.LevelDebug
 )
 
 // hostLog is where kernels log.
@@ -116,120 +116,64 @@ type hostLog interface {
 	Diagnostic(message string)
 }
 
-// ---- libbox implementation ----
+// ---- the CommandServer host (Android) ----
 
 // kernelHost returns the host services of this CommandServer.
 func (s *CommandServer) kernelHost() kernelHost {
 	return kernelHost{
-		Platform:  libboxPlatform{s},
+		Platform:  fkhostPlatform{s.hostPlatform()},
 		Commands:  libboxCommandService{},
 		Lifecycle: libboxLifecycle{s},
-		HTTP:      libboxHTTP{},
-		Log:       libboxLog{s},
+		HTTP:      fkhostHTTP{},
+		Log:       s.hostLog(),
 	}
 }
 
-type libboxPlatform struct{ server *CommandServer }
+// Platform: fk-box's own (fkhost.Platform, one implementation per operating
+// system). On Android it calls the app's platform implementation, the
+// PlatformInterface object the app gives libbox (core_host_android.go).
+type fkhostPlatform struct{ platform fkhost.Platform }
 
-func (p libboxPlatform) OpenTun(request hostTunRequest, options kernelOptions) (int, error) {
-	opts := tun.Options{
-		Inet4Address: []netip.Prefix{request.Inet4},
-		Inet6Address: []netip.Prefix{request.Inet6},
-		MTU:          request.MTU,
-		AutoRoute:    true,
-		DNSMode:      tun.DNSModeHijack,
-	}
+func (p fkhostPlatform) OpenTun(request hostTunRequest, options kernelOptions) (int, error) {
+	tunRequest := fkhost.TunRequest{Inet4: request.Inet4, Inet6: request.Inet6, MTU: request.MTU}
 	if override, _ := options.host.(*OverrideOptions); override != nil {
-		opts.IncludePackage = iteratorToArray(override.IncludePackage)
-		opts.ExcludePackage = iteratorToArray(override.ExcludePackage)
+		tunRequest.IncludePackage = iteratorToArray(override.IncludePackage)
+		tunRequest.ExcludePackage = iteratorToArray(override.ExcludePackage)
 	}
-	routeRanges, err := opts.BuildAutoRouteRanges(true)
-	if err != nil {
-		return -1, err
-	}
-	tunFd, err := p.server.platformInterface.OpenTun(&tunOptions{&opts, routeRanges, option.TunPlatformOptions{}})
-	if err != nil {
-		return -1, err
-	}
-	if name, err := getTunnelName(tunFd); err == nil {
-		p.server.platformInterface.RegisterMyInterface(name)
-	}
-	return dup(int(tunFd))
+	return p.platform.OpenTun(tunRequest)
 }
 
-func (p libboxPlatform) Protect(conn syscall.RawConn) error {
-	platform := p.server.platformInterface
-	if platform == nil {
-		return nil
-	}
-	var protectErr error
-	err := conn.Control(func(fd uintptr) {
-		protectErr = platform.AutoDetectInterfaceControl(int32(fd))
-	})
-	if err != nil {
-		return err
-	}
-	return protectErr
-}
+func (p fkhostPlatform) Protect(conn syscall.RawConn) error { return p.platform.Protect(conn) }
 
-func (p libboxPlatform) ConnectionOwner(protocol int32, source, destination netip.AddrPort) (*hostConnectionOwner, bool, error) {
-	platform := p.server.platformInterface
-	if platform == nil {
-		return nil, false, nil
-	}
-	owner, err := platform.FindConnectionOwner(protocol, source.Addr().String(), int32(source.Port()), destination.Addr().String(), int32(destination.Port()))
-	if err != nil {
-		return nil, true, err
-	}
+func (p fkhostPlatform) ConnectionOwner(protocol int32, source, destination netip.AddrPort) (*hostConnectionOwner, bool, error) {
+	owner, ok, err := p.platform.ConnectionOwner(protocol, source, destination)
 	if owner == nil {
-		return nil, true, nil
+		return nil, ok, err
 	}
-	return &hostConnectionOwner{PackageNames: owner.androidPackageNames, UserName: owner.UserName}, true, nil
+	return &hostConnectionOwner{PackageNames: owner.PackageNames, UserName: owner.UserName}, ok, err
 }
 
-// The app reports default-network changes through CoreDefaultNetworkChanged
-// (its ConnectivityManager callback); every watcher hears each one.
-var (
-	hostNetworkAccess   sync.Mutex
-	hostNetworkNext     uint64
-	hostNetworkWatchers = map[uint64]func(){}
-)
-
-func (libboxPlatform) WatchDefaultNetwork(onChange func()) func() {
-	hostNetworkAccess.Lock()
-	id := hostNetworkNext
-	hostNetworkNext++
-	hostNetworkWatchers[id] = onChange
-	hostNetworkAccess.Unlock()
-	return func() {
-		hostNetworkAccess.Lock()
-		delete(hostNetworkWatchers, id)
-		hostNetworkAccess.Unlock()
-	}
+func (fkhostPlatform) WatchDefaultNetwork(onChange func()) func() {
+	return fkhost.WatchDefaultNetwork(onChange)
 }
 
 // CoreDefaultNetworkChanged is called when the underlying default network is
 // replaced (Wi-Fi to cellular and back). Connections of mihomo and Xray are
 // still bound to the old network and would hang until their own timeouts;
 // the running kernel closes them so apps reconnect at once. sing-box resets
-// its own connections when its default interface changes.
-func CoreDefaultNetworkChanged() {
-	hostNetworkAccess.Lock()
-	watchers := make([]func(), 0, len(hostNetworkWatchers))
-	for _, onChange := range hostNetworkWatchers {
-		watchers = append(watchers, onChange)
-	}
-	hostNetworkAccess.Unlock()
-	for _, onChange := range watchers {
-		onChange()
-	}
-}
+// its own connections when its default interface changes. The app calls
+// Fkbox.defaultNetworkChanged; this name stays for older callers.
+func CoreDefaultNetworkChanged() { fkhost.DefaultNetworkChanged() }
 
 type libboxCommandService struct{}
 
 func (libboxCommandService) CoreChanged()   { notifyCoreChange() }
 func (libboxCommandService) GroupsChanged() { notifyGroupsChange() }
 
+// Lifecycle: on Android sing-box still starts and stops inside this
+// CommandServer (daemon.StartedService); core/README.md says why (step 3).
+// Xray and mihomo are started and stopped by fk-box itself (core_service.go),
+// and the standalone host starts sing-box itself (core_standalone.go).
 type libboxLifecycle struct{ server *CommandServer }
 
 func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) error {
@@ -239,24 +183,45 @@ func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) err
 
 func (l libboxLifecycle) StopSingBox() error { return l.server.CloseService() }
 
-func (libboxLifecycle) WorkingDirectory() string { return sWorkingPath }
+// WorkingDirectory is fkhost's when the host set one (the desktop core),
+// otherwise libbox's Setup path (Android: the app's files directory).
+func (libboxLifecycle) WorkingDirectory() string { return coreWorkingPath() }
 
-type libboxHTTP struct{}
-
-func (libboxHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
-	client := NewHTTPClient().(*httpClient)
-	client.ModernTLS()
-	client.client.Timeout = timeout
-	return &client.client, client.Close
+func coreWorkingPath() string {
+	if directory := fkhost.WorkingDirectory(); directory != "" {
+		return directory
+	}
+	return sWorkingPath
 }
 
-type libboxLog struct{ server *CommandServer }
+// HTTP: fk-box's own client (fkhost.NewHTTPClient), no longer libbox's.
+type fkhostHTTP struct{}
 
-func (l libboxLog) Write(level hostLogLevel, message string) {
-	l.server.StartedService.WriteMessage(libboxLogLevel(level), message)
+func (fkhostHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
+	return fkhost.NewHTTPClientTimeout(timeout)
 }
 
-func (libboxLog) Diagnostic(message string) { log.Warn(message) }
+// Log: fk-box's own log (fkhost.Log). sing-box still runs inside this
+// CommandServer and the app's log page reads its StartedService log, so every
+// fk-box line is forwarded there too; diagnostics go to sing-box's logger
+// (logcat), as before.
+
+type fkhostLog struct{}
+
+func (fkhostLog) Write(level hostLogLevel, message string) { fkhost.Log.Write(level, message) }
+
+func (fkhostLog) Diagnostic(message string) { fkhost.Log.Diagnostic(message) }
+
+// hostLog connects fkhost.Log to this server's service log and returns it.
+func (s *CommandServer) hostLog() hostLog {
+	if server := s.StartedService; server != nil {
+		fkhost.Log.SetForward(func(entry fkhost.Entry) {
+			server.WriteMessage(libboxLogLevel(entry.Level), entry.Message)
+		})
+	}
+	fkhost.Log.SetDiagnostic(func(message string) { log.Warn(message) })
+	return fkhostLog{}
+}
 
 func libboxLogLevel(level hostLogLevel) log.Level {
 	switch level {

@@ -182,7 +182,7 @@ func CheckCoreConfig(core string, content string) error {
 // while building; a missing file is only reported at start, since the app
 // extracts its bundled copy before an Xray profile runs.
 func checkXrayConfig(content string) error {
-	if sWorkingPath != "" {
+	if coreWorkingPath() != "" {
 		_ = os.Setenv("xray.location.asset", GeoDataDir())
 	}
 	config, err := decodeXrayConfig(content)

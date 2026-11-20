@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bg
 
 import android.net.Network
+import io.nekohasekai.fkbox.Fkbox
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
@@ -24,7 +25,7 @@ object DefaultNetworkMonitor {
                 val previous = lastNetwork
                 lastNetwork = it
                 if (previous != null && previous != it) {
-                    runCatching { Libbox.coreDefaultNetworkChanged() }
+                    runCatching { Fkbox.defaultNetworkChanged() }
                 }
             }
         }

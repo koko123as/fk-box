@@ -13,9 +13,9 @@ import (
 //
 // Android runs the core in its own process through gomobile: InProcessCore
 // wraps the CommandServer and the Go-side streams that the Kotlin host
-// already calls, so nothing changes there. Desktop clients are planned to run
-// the core as a child process that serves the same protocol over stdio or a
-// local socket (see core/README.md); that transport does not exist yet.
+// already calls, so nothing changes there. Desktop clients run the core as
+// the child process fk-core (core/fkcore), which serves the same protocol
+// over stdio or a local socket (fkhost.ProtocolServer, core/README.md).
 //
 // Streams deliver their events (protocol "events") to the sink installed with
 // SetEventSink; Subscribe* turns each one on while a page shows it.

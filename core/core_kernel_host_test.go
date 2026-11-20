@@ -62,7 +62,7 @@ func (p fakePlatform) ConnectionOwner(protocol int32, source, destination netip.
 }
 
 func (fakePlatform) WatchDefaultNetwork(onChange func()) func() {
-	return libboxPlatform{}.WatchDefaultNetwork(onChange)
+	return fkhostPlatform{}.WatchDefaultNetwork(onChange)
 }
 
 type fakeCommands struct{ h *fakeHost }
@@ -164,7 +164,7 @@ func TestUIKernelSingBoxRegistry(t *testing.T) {
 // Watchers hear every default-network change until cancelled.
 func TestUIKernelXrayNetworkWatch(t *testing.T) {
 	calls := 0
-	cancel := libboxPlatform{}.WatchDefaultNetwork(func() { calls++ })
+	cancel := fkhostPlatform{}.WatchDefaultNetwork(func() { calls++ })
 	CoreDefaultNetworkChanged()
 	CoreDefaultNetworkChanged()
 	cancel()
