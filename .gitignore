@@ -28,3 +28,4 @@ local.properties
 
 # Retired capture helper; keep stale local binaries out of version control
 /clients/android/app/src/main/jniLibs/**/libbbox_capture.so
+/kernels-out/

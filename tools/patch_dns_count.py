@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Count the DNS messages sing-box's DNS router answers (core/dns/), so the
+"""Count the DNS messages sing-box's DNS router answers (legacy/core/dns/), so the
 dashboard can show DNS queries that the core resolves itself (hijack-dns)
 instead of only those that became connections.
 
@@ -42,7 +42,7 @@ def main(argv):
         return report(failures, LABEL, f"{ROUTER}: Exchange and ExchangeAsync signatures found")
     if target.exists():
         sys.exit("patch_dns_count: overlay already exists; use a clean matching core checkout")
-    shutil.copyfile(ROOT / "core/dns/ui_query_count.go", target)
+    shutil.copyfile(ROOT / "legacy/core/dns/ui_query_count.go", target)
     text = path.read_text()
     for head in HOOKS:
         if text.count(head) != 1:

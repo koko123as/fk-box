@@ -213,7 +213,7 @@ for directory in (native / "update", native / "compat", ROOT / "clients/android/
     for path in directory.rglob("*"):
         if path.is_file():
             errors.append(f"{path.relative_to(ROOT)}: retired source remains")
-for retired in ("core/option/httpdebug.go", "tools/ebpf", "core/httpdebug/wire.go",
+for retired in ("legacy/core/option/httpdebug.go", "tools/ebpf", "legacy/core/httpdebug/wire.go",
                 "clients/android/app/src/main/java/io/nekohasekai/sfa/bg/RootCaptureSession.kt"):
     path = ROOT / retired
     if path.is_file() or path.is_dir() and any(item.is_file() for item in path.rglob("*")):

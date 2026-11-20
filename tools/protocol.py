@@ -5,7 +5,7 @@
     python3 tools/protocol.py check   fail when a table is stale or an implementation disagrees
 
 Owners:
-    go    answered by libbox (core/core_method.go); the Kotlin host forwards it unchanged
+    go    answered by libbox (legacy/core/core_method.go); the Kotlin host forwards it unchanged
     host  answered by the platform host (Android: BoxBridge, bridge/SlintHost.kt)
     ui    a platform UI service (menus, dialogs, IME, clipboard; Android: BoxActivity, NativeUi)
 
@@ -29,14 +29,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "protocol" / "methods.json"
-GO_OUT = ROOT / "core" / "core_protocol_gen.go"
+GO_OUT = ROOT / "legacy" / "core" / "core_protocol_gen.go"
 RS_OUT = ROOT / "ui" / "src" / "protocol_gen.rs"
 KT_OUT = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProtocolGen.kt"
 KT_DISPATCH = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/SlintHost.kt"
 KT_ACTIVITY = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxActivity.kt"
 KT_SOURCES = ROOT / "clients/android/app/src/main/java"
-GO_METHODS = ROOT / "core" / "core_method.go"
-GO_SOURCES = ROOT / "core"
+GO_METHODS = ROOT / "legacy" / "core" / "core_method.go"
+GO_SOURCES = ROOT / "legacy" / "core"
 RUST_SOURCES = ROOT / "ui" / "src"
 RUST_PLATFORM = RUST_SOURCES / "platform"
 RUST_ANDROID_PLATFORM = RUST_PLATFORM / "android" / "mod.rs"
@@ -276,9 +276,9 @@ def check(spec):
 
     handlers = go_handlers()
     for m in sorted(go - handlers):
-        errors.append(f"go method {m} has no handler in core/core_method.go")
+        errors.append(f"go method {m} has no handler in legacy/core/core_method.go")
     for m in sorted(handlers - go):
-        errors.append(f"core/core_method.go handles {m}, which the protocol does not give to go")
+        errors.append(f"legacy/core/core_method.go handles {m}, which the protocol does not give to go")
 
     activity = kotlin_activity()
     ui = set(names(spec, "methods", "ui"))

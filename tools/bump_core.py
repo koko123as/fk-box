@@ -44,7 +44,7 @@ KERNELS = {
 # whole: libbox (fk-box's files are built into it), the StartedService gRPC
 # service fk-box implements (core_command_server.go) and the attached service
 # it forwards sing-box calls to, and build_libbox, whose Android flags and
-# tags cmd/fk-bind (core/fkbind) copies.
+# tags cmd/fk-bind (legacy/core/fkbind) copies.
 SING_BOX_WATCHED = [
     "experimental/libbox/",
     "daemon/started_service.go",
@@ -137,7 +137,7 @@ def watched_packages(module):
     """The package directories (relative to the module) core/ imports."""
     pattern = re.compile(r'"' + re.escape(module) + r'(/[^"]*)?"')
     packages = set()
-    for path in (ROOT / "core").rglob("*.go"):
+    for path in (ROOT / "legacy" / "core").rglob("*.go"):
         for match in pattern.finditer(path.read_text()):
             packages.add((match.group(1) or "").strip("/"))
     return sorted(packages)
@@ -146,7 +146,7 @@ def watched_packages(module):
 def patched_files():
     """sing-box files fk-box's .patch files change."""
     files = set()
-    for patch in (ROOT / "core").glob("*.patch"):
+    for patch in (ROOT / "legacy" / "core").glob("*.patch"):
         if patch.name.startswith("sing-tun"):
             continue
         files |= set(re.findall(r"^diff --git a/(\S+) ", patch.read_text(), re.M))
@@ -193,7 +193,7 @@ def drift_report(core, old_ref, new_ref):
         lines.append(f"| {label} | {detail} |")
     if core == "sing-box":
         old_tun, new_tun = sing_tun_version(old_ref), sing_tun_version(new_ref)
-        note = "unchanged" if old_tun == new_tun else "**changed: rebase core/sing-tun-android-ingress.patch and VERSION in tools/patch_sing_tun.py**"
+        note = "unchanged" if old_tun == new_tun else "**changed: rebase legacy/core/sing-tun-android-ingress.patch and VERSION in tools/patch_sing_tun.py**"
         lines += ["", f"sing-tun: `{old_tun}` → `{new_tun}` ({note})."]
     lines += ["", f"{hits} changed upstream files in what fk-box depends on."]
     return "\n".join(lines) + "\n"

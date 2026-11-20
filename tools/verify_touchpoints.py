@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Check that core/core_touch_singbox.go lists every sing-box symbol fk-box uses.
+"""Check that legacy/core/core_touch_singbox.go lists every sing-box symbol fk-box uses.
 
     python3 tools/verify_touchpoints.py                # package-qualified symbols
     python3 tools/verify_touchpoints.py --core .core   # plus libbox's own (after setup-core)
@@ -16,7 +16,7 @@ by name. This check keeps the list complete:
 
 fk-box's own overlay packages (experimental/httpdebug, the DNS counter in
 dns/, experimental/fkhost and experimental/fkbox) are not upstream symbols and
-are skipped, and so is the Android build command core/fkbind; core/fkbox and core/fkcore use libbox by import path, and only the
+are skipped, and so is the Android build command legacy/core/fkbind; legacy/core/fkbox and legacy/core/fkcore use libbox by import path, and only the
 libbox symbols fk-box does not define itself are checked. Matching is textual (comments,
 strings and composite-literal keys are ignored), not a type check: the
 compiler does that when the touchpoint file is built.
@@ -28,7 +28,7 @@ from collections import defaultdict
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-CORE = ROOT / "core"
+CORE = ROOT / "legacy" / "core"
 TOUCH = CORE / "core_touch_singbox.go"
 UPSTREAM = ("github.com/sagernet/sing-box", "github.com/sagernet/sing-tun")
 # fk-box's own packages and symbols inside upstream import paths.
@@ -39,8 +39,8 @@ OWN = {
     "github.com/sagernet/sing-box/experimental/fkhost": None,
     "github.com/sagernet/sing-box/experimental/fkbox": None,
 }
-# fk-box's packages outside libbox (core/fkbox, core/fkcore) reach libbox by
-# its import path; symbols fk-box defines there (core/*.go) are its own, the
+# fk-box's packages outside libbox (legacy/core/fkbox, legacy/core/fkcore) reach libbox by
+# its import path; symbols fk-box defines there (legacy/core/*.go) are its own, the
 # rest are libbox's and are listed unqualified in the touchpoint file.
 LIBBOX = "github.com/sagernet/sing-box/experimental/libbox"
 
@@ -74,7 +74,7 @@ def body(text):
     return strip(text[match.end():] if match else text)
 
 
-# fk-box's Android build command (core/fkbind -> cmd/fk-bind) uses sing-box's
+# fk-box's Android build command (legacy/core/fkbind -> cmd/fk-bind) uses sing-box's
 # build helpers (cmd/internal/build_shared), which libbox cannot import; it is
 # compiled on its own (newui.yml vets it) and names a changed helper there.
 BUILD_TOOL = CORE / "fkbind"
@@ -168,7 +168,7 @@ def main():
                 missing.append(f"libbox {name} (used in {', '.join(sorted(files))})")
         checked += len(internal)
     for item in missing:
-        print(f"::error file=core/core_touch_singbox.go::not listed in the touchpoint file: {item}")
+        print(f"::error file=legacy/core/core_touch_singbox.go::not listed in the touchpoint file: {item}")
     print(f"{checked} sing-box/libbox symbols used by core/, {len(missing)} missing from {TOUCH.name}")
     return 1 if missing else 0
 

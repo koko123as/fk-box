@@ -21,10 +21,10 @@ def overlay_targets(core):
     """Every file the overlay creates; none may exist upstream."""
     targets = [core / "experimental/httpdebug", core / "route/b_box_httpdebug.go",
                core / "experimental/libbox/ui_capture.go"]
-    targets += [core / "route" / ("b_box_" + source.name) for source in (ROOT / "core/route").glob("*.go")]
+    targets += [core / "route" / ("b_box_" + source.name) for source in (ROOT / "legacy/core/route").glob("*.go")]
     for pattern in ("ui_capture*.go", "ui_http_rewrite*.go"):
-        targets += [core / "experimental/libbox" / source.name for source in (ROOT / "core").glob(pattern)]
-    targets += [core / "option" / source.name for source in (ROOT / "core/option").glob("*.go")]
+        targets += [core / "experimental/libbox" / source.name for source in (ROOT / "legacy" / "core").glob(pattern)]
+    targets += [core / "option" / source.name for source in (ROOT / "legacy/core/option").glob("*.go")]
     return sorted(set(targets))
 
 
@@ -34,8 +34,8 @@ def main():
     parser.add_argument("--check", action="store_true", help="only report whether the patches and overlay fit")
     arguments = parser.parse_args()
     core = arguments.core.resolve()
-    patch = ROOT / "core/httpdebug.patch"
-    rewrite_patch = ROOT / "core/http_rewrite.patch"
+    patch = ROOT / "legacy/core/httpdebug.patch"
+    rewrite_patch = ROOT / "legacy/core/http_rewrite.patch"
     if arguments.check:
         failures = check_absent(overlay_targets(core), core, LABEL)
         failures += check_patches(core, [patch, rewrite_patch], LABEL)
@@ -48,14 +48,14 @@ def main():
     subprocess.run(["git", "apply", str(patch)], cwd=core, check=True)
     subprocess.run(["git", "apply", "--check", str(rewrite_patch)], cwd=core, check=True)
     subprocess.run(["git", "apply", str(rewrite_patch)], cwd=core, check=True)
-    shutil.copytree(ROOT / "core/httpdebug", targets[0])
-    for source in (ROOT / "core/route").glob("*.go"):
+    shutil.copytree(ROOT / "legacy/core/httpdebug", targets[0])
+    for source in (ROOT / "legacy/core/route").glob("*.go"):
         shutil.copyfile(source, core / "route" / ("b_box_" + source.name))
-    for source in (ROOT / "core").glob("ui_capture*.go"):
+    for source in (ROOT / "legacy" / "core").glob("ui_capture*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
-    for source in (ROOT / "core").glob("ui_http_rewrite*.go"):
+    for source in (ROOT / "legacy" / "core").glob("ui_http_rewrite*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
-    for source in (ROOT / "core/option").glob("*.go"):
+    for source in (ROOT / "legacy/core/option").glob("*.go"):
         shutil.copyfile(source, core / "option" / source.name)
     print("Installed HTTP/MITM capture, profile rewriting, route hooks and libbox bindings")
     return 0

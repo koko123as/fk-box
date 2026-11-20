@@ -2,7 +2,7 @@
 """Command service guard, run after setup-core (needs .core/).
 
 fk-box serves sing-box's StartedService gRPC service itself
-(core/core_command_server.go): coreStartedService embeds
+(legacy/core/core_command_server.go): coreStartedService embeds
 daemon.UnimplementedStartedServiceServer, so a method it does not implement
 answers "unimplemented" to the app and to remote controllers. Every method of
 the StartedServiceServer interface must therefore be implemented by
@@ -29,13 +29,13 @@ if not block:
     sys.exit("StartedServiceServer interface not found in " + str(GRPC))
 methods = re.findall(r"^\s+([A-Z]\w*)\(", block.group(1), re.M)
 handled = set()
-for path in (ROOT / "core").glob("*.go"):
+for path in (ROOT / "legacy" / "core").glob("*.go"):
     if not path.name.endswith("_test.go"):
         handled |= set(re.findall(r"func \(s \*coreStartedService\) (\w+)\(", path.read_text()))
 
 missing = [m for m in methods if m not in handled]
 for method in missing:
-    print(f"::error::StartedService.{method} is not implemented by coreStartedService (core/core_api.go, core_extra.go, core_command_server.go)")
+    print(f"::error::StartedService.{method} is not implemented by coreStartedService (legacy/core/core_api.go, core_extra.go, core_command_server.go)")
 print(f"{len(methods)} StartedService methods: {len(handled & set(methods))} implemented by coreStartedService")
 
 # The app must not call the libbox entry points that act on libbox's own
