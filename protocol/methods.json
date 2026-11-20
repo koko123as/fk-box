@@ -1362,11 +1362,11 @@
   },
   {
    "name": "connectionStats",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "connections",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "dashboard",
