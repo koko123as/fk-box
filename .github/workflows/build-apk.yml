@@ -7,7 +7,20 @@ name: Build APK on push (arm64-v8a)
 on:
   push:
     branches: [main]
-    paths-ignore: ['**/*.md']
+    paths:
+      # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
+      - 'core/**'
+      - 'protocol/**'
+      - 'ui/**'
+      - 'tools/**'
+      - 'version.properties'
+      - 'flclash-manifest.json'
+      - 'licenses/**'
+      - '.github/actions/**'
+      - 'clients/android/**'
+      - '.github/workflows/build-apk.yml'
+      # docs-only changes never build
+      - '!**/*.md'
   workflow_dispatch:
 
 permissions:
