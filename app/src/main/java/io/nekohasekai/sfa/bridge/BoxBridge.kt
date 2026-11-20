@@ -183,12 +183,18 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                         // "connectionStats" (each at once when shown, then each
                         // changed state at most once a second) while in the
                         // foreground.
+                        // Enter and leave are counted per bridge in libbox, so
+                        // leave only after a completed enter.
                         launch {
+                            var entered = false
                             try {
-                                withContext(Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(true) }
+                                withContext(Dispatchers.Default) {
+                                    Libbox.uiConnectionStreamSetForeground(true)
+                                    entered = true
+                                }
                                 awaitCancellation()
                             } finally {
-                                withContext(NonCancellable + Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(false) }
+                                if (entered) withContext(NonCancellable + Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(false) }
                             }
                         }
                         // libbox's log stream sends "logs" (snapshot on show,
