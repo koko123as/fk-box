@@ -25,6 +25,7 @@ import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.CompletableDeferred
@@ -570,9 +571,12 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             withTimeout(15000) { serviceStatus.first { it == Status.Stopped } }
             return
         }
-        if (!restart && !recover && serviceStatus.value == Status.Started && Settings.detectServiceMode() == Settings.serviceMode) {
+        if (!restart && !recover && serviceStatus.value == Status.Started && Settings.detectServiceMode() == Settings.serviceMode &&
+            !selectedCoreDiffers()
+        ) {
             withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().serviceReload() }
         } else {
+            // A profile on another core (sing-box/Xray/mihomo) is a full stop and start, not a reload.
             stopService()
             withTimeout(15000) { serviceStatus.first { it == Status.Stopped } }
             try {
@@ -587,6 +591,15 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 throw error
             }
         }
+    }
+
+    /** Whether the selected profile runs on another core than the one the local service runs now. */
+    private suspend fun selectedCoreDiffers(): Boolean = withContext(Dispatchers.IO) {
+        val running = BoxService.runningCore ?: return@withContext false
+        runCatching {
+            val profile = ProfileManager.get(Settings.selectedProfile) ?: return@runCatching false
+            Libbox.resolveProfileCore(profile.typed.core, java.io.File(profile.typed.path).readText()) != running
+        }.getOrDefault(false)
     }
 
     suspend fun pickDocument(saveName: String? = null): Uri? {

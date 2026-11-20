@@ -52,6 +52,8 @@ jobs:
       - uses: ./.github/actions/setup-core
       - name: Multi-core gRPC coverage (every StartedService method handled or reviewed)
         run: python3 tools/verify_multicore.py
+      - name: sing-box touchpoints (every sing-box/libbox symbol core/ uses is listed in core_touch_singbox.go)
+        run: python3 tools/verify_touchpoints.py --core .core
       - name: Android ingress-discard map compatibility tests
         working-directory: .core
         run: go test -ldflags=-checklinkname=0 github.com/sagernet/sing-tun -run '^TestAndroidIngressDiscard' -count=1

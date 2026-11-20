@@ -1,0 +1,171 @@
+name: Bump a core (draft PR)
+
+# Prepares one kernel upgrade for review: bumps version.properties with
+# tools/bump_core.py on a new branch bump/<kernel>-<version>, writes the drift
+# report (what changed upstream in the files fk-box depends on) and, for
+# sing-box, the result of every patch script's --check against the new
+# version, and opens a DRAFT pull request with both. It never merges, tags or
+# releases anything; the build, tests and device checks follow the checklist
+# in libbox.md ("升级内核").
+on:
+  workflow_dispatch:
+    inputs:
+      kernel:
+        description: Kernel to upgrade
+        required: true
+        type: choice
+        options:
+          - sing-box
+          - xray
+          - mihomo
+          - libxray
+      version:
+        description: New version, as tagged upstream (e.g. 1.15.0-alpha.14, 26.12.1, 1.19.35, v1.261201.0)
+        required: true
+        type: string
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: bump-core-${{ inputs.kernel }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  bump:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      KERNEL: ${{ inputs.kernel }}
+      INPUT_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: main
+
+      - name: Check the inputs and the branch name
+        id: names
+        run: |
+          [[ "$INPUT_VERSION" =~ ^v?[0-9][0-9A-Za-z.+-]*$ ]] || { echo "::error::not a version: $INPUT_VERSION"; exit 1; }
+          version=${INPUT_VERSION#v}
+          branch="bump/${KERNEL}-${version}"
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null; then
+            echo "::error::$branch already exists; delete it or review its pull request"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version.properties and write the drift report
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          python3 tools/bump_core.py "$KERNEL" "$VERSION" --report "$RUNNER_TEMP/drift.md" | tee "$RUNNER_TEMP/bump.txt"
+          if git diff --quiet -- version.properties; then
+            echo "::error::version.properties is unchanged: $KERNEL is already at $VERSION"
+            exit 1
+          fi
+          test -s "$RUNNER_TEMP/drift.md" || echo "Drift report unavailable; see the workflow log." > "$RUNNER_TEMP/drift.md"
+          cat "$RUNNER_TEMP/drift.md" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read the Go version
+        if: inputs.kernel == 'sing-box'
+        id: go
+        run: echo "version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        if: inputs.kernel == 'sing-box'
+        with:
+          repository: SagerNet/sing-box
+          ref: v${{ steps.names.outputs.version }}
+          path: .core
+          persist-credentials: false
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        if: inputs.kernel == 'sing-box'
+        with:
+          go-version: ${{ steps.go.outputs.version }}
+          cache: false
+
+      - name: Check every sing-box patch against the new version (--check)
+        if: inputs.kernel == 'sing-box'
+        env:
+          GOTOOLCHAIN: local
+          VERSION: ${{ steps.names.outputs.version }}
+        run: |
+          report="$RUNNER_TEMP/patches.md"
+          {
+            echo "## sing-box patch check"
+            echo
+            echo "Each script ran with \`--check\` against sing-box v$VERSION; nothing was applied."
+            echo
+            echo "| check | result |"
+            echo "| --- | --- |"
+          } > "$report"
+          failed=0
+          run_check() {
+            local name=$1; shift
+            local output status
+            output=$("$@" 2>&1) && status=0 || status=$?
+            echo "$output"
+            if [ "$status" -eq 0 ]; then
+              echo "| \`$name\` | ✅ |" >> "$report"
+            else
+              failed=1
+              # One table cell: the error lines joined, pipes escaped.
+              cell=$(printf '%s' "$output" | grep -E '::error::|failed|not found|error' | sed 's/^::error:://; s/|/\\|/g' | head -20 | paste -sd ';' - | sed 's/;/<br>/g' || true)
+              echo "| \`$name\` | ❌ ${cell:-exit $status, see the workflow log} |" >> "$report"
+            fi
+          }
+          run_check "libbox-no-legacy.patch" python3 tools/patchcheck.py .core core/libbox-no-legacy.patch
+          run_check "patch_sing_tun.py --check" python3 tools/patch_sing_tun.py .core --check
+          run_check "patch_httpdebug.py --check" python3 tools/patch_httpdebug.py .core --check
+          run_check "patch_multicore.py --check" python3 tools/patch_multicore.py .core --check
+          run_check "patch_dns_count.py --check" python3 tools/patch_dns_count.py .core --check
+          run_check "verify_multicore.py" python3 tools/verify_multicore.py
+          echo >> "$report"
+          if [ "$failed" -eq 0 ]; then
+            echo "All patch checks passed." >> "$report"
+          else
+            echo "**Some patch checks failed: rebase the named patch or script before building.**" >> "$report"
+          fi
+          cat "$report" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Push the branch and open a draft pull request
+        env:
+          VERSION: ${{ steps.names.outputs.version }}
+          BRANCH: ${{ steps.names.outputs.branch }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git add version.properties
+          git commit -m "Bump $KERNEL to $VERSION"
+          git push origin "$BRANCH"
+          body="$RUNNER_TEMP/body.md"
+          {
+            echo "Draft upgrade of **$KERNEL** to \`$VERSION\`, prepared by the bump-core workflow. Do not merge before the checklist in libbox.md (升级内核) is done."
+            echo
+            echo '```'
+            cat "$RUNNER_TEMP/bump.txt"
+            echo '```'
+            echo
+            cat "$RUNNER_TEMP/drift.md"
+            if [ -f "$RUNNER_TEMP/patches.md" ]; then
+              echo
+              cat "$RUNNER_TEMP/patches.md"
+            fi
+            echo
+            echo "## Next"
+            echo
+            echo "- Pushes made by this workflow start no other workflow: run **Core and source validation** (newui.yml) and **Build APK on push** (build-apk.yml) with workflow_dispatch on \`$BRANCH\`."
+            echo "- Then the device checks in libbox.md. This pull request is a draft and is never merged automatically."
+          } > "$body"
+          gh pr create --draft --base main --head "$BRANCH" --title "Bump $KERNEL to $VERSION" --body-file "$body"
