@@ -11,9 +11,12 @@ name: Kernel isolation feasibility (P0)
 #     read traffic from it;
 #  3. the size of the arm64 APK with the official libraries in place of the
 #     current multi-kernel libbox.so.
-# Manual only; it never signs, tags or publishes anything.
+# Manual (or a push to the P0 branch); it never signs, tags or publishes anything.
 on:
   workflow_dispatch:
+  # A workflow that is not on main yet can only start from a push.
+  push:
+    branches: ['arch/kernel-isolation-p0']
 
 permissions:
   contents: read
