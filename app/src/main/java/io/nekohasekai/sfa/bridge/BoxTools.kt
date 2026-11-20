@@ -6,7 +6,6 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.UIToolHost
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
-import io.nekohasekai.sfa.backend.tools.MaxRuntimeOption
 import io.nekohasekai.sfa.backend.tools.NetworkQualityViewModel
 import io.nekohasekai.sfa.backend.tools.OpenConnectStatusViewModel
 import io.nekohasekai.sfa.backend.tools.OpenVPNStatusViewModel
@@ -40,6 +39,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     private val usb = provider[USBIPStatusViewModel::class.java]
     // Scopes the Go STUN tool to this activity (reset on create, stopped on clear).
     private val stun = provider[STUNTestViewModel::class.java]
+    // Scopes the Go network quality tool to this activity (reset on create, stopped on clear).
     private val quality = provider[NetworkQualityViewModel::class.java]
     private val ping = provider[TailscalePingViewModel::class.java]
     private val inbox = provider[TaildropViewModel::class.java]
@@ -82,7 +82,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 outbounds.disconnect()
                 if (sessionKey != target || !available) {
                     Libbox.uiStunStop()
-                    quality.onVpnDisconnected()
+                    Libbox.uiQualityDisconnected()
                     ping.stopPing()
                     inbox.cancel()
                     inboxTag = null
@@ -106,7 +106,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         jobs += scope.launch { usb.uiState.collect { emit("tools", snapshot()) } }
         // Later STUN states are sent by Go (the "stun" event).
         emit("stun", GoWire(Libbox.uiStunPayload()))
-        jobs += scope.launch { quality.uiState.collect { emit("quality", it.toWire()) } }
+        // Later quality states are sent by Go (the "quality" event).
+        emit("quality", GoWire(Libbox.uiQualityPayload()))
         jobs += scope.launch { ping.uiState.collect { emit("ping", it.toWire()) } }
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
         jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
@@ -130,7 +131,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         "usbip" to usb.uiState.value.servers.map { it.toWire() },
     )
 
-    fun diagnostics(): Map<String, Any?> = mapOf("quality" to quality.uiState.value.toWire(), "stun" to GoWire(Libbox.uiStunDiagnostics()))
+    fun diagnostics(): Map<String, Any?> = mapOf("quality" to GoWire(Libbox.uiQualityPayload()), "stun" to GoWire(Libbox.uiStunDiagnostics()))
 
     private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
 
@@ -141,20 +142,17 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     suspend fun stopStun() { Libbox.uiStunStop() }
 
     suspend fun startQuality(url: String?, outbound: String?, serial: Boolean, http3: Boolean, seconds: Int?) {
-        require(!quality.uiState.value.isRunning) { "A network quality test is already running" }
-        quality.updateConfigURL(BoxProfiles.validateUrl(required(url, "url")))
-        quality.selectOutbound(outbound ?: "")
-        quality.setSerial(serial)
-        quality.setHttp3(http3)
-        quality.setMaxRuntime(if (seconds == 60) MaxRuntimeOption.SIXTY else MaxRuntimeOption.THIRTY)
-        quality.requestStartTest(activity, running)
+        require(!Libbox.uiQualityRunning()) { "A network quality test is already running" }
+        val configURL = BoxProfiles.validateUrl(required(url, "url"))
+        val connectivity = activity.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        Libbox.uiQualityStart(running, connectivity.isActiveNetworkMetered, configURL, outbound ?: "", serial, http3, seconds ?: 30, toolHost)
     }
 
-    suspend fun confirmQuality() { quality.confirmMeteredStart(running) }
+    suspend fun confirmQuality() { Libbox.uiQualityConfirm(running, toolHost) }
 
-    suspend fun dismissQuality() { quality.dismissMeteredWarning() }
+    suspend fun dismissQuality() { Libbox.uiQualityDismiss() }
 
-    suspend fun stopQuality() { quality.cancelTest() }
+    suspend fun stopQuality() { Libbox.uiQualityStop() }
 
     suspend fun setTailscaleExitNode(endpointTag: String?, peer: String?) {
         val endpoint = tailscale.endpoint(required(endpointTag, "endpoint")) ?: error("Endpoint no longer exists")
@@ -270,7 +268,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         inbox.cancel()
         ping.stopPing()
         Libbox.uiStunStop()
-        quality.cancelTest()
+        Libbox.uiQualityStop()
         usbController.close()
         ssh.close()
     }

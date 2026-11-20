@@ -1422,7 +1422,7 @@
   },
   {
    "name": "quality",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "rates",
