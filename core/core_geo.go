@@ -78,7 +78,7 @@ var geoResourceSpecs = map[string]geoResourceSpec{
 
 // GeoDataDir is the shared geo directory under the working directory.
 func GeoDataDir() string {
-	return coreAssetDir(sWorkingPath, CoreMihomo)
+	return coreAssetDir(coreWorkingPath(), CoreMihomo)
 }
 
 // GeoResourceFileName returns the file a resource is stored as, or "".

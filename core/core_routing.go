@@ -580,7 +580,7 @@ type routingListCache struct {
 }
 
 func defaultRoutingLists() *routingListCache {
-	base := sWorkingPath
+	base := coreWorkingPath()
 	if base == "" {
 		base = os.TempDir()
 	}

@@ -169,6 +169,10 @@ type libboxCommandService struct{}
 func (libboxCommandService) CoreChanged()   { notifyCoreChange() }
 func (libboxCommandService) GroupsChanged() { notifyGroupsChange() }
 
+// Lifecycle: sing-box still starts and stops inside this CommandServer
+// (daemon.StartedService); moving that out is step 3 of the plan in
+// core/README.md, which is not done (see there). Xray and mihomo are started
+// and stopped by fk-box itself (core_service.go).
 type libboxLifecycle struct{ server *CommandServer }
 
 func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) error {
@@ -178,7 +182,16 @@ func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) err
 
 func (l libboxLifecycle) StopSingBox() error { return l.server.CloseService() }
 
-func (libboxLifecycle) WorkingDirectory() string { return sWorkingPath }
+// WorkingDirectory is fkhost's when the host set one (the desktop core),
+// otherwise libbox's Setup path (Android: the app's files directory).
+func (libboxLifecycle) WorkingDirectory() string { return coreWorkingPath() }
+
+func coreWorkingPath() string {
+	if directory := fkhost.WorkingDirectory(); directory != "" {
+		return directory
+	}
+	return sWorkingPath
+}
 
 // HTTP: fk-box's own client (fkhost.NewHTTPClient), no longer libbox's.
 type fkhostHTTP struct{}
