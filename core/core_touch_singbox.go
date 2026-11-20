@@ -23,6 +23,7 @@ import (
 	"github.com/sagernet/sing-box/common/networkquality"
 	"github.com/sagernet/sing-box/common/sniff"
 	"github.com/sagernet/sing-box/common/stun"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing-box/common/urltest"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/daemon"
@@ -59,8 +60,7 @@ var (
 	_ string                                                = sWorkingPath
 
 	// sing-box's start (core_singbox_host.go) and the command service
-	// (core_command_server.go): what libbox's StartOrReloadService and
-	// CommandServer.Start used.
+	// (core_command_server.go).
 	_ func(string)                                                                      = saveConfigSnapshot
 	_ func(string)                                                                      = copyConfigSnapshot
 	_ func(context.Context, any, *grpc.UnaryServerInfo, grpc.UnaryHandler) (any, error) = unaryAuthInterceptor
@@ -73,6 +73,16 @@ var (
 	_ bool                                                                              = sOOMKillerEnabled
 	_ bool                                                                              = sOOMKillerDisabled
 	_ int64                                                                             = sOOMMemoryLimit
+	_ bool                                                                              = sDebug
+
+	// The OOM recorder fk-box installs (core_command_server.go) and the
+	// sing-box profile check that drops retired options first.
+	_ = OOMRecorderOptions
+	_ = writeReportFile
+	_ = buildOOMConnections
+	_ oomConnectionsInfo
+	_ *platformHandler
+	_ = HasTunInbound
 
 	_ *CommandClient
 	_ *Connection
@@ -190,7 +200,13 @@ var (
 	_ *daemon.OpenConnectAuthChallengeCancel
 	_ *daemon.OpenVPNChallengeSubmission
 	_ *daemon.OpenVPNChallengeCancel
-	_ = (*daemon.StartedService).SubscribeServiceStatus
+	_ = daemon.NewManagedService
+	_ daemon.ManagedServiceOptions
+	_ daemon.ServiceStatus_Type
+	_ = daemon.ServiceStatus_IDLE
+	_ = daemon.ServiceStatus_STARTING
+	_ = daemon.ServiceStatus_STOPPING
+	_ = daemon.ServiceStatus_FATAL
 	_ = (*daemon.StartedService).GetStartedAt
 	_ = (*daemon.StartedService).SubscribeStatus
 	_ = (*daemon.StartedService).SubscribeGroups
@@ -348,6 +364,10 @@ var (
 	_ *powerreport.Manager
 	_ = powerreport.DraftDirectoryName
 	_ *oomkiller.Recorder
+	_ = oomkiller.NewRecorder
+	_ *trafficcontrol.Manager
+	_ = C.IsIos
+	_ = C.IsTvOS
 
 	// schema: the http_rewrite option schema (core/option).
 	_ *schema.Builder

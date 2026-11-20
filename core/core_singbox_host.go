@@ -1,13 +1,12 @@
 package libbox
 
 // sing-box's start and stop on the CommandServer host (Android): fk-box runs
-// sing-box itself (fkhost.SingBox) instead of libbox's
-// daemon.StartedService.StartOrReloadService/CloseService. Everything that
-// libbox's service did around a start is done here: the config snapshot for
-// crash reports, the app's per-app and auto-redirect overrides on the tun
-// inbound, the OOM killer service, the OOM recorder's reload window, the
-// HTTP capture/rewrite stop and the rewrite activation that the httpdebug
-// and http_rewrite patches used to add to libbox's CommandServer.
+// sing-box itself (fkhost.SingBox); libbox's own service runs nothing. What
+// a start needs around box.New is done here: the config snapshot for crash
+// reports, the app's per-app and auto-redirect overrides on the tun inbound,
+// the OOM killer service, the OOM recorder's reload window, the HTTP
+// capture/rewrite stop and the rewrite activation, and the interruption of
+// a slow start by a stop.
 
 import (
 	"context"
@@ -29,6 +28,12 @@ var (
 	// is read without it.
 	singBoxLifecycle sync.Mutex
 	singBoxRunning   atomic.Pointer[fkhost.SingBox]
+
+	// singBoxStarting is the start in progress, which a stop or the next
+	// start interrupts (rule-set downloads can keep box.Start busy for long)
+	// instead of waiting for it, as libbox's service did.
+	singBoxStartAccess sync.Mutex
+	singBoxStarting    *singBoxStart
 
 	idleSingBoxOnce    sync.Once
 	idleSingBoxService *daemon.StartedService
@@ -62,10 +67,52 @@ func (l coreSingBoxLifecycle) StopSingBox() error { return l.server.stopSingBox(
 
 func (coreSingBoxLifecycle) WorkingDirectory() string { return coreWorkingPath() }
 
+// singBoxStart is one start in progress.
+type singBoxStart struct {
+	cancel      context.CancelFunc
+	interrupted bool
+}
+
+// interruptSingBoxStart cancels the start in progress, if any: its box.Start
+// returns early and the start leaves nothing running.
+func interruptSingBoxStart() {
+	singBoxStartAccess.Lock()
+	defer singBoxStartAccess.Unlock()
+	if start := singBoxStarting; start != nil {
+		start.interrupted = true
+		start.cancel()
+		singBoxStarting = nil
+	}
+}
+
+// beginSingBoxStart registers a start that interruptSingBoxStart can cancel
+// and returns the context sing-box runs in.
+func beginSingBoxStart(parent context.Context) (context.Context, *singBoxStart) {
+	ctx, cancel := context.WithCancel(parent)
+	start := &singBoxStart{cancel: cancel}
+	singBoxStartAccess.Lock()
+	singBoxStarting = start
+	singBoxStartAccess.Unlock()
+	return ctx, start
+}
+
+// endSingBoxStart unregisters a start and reports whether it was
+// interrupted. Once it returns, the context is the running box's for good.
+func endSingBoxStart(start *singBoxStart) bool {
+	singBoxStartAccess.Lock()
+	defer singBoxStartAccess.Unlock()
+	if singBoxStarting == start {
+		singBoxStarting = nil
+	}
+	return start.interrupted
+}
+
 func (s *CommandServer) startSingBox(content string, serviceOptions *CoreServiceOptions) error {
 	if serviceOptions == nil {
 		serviceOptions = &CoreServiceOptions{}
 	}
+	// A start still in progress (a reload right after a start) is replaced.
+	interruptSingBoxStart()
 	uiCaptureLifecycle.Lock()
 	defer uiCaptureLifecycle.Unlock()
 	preparedRewrite, err := s.prepareUIHTTPRewrite(content, serviceOptions)
@@ -95,13 +142,24 @@ func (s *CommandServer) startSingBox(content string, serviceOptions *CoreService
 		// A fresh start begins with an empty log, as libbox's service did.
 		coreLog.Clear()
 	}
+	startCtx, start := beginSingBoxStart(s.ctx)
 	running, err := fkhost.StartSingBox(fkhost.SingBoxOptions{
-		Context:   s.ctx,
+		Context:   startCtx,
 		Options:   options,
 		LogWriter: coreLog,
 		Reloading: reloading != nil,
 	})
+	if endSingBoxStart(start) {
+		// A stop (or the next start) came first: leave nothing running.
+		if running != nil {
+			_ = running.Close()
+		}
+		start.cancel()
+		coreLog.WriteMessage(log.LevelInfo, "sing-box start interrupted")
+		return nil
+	}
 	if err != nil {
+		start.cancel()
 		coreLog.WriteMessage(log.LevelError, err.Error())
 		return err
 	}
@@ -122,6 +180,7 @@ func detachSingBox() *fkhost.SingBox {
 }
 
 func (s *CommandServer) stopSingBox() error {
+	interruptSingBoxStart()
 	uiCaptureLifecycle.Lock()
 	defer uiCaptureLifecycle.Unlock()
 	stopUIHTTPProcessing()
@@ -156,15 +215,91 @@ func applyCoreServiceOptions(options *option.Options, serviceOptions *CoreServic
 	}
 }
 
+// SetCoreError reports an error of the app's own (a failed stop): the
+// service status becomes FATAL with it and it goes to the service log
+// (replaces CommandServer.SetError).
+func (s *CommandServer) SetCoreError(message string) {
+	coreStatus.fatal(message)
+	coreLog.WriteMessage(log.LevelError, message)
+}
+
+// ---- device and network events from the app ----
+//
+// libbox's CommandServer.Pause, Wake, WakeNow, ResetNetwork,
+// UpdateWIFIState, NeedWIFIState and NeedFindProcess act on the sing-box of
+// libbox's own service, which no longer runs anything; the app calls these
+// instead. They act on the running sing-box; Xray and mihomo have no pause
+// manager, Wi-Fi state or process search, so for them only ResetNetworkCore
+// does something (it drops the connections bound to the old network, as a
+// default network change does).
+
+// PauseCore records the device's sleep in the power report and, on
+// Android, closes sing-box's idle connections and pauses it (device idle).
+func (s *CommandServer) PauseCore() {
+	if recorder := s.powerManager.Recorder(); recorder != nil {
+		recorder.RecordDeviceSleep()
+	}
+	if !(C.IsAndroid || C.IsIos) || C.IsTvOS {
+		return
+	}
+	running := runningSingBox()
+	if running == nil || running.PauseManager() == nil {
+		return
+	}
+	running.Box().CloseIdleConnections()
+	running.PauseManager().DevicePause()
+}
+
+// WakeCore records the device's wake in the power report and, on Android,
+// resumes sing-box.
+func (s *CommandServer) WakeCore() {
+	if recorder := s.powerManager.Recorder(); recorder != nil {
+		recorder.RecordDeviceWake()
+	}
+	if !C.IsAndroid {
+		return
+	}
+	s.WakeNowCore()
+}
+
+// WakeNowCore resumes sing-box without recording a wake.
+func (s *CommandServer) WakeNowCore() {
+	if running := runningSingBox(); running != nil && running.PauseManager() != nil {
+		running.PauseManager().DeviceWake()
+	}
+}
+
+// ResetNetworkCore resets the running kernel's connections: sing-box's
+// network manager, or the default-network handling of Xray and mihomo.
+func (s *CommandServer) ResetNetworkCore() {
+	if running := otherCore(); running != nil {
+		if kernel := kernelFor(running.core); kernel != nil {
+			kernel.DefaultNetworkChanged(running)
+		}
+		return
+	}
+	if running := runningSingBox(); running != nil {
+		running.Box().Network().ResetNetwork(context.Background())
+	}
+}
+
+// UpdateWIFIStateCore makes the running sing-box read the Wi-Fi state again.
+func (s *CommandServer) UpdateWIFIStateCore() {
+	if running := runningSingBox(); running != nil {
+		running.Box().Network().UpdateWIFIState(context.Background())
+	}
+}
+
 // NeedWIFIStateCore reports whether the running sing-box reads the Wi-Fi
-// state (replaces CommandServer.NeedWIFIState, which reads libbox's service).
+// state (wifi_ssid/wifi_bssid rules).
 func (s *CommandServer) NeedWIFIStateCore() bool {
 	running := runningSingBox()
 	return running != nil && running.Box().Network().NeedWIFIState()
 }
 
-// SetCoreError writes an error of the app's own (a failed stop) to the
-// service log (replaces CommandServer.SetError).
-func (s *CommandServer) SetCoreError(message string) {
-	coreLog.WriteMessage(log.LevelError, message)
+// NeedFindProcessCore reports whether the running sing-box searches the
+// process of a connection (process and package rules).
+func (s *CommandServer) NeedFindProcessCore() bool {
+	running := runningSingBox()
+	return running != nil && running.Box().Router().NeedFindProcess()
 }

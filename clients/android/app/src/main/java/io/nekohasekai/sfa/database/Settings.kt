@@ -163,8 +163,8 @@ object Settings {
         val profile = ProfileManager.get(selectedProfileId) ?: return false
         val content = File(profile.typed.path).readText()
         // Xray and mihomo only run on the VpnService TUN fd; their YAML/Xray
-        // JSON has no sing-box tun inbound for hasTunInbound to find.
+        // JSON has no sing-box tun inbound for hasCoreTunInbound to find.
         if (ProfileContent.coreOf(profile, content) != TypedProfile.CORE_SING_BOX) return true
-        return Libbox.hasTunInbound(content)
+        return Libbox.hasCoreTunInbound(content)
     }
 }

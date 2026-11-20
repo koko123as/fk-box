@@ -14,7 +14,6 @@ import (
 	"context"
 	"runtime/debug"
 	"sync"
-	"time"
 
 	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/common/urltest"
@@ -53,7 +52,6 @@ type SingBox struct {
 	attached      *daemon.StartedService
 	pauseManager  pause.Manager
 	pauseCallback *list.Element[pause.Callback]
-	startedAt     time.Time
 	closeOnce     sync.Once
 }
 
@@ -91,7 +89,6 @@ func StartSingBox(options SingBoxOptions) (*SingBox, error) {
 		s.Close()
 		return nil, E.Cause(err, "start sing-box")
 	}
-	s.startedAt = time.Now()
 	s.attached = daemon.NewAttachedService(ctx)
 	debug.FreeOSMemory()
 	return s, nil
@@ -127,9 +124,6 @@ func (s *SingBox) Context() context.Context { return s.ctx }
 // implementation for status, groups, mode, connections, outbounds and the
 // endpoint services.
 func (s *SingBox) Service() *daemon.StartedService { return s.attached }
-
-// StartedAt is when the box finished starting.
-func (s *SingBox) StartedAt() time.Time { return s.startedAt }
 
 // PauseManager is the box's pause manager (nil without one).
 func (s *SingBox) PauseManager() pause.Manager { return s.pauseManager }

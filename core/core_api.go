@@ -68,14 +68,21 @@ func notifyGroupsChange() {
 // fallback restarts) keep it above zero.
 var coreSwitching atomic.Int32
 
-// beginCoreSwitch marks a start or reload in progress; every call is paired
-// with endCoreSwitch.
-func beginCoreSwitch() { coreSwitching.Add(1) }
+// beginCoreSwitch marks a start or reload in progress (service status
+// STARTING); every call is paired with endCoreSwitch.
+func beginCoreSwitch() {
+	if coreSwitching.Add(1) == 1 {
+		coreStatus.switchStarted()
+	}
+}
 
-// endCoreSwitch ends a start or reload and moves every open stream to the
-// core that runs now (or to sing-box's own state when none does).
+// endCoreSwitch ends a start or reload, settles the service status after the
+// outermost one and moves every open stream to the core that runs now (or to
+// sing-box's own state when none does).
 func endCoreSwitch() {
-	coreSwitching.Add(-1)
+	if coreSwitching.Add(-1) == 0 {
+		coreStatus.switchFinished(coreKernelRunning())
+	}
 	notifyCoreChange()
 }
 
@@ -177,16 +184,10 @@ type coreStartedService struct {
 	singBox func() *daemon.StartedService
 }
 
-func (s *coreStartedService) SubscribeServiceStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
-	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
-		return s.singBox().SubscribeServiceStatus(empty, stream)
-	}, func(ctx context.Context, running *runningCore, send func(*daemon.ServiceStatus) error) error {
-		if err := send(&daemon.ServiceStatus{Status: daemon.ServiceStatus_STARTED}); err != nil {
-			return err
-		}
-		<-ctx.Done()
-		return ctx.Err()
-	})
+// SubscribeServiceStatus streams fk-box's service status, the same for every
+// kernel (core_service_status.go).
+func (s *coreStartedService) SubscribeServiceStatus(_ *emptypb.Empty, server grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
+	return coreStatus.Serve(server)
 }
 
 func (s *coreStartedService) GetStartedAt(ctx context.Context, empty *emptypb.Empty) (*daemon.StartedAt, error) {

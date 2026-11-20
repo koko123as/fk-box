@@ -94,9 +94,10 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 // startOrReloadCore is StartOrReloadCoreService for any host: libbox's
 // CommandServer on Android, fk-box's standalone host on the desktop
 // (core_standalone.go). hostOf is called once per start or stop.
-func startOrReloadCore(hostOf func() kernelHost, core string, configContent string, kernelOpts kernelOptions) error {
+func startOrReloadCore(hostOf func() kernelHost, core string, configContent string, kernelOpts kernelOptions) (err error) {
 	beginCoreSwitch()
 	defer endCoreSwitch()
+	defer func() { coreStatus.startFinished(err) }()
 	resetUIDNSQueryCount()
 	kernel := kernelFor(core)
 	if kernel == nil {
@@ -149,8 +150,12 @@ func (s *CommandServer) CloseCoreService() error {
 	return closeCore(s.kernelHost)
 }
 
-// closeCore is CloseCoreService for any host.
+// closeCore is CloseCoreService for any host. The service status goes
+// through STOPPING to IDLE unless the service was not starting or running.
 func closeCore(hostOf func() kernelHost) error {
+	if coreStatus.stopping() {
+		defer coreStatus.set(daemon.ServiceStatus_IDLE)
+	}
 	if stopOtherCore(hostOf) {
 		releaseCoreMemory()
 	}

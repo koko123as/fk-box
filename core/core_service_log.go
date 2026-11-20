@@ -4,8 +4,8 @@ package libbox
 // every fk-box line (fkhost.Log: Xray, mihomo, the kernel switch) in one ring,
 // served as the StartedService SubscribeLog stream by fk-box's command
 // service (core_command_server.go). libbox's StartedService log is no longer
-// read by the UI; each line is still copied there because libbox's OOM
-// recorder (created by NewCommandServer) attaches that log to its reports.
+// read by the UI; each line is still copied there because the OOM and power
+// reports attach that log and debug builds pass it to the app's debug output.
 
 import (
 	"sync"
@@ -35,8 +35,8 @@ type coreServiceLog struct {
 	start       int
 	subscribers map[*coreLogSubscriber]struct{}
 	// copyTo receives every line as well (Android: libbox's StartedService
-	// log, which libbox's OOM report attaches and, in debug builds, passes
-	// to the app's debug output).
+	// log, which the OOM and power reports attach and, in debug builds,
+	// passes to the app's debug output).
 	copyTo func(level log.Level, message string)
 }
 
@@ -81,6 +81,13 @@ func (l *coreServiceLog) WriteMessage(level log.Level, message string) {
 	if copyTo != nil {
 		copyTo(level, message)
 	}
+}
+
+// setCopy sets (nil removes) where every line is copied as well.
+func (l *coreServiceLog) setCopy(copyTo func(level log.Level, message string)) {
+	l.access.Lock()
+	l.copyTo = copyTo
+	l.access.Unlock()
 }
 
 // Clear empties the ring; every subscriber receives a reset.

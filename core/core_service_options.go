@@ -8,9 +8,8 @@ import (
 )
 
 // CoreServiceOptions are the app's options for one start or reload of the
-// local service (Kotlin io.nekohasekai.libbox.CoreServiceOptions). They
-// replace libbox's OverrideOptions, which fk-box's patches used to extend
-// with the HTTP rewrite fields.
+// local service (Kotlin io.nekohasekai.libbox.CoreServiceOptions): libbox's
+// OverrideOptions fields plus the HTTP rewrite storage and signer.
 //
 // IncludePackage and ExcludePackage are read once per start: by sing-box's
 // tun inbound, or by the TUN fk-box opens for Xray and mihomo.
@@ -32,4 +31,15 @@ func parseCoreConfig(ctx context.Context, content string) (option.Options, error
 		return option.Options{}, E.Cause(err, "remove retired capture options")
 	}
 	return parseConfig(ctx, content)
+}
+
+// HasCoreTunInbound is libbox's HasTunInbound for a sing-box profile as
+// fk-box runs it: the retired capture options are dropped first (libbox's
+// parser rejects them).
+func HasCoreTunInbound(content string) (bool, error) {
+	content, err := RemoveUIRetiredCaptureOptions(content)
+	if err != nil {
+		return false, E.Cause(err, "remove retired capture options")
+	}
+	return HasTunInbound(content)
 }
