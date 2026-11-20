@@ -48,12 +48,12 @@ for abi in "$@"; do
     -o "$out/$abi/libxray.so" -trimpath -buildvcs=false -gcflags="all=-l=4" \
     -ldflags="-X github.com/xtls/xray-core/core.build=$(git describe --always --dirty) -s -w -buildid= -checklinkname=0 -extldflags=-Wl,--pack-dyn-relocs=android" \
     ./main)
-  # mihomo: .github/workflows/build.yml (v1.19.34) android build, verbatim
-  # tags and flags; upstream links against android34, fk-box keeps the app's
-  # minSdk (android24) so the binary loads on every supported device.
-  (cd "$src/mihomo" && CC="$cc" CGO_ENABLED=1 GOOS=android GOARCH="$abi" go build \
+  # mihomo: .github/workflows/build.yml static linux job (the android build
+  # reads /data/system/packages.xml before opening a TUN; see
+  # docs/kernel-isolation.md D3).
+  (cd "$src/mihomo" && CGO_ENABLED=0 GOOS=linux GOARCH="$abi" GOAMD64=v1 go build \
     -o "$out/$abi/libmihomo.so" -tags "with_gvisor" -trimpath \
-    -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=v$mihomo_version' -X 'github.com/metacubex/mihomo/constant.BuildTime=fk-box' -w -s -buildid=")
+    -ldflags "-extldflags --static -X 'github.com/metacubex/mihomo/constant.Version=v$mihomo_version' -X 'github.com/metacubex/mihomo/constant.BuildTime=fk-box' -w -s -buildid=")
 done
 clean "$src/xray"
 clean "$src/mihomo"
