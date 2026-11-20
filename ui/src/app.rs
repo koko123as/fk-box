@@ -684,7 +684,8 @@ fn hello(then: fn()) {
     });
     call("hello", args, move |result| {
         let error = match result {
-            Ok(reply) if reply["ok"] == true && reply["protocolVersion"] == crate::protocol_gen::PROTOCOL_VERSION => None,
+            // The core decides: it may speak a newer version that still accepts this one.
+            Ok(reply) if reply["ok"] == true => None,
             Ok(reply) => Some(format!(
                 "protocol version mismatch: core={} client={}",
                 reply["protocolVersion"],
