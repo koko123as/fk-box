@@ -15,7 +15,9 @@ by name. This check keeps the list complete:
   fk-box's libbox files use unqualified must appear in it too.
 
 fk-box's own overlay packages (experimental/httpdebug, the DNS counter in
-dns/) are not upstream symbols and are skipped. Matching is textual (comments,
+dns/, experimental/fkhost and experimental/fkbox) are not upstream symbols and
+are skipped; core/fkbox and core/fkcore use libbox by import path, and only the
+libbox symbols fk-box does not define itself are checked. Matching is textual (comments,
 strings and composite-literal keys are ignored), not a type check: the
 compiler does that when the touchpoint file is built.
 """
@@ -33,7 +35,14 @@ UPSTREAM = ("github.com/sagernet/sing-box", "github.com/sagernet/sing-tun")
 OWN = {
     "github.com/sagernet/sing-box/experimental/httpdebug": None,  # whole package
     "github.com/sagernet/sing-box/dns": {"UIQueryCount"},
+    # fk-box's own overlay packages (tools/patch_entry.py).
+    "github.com/sagernet/sing-box/experimental/fkhost": None,
+    "github.com/sagernet/sing-box/experimental/fkbox": None,
 }
+# fk-box's packages outside libbox (core/fkbox, core/fkcore) reach libbox by
+# its import path; symbols fk-box defines there (core/*.go) are its own, the
+# rest are libbox's and are listed unqualified in the touchpoint file.
+LIBBOX = "github.com/sagernet/sing-box/experimental/libbox"
 
 
 def strip(text):
@@ -131,7 +140,17 @@ def main():
     touch_code = body(touch_text)
     missing = []
     uses = qualified_uses()
+    ours = set()
+    for path in CORE.glob("*.go"):
+        if not own_file(path):
+            ours |= top_level(path.read_text())
     for (module, symbol), files in sorted(uses.items()):
+        if module == LIBBOX:
+            if symbol in ours:
+                continue
+            if not re.search(r"(?<![\w.])" + re.escape(symbol) + r"\b", touch_code):
+                missing.append(f"libbox {symbol} (used in {', '.join(sorted(files))})")
+            continue
         alias = touch_imports.get(module)
         if alias is None or not re.search(r"\b" + re.escape(alias) + r"\." + re.escape(symbol) + r"\b", touch_code):
             missing.append(f"{module}.{symbol} (used in {', '.join(sorted(files))})")

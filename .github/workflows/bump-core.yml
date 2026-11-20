@@ -128,6 +128,7 @@ jobs:
           run_check "patch_httpdebug.py --check" python3 tools/patch_httpdebug.py .core --check
           run_check "patch_multicore.py --check" python3 tools/patch_multicore.py .core --check
           run_check "patch_dns_count.py --check" python3 tools/patch_dns_count.py .core --check
+          run_check "patch_entry.py --check" python3 tools/patch_entry.py .core --check
           run_check "verify_multicore.py" python3 tools/verify_multicore.py
           echo >> "$report"
           if [ "$failed" -eq 0 ]; then

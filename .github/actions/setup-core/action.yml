@@ -96,6 +96,9 @@ runs:
         GOTOOLCHAIN: local
       run: |
         cp ../core/core_*.go experimental/libbox/
+        # fk-box's own packages (core/fkhost, core/fkbox, core/fkcore) and the
+        # gomobile bind of the entry package experimental/fkbox next to libbox.
+        (cd .. && python3 tools/patch_entry.py .core)
         # mihomo is embedded the way ClashMetaForAndroid embeds it (cmfa tag):
         # the app supplies system DNS, and no package-list reader needs root.
         grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go

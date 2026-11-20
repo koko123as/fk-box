@@ -4,6 +4,13 @@ fk-box's own Go code, overlaid into sing-box's `experimental/libbox` package at 
 time (`.github/actions/setup-core` copies `core_*.go` and `ui_*.go`). Upstream kernel sources and `go.mod` are not
 edited here.
 
+fk-box's own packages sit next to it in the same sing-box tree and module
+(`tools/patch_entry.py`, no Go module of their own):
+
+| Source | In the sing-box tree | What it is |
+| --- | --- | --- |
+| `core/fkbox/` | `experimental/fkbox` | the gomobile entry package, bound into `libbox.aar` next to libbox (Java `io.nekohasekai.fkbox.Fkbox`); forwards to libbox so the Kotlin calls to `Libbox` keep their names |
+
 ## Clients and the `Core` interface
 
 Every client talks to the core through the UI protocol in `protocol/methods.json`:
