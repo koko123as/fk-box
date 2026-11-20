@@ -50,13 +50,16 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-core
-      - name: Multi-core gRPC coverage (every StartedService method handled or reviewed)
+      - name: Command service coverage (every StartedService method implemented by fk-box)
         run: python3 tools/verify_multicore.py
       - name: sing-box touchpoints (every sing-box/libbox symbol core/ uses is listed in core_touch_singbox.go)
         run: python3 tools/verify_touchpoints.py --core .core
       - name: fk-box entry package (experimental/fkbox, bound into libbox.aar) builds
         working-directory: .core
-        run: go build -ldflags=-checklinkname=0 ./experimental/fkbox
+        run: |
+          go build -ldflags=-checklinkname=0 ./experimental/fkbox
+          # fk-box's Android build command (cmd/fk-bind, run by build-libbox).
+          go vet ./cmd/fk-bind
       - name: fk-box host services (experimental/fkhost) tests
         working-directory: .core
         run: |

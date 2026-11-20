@@ -76,7 +76,8 @@ runs:
         make lib_install
         libbox_go_bin="$(go env GOPATH)/bin"
         export PATH="$PATH:$libbox_go_bin"
-        go run ./cmd/internal/build_libbox -target android -platform "$LIBBOX_PLATFORM"
+        # fk-box's own Android build (core/fkbind): libbox + fkbox, no legacy AAR.
+        go run ./cmd/fk-bind -platform "$LIBBOX_PLATFORM"
         test ! -e libbox-legacy.aar
         mkdir -p ../clients/android/app/libs
         cp libbox.aar ../clients/android/app/libs/libbox.aar

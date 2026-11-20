@@ -70,15 +70,12 @@ runs:
     - name: Apply patches and install bindings
       shell: bash
       run: |
-        git -C .core apply --check ../core/libbox-no-legacy.patch
-        git -C .core apply ../core/libbox-no-legacy.patch
         python3 tools/patch_sing_tun.py .core
         python3 tools/patch_httpdebug.py .core
-        python3 tools/patch_multicore.py .core
         python3 tools/patch_dns_count.py .core
         cp core/ui_*.go .core/experimental/libbox/
-        # fk-box's own packages (core/fkhost, core/fkbox, core/fkcore) and the
-        # gomobile bind of the entry package experimental/fkbox next to libbox.
+        # fk-box's own packages (core/fkhost, core/fkbox, core/fkcore) and its
+        # Android build command (core/fkbind -> cmd/fk-bind).
         # Before the first tidy: ui_*.go import experimental/fkhost.
         python3 tools/patch_entry.py .core
     - name: Resolve the pinned HTTP rewrite runtime
@@ -100,10 +97,6 @@ runs:
         GOTOOLCHAIN: local
       run: |
         cp ../core/core_*.go experimental/libbox/
-        # mihomo is embedded the way ClashMetaForAndroid embeds it (cmfa tag):
-        # the app supplies system DNS, and no package-list reader needs root.
-        grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go
-        sed -i 's/"tfogo_checklinkname0")/"tfogo_checklinkname0", "cmfa")/' cmd/internal/build_libbox/main.go
         xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
         mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
         libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')

@@ -163,7 +163,13 @@ func CoreSubscriptionUserAgent(core string, appVersion string) string {
 func CheckCoreConfig(core string, content string) error {
 	switch core {
 	case CoreSingBox:
-		return CheckConfig(content)
+		// The retired capture options are dropped before sing-box's check,
+		// which rejects unknown fields.
+		cleaned, err := RemoveUIRetiredCaptureOptions(content)
+		if err != nil {
+			return err
+		}
+		return CheckConfig(cleaned)
 	case CoreXray:
 		return checkXrayConfig(content)
 	case CoreMihomo:
@@ -328,7 +334,11 @@ func checkMihomoRaw(raw *mihomoConfig.RawConfig) error {
 func FormatCoreConfig(core string, content string) (*StringBox, error) {
 	switch core {
 	case CoreSingBox:
-		return FormatConfig(content)
+		cleaned, err := RemoveUIRetiredCaptureOptions(content)
+		if err != nil {
+			return nil, err
+		}
+		return FormatConfig(cleaned)
 	case CoreXray:
 		// json.Indent keeps the profile's key order and literal values;
 		// decoding into a map would sort the keys alphabetically.

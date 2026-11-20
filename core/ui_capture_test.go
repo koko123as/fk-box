@@ -70,10 +70,18 @@ func TestUICaptureRetiredOptionsMigration(t *testing.T) {
 	if strings.Contains(cleaned, "http_debug") {
 		t.Fatal("extension not removed")
 	}
-	if err = CheckConfig(original); err != nil {
+	// fk-box's sing-box entry points drop the retired settings before
+	// libbox's parser, which rejects them.
+	if err = CheckCoreConfig(CoreSingBox, original); err != nil {
 		t.Fatalf("old profile cannot start: %v", err)
 	}
-	formatted, err := FormatConfig(original)
+	if _, err = parseCoreConfig(baseContext(nil), original); err != nil {
+		t.Fatalf("old profile cannot be parsed for a start: %v", err)
+	}
+	if hasTun, err := HasCoreTunInbound(original); err != nil || hasTun {
+		t.Fatalf("HasCoreTunInbound = %v, %v", hasTun, err)
+	}
+	formatted, err := FormatCoreConfig(CoreSingBox, original)
 	if err != nil || strings.Contains(formatted.Value, "http_debug") {
 		t.Fatalf("format did not drop retired settings: %v", err)
 	}
@@ -85,7 +93,7 @@ func TestUICaptureRetiredOptionsMigration(t *testing.T) {
 		t.Fatal("unrelated configuration was reformatted")
 	}
 	// Unrelated unknown settings still fail full core validation.
-	if err = CheckConfig(`{"experimental":{"http_debug":{},"unsupported":true}}`); err == nil {
+	if err = CheckCoreConfig(CoreSingBox, `{"experimental":{"http_debug":{},"unsupported":true}}`); err == nil {
 		t.Fatal("unknown core option was silently removed")
 	}
 }

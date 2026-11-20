@@ -25,9 +25,9 @@ type Core interface {
 	// capabilities} out, or the protocol version mismatch error.
 	Hello(request string) (string, error)
 	// Start starts the profile on its core ("auto", "sing-box", "xray" or "mihomo").
-	Start(core string, config string, options *OverrideOptions) error
+	Start(core string, config string, options *CoreServiceOptions) error
 	// Reload replaces the running profile; a stopped service is started.
-	Reload(core string, config string, options *OverrideOptions) error
+	Reload(core string, config string, options *CoreServiceOptions) error
 	// Stop stops whichever core is running.
 	Stop() error
 	// SelectOutbound picks tag in selector group (the "switch node" action).
@@ -60,14 +60,14 @@ func (c *InProcessCore) Hello(request string) (string, error) {
 	return UIInvoke("hello", request)
 }
 
-func (c *InProcessCore) Start(core string, config string, options *OverrideOptions) error {
+func (c *InProcessCore) Start(core string, config string, options *CoreServiceOptions) error {
 	if c.server == nil {
 		return errInProcessCoreNoServer
 	}
 	return c.server.StartOrReloadCoreService(core, config, options)
 }
 
-func (c *InProcessCore) Reload(core string, config string, options *OverrideOptions) error {
+func (c *InProcessCore) Reload(core string, config string, options *CoreServiceOptions) error {
 	return c.Start(core, config, options)
 }
 
@@ -82,7 +82,7 @@ func (c *InProcessCore) SelectOutbound(group string, tag string) error {
 	if c.server == nil {
 		return errInProcessCoreNoServer
 	}
-	service := &coreStartedService{c.server.StartedService}
+	service := newCoreStartedService(singBoxService)
 	_, err := service.SelectOutbound(context.Background(), &daemon.SelectOutboundRequest{GroupTag: group, OutboundTag: tag})
 	return err
 }

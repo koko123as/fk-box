@@ -1,9 +1,9 @@
 package libbox
 
-// Phase 3: one gRPC interface for every core. coreStartedService embeds
-// daemon.StartedService (which serves sing-box) and answers the calls the UI
-// and remote control use from Xray or mihomo while one of them runs. A stream
-// opened under one core switches to the next when the running core changes.
+// Phase 3: one gRPC interface for every core. coreStartedService answers the
+// calls the UI and remote control use from Xray or mihomo while one of them
+// runs and forwards them to sing-box's service otherwise. A stream opened
+// under one core switches to the next when the running core changes.
 
 import (
 	"context"
@@ -68,14 +68,21 @@ func notifyGroupsChange() {
 // fallback restarts) keep it above zero.
 var coreSwitching atomic.Int32
 
-// beginCoreSwitch marks a start or reload in progress; every call is paired
-// with endCoreSwitch.
-func beginCoreSwitch() { coreSwitching.Add(1) }
+// beginCoreSwitch marks a start or reload in progress (service status
+// STARTING); every call is paired with endCoreSwitch.
+func beginCoreSwitch() {
+	if coreSwitching.Add(1) == 1 {
+		coreStatus.switchStarted()
+	}
+}
 
-// endCoreSwitch ends a start or reload and moves every open stream to the
-// core that runs now (or to sing-box's own state when none does).
+// endCoreSwitch ends a start or reload, settles the service status after the
+// outermost one and moves every open stream to the core that runs now (or to
+// sing-box's own state when none does).
 func endCoreSwitch() {
-	coreSwitching.Add(-1)
+	if coreSwitching.Add(-1) == 0 {
+		coreStatus.switchFinished(coreKernelRunning())
+	}
 	notifyCoreChange()
 }
 
@@ -169,32 +176,30 @@ func switchStream[T any](server grpc.ServerStreamingServer[T], singBox func(grpc
 	}
 }
 
+// coreStartedService is fk-box's StartedService gRPC service
+// (core_command_server.go). singBox gives the service that answers for
+// sing-box: the running box's attached service or an idle one.
 type coreStartedService struct {
-	*daemon.StartedService
+	daemon.UnimplementedStartedServiceServer
+	singBox func() *daemon.StartedService
 }
 
-func (s *coreStartedService) SubscribeServiceStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
-	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
-		return s.StartedService.SubscribeServiceStatus(empty, stream)
-	}, func(ctx context.Context, running *runningCore, send func(*daemon.ServiceStatus) error) error {
-		if err := send(&daemon.ServiceStatus{Status: daemon.ServiceStatus_STARTED}); err != nil {
-			return err
-		}
-		<-ctx.Done()
-		return ctx.Err()
-	})
+// SubscribeServiceStatus streams fk-box's service status, the same for every
+// kernel (core_service_status.go).
+func (s *coreStartedService) SubscribeServiceStatus(_ *emptypb.Empty, server grpc.ServerStreamingServer[daemon.ServiceStatus]) error {
+	return coreStatus.Serve(server)
 }
 
 func (s *coreStartedService) GetStartedAt(ctx context.Context, empty *emptypb.Empty) (*daemon.StartedAt, error) {
 	if running := otherCore(); running != nil {
 		return &daemon.StartedAt{StartedAt: running.startedAt.UnixMilli()}, nil
 	}
-	return s.StartedService.GetStartedAt(ctx, empty)
+	return s.singBox().GetStartedAt(ctx, empty)
 }
 
 func (s *coreStartedService) SubscribeStatus(request *daemon.SubscribeStatusRequest, server grpc.ServerStreamingServer[daemon.Status]) error {
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.Status]) error {
-		return s.StartedService.SubscribeStatus(request, stream)
+		return s.singBox().SubscribeStatus(request, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.Status) error) error {
 		interval := time.Duration(request.Interval)
 		if interval <= 0 {
@@ -245,7 +250,7 @@ func (s *coreStartedService) SubscribeStatus(request *daemon.SubscribeStatusRequ
 
 func (s *coreStartedService) SubscribeGroups(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.Groups]) error {
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.Groups]) error {
-		return s.StartedService.SubscribeGroups(empty, stream)
+		return s.singBox().SubscribeGroups(empty, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.Groups) error) error {
 		// Delays change without a notification (mihomo health checks,
 		// Xray observatory), so the list is also refreshed periodically.
@@ -424,7 +429,7 @@ func readXrayGroups(running *runningCore) *daemon.Groups {
 func (s *coreStartedService) SelectOutbound(ctx context.Context, request *daemon.SelectOutboundRequest) (*emptypb.Empty, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.SelectOutbound(ctx, request)
+		return s.singBox().SelectOutbound(ctx, request)
 	}
 	switch running.core {
 	case CoreMihomo:
@@ -473,7 +478,7 @@ func closeMihomoConnectionsOf(group string) {
 func (s *coreStartedService) URLTest(ctx context.Context, request *daemon.URLTestRequest) (*emptypb.Empty, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.URLTest(ctx, request)
+		return s.singBox().URLTest(ctx, request)
 	}
 	switch running.core {
 	case CoreMihomo:
@@ -578,7 +583,7 @@ func mihomoModeName() string {
 func (s *coreStartedService) GetClashModeStatus(ctx context.Context, empty *emptypb.Empty) (*daemon.ClashModeStatus, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.GetClashModeStatus(ctx, empty)
+		return s.singBox().GetClashModeStatus(ctx, empty)
 	}
 	if running.core != CoreMihomo {
 		return &daemon.ClashModeStatus{}, nil
@@ -588,7 +593,7 @@ func (s *coreStartedService) GetClashModeStatus(ctx context.Context, empty *empt
 
 func (s *coreStartedService) SubscribeClashMode(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.ClashMode]) error {
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.ClashMode]) error {
-		return s.StartedService.SubscribeClashMode(empty, stream)
+		return s.singBox().SubscribeClashMode(empty, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.ClashMode) error) error {
 		if running.core != CoreMihomo {
 			<-ctx.Done()
@@ -616,7 +621,7 @@ func (s *coreStartedService) SubscribeClashMode(empty *emptypb.Empty, server grp
 func (s *coreStartedService) SetClashMode(ctx context.Context, request *daemon.ClashMode) (*emptypb.Empty, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.SetClashMode(ctx, request)
+		return s.singBox().SetClashMode(ctx, request)
 	}
 	if running.core != CoreMihomo {
 		return nil, status.Error(codes.Unimplemented, "xray has no clash mode")
@@ -688,7 +693,7 @@ func closeAllMihomoConnections() {
 
 func (s *coreStartedService) SubscribeConnections(request *daemon.SubscribeConnectionsRequest, server grpc.ServerStreamingServer[daemon.ConnectionEvents]) error {
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.ConnectionEvents]) error {
-		return s.StartedService.SubscribeConnections(request, stream)
+		return s.singBox().SubscribeConnections(request, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.ConnectionEvents) error) error {
 		if running.core != CoreMihomo && running.xrayTrack == nil {
 			return status.Error(codes.Unimplemented, "connection tracking not available")
@@ -778,7 +783,7 @@ func mihomoConnection(info *mihomoStatistic.TrackerInfo) *daemon.Connection {
 func (s *coreStartedService) CloseConnection(ctx context.Context, request *daemon.CloseConnectionRequest) (*emptypb.Empty, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.CloseConnection(ctx, request)
+		return s.singBox().CloseConnection(ctx, request)
 	}
 	if running.core == CoreMihomo {
 		if tracker := mihomoStatistic.DefaultManager.Get(request.Id); tracker != nil {
@@ -794,7 +799,7 @@ func (s *coreStartedService) CloseConnection(ctx context.Context, request *daemo
 func (s *coreStartedService) CloseAllConnections(ctx context.Context, empty *emptypb.Empty) (*emptypb.Empty, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.CloseAllConnections(ctx, empty)
+		return s.singBox().CloseAllConnections(ctx, empty)
 	}
 	if running.core == CoreMihomo {
 		mihomoStatistic.DefaultManager.Range(func(tracker mihomoStatistic.Tracker) bool {
@@ -812,7 +817,7 @@ func (s *coreStartedService) CloseAllConnections(ctx context.Context, empty *emp
 
 func (s *coreStartedService) SubscribeOutbounds(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.OutboundList]) error {
 	return switchStream(server, func(stream grpc.ServerStreamingServer[daemon.OutboundList]) error {
-		return s.StartedService.SubscribeOutbounds(empty, stream)
+		return s.singBox().SubscribeOutbounds(empty, stream)
 	}, func(ctx context.Context, running *runningCore, send func(*daemon.OutboundList) error) error {
 		var list daemon.OutboundList
 		switch running.core {

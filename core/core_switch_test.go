@@ -83,7 +83,8 @@ func expectRunning(t *testing.T, result chan error, what string) {
 func TestUICoreSwitchGroupsStreamFollowsReload(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	service := &coreStartedService{daemon.NewStartedService(daemon.ServiceOptions{Context: ctx})}
+	idle := daemon.NewStartedService(daemon.ServiceOptions{Context: ctx})
+	service := newCoreStartedService(func() *daemon.StartedService { return idle })
 	// mihomo with no groups loaded yet (its globals are empty in tests).
 	setActiveCoreForTest(t, &runningCore{core: CoreMihomo})
 
@@ -120,7 +121,8 @@ func TestUICoreSwitchGroupsStreamFollowsReload(t *testing.T) {
 func TestUICoreSwitchConnectionsStreamToSingBox(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	service := &coreStartedService{daemon.NewStartedService(daemon.ServiceOptions{Context: ctx})}
+	idle := daemon.NewStartedService(daemon.ServiceOptions{Context: ctx})
+	service := newCoreStartedService(func() *daemon.StartedService { return idle })
 	setActiveCoreForTest(t, &runningCore{core: CoreXray, xrayTrack: newXrayTracker()})
 
 	stream := newFakeStream[daemon.ConnectionEvents](ctx)

@@ -121,7 +121,7 @@ func (l *Logger) Recent() []Entry {
 }
 
 // SetForward sets (nil removes) where every line also goes: the embedding
-// host's own service log (Android: libbox's StartedService, whose log the
+// host's own service log (Android: the command service's log, which the
 // app's log page reads). It replaces the previous forward.
 func (l *Logger) SetForward(forward func(Entry)) {
 	l.access.Lock()

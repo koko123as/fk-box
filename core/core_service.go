@@ -70,7 +70,8 @@ var (
 )
 
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
-// core ran before. sing-box goes through StartOrReloadService unchanged.
+// core ran before. sing-box is started by the host's lifecycle
+// (fkhost.StartSingBox).
 //
 // Starting and stopping are serialized by coreLifecycle, which is held for
 // the whole switch; coreAccess only guards activeCore and is never held while
@@ -86,16 +87,17 @@ var (
 // to the new core when it returns, whether it started or failed, so the
 // groups, status, mode and connection subscriptions follow a reload instead
 // of ending on the stopped core.
-func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
+func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *CoreServiceOptions) error {
 	return startOrReloadCore(s.kernelHost, core, configContent, kernelOptions{host: options})
 }
 
 // startOrReloadCore is StartOrReloadCoreService for any host: libbox's
 // CommandServer on Android, fk-box's standalone host on the desktop
 // (core_standalone.go). hostOf is called once per start or stop.
-func startOrReloadCore(hostOf func() kernelHost, core string, configContent string, kernelOpts kernelOptions) error {
+func startOrReloadCore(hostOf func() kernelHost, core string, configContent string, kernelOpts kernelOptions) (err error) {
 	beginCoreSwitch()
 	defer endCoreSwitch()
+	defer func() { coreStatus.startFinished(err) }()
 	resetUIDNSQueryCount()
 	kernel := kernelFor(core)
 	if kernel == nil {
@@ -148,8 +150,12 @@ func (s *CommandServer) CloseCoreService() error {
 	return closeCore(s.kernelHost)
 }
 
-// closeCore is CloseCoreService for any host.
+// closeCore is CloseCoreService for any host. The service status goes
+// through STOPPING to IDLE unless the service was not starting or running.
 func closeCore(hostOf func() kernelHost) error {
+	if coreStatus.stopping() {
+		defer coreStatus.set(daemon.ServiceStatus_IDLE)
+	}
 	if stopOtherCore(hostOf) {
 		releaseCoreMemory()
 	}

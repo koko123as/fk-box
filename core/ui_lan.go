@@ -45,7 +45,7 @@ func ReadUILANProxyListeners(configContent, interfaceAddresses string) (*StringB
 	if core := DetectCoreConfig(configContent); core == CoreXray || core == CoreMihomo {
 		return wrapString("[]"), nil
 	}
-	options, err := parseConfig(baseContext(nil), configContent)
+	options, err := parseCoreConfig(baseContext(nil), configContent)
 	if err != nil {
 		return nil, err
 	}
@@ -122,7 +122,7 @@ func ReadUILANProxyListeners(configContent, interfaceAddresses string) (*StringB
 // An explicit LAN bind is retained when enabling; disabling restricts proxy
 // inbounds to loopback. initialPort is used only when no proxy inbound exists.
 func SetUILANProxyEnabled(configContent string, enabled bool, initialPort int32) (*StringBox, error) {
-	options, err := parseConfig(baseContext(nil), configContent)
+	options, err := parseCoreConfig(baseContext(nil), configContent)
 	if err != nil {
 		return nil, err
 	}

@@ -7,7 +7,7 @@ import "testing"
 // before) and the host's options through untouched, and stops it there.
 func TestUIKernelSingBoxStartsInHostService(t *testing.T) {
 	host := &fakeHost{}
-	options := &OverrideOptions{}
+	options := &CoreServiceOptions{}
 	content := `{"outbounds":[{"type":"direct","tag":"direct"}]}`
 	kernel := singBoxKernel{}
 	if err := kernel.Start(host.kernelHost(), nil, content, nil, kernelOptions{host: options}); err != nil {
@@ -16,7 +16,7 @@ func TestUIKernelSingBoxStartsInHostService(t *testing.T) {
 	if len(host.started) != 1 || host.started[0] != withDefaultSingBoxLogLevel(dropUnbuiltTunStack(content)) {
 		t.Fatalf("sing-box started with %q", host.started)
 	}
-	if got, _ := host.options[0].host.(*OverrideOptions); got != options {
+	if got, _ := host.options[0].host.(*CoreServiceOptions); got != options {
 		t.Fatal("the host's start options were not passed through")
 	}
 	kernel.Stop(host.kernelHost(), nil)
