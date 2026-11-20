@@ -1410,7 +1410,7 @@
   },
   {
    "name": "ping",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "preferences",

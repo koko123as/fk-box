@@ -41,6 +41,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     private val stun = provider[STUNTestViewModel::class.java]
     // Scopes the Go network quality tool to this activity (reset on create, stopped on clear).
     private val quality = provider[NetworkQualityViewModel::class.java]
+    // Scopes the Go Tailscale ping to this activity (reset on create, stopped on clear).
     private val ping = provider[TailscalePingViewModel::class.java]
     private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
@@ -83,7 +84,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 if (sessionKey != target || !available) {
                     Libbox.uiStunStop()
                     Libbox.uiQualityDisconnected()
-                    ping.stopPing()
+                    Libbox.uiTailscalePingStop()
                     inbox.cancel()
                     inboxTag = null
                 }
@@ -108,7 +109,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         emit("stun", GoWire(Libbox.uiStunPayload()))
         // Later quality states are sent by Go (the "quality" event).
         emit("quality", GoWire(Libbox.uiQualityPayload()))
-        jobs += scope.launch { ping.uiState.collect { emit("ping", it.toWire()) } }
+        // Later ping states are sent by Go (the "ping" event).
+        emit("ping", GoWire(Libbox.uiTailscalePingPayload()))
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
         jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
             emit("transfers", sessions.map { session ->
@@ -167,11 +169,10 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     suspend fun tailscalePing(endpoint: String?, peerID: String?) {
         val peer = tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
-        ping.stopPing()
-        ping.startPing(required(endpoint, "endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"))
+        Libbox.uiTailscalePingStart(required(endpoint, "endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"), toolHost)
     }
 
-    suspend fun stopTailscalePing() { ping.stopPing() }
+    suspend fun stopTailscalePing() { Libbox.uiTailscalePingStop() }
 
     suspend fun subscribeTaildrop(endpoint: String?) {
         inboxTag = required(endpoint, "endpoint")
@@ -266,7 +267,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         usb.cancel()
         outbounds.disconnect()
         inbox.cancel()
-        ping.stopPing()
+        Libbox.uiTailscalePingStop()
         Libbox.uiStunStop()
         Libbox.uiQualityStop()
         usbController.close()
