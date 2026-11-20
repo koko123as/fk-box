@@ -1,6 +1,61 @@
 {
  "version": 1,
+ "minClient": 1,
+ "capabilities": [
+  {
+   "name": "vpn_service",
+   "description": "The platform runs the proxy as a system VPN service with its own settings (Settings > General > Service: VPN bypass, auto redirect, notification)."
+  },
+  {
+   "name": "battery_optimization",
+   "description": "The OS can restrict background work and the app can open its battery settings (Service > Battery optimization)."
+  },
+  {
+   "name": "per_app_proxy",
+   "description": "Installed apps can be listed and routed per app (Access control)."
+  },
+  {
+   "name": "file_picker",
+   "description": "A system file picker can open files: import a profile from a file, import a terminal font."
+  },
+  {
+   "name": "share_sheet",
+   "description": "A system share sheet can send text to another app (profile > Share)."
+  },
+  {
+   "name": "qr_scanner",
+   "description": "The camera can scan a QR code (Add profile > Scan QR code)."
+  },
+  {
+   "name": "ca_install",
+   "description": "The OS has a certificate settings screen the app can open to install the capture CA (Open certificate settings)."
+  },
+  {
+   "name": "crash_reports",
+   "description": "The platform records crash, memory and power reports the app can list (Tools > reports)."
+  },
+  {
+   "name": "usbip",
+   "description": "Local USB devices can be attached to a USB/IP endpoint (Attach USB device)."
+  },
+  {
+   "name": "taildrop",
+   "description": "Files can be received and sent with Taildrop through a Tailscale endpoint."
+  }
+ ],
  "methods": [
+  {
+   "name": "hello",
+   "owner": "go",
+   "target": "core",
+   "args": [
+    "protocolVersion",
+    "client",
+    "clientVersion",
+    "capabilities"
+   ],
+   "section": "Handshake"
+  },
   {
    "name": "ready",
    "owner": "host",

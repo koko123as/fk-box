@@ -2,8 +2,15 @@
 
 package libbox
 
+// ProtocolVersion is the UI protocol version this core speaks (protocol/methods.json).
+const ProtocolVersion = 1
+
+// ProtocolMinClient is the oldest client protocol version this core accepts.
+const ProtocolMinClient = 1
+
 // uiProtocolMethods maps every protocol method to its owner.
 var uiProtocolMethods = map[string]string{
+	"hello": "go",
 	"ready": "host",
 	"startService": "host",
 	"stopService": "host",
@@ -163,6 +170,20 @@ var uiProtocolMethods = map[string]string{
 	"imeText": "ui",
 	"imeSelect": "ui",
 	"imeEnd": "ui",
+}
+
+// uiProtocolCapabilities lists every capability a client may declare in hello.
+var uiProtocolCapabilities = map[string]struct{}{
+	"vpn_service": {},
+	"battery_optimization": {},
+	"per_app_proxy": {},
+	"file_picker": {},
+	"share_sheet": {},
+	"qr_scanner": {},
+	"ca_install": {},
+	"crash_reports": {},
+	"usbip": {},
+	"taildrop": {},
 }
 
 // uiProtocolEvents lists every protocol event.

@@ -8,6 +8,24 @@ pub use host::invoke;
 /// Menus, dialogs, messages and text editing use Android's own widgets (NativeUi.kt, NativeEditor.kt).
 pub const NATIVE_UI: bool = true;
 
+/// The client name the hello handshake sends. The Android client.
+pub const CLIENT: &str = "android";
+
+/// The platform features this client has (protocol/methods.json "capabilities"),
+/// declared in the hello handshake. Android has every one of them today.
+pub const CAPABILITIES: &[&str] = &[
+    "vpn_service",
+    "battery_optimization",
+    "per_app_proxy",
+    "file_picker",
+    "share_sheet",
+    "qr_scanner",
+    "ca_install",
+    "crash_reports",
+    "usbip",
+    "taildrop",
+];
+
 #[no_mangle]
 fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
     android_logger::init_once(android_logger::Config::default().with_tag("FKui").with_max_level(log::LevelFilter::Info));

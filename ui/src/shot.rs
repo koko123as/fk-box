@@ -256,6 +256,7 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         eprintln!("call {method} {args}");
     }
     Ok(match method {
+        "hello" => json!({ "protocolVersion": crate::protocol_gen::PROTOCOL_VERSION, "coreVersion": "shot", "ok": true, "capabilities": args["capabilities"] }),
         "locale" => json!({ "language": std::env::var("SHOT_LANG").unwrap_or("zh".into()), "utcOffsetMinutes": 480, "fontScale": 1.0 }),
         "attach" => Value::Null,
         // The saved preferences are the values just set.

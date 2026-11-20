@@ -266,7 +266,9 @@ fn card_menu(p: Json) -> Vec<MenuEntry> {
         items.push(MenuEntry::act("QR code", "qr-code", move || open_qr(&remote_profile_link(&a))));
     }
     let a = p.clone();
-    items.push(MenuEntry::act("Share", "upload", move || share(&a)));
+    if app::has("share_sheet") {
+        items.push(MenuEntry::act("Share", "upload", move || share(&a)));
+    }
     let a = p.clone();
     items.push(MenuEntry::act("Export", "export", move || export(&a)));
     let id = id_of(&p);
@@ -360,13 +362,17 @@ fn import(source: &str) {
 
 /// AddProfileMenu: the add button's menu of import sources.
 fn add_menu() -> Vec<MenuEntry> {
-    vec![
-        MenuEntry::act("Scan QR code", "qr-code", || import("Scan QR code")),
-        MenuEntry::act("File", "import-file", || import("File")),
-        MenuEntry::act("Import from URL", "cloud-download", || open_form(remote_template())),
-        MenuEntry::act("Clipboard", "copy", || import("Clipboard")),
-        MenuEntry::act("New profile", "customize", || open_form(local_template())).section(""),
-    ]
+    let mut items = Vec::new();
+    if app::has("qr_scanner") {
+        items.push(MenuEntry::act("Scan QR code", "qr-code", || import("Scan QR code")));
+    }
+    if app::has("file_picker") {
+        items.push(MenuEntry::act("File", "import-file", || import("File")));
+    }
+    items.push(MenuEntry::act("Import from URL", "cloud-download", || open_form(remote_template())));
+    items.push(MenuEntry::act("Clipboard", "copy", || import("Clipboard")));
+    items.push(MenuEntry::act("New profile", "customize", || open_form(local_template())).section(""));
+    items
 }
 
 fn remote_template() -> Json {
@@ -382,6 +388,14 @@ fn add_page() -> Page {
     let loading = local(|l| l.importing);
     let mut rows = vec![Row::open(&tr("Import from URL"), Some("link"), || open_form(remote_template()))];
     for (label, icon) in [("File", "profiles"), ("Clipboard", "copy"), ("Scan QR code", "qr-code")] {
+        let needs = match label {
+            "File" => Some("file_picker"),
+            "Scan QR code" => Some("qr_scanner"),
+            _ => None,
+        };
+        if needs.is_some_and(|c| !app::has(c)) {
+            continue;
+        }
         rows.push(Row::item(&tr(label)).icon(icon).on(move |_| import(label)).enabled(!loading));
     }
     rows.push(Row::open(&tr("New profile"), Some("add"), || open_form(local_template())));

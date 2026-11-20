@@ -1560,6 +1560,9 @@ pub fn open_mitm_certificate() {
         if exists {
             rows_list.push(Row::section(&tr("Install and export")));
             for (label, method) in [("Export public CA certificate", "export"), ("Open certificate settings", "install"), ("Export system CA module", "module")] {
+                if method == "install" && !app::has("ca_install") {
+                    continue;
+                }
                 let a = st.clone();
                 rows_list.push(Row::item(&tr(label)).key(method).on(move |_| cert_run(&a, method)).enabled(!busy && usable));
             }
