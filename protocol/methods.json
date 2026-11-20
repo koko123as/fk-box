@@ -1402,7 +1402,7 @@
   },
   {
    "name": "memory",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "outbounds",

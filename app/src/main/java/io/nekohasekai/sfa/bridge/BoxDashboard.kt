@@ -13,9 +13,13 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandTarget
+import io.nekohasekai.sfa.utils.RemoteControlManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -26,8 +30,12 @@ import java.io.Closeable
 import java.io.File
 import java.net.NetworkInterface
 
+private val nextMemoryOwner = java.util.concurrent.atomic.AtomicInteger()
+
 internal class BoxDashboard(private val activity: BoxActivity, private val emit: (String, Any?) -> Unit) : Closeable {
+    /** The remote core's memory (its status stream); shown by the Memory card under remote control. */
     @Volatile var remoteMemory = 0L
+        set(value) { field = value; pushMemorySource() }
     private var networkSnapshot: Map<String, Any?>? = null
     private val networkMutex = Mutex()
     private val configCache = DashboardConfigCache(ProfileContent::revision, Libbox::detectCoreConfig) { content, addresses ->
@@ -51,16 +59,29 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
     private val egressSessions = mutableMapOf<String, EgressSession>()
     private val serviceChanges = activity.lifecycleScope.launch {
         activity.serviceStatus.collect {
+            pushMemorySource()
             egressSessions.filterValues { !isCurrent(it) }.keys.toList().forEach(::closeProbe)
         }
     }
+    private val remoteChanges = activity.lifecycleScope.launch {
+        RemoteControlManager.remoteServer.collect { pushMemorySource() }
+    }
     private val qualityCache = activity.getSharedPreferences("dashboard_ip_quality", 0)
+    // libbox's dashboard stream (core_dashboard_stream.go) samples memory and
+    // sends "memory" every 2 s while some owner is subscribed, in the
+    // foreground and with the screen on; this bridge only reports its signals.
+    private val memoryOwner = nextMemoryOwner.incrementAndGet()
     private val memoryVisible = MutableStateFlow(false)
-    private val memoryPolling = activity.lifecycleScope.pollWhileVisible(
-        memoryVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn,
-    ) {
-        val snapshot = withContext(Dispatchers.IO) { memory() }
-        emit("memory", snapshot)
+    private val memorySignals = activity.lifecycleScope.launch {
+        try {
+            combine(memoryVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn) { visible, foreground, screenOn ->
+                Triple(visible, foreground, screenOn)
+            }.distinctUntilChanged().collect { (visible, foreground, screenOn) ->
+                withContext(Dispatchers.Default) { Libbox.uiDashboardMemorySetSignals(memoryOwner, visible, foreground, screenOn) }
+            }
+        } finally {
+            withContext(NonCancellable + Dispatchers.Default) { Libbox.uiDashboardMemorySetSignals(memoryOwner, false, false, false) }
+        }
     }
     // The LAN/intranet snapshot is only shown by the Intranet IP card and its
     // page; poll it while one of them is on screen, as the memory card is.
@@ -75,25 +96,12 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
 
     fun setLanVisible(visible: Boolean) { lanVisible.value = visible }
 
-    private fun memory(): Map<String, Any?> {
-        if (CommandTarget.isRemote) return mapOf("remote" to true, "total" to remoteMemory, "core" to remoteMemory)
-        val rss = File("/proc/self/status").useLines { lines -> lines.firstOrNull { it.startsWith("VmRSS:") }
-            ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024) ?: 0L }
-        val running = activity.serviceStatus.value == Status.Started
-        // The cores run in this process: whatever the status says (a core
-        // still starting, or running while the UI lost track of it), the Go
-        // runtime's memory is the core's, never the app's. FlClash splits
-        // the process RSS the same way (app = RSS - core runtime).
-        val core = runCatching { Libbox.readUIRuntimeMemory() }.getOrNull()
-        // What the kernel keeps resident for Go's own mappings can exceed Go's
-        // accounting (huge pages refilling released memory); count that as
-        // core rather than letting it inflate the app share. The excess is
-        // runtime memory outside the heap and stack rows.
-        val accounted = core?.let { maxOf(it.total, it.resident) } ?: 0L
-        val excess = core?.let { maxOf(0L, it.resident - it.total) } ?: 0L
-        return mapOf("total" to maxOf(rss, accounted), "rss" to rss, "app" to maxOf(0L, rss - accounted), "core" to accounted,
-            "remote" to false, "running" to running, "heapInuse" to core?.heapInuse, "heapIdle" to core?.heapIdle,
-            "stack" to core?.stackInuse, "runtimeOther" to core?.let { it.runtimeOther + excess }, "goroutines" to core?.goroutines)
+    /**
+     * Where the next memory sample reads from. The cores run in this process:
+     * whatever the status says, the Go runtime's memory is the core's.
+     */
+    private fun pushMemorySource() {
+        Libbox.uiDashboardMemorySetSource(CommandTarget.isRemote, remoteMemory, activity.serviceStatus.value == Status.Started)
     }
 
     @Suppress("DEPRECATION")
@@ -305,14 +313,15 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
 
     suspend fun releaseMemory(): Map<String, Any?> = withContext(Dispatchers.IO) {
         require(!CommandTarget.isRemote) { "Remote memory collection is not supported" }
-        Libbox.collectUIRuntimeMemory()
-        memory().also { emit("memory", it) }
+        pushMemorySource()
+        jsonObject(JSONObject(Libbox.uiDashboardReleaseMemory()))
     }
 
     override fun close() {
         serviceChanges.cancel()
+        remoteChanges.cancel()
         polling.cancel()
-        memoryPolling.cancel()
+        memorySignals.cancel()
         egressSessions.values.forEach { it.close() }
         egressSessions.clear()
     }
