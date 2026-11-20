@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Serve the multi-core gRPC wrapper (libbox/core_api.go) instead of the bare
+"""Serve the multi-core gRPC wrapper (core/core_api.go) instead of the bare
 sing-box StartedService, so the UI and remote control read Xray and mihomo
 through the same interface."""
 import sys

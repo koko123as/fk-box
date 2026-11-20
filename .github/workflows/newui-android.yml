@@ -28,28 +28,28 @@ jobs:
           # Write the Gradle cache from main and the ui/* branches (setup-gradle
           # only writes from the default branch otherwise); others only read.
           cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/ui/') }}
-      # app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
+      # clients/android/app/build.gradle.kts downloads the pinned geo data into clients/android/.gradle/geo-assets/<commit>.
       - name: Cache bundled geo data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: .gradle/geo-assets
-          key: geo-assets-${{ hashFiles('app/geo-assets.properties') }}
-      # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
+          path: clients/android/.gradle/geo-assets
+          key: geo-assets-${{ hashFiles('clients/android/app/geo-assets.properties') }}
+      # The UI is Rust + Slint (ui/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
         run: |
           rustup toolchain install stable --profile minimal --target aarch64-linux-android
           rustup default stable
       # Restored before cargo-ndk is installed, so ~/.cargo/bin (cargo-ndk),
-      # the registry/git sources and ui-slint/target come back together.
+      # the registry/git sources and ui/target come back together.
       # skia-bindings keeps the downloaded Skia prebuilt archive
       # (OUT_DIR/.cache) and its unpacked libraries in its OUT_DIR under
-      # ui-slint/target/<triple>/release/build/skia-bindings-*/, which this
+      # ui/target/<triple>/release/build/skia-bindings-*/, which this
       # cache keeps (dependency build outputs survive its cleanup), so a hit
       # neither downloads nor rebuilds Skia. The key follows Cargo.lock (the
       # skia-bindings version) and the rustc version.
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: ui-slint
+          workspaces: ui
       - name: Install cargo-ndk
         run: |
           cargo install cargo-ndk --version 4.1.2 --locked
@@ -58,21 +58,21 @@ jobs:
           echo "ANDROID_JAR=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
           echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
       - name: Build emulator APK
-        run: ./gradlew :app:testOtherDebugUnitTest :app:compilePlayDebugKotlin :app:assembleOtherDebug :app:assembleOtherDebugAndroidTest -Parm64Only=true --no-daemon --console=plain --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process
+        run: clients/android/gradlew -p clients/android :app:testOtherDebugUnitTest :app:compilePlayDebugKotlin :app:assembleOtherDebug :app:assembleOtherDebugAndroidTest -Parm64Only=true --no-daemon --console=plain --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:
           name: native-unit-tests
           path: |
-            app/build/reports/tests/
-            app/build/test-results/
+            clients/android/app/build/reports/tests/
+            clients/android/app/build/test-results/
           retention-days: 7
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: emulator-apk
           path: |
-            app/build/outputs/apk/other/debug/*-arm64-v8a-debug.apk
-            app/build/outputs/apk/androidTest/other/debug/*.apk
+            clients/android/app/build/outputs/apk/other/debug/*-arm64-v8a-debug.apk
+            clients/android/app/build/outputs/apk/androidTest/other/debug/*.apk
           if-no-files-found: error
           retention-days: 7
   smoke:

@@ -2,7 +2,7 @@
 
 Rust + Slint 三内核客户端
 
-fk-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面为 Rust + Slint 编写的朴素 Material 3 风格（`ui-slint/`，编为 `libfkui.so`，由 Kotlin 的 `BoxActivity` 承载；对照表见 [slint-manifest.md](slint-manifest.md)）；页面布局参考 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，仓库中没有 Flutter/Dart 代码。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
+fk-box（安装身份 `io.fkbox.app`）是独立维护的开源 Android 客户端，源码位于 [koko123as/fk-box](https://github.com/koko123as/fk-box)。它派生自 [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android)，直接前身是 [giturass/B-box](https://github.com/giturass/B-box)（经 [koko123as/B-box](https://github.com/koko123as/B-box) 的 `fk-box` 分支迁入，完整 Git 历史保留在本仓库）。界面为 Rust + Slint 编写的朴素 Material 3 风格（`ui/`，编为 `libfkui.so`，由 Kotlin 的 `BoxActivity` 承载；对照表见 [slint-manifest.md](slint-manifest.md)）；页面布局参考 [FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)，仓库中没有 Flutter/Dart 代码。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个。本项目不是上述任何上游的官方发布。
 
 ## 致谢 / 来源
 
