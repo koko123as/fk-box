@@ -3,9 +3,9 @@
 
 Shared by the patch scripts' --check mode (patch_sing_tun.py,
 patch_httpdebug.py, patch_dns_count.py, patch_entry.py) and usable on its own
-for the patches setup-core applies directly:
+for a single patch file:
 
-    python3 tools/patchcheck.py .core core/libbox-no-legacy.patch
+    python3 tools/patchcheck.py .core core/httpdebug.patch
 
 Nothing in the checked tree is modified: patches are tried on copies of the
 files they touch in a temporary directory. When a patch does not apply, every

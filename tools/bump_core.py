@@ -43,7 +43,8 @@ KERNELS = {
 # sing-box files fk-box edits by text (tools/patch_*.py) or depends on as a
 # whole: libbox (fk-box's files are built into it), the StartedService gRPC
 # service fk-box implements (core_command_server.go) and the attached service
-# it forwards sing-box calls to.
+# it forwards sing-box calls to, and build_libbox, whose Android flags and
+# tags cmd/fk-bind (core/fkbind) copies.
 SING_BOX_WATCHED = [
     "experimental/libbox/",
     "daemon/started_service.go",

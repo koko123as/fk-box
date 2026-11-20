@@ -16,7 +16,7 @@ by name. This check keeps the list complete:
 
 fk-box's own overlay packages (experimental/httpdebug, the DNS counter in
 dns/, experimental/fkhost and experimental/fkbox) are not upstream symbols and
-are skipped; core/fkbox and core/fkcore use libbox by import path, and only the
+are skipped, and so is the Android build command core/fkbind; core/fkbox and core/fkcore use libbox by import path, and only the
 libbox symbols fk-box does not define itself are checked. Matching is textual (comments,
 strings and composite-literal keys are ignored), not a type check: the
 compiler does that when the touchpoint file is built.
@@ -74,8 +74,14 @@ def body(text):
     return strip(text[match.end():] if match else text)
 
 
+# fk-box's Android build command (core/fkbind -> cmd/fk-bind) uses sing-box's
+# build helpers (cmd/internal/build_shared), which libbox cannot import; it is
+# compiled on its own (newui.yml vets it) and names a changed helper there.
+BUILD_TOOL = CORE / "fkbind"
+
+
 def own_file(path):
-    return path.name.endswith("_test.go") or path.name == TOUCH.name
+    return path.name.endswith("_test.go") or path.name == TOUCH.name or BUILD_TOOL in path.parents
 
 
 def qualified_uses():

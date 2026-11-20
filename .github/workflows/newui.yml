@@ -56,7 +56,10 @@ jobs:
         run: python3 tools/verify_touchpoints.py --core .core
       - name: fk-box entry package (experimental/fkbox, bound into libbox.aar) builds
         working-directory: .core
-        run: go build -ldflags=-checklinkname=0 ./experimental/fkbox
+        run: |
+          go build -ldflags=-checklinkname=0 ./experimental/fkbox
+          # fk-box's Android build command (cmd/fk-bind, run by build-libbox).
+          go vet ./cmd/fk-bind
       - name: fk-box host services (experimental/fkhost) tests
         working-directory: .core
         run: |
