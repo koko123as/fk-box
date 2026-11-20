@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.backend.base.BaseViewModel
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
@@ -75,11 +76,14 @@ class DashboardViewModel :
                 RemoteControlManager.remoteServer,
                 RemoteControlManager.isConnected,
                 _serviceStatus,
-            ) { foreground, remoteServer, remoteConnected, status ->
+                BoxService.reloadGeneration,
+            ) { foreground, remoteServer, remoteConnected, status, reload ->
                 SessionTarget(
                     connect = foreground &&
                         if (remoteServer != null) remoteConnected else status == Status.Started,
                     remoteServerId = remoteServer?.id,
+                    // A reload starts another core: subscribe to it again.
+                    reload = reload,
                 )
             }.distinctUntilChanged().collect { target ->
                 if (target.connect) {
@@ -95,12 +99,15 @@ class DashboardViewModel :
                 AppLifecycleObserver.isScreenOn,
                 trafficWanted,
                 RemoteControlManager.remoteServer,
-                combine(RemoteControlManager.isConnected, _serviceStatus) { remoteConnected, status -> remoteConnected to status },
-            ) { foreground, screenOn, wanted, remoteServer, (remoteConnected, status) ->
+                combine(RemoteControlManager.isConnected, _serviceStatus, BoxService.reloadGeneration) { remoteConnected, status, reload ->
+                    Triple(remoteConnected, status, reload)
+                },
+            ) { foreground, screenOn, wanted, remoteServer, (remoteConnected, status, reload) ->
                 SessionTarget(
                     connect = foreground && screenOn && wanted &&
                         if (remoteServer != null) remoteConnected else status == Status.Started,
                     remoteServerId = remoteServer?.id,
+                    reload = reload,
                 )
             }.distinctUntilChanged().collect { target ->
                 // A fresh subscription reports the current status at once, so
@@ -114,7 +121,7 @@ class DashboardViewModel :
         }
     }
 
-    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?)
+    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?, val reload: Long)
 
     /** Whether a page shows the per-second status (the Slint UI's visibility sync). */
     fun setTrafficVisible(visible: Boolean) { trafficWanted.value = visible }
@@ -259,7 +266,8 @@ class DashboardViewModel :
     override fun onConnected() {
         viewModelScope.launch(Dispatchers.Main) {
             // Returning from remote control skipped the local reloads that
-            // normally run when the service starts.
+            // normally run when the service starts; after a reload (which
+            // connects again) the core has a new start time.
             if (RemoteControlManager.remoteServer.value == null && _serviceStatus.value == Status.Started) {
                 reloadSystemProxyStatus()
                 reloadStartedAt()

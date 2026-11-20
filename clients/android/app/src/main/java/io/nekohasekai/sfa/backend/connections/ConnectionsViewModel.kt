@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.ConnectionEvents
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.backend.base.BaseViewModel
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
@@ -60,12 +61,14 @@ class ConnectionsViewModel :
                 combine(
                     RemoteControlManager.remoteServer,
                     RemoteControlManager.isConnected,
-                ) { remoteServer, remoteConnected -> remoteServer?.id to remoteConnected },
-            ) { foreground, screenOn, visibleCount, status, (remoteServerId, remoteConnected) ->
+                    BoxService.reloadGeneration,
+                ) { remoteServer, remoteConnected, reload -> Triple(remoteServer?.id, remoteConnected, reload) },
+            ) { foreground, screenOn, visibleCount, status, (remoteServerId, remoteConnected, reload) ->
                 val serviceReady = if (remoteServerId != null) remoteConnected else status == Status.Started
                 val shouldConnect = foreground && screenOn && visibleCount > 0 && serviceReady
-                shouldConnect to remoteServerId
-            }.distinctUntilChanged().collect { (shouldConnect, _) ->
+                // A reload starts another core: subscribe to it again.
+                Triple(shouldConnect, remoteServerId, reload)
+            }.distinctUntilChanged().collect { (shouldConnect, _, _) ->
                 if (shouldConnect) {
                     commandClient.connect()
                 } else {

@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	mihomoOutboundGroup "github.com/metacubex/mihomo/adapter/outboundgroup"
@@ -59,6 +60,25 @@ func notifyGroupsChange() {
 	coreChangeAccess.Unlock()
 }
 
+// coreSwitching counts the starts and reloads in progress. While one runs,
+// the old core is already stopped and the new one not yet running, so a
+// stream that ends then (sing-box's subscriptions answer "invalid argument"
+// while sing-box is idle or stopping) waits for the new core instead of
+// ending the client's subscription for good. Nested calls (the routing
+// fallback restarts) keep it above zero.
+var coreSwitching atomic.Int32
+
+// beginCoreSwitch marks a start or reload in progress; every call is paired
+// with endCoreSwitch.
+func beginCoreSwitch() { coreSwitching.Add(1) }
+
+// endCoreSwitch ends a start or reload and moves every open stream to the
+// core that runs now (or to sing-box's own state when none does).
+func endCoreSwitch() {
+	coreSwitching.Add(-1)
+	notifyCoreChange()
+}
+
 func currentCoreChange() (<-chan struct{}, <-chan struct{}) {
 	coreChangeAccess.Lock()
 	defer coreChangeAccess.Unlock()
@@ -89,9 +109,22 @@ func (s *switchingStream[T]) Send(message *T) error {
 
 // switchStream serves a stream with sing-box's implementation or the other
 // core's, restarting it on the right one whenever the running core changes.
+// A stream that ends while a start or reload is in progress, or after the
+// core changed under it, is served again on the core that runs next instead
+// of ending the subscription: the client would not subscribe again while the
+// service keeps running.
 func switchStream[T any](server grpc.ServerStreamingServer[T], singBox func(grpc.ServerStreamingServer[T]) error, other func(context.Context, *runningCore, func(*T) error) error) error {
 	for {
 		change, _ := currentCoreChange()
+		if coreSwitching.Load() > 0 {
+			// Neither the old nor the new core can serve it now.
+			select {
+			case <-change:
+				continue
+			case <-server.Context().Done():
+				return server.Context().Err()
+			}
+		}
 		ctx, cancel := context.WithCancel(server.Context())
 		stream := &switchingStream[T]{ServerStreamingServer: server, ctx: ctx}
 		done := make(chan error, 1)
@@ -106,6 +139,24 @@ func switchStream[T any](server grpc.ServerStreamingServer[T], singBox func(grpc
 		select {
 		case err := <-done:
 			cancel()
+			if server.Context().Err() == nil {
+				if coreSwitching.Load() > 0 {
+					// Ended because its core was being replaced: wait
+					// for the switch to finish.
+					select {
+					case <-change:
+						continue
+					case <-server.Context().Done():
+						return server.Context().Err()
+					}
+				}
+				select {
+				case <-change:
+					// The core changed while it ended: serve the new one.
+					continue
+				default:
+				}
+			}
 			return err
 		case <-change:
 			cancel()

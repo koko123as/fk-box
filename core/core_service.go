@@ -158,7 +158,14 @@ func (xrayLogHandler) Handle(message xrayCommonLog.Message) {
 // the egress and service-status probes, and the network callback
 // (CoreDefaultNetworkChanged), whose thread also delivers the default
 // network to the service's start and stop.
+//
+// Every open UI stream is held across the switch (beginCoreSwitch) and moved
+// to the new core when it returns, whether it started or failed, so the
+// groups, status, mode and connection subscriptions follow a reload instead
+// of ending on the stopped core.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
+	beginCoreSwitch()
+	defer endCoreSwitch()
 	resetUIDNSQueryCount()
 	if core == CoreSingBox || core == "" {
 		// Not held across sing-box's own start: CloseService interrupts a

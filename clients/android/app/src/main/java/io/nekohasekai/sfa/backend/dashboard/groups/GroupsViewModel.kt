@@ -4,6 +4,7 @@ import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.backend.model.Group
+import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
@@ -33,11 +34,14 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
                 RemoteControlManager.remoteServer,
                 RemoteControlManager.isConnected,
                 _serviceStatus,
-            ) { foreground, remoteServer, remoteConnected, status ->
+                BoxService.reloadGeneration,
+            ) { foreground, remoteServer, remoteConnected, status, reload ->
                 SessionTarget(
                     connect = foreground &&
                         if (remoteServer != null) remoteConnected else status == Status.Started,
                     remoteServerId = remoteServer?.id,
+                    // A reload starts another core: subscribe to it again.
+                    reload = reload,
                 )
             }.distinctUntilChanged().collect { target ->
                 if (target.connect) {
@@ -49,7 +53,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
         }
     }
 
-    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?)
+    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?, val reload: Long)
 
     override fun createInitialState() = GroupsUiState()
 

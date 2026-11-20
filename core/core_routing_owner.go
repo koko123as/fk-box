@@ -88,6 +88,10 @@ func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
 // profile itself, is returned as an error. The app shows Error and Warnings on
 // the routing page and as a notice.
 func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *OverrideOptions) (*CoreRoutingResult, error) {
+	// One switch for the start and its fallback start without the rules, so
+	// the UI streams wait for the second instead of ending after the first.
+	beginCoreSwitch()
+	defer endCoreSwitch()
 	if core == "" {
 		core = CoreSingBox
 	}
