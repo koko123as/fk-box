@@ -7,6 +7,25 @@ pub const NATIVE_UI: bool = false;
 /// The client name the hello handshake sends. Off Android: host unit tests and the screenshot harness.
 pub const CLIENT: &str = "desktop";
 
+/// No platform features off Android: host unit tests see the pages without them.
+#[cfg(not(feature = "shot"))]
+pub const CAPABILITIES: &[&str] = &[];
+
+/// The screenshot harness draws the Android pages, so it declares what Android does.
+#[cfg(feature = "shot")]
+pub const CAPABILITIES: &[&str] = &[
+    "vpn_service",
+    "battery_optimization",
+    "per_app_proxy",
+    "file_picker",
+    "share_sheet",
+    "qr_scanner",
+    "ca_install",
+    "crash_reports",
+    "usbip",
+    "taildrop",
+];
+
 /// Without a host, calls fail and the window shows the error.
 #[cfg(not(feature = "shot"))]
 pub fn invoke(_id: i64, _method: &str, _args: &str) -> Result<(), String> {

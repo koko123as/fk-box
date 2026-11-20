@@ -14,6 +14,11 @@ The top-level "version" is the protocol version every generated binding carries
 the oldest client protocol version the core still accepts. The "hello" method checks
 them once at start-up. Bump "version" when a method or event changes incompatibly.
 
+"capabilities" names the platform features a client may declare in hello (vpn_service,
+file_picker, ...). The core keeps the declared names it knows and answers that effective
+set; the Rust UI shows a platform feature only when app::has("<name>") is true. The
+platform layer (ui/src/platform/) is the only place that lists them per client.
+
 Targets say where a method belongs once the restructure is done: core (moves to Go),
 android (stays in the Android shell), ui (stays in the platform UI layer).
 """
@@ -33,6 +38,9 @@ KT_SOURCES = ROOT / "clients/android/app/src/main/java"
 GO_METHODS = ROOT / "core" / "core_method.go"
 GO_SOURCES = ROOT / "core"
 RUST_SOURCES = ROOT / "ui" / "src"
+RUST_PLATFORM = RUST_SOURCES / "platform"
+RUST_ANDROID_PLATFORM = RUST_PLATFORM / "android" / "mod.rs"
+CAPABILITY = re.compile(r"^[a-z][a-z_]*[a-z]$")
 
 OWNERS = {"go", "host", "ui"}
 TARGETS = {"core", "android", "ui"}
@@ -48,6 +56,16 @@ def load():
             errors.append(f"{key} must be a positive integer")
     if not errors and spec["minClient"] > spec["version"]:
         errors.append("minClient must not be above version")
+    capabilities = set()
+    for entry in spec.get("capabilities", []):
+        name = entry.get("name", "")
+        if not CAPABILITY.match(name):
+            errors.append(f"capabilities: bad name {name!r}")
+        if name in capabilities:
+            errors.append(f"capabilities: duplicate {name}")
+        if not entry.get("description"):
+            errors.append(f"capabilities {name}: needs a description")
+        capabilities.add(name)
     seen = set()
     for kind in ("methods", "events"):
         for entry in spec[kind]:
@@ -66,6 +84,10 @@ def load():
     return spec, errors
 
 
+def capability_names(spec):
+    return [e["name"] for e in spec.get("capabilities", [])]
+
+
 def names(spec, kind, owner=None):
     return sorted(e["name"] for e in spec[kind] if owner is None or e["owner"] == owner)
 
@@ -79,6 +101,9 @@ def render_go(spec):
              "// uiProtocolMethods maps every protocol method to its owner.",
              "var uiProtocolMethods = map[string]string{"]
     lines += [f'\t"{e["name"]}": "{e["owner"]}",' for e in spec["methods"]]
+    lines += ["}", "", "// uiProtocolCapabilities lists every capability a client may declare in hello.",
+              "var uiProtocolCapabilities = map[string]struct{}{"]
+    lines += [f'\t"{name}": {{}},' for name in capability_names(spec)]
     lines += ["}", "", "// uiProtocolEvents lists every protocol event.", "var uiProtocolEvents = map[string]struct{}{"]
     lines += [f'\t"{e["name"]}": {{}},' for e in spec["events"]]
     lines += ["}", ""]
@@ -211,6 +236,26 @@ def rust_references(methods):
     return found
 
 
+def platform_capabilities():
+    """The CAPABILITIES list of each platform file under ui/src/platform/."""
+    found = {}
+    for path in sorted(RUST_PLATFORM.rglob("*.rs")):
+        text = path.read_text(encoding="utf-8")
+        for match in re.finditer(r"CAPABILITIES: &\[&str\] = &\[([^\]]*)\]", text):
+            found.setdefault(path, []).append(re.findall(r'"([a-z_]+)"', match.group(1)))
+    return found
+
+
+def rust_gates():
+    """Capabilities the Rust UI tests with app::has("...") (or has("...") inside app.rs)."""
+    found = set()
+    for path in RUST_SOURCES.rglob("*.rs"):
+        if path.name == "shot.rs" or path.name.endswith("_tests.rs"):
+            continue
+        found |= set(re.findall(r'\bhas\("([A-Za-z_]+)"\)', path.read_text(encoding="utf-8")))
+    return found
+
+
 def check(spec):
     errors = []
     for path, content in outputs(spec).items():
@@ -254,6 +299,23 @@ def check(spec):
 
     for m in sorted(rust_references(methods) - set(methods)):
         errors.append(f"ui/ calls {m}, which the protocol does not list")
+
+    capabilities = set(capability_names(spec))
+    declared = platform_capabilities()
+    for path, lists in declared.items():
+        for values in lists:
+            for c in sorted(set(values) - capabilities):
+                errors.append(f"{path.relative_to(ROOT)} declares capability {c}, which the protocol does not list")
+    android = declared.get(RUST_ANDROID_PLATFORM)
+    if not android:
+        errors.append(f"{RUST_ANDROID_PLATFORM.relative_to(ROOT)} has no CAPABILITIES list")
+    elif set(android[0]) != capabilities:
+        errors.append(f"Android must declare every capability it has today; missing {sorted(capabilities - set(android[0]))}")
+    gates = rust_gates()
+    for c in sorted(gates - capabilities):
+        errors.append(f"ui/ gates on capability {c}, which the protocol does not list")
+    for c in sorted(capabilities - gates):
+        errors.append(f"capability {c} gates nothing in ui/ (no app::has(\"{c}\"))")
     return errors
 
 
@@ -274,7 +336,7 @@ def main():
         print("\n".join(errors))
         return 1
     counts = {o: len(names(spec, "methods", o)) for o in sorted(OWNERS)}
-    print(f"protocol ok: version {spec['version']} (min client {spec['minClient']}), {len(names(spec, 'methods'))} methods {counts}, {len(names(spec, 'events'))} events")
+    print(f"protocol ok: version {spec['version']} (min client {spec['minClient']}), {len(capability_names(spec))} capabilities, {len(names(spec, 'methods'))} methods {counts}, {len(names(spec, 'events'))} events")
     return 0
 
 

@@ -556,10 +556,14 @@ fn open_fonts(on_closed: Rc<dyn Fn()>) {
         let l = load.clone();
         Page::new(&tr("Font"))
             .loading(fonts.is_none() && error.is_none())
-            .bar(vec![Bar::new("add", "Import font", move || {
-                let l = l.clone();
-                app::act_then("importTerminalFont", json!({}), move |_| l());
-            })])
+            .bar(if app::has("file_picker") {
+                vec![Bar::new("add", "Import font", move || {
+                    let l = l.clone();
+                    app::act_then("importTerminalFont", json!({}), move |_| l());
+                })]
+            } else {
+                Vec::new()
+            })
             .rows(rows_list)
     });
     nav::on_closed(id, move || on_closed());

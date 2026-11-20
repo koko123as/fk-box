@@ -111,6 +111,10 @@ fn app_label(package: &str) -> String {
 
 /// Asks the host once for the names of packages not known yet.
 fn request_labels(packages: impl IntoIterator<Item = String>) {
+    // App names come from the installed-app list, which only per-app clients have.
+    if !app::has("per_app_proxy") {
+        return;
+    }
     let missing: Vec<String> = LABELS_ASKED.with(|asked| {
         let mut asked = asked.borrow_mut();
         packages.into_iter().filter(|p| asked.insert(p.clone())).collect()
@@ -823,7 +827,7 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
     let chosen = split_values(&e.apps);
     let xray = routing.borrow().core == "xray";
     request_labels(chosen.iter().cloned());
-    if !xray || !chosen.is_empty() {
+    if app::has("per_app_proxy") && (!xray || !chosen.is_empty()) {
         rows.push(Row::gap());
         let a = ed.clone();
         let value = if chosen.is_empty() { tr("All apps") } else { format!("{} {}", tr("Selected"), chosen.len()) };

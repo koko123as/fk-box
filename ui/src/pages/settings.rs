@@ -29,10 +29,12 @@ fn native_toggle(title: &str, key: &'static str, restart: bool, auto_restart: bo
 
 pub fn open_general() {
     rows::push(|| {
-        Page::new(&tr("General")).rows(vec![
-            Row::open(&tr("Service"), Some("vpn"), open_service),
-            Row::open(&tr("Core"), Some("cpu"), open_core),
-        ])
+        let mut rows = Vec::new();
+        if app::has("vpn_service") {
+            rows.push(Row::open(&tr("Service"), Some("vpn"), open_service));
+        }
+        rows.push(Row::open(&tr("Core"), Some("cpu"), open_core));
+        Page::new(&tr("General")).rows(rows)
     });
 }
 
@@ -40,15 +42,20 @@ fn open_service() {
     rows::push(|| {
         let busy = data(|d| d.service_settings_changing);
         let exempt = truthy(&setting("batteryExempt"));
-        Page::new(&tr("Service")).loading(busy).rows(vec![
+        let mut rows = vec![
             native_toggle("Allow VPN bypass", "allowBypass", true, true),
             native_toggle("Auto redirect", "autoRedirect", true, true),
             native_toggle("Dynamic notification", "dynamicNotification", true, true),
-            Row::item(&tr("Battery optimization"))
-                .subtitle(&tr(if exempt { "Unrestricted" } else { "Allow background operation" }))
-                .key("battery")
-                .on(|_| app::act("openBatterySettings", json!({}))),
-        ])
+        ];
+        if app::has("battery_optimization") {
+            rows.push(
+                Row::item(&tr("Battery optimization"))
+                    .subtitle(&tr(if exempt { "Unrestricted" } else { "Allow background operation" }))
+                    .key("battery")
+                    .on(|_| app::act("openBatterySettings", json!({}))),
+            );
+        }
+        Page::new(&tr("Service")).loading(busy).rows(rows)
     });
 }
 

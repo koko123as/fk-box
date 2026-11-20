@@ -172,6 +172,20 @@ var uiProtocolMethods = map[string]string{
 	"imeEnd": "ui",
 }
 
+// uiProtocolCapabilities lists every capability a client may declare in hello.
+var uiProtocolCapabilities = map[string]struct{}{
+	"vpn_service": {},
+	"battery_optimization": {},
+	"per_app_proxy": {},
+	"file_picker": {},
+	"share_sheet": {},
+	"qr_scanner": {},
+	"ca_install": {},
+	"crash_reports": {},
+	"usbip": {},
+	"taildrop": {},
+}
+
 // uiProtocolEvents lists every protocol event.
 var uiProtocolEvents = map[string]struct{}{
 	"browserComplete": {},

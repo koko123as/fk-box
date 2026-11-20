@@ -71,6 +71,15 @@ thread_local! {
     static DATA: RefCell<Data> = RefCell::new(Data { system_accent: 0xff007aff, ..Default::default() });
     static CALLS: RefCell<Calls> = RefCell::new(Calls::default());
     static WINDOW: RefCell<Option<slint::Weak<AppWindow>>> = const { RefCell::new(None) };
+    /// The capabilities the core accepted in the hello handshake.
+    static CAPABILITIES: RefCell<Vec<String>> = const { RefCell::new(Vec::new()) };
+}
+
+/// Whether this client has a platform feature (protocol/methods.json
+/// "capabilities"), as the core answered hello. Pages show a platform-specific
+/// row or action only when this is true.
+pub fn has(capability: &str) -> bool {
+    CAPABILITIES.with(|c| c.borrow().iter().any(|v| v == capability))
 }
 
 pub fn data<R>(f: impl FnOnce(&Data) -> R) -> R {
@@ -681,11 +690,16 @@ fn hello(then: fn()) {
         "protocolVersion": crate::protocol_gen::PROTOCOL_VERSION,
         "client": crate::platform::CLIENT,
         "clientVersion": env!("CARGO_PKG_VERSION"),
+        "capabilities": platform::CAPABILITIES,
     });
     call("hello", args, move |result| {
         let error = match result {
             // The core decides: it may speak a newer version that still accepts this one.
-            Ok(reply) if reply["ok"] == true => None,
+            Ok(reply) if reply["ok"] == true => {
+                let accepted = reply["capabilities"].as_array().map(|v| v.iter().filter_map(|c| c.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                CAPABILITIES.with(|c| *c.borrow_mut() = accepted);
+                None
+            }
             Ok(reply) => Some(format!(
                 "protocol version mismatch: core={} client={}",
                 reply["protocolVersion"],

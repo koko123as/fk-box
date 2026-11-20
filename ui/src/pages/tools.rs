@@ -81,15 +81,19 @@ fn tools_page() -> Page {
     // Theme, access, routing rules, backup, general (fk-box follows the system language).
     rows.push(Row::section(&tr("Settings")));
     rows.push(Row::open(&tr("Appearance"), Some("paintbrush"), crate::pages::appearance::open));
-    rows.push(Row::open(&tr("Access control"), Some("apps-list"), crate::pages::settings::open_access));
+    if app::has("per_app_proxy") {
+        rows.push(Row::open(&tr("Access control"), Some("apps-list"), crate::pages::settings::open_access));
+    }
     rows.push(Row::open(&tr("Traffic routing"), Some("rules"), crate::pages::routing::open));
     rows.push(Row::open(&tr("Backup and restore"), Some("cloud-sync"), crate::pages::settings::open_backup));
     rows.push(Row::open(&tr("General"), Some("settings"), crate::pages::settings::open_general));
     rows.push(Row::section(&tr("Other")));
     rows.push(Row::open(&tr("Network quality"), Some("speed"), || open_diagnostics(true)));
     rows.push(Row::open(&tr("STUN test"), Some("proxies"), || open_diagnostics(false)));
-    for kind in REPORT_KINDS {
-        rows.push(Row::open(&tr(report_title(kind)), Some("profiles"), move || open_reports(kind)));
+    if app::has("crash_reports") {
+        for kind in REPORT_KINDS {
+            rows.push(Row::open(&tr(report_title(kind)), Some("profiles"), move || open_reports(kind)));
+        }
     }
     rows.push(Row::open(&tr("About"), Some("info"), crate::pages::settings::open_about));
     let mut first = Row::first_section("");
@@ -642,7 +646,7 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
                     move || app::act("openUrl", json!({ "url": a }))
                 }).on(move |_| app::act("openUrl", json!({ "url": auth }))));
             }
-            if truthy(&endpoint["canShareFiles"]) {
+            if truthy(&endpoint["canShareFiles"]) && app::has("taildrop") {
                 rows.push(Row::section("Taildrop"));
                 let t = tag_s.clone();
                 let waiting = endpoint.get("waitingFileCount").map(text).filter(|v| !v.is_empty() && v != "null").unwrap_or_else(|| "0".into());
@@ -716,7 +720,7 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
                     .subtitle(&s(&device, "state")),
                 );
             }
-            if !data(|d| d.remote()) {
+            if !data(|d| d.remote()) && app::has("usbip") {
                 rows.push(Row::gap());
                 let t = tag_s.clone();
                 rows.push(Row::item(&tr("Attach USB device")).trailing("add", { let t = t.clone(); move || usb_picker(t.clone()) }).on(move |_| usb_picker(t.clone())).key("attach"));
