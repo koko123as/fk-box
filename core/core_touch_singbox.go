@@ -16,6 +16,7 @@ import (
 	"context"
 	"net/netip"
 
+	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/networkquality"
@@ -243,6 +244,15 @@ var (
 	_ = C.TCPTimeout
 	_ = log.NewNOPFactory
 	_ *option.CertificateOptions
+
+	// box, log: sing-box as an ordinary kernel in the standalone host
+	// (core_standalone.go): fk-box starts box.Box itself.
+	_ func(box.Options) (*box.Box, error) = box.New
+	_ func(*box.Box) error                = (*box.Box).Start
+	_ func(*box.Box) error                = (*box.Box).Close
+	_ log.PlatformWriter                  = nil
+	_                                     = log.LevelPanic
+	_                                     = log.LevelFatal
 
 	// schema: the http_rewrite option schema (core/option).
 	_ *schema.Builder

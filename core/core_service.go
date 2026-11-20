@@ -87,6 +87,13 @@ var (
 // groups, status, mode and connection subscriptions follow a reload instead
 // of ending on the stopped core.
 func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
+	return startOrReloadCore(s.kernelHost, core, configContent, kernelOptions{host: options})
+}
+
+// startOrReloadCore is StartOrReloadCoreService for any host: libbox's
+// CommandServer on Android, fk-box's standalone host on the desktop
+// (core_standalone.go). hostOf is called once per start or stop.
+func startOrReloadCore(hostOf func() kernelHost, core string, configContent string, kernelOpts kernelOptions) error {
 	beginCoreSwitch()
 	defer endCoreSwitch()
 	resetUIDNSQueryCount()
@@ -94,12 +101,11 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	if kernel == nil {
 		return fmt.Errorf("unknown core: %s", core)
 	}
-	host := s.kernelHost()
-	kernelOpts := kernelOptions{host: options}
+	host := hostOf()
 	if !kernel.NeedsTun() {
 		// Not held across sing-box's own start: CloseService interrupts a
 		// slow one (rule-set downloads) and must not wait for it here.
-		s.stopOtherCore()
+		stopOtherCore(hostOf)
 		return kernel.Start(host, nil, configContent, nil, kernelOpts)
 	}
 	// Checked before anything is stopped (mihomo parses its YAML once here
@@ -112,7 +118,7 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 	defer coreLifecycle.Unlock()
 	// Stop sing-box (if it was running) before its TUN is replaced.
 	singBoxKernel{}.Stop(host, nil)
-	s.stopOtherCoreLocked()
+	stopOtherCoreLocked(hostOf)
 
 	useKernelHost(host)
 	fd, err := host.Platform.OpenTun(hostTunRequest{Inet4: coreTunInet4, Inet6: coreTunInet6, MTU: coreTunMTU}, kernelOpts)
@@ -139,23 +145,28 @@ func (s *CommandServer) StartOrReloadCoreService(core string, configContent stri
 
 // CloseCoreService stops whichever core is running.
 func (s *CommandServer) CloseCoreService() error {
-	if s.stopOtherCore() {
+	return closeCore(s.kernelHost)
+}
+
+// closeCore is CloseCoreService for any host.
+func closeCore(hostOf func() kernelHost) error {
+	if stopOtherCore(hostOf) {
 		releaseCoreMemory()
 	}
-	return s.CloseService()
+	return hostOf().Lifecycle.StopSingBox()
 }
 
 // stopOtherCore stops Xray or mihomo and reports whether one was running.
-func (s *CommandServer) stopOtherCore() bool {
+func stopOtherCore(hostOf func() kernelHost) bool {
 	coreLifecycle.Lock()
 	defer coreLifecycle.Unlock()
-	return s.stopOtherCoreLocked()
+	return stopOtherCoreLocked(hostOf)
 }
 
 // stopOtherCoreLocked is stopOtherCore with coreLifecycle held. The core is
 // taken out of activeCore first, so readers stop using it at once, and shut
 // down without coreAccess held.
-func (s *CommandServer) stopOtherCoreLocked() bool {
+func stopOtherCoreLocked(hostOf func() kernelHost) bool {
 	coreAccess.Lock()
 	running := activeCore
 	activeCore = nil
@@ -163,7 +174,7 @@ func (s *CommandServer) stopOtherCoreLocked() bool {
 	if running == nil {
 		return false
 	}
-	host := s.kernelHost()
+	host := hostOf()
 	if running.unwatchNetwork != nil {
 		running.unwatchNetwork()
 	}
