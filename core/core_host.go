@@ -126,7 +126,7 @@ func (s *CommandServer) kernelHost() kernelHost {
 		Platform:  libboxPlatform{s},
 		Commands:  libboxCommandService{},
 		Lifecycle: libboxLifecycle{s},
-		HTTP:      libboxHTTP{},
+		HTTP:      fkhostHTTP{},
 		Log:       s.hostLog(),
 	}
 }
@@ -243,13 +243,11 @@ func (l libboxLifecycle) StopSingBox() error { return l.server.CloseService() }
 
 func (libboxLifecycle) WorkingDirectory() string { return sWorkingPath }
 
-type libboxHTTP struct{}
+// HTTP: fk-box's own client (fkhost.NewHTTPClient), no longer libbox's.
+type fkhostHTTP struct{}
 
-func (libboxHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
-	client := NewHTTPClient().(*httpClient)
-	client.ModernTLS()
-	client.client.Timeout = timeout
-	return &client.client, client.Close
+func (fkhostHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
+	return fkhost.NewHTTPClientTimeout(timeout)
 }
 
 // Log: fk-box's own log (fkhost.Log). sing-box still runs inside this

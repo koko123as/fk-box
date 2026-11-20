@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/experimental/fkhost"
 	M "github.com/sagernet/sing/common/metadata"
 )
 
@@ -84,20 +85,19 @@ func (s *CommandServer) NewUIEgressProbe() (*UIEgressProbe, error) {
 
 func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn, string, func(error)), dial func(context.Context, string, string) (net.Conn, error)) *UIEgressProbe {
 	ctx, cancel := context.WithCancel(context.Background())
-	wrapped := NewHTTPClient().(*httpClient)
-	wrapped.ModernTLS()
+	wrapped := fkhost.NewHTTPClient()
 	probe := &UIEgressProbe{
 		ctx:         ctx,
 		cancel:      cancel,
-		client:      &wrapped.client,
+		client:      &wrapped.Client,
 		closeClient: wrapped.Close,
 		current:     current,
 	}
 	// Each request owns its connection and deadline. A pooled connection
 	// must not survive the IP race and carry the subsequent quality lookup.
-	wrapped.transport.DisableKeepAlives = true
+	wrapped.Transport.DisableKeepAlives = true
 	direct := &net.Dialer{}
-	wrapped.transport.DialContext = func(dialContext context.Context, network, address string) (net.Conn, error) {
+	wrapped.Transport.DialContext = func(dialContext context.Context, network, address string) (net.Conn, error) {
 		if !probe.current() {
 			return nil, fmt.Errorf("service changed during egress check")
 		}

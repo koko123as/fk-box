@@ -22,6 +22,7 @@ import (
 	mihomoRouter "github.com/metacubex/mihomo/component/geodata/router"
 	mihomoMMDB "github.com/metacubex/mihomo/component/mmdb"
 	"github.com/oschwald/maxminddb-golang"
+	"github.com/sagernet/sing-box/experimental/fkhost"
 	"google.golang.org/protobuf/encoding/protowire"
 	"google.golang.org/protobuf/proto"
 )
@@ -287,11 +288,10 @@ func downloadGeoResource(ctx context.Context, link string, dir string, file stri
 			request.Header.Set("If-Modified-Since", conditional.lastModified)
 		}
 	}
-	client := NewHTTPClient().(*httpClient)
+	client := fkhost.NewHTTPClient()
 	defer client.Close()
-	client.ModernTLS()
-	client.client.Timeout = geoDownloadTimeout
-	response, err := client.client.Do(request)
+	client.Client.Timeout = geoDownloadTimeout
+	response, err := client.Client.Do(request)
 	if err != nil {
 		return nil, err
 	}

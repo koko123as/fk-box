@@ -14,11 +14,10 @@ package libbox
 
 import (
 	"context"
-	"crypto/tls"
-	"net/http"
 	"net/netip"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/certificate"
 	"github.com/sagernet/sing-box/common/networkquality"
 	"github.com/sagernet/sing-box/common/sniff"
 	"github.com/sagernet/sing-box/common/stun"
@@ -40,9 +39,6 @@ var (
 	_ func(PlatformInterface, int32) error                                                   = PlatformInterface.AutoDetectInterfaceControl
 	_ func(PlatformInterface, int32, string, int32, string, int32) (*ConnectionOwner, error) = PlatformInterface.FindConnectionOwner
 
-	_ func() HTTPClient           = NewHTTPClient
-	_ func(*httpClient)           = (*httpClient).ModernTLS
-	_ func(*httpClient)           = (*httpClient).Close
 	_ func(int) (int, error)      = dup
 	_ func(int32) (string, error) = getTunnelName
 	_                             = iteratorToArray[string]
@@ -62,7 +58,6 @@ var (
 	_ = ConnectionEventNew
 	_ = ConnectionEventUpdate
 	_ = ConnectionEventClosed
-	_ HTTPClient
 	_ StringIterator
 
 	_ = NetworkQualityDefaultConfigURL
@@ -92,13 +87,10 @@ var (
 )
 
 // touchLibboxFields names the unexported libbox fields fk-box reads. Never called.
-func touchLibboxFields(s *CommandServer, c *httpClient, o *OverrideOptions, owner *ConnectionOwner, box *StringBox) {
+func touchLibboxFields(s *CommandServer, o *OverrideOptions, owner *ConnectionOwner, box *StringBox) {
 	var _ context.Context = s.ctx
 	var _ PlatformInterface = s.platformInterface
 	var _ *daemon.StartedService = s.StartedService
-	var _ *http.Client = &c.client
-	var _ *http.Transport = &c.transport
-	var _ *tls.Config = &c.tls
 	var _ StringIterator = o.IncludePackage
 	var _ StringIterator = o.ExcludePackage
 	var _ []string = owner.androidPackageNames
@@ -237,6 +229,20 @@ var (
 	_ = sniff.PeekStream
 	_ = sniff.QUICClientHello
 	_ = sniff.TLSClientHello
+
+	// fkhost (experimental/fkhost): fk-box's HTTP client on sing-box's
+	// certificate store, as libbox's client did.
+	_ = adapter.NewScope
+	_ *adapter.Scope
+	_ = (*adapter.Scope).Close
+	_ = adapter.StartStateInitialize
+	_ = certificate.NewStore
+	_ = (*certificate.Store).Start
+	_ = (*certificate.Store).Pool
+	_ = C.IsAndroid
+	_ = C.TCPTimeout
+	_ = log.NewNOPFactory
+	_ *option.CertificateOptions
 
 	// schema: the http_rewrite option schema (core/option).
 	_ *schema.Builder

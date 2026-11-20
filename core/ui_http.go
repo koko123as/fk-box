@@ -9,6 +9,8 @@ import (
 	"net/url"
 	"strings"
 	"time"
+
+	"github.com/sagernet/sing-box/experimental/fkhost"
 )
 
 const uiBackupLimit = 64 * 1024 * 1024
@@ -62,11 +64,10 @@ func uiHTTPRequest(method, link, username, password string, content []byte, limi
 	if username != "" || password != "" {
 		request.SetBasicAuth(username, password)
 	}
-	client := NewHTTPClient().(*httpClient)
+	client := fkhost.NewHTTPClient()
 	defer client.Close()
-	client.ModernTLS()
-	client.client.Timeout = timeout
-	client.client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
+	client.Client.Timeout = timeout
+	client.Client.CheckRedirect = func(next *http.Request, via []*http.Request) error {
 		if len(via) >= 5 {
 			return fmt.Errorf("too many HTTP redirects")
 		}
@@ -91,7 +92,7 @@ func uiHTTPRequest(method, link, username, password string, content []byte, limi
 		}
 		return nil
 	}
-	response, err := client.client.Do(request)
+	response, err := client.Client.Do(request)
 	if err != nil {
 		return nil, err
 	}
