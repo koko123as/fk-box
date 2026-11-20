@@ -1,0 +1,74 @@
+name: Build official kernels and fk-core
+description: >-
+  Builds sing-box's official libbox.aar, the official Xray and mihomo
+  executables and fk-box's own fk-core and xrayshare for android/arm64 from
+  unmodified upstream tags (tools/build_kernels.sh, docs/kernel-isolation.md),
+  into clients/android/app/build/kernelJniLibs/arm64-v8a and
+  clients/android/app/libs/libbox-official.aar.
+
+outputs:
+  cache-hit:
+    description: '"true" when the outputs came from the Actions cache.'
+    value: ${{ steps.cache.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    - id: inputs
+      shell: bash
+      run: |
+        echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+        deps=$(grep -E '^(GO_VERSION|CORE_VERSION|XRAY_VERSION|MIHOMO_VERSION|LIBXRAY_MODULE_VERSION|VERSION_NAME)=' version.properties | tr -d '\r' | sort)
+        echo "deps_key=$(printf '%s' "$deps" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    - id: cache
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          kernels-out/jni
+          kernels-out/libbox-official.aar
+        key: kernels-android-arm64-${{ steps.inputs.outputs.deps_key }}-${{ hashFiles('core/**', 'tools/build_kernels.sh', '.github/actions/build-kernels/action.yml') }}
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version: ${{ steps.inputs.outputs.go }}
+        cache: false
+    # sing-box's build_libbox insists on OpenJDK 17.
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        log-accepted-android-sdk-licenses: false
+        packages: >-
+          platform-tools
+          ndk;28.0.13004108
+    - name: Build the kernels from unmodified upstream tags
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      env:
+        GOTOOLCHAIN: local
+      run: |
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+        KERNEL_SRC="$RUNNER_TEMP/kernel-src" tools/build_kernels.sh kernels-out arm64
+    - if: steps.cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: |
+          kernels-out/jni
+          kernels-out/libbox-official.aar
+        key: ${{ steps.cache.outputs.cache-primary-key }}
+    - name: Install into the Android project
+      shell: bash
+      run: |
+        mkdir -p clients/android/app/build/kernelJniLibs clients/android/app/libs
+        rm -rf clients/android/app/build/kernelJniLibs/arm64-v8a
+        cp -r kernels-out/jni/arm64-v8a clients/android/app/build/kernelJniLibs/
+        cp kernels-out/libbox-official.aar clients/android/app/libs/libbox-official.aar
+        {
+          echo "### Official kernels and fk-core (android/arm64)"
+          for f in clients/android/app/build/kernelJniLibs/arm64-v8a/*.so clients/android/app/libs/libbox-official.aar; do
+            echo "- $(basename "$f"): $(stat -c %s "$f") bytes"
+          done
+        } >> "$GITHUB_STEP_SUMMARY"

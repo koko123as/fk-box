@@ -6,6 +6,7 @@ on:
     paths:
       # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
       - 'core/**'
+      - 'legacy/**'
       - 'protocol/**'
       - 'ui/**'
       - 'tools/**'
@@ -22,6 +23,7 @@ on:
     paths:
       # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
       - 'core/**'
+      - 'legacy/**'
       - 'protocol/**'
       - 'ui/**'
       - 'tools/**'
@@ -96,6 +98,61 @@ jobs:
         run: |
           go test -race ./experimental/httpdebug -count=1 -timeout=5m
           go test -ldflags=-checklinkname=0 ./route -run '^TestBboxHTTPDebug' -count=1 -timeout=5m
+  kernels:
+    # fk-box's own module core/ (fk-core) and the official kernels built from
+    # unmodified upstream tags (docs/kernel-isolation.md).
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - id: versions
+        run: echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go }}
+          cache-dependency-path: |
+            core/go.mod
+            core/tools/xrayshare/go.sum
+      - name: fk-core never links a kernel (go list -deps)
+        env:
+          GOTOOLCHAIN: local
+        run: python3 tools/check_kernel_isolation.py
+      - name: fk-core format, vet and tests
+        working-directory: core
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          GOOS=android GOARCH=arm64 go vet ./...
+          go test -race -count=1 ./...
+      - name: fk-core answers hello over stdio
+        working-directory: core
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go build -o "$RUNNER_TEMP/fk-core" ./cmd/fk-core
+          "$RUNNER_TEMP/fk-core" -version
+          printf '%s\n' \
+            '{"id":1,"method":"version","args":{}}' \
+            '{"id":2,"method":"hello","args":{"protocolVersion":1}}' \
+            '{"id":3,"method":"version","args":{}}' \
+            | "$RUNNER_TEMP/fk-core" -dir "$RUNNER_TEMP/fk-core-dir" | tee "$RUNNER_TEMP/fk-core.out"
+          grep -q '"id":1,"error":"protocol: send hello first"' "$RUNNER_TEMP/fk-core.out"
+          grep -q '"id":2,"result":{"protocolVersion":1' "$RUNNER_TEMP/fk-core.out"
+          grep -q '"id":3,"result":{"fkCore"' "$RUNNER_TEMP/fk-core.out"
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools
+            ndk;28.0.13004108
+      - name: Official Xray and mihomo build unmodified (git status --porcelain empty), with fk-core and xrayshare
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          KERNEL_SRC="$RUNNER_TEMP/kernel-src" tools/build_kernels.sh "$RUNNER_TEMP/kernels" arm64 --no-libbox
   source:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
