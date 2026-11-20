@@ -1,0 +1,15 @@
+log-level: debug
+mode: rule
+ipv6: false
+find-process-mode: "off"
+tun:
+  enable: true
+  stack: gvisor
+  file-descriptor: 3
+  auto-route: false
+  auto-detect-interface: false
+dns:
+  enable: false
+proxies: []
+rules:
+  - MATCH,REJECT

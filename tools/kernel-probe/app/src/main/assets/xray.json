@@ -1,0 +1,9 @@
+{
+  "log": { "loglevel": "debug" },
+  "inbounds": [
+    { "tag": "tun", "protocol": "tun", "settings": { "name": "xray0", "mtu": 1500 } }
+  ],
+  "outbounds": [
+    { "tag": "block", "protocol": "blackhole" }
+  ]
+}

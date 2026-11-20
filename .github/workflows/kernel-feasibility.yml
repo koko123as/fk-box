@@ -1,0 +1,172 @@
+name: Kernel isolation feasibility (P0)
+
+# P0 of docs/kernel-isolation.md. Proves, against the kernels pinned in
+# version.properties and with no patch applied to any of them:
+#  1. sing-box's official libbox.aar, Xray and mihomo build for android/arm64
+#     from a fresh clone of the upstream tag, and every source tree stays
+#     unmodified (git status --porcelain empty);
+#  2. the official Xray and mihomo executables, shipped as lib*.so and run from
+#     nativeLibraryDir by an untrusted app, take a VpnService TUN handed over
+#     as fd 3 (LocalSocket SCM_RIGHTS -> fdexec -> exec.Cmd.ExtraFiles) and
+#     read traffic from it;
+#  3. the size of the arm64 APK with the official libraries in place of the
+#     current multi-kernel libbox.so.
+# Manual only; it never signs, tags or publishes anything.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  kernels:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - id: versions
+        run: |
+          echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+          echo "singbox=$(sed -n 's/^CORE_VERSION=//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go }}
+          cache: false
+      # build_libbox insists on OpenJDK 17.
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: >-
+            platform-tools
+            platforms;android-36
+            build-tools;36.0.0
+            ndk;28.0.13004108
+      - name: Build official Xray and mihomo (arm64 for size, amd64 for the emulator)
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          KERNEL_SRC="$RUNNER_TEMP/src" tools/kernel-probe/build-kernels.sh out arm64 amd64
+      - name: Build the fdexec probe helper
+        working-directory: tools/kernel-probe/fdexec
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          bin="$ANDROID_HOME/ndk/28.0.13004108/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          CC="$bin/x86_64-linux-android24-clang" CGO_ENABLED=1 GOOS=android GOARCH=amd64 \
+            go build -trimpath -ldflags='-s -w -buildid=' -o "$GITHUB_WORKSPACE/out/amd64/libfdexec.so" .
+      - name: Build official libbox.aar (upstream build_libbox, unmodified tree)
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          git clone --quiet --depth 1 --branch "v${{ steps.versions.outputs.singbox }}" https://github.com/SagerNet/sing-box.git "$RUNNER_TEMP/src/sing-box"
+          cd "$RUNNER_TEMP/src/sing-box"
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          make lib_install
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go run ./cmd/internal/build_libbox -target android -platform android/arm64
+          mv libbox.aar "$GITHUB_WORKSPACE/out/libbox.aar"
+          rm -f libbox-legacy.aar
+          status=$(git status --porcelain --ignored=no)
+          test -z "$status" || { echo "::error::sing-box tree modified"; echo "$status"; exit 1; }
+          echo "sing-box: git status --porcelain is empty"
+      - name: Sizes
+        run: |
+          size() { stat -c %s "$1"; }
+          deflated() { local z; z=$(mktemp -u).zip; zip -q -9 -j "$z" "$1"; unzip -lv "$z" | awk 'NR==4 {print $3}'; rm -f "$z"; }
+          unzip -q -o out/libbox.aar 'jni/arm64-v8a/libbox.so' -d out/aar
+          {
+            echo "### Official kernels (android/arm64)"
+            echo "| file | bytes | deflated in APK |"
+            echo "| --- | --- | --- |"
+            for f in out/aar/jni/arm64-v8a/libbox.so out/arm64/libxray.so out/arm64/libmihomo.so; do
+              echo "| $(basename "$f") | $(size "$f") | $(deflated "$f") |"
+            done
+            echo "| libbox.aar | $(size out/libbox.aar) | |"
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: APK size with the official libraries in place of the current libbox.so
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          run=$(gh run list -R "$GITHUB_REPOSITORY" -w build-apk.yml -b main -s success -L 1 --json databaseId,headSha -q '.[0]')
+          id=$(jq -r .databaseId <<<"$run"); sha=$(jq -r .headSha <<<"$run")
+          gh run download "$id" -R "$GITHUB_REPOSITORY" -D apk
+          apk=$(find apk -name '*-arm64-v8a.apk' | head -1)
+          test -n "$apk"
+          cp "$apk" repack.apk
+          zip -q -d repack.apk 'lib/arm64-v8a/libbox.so' 'META-INF/*'
+          mkdir -p stage/lib/arm64-v8a
+          cp out/aar/jni/arm64-v8a/libbox.so out/arm64/libxray.so out/arm64/libmihomo.so stage/lib/arm64-v8a/
+          (cd stage && zip -q -9 -r ../repack.apk lib)
+          "$ANDROID_HOME/build-tools/36.0.0/zipalign" -f -p 4 repack.apk repack-aligned.apk
+          {
+            echo "### APK size (arm64-v8a)"
+            echo "- current main release APK (build-apk run $id, $sha): $(stat -c %s "$apk") bytes"
+            echo "- same APK, multi-kernel libbox.so replaced by official libbox.so + libxray.so + libmihomo.so, aligned, unsigned: $(stat -c %s repack-aligned.apk) bytes"
+            echo "- fk-core (libfkcore.so) is not in this figure; P1 measures the real APK."
+            unzip -lv "$apk" | grep -E 'lib/arm64-v8a/' | awk '{print "  - current " $8 ": " $1 " bytes, " $3 " deflated"}'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: official-kernels
+          path: |
+            out/arm64/
+            out/amd64/
+            out/libbox.aar
+          retention-days: 14
+
+  emulator:
+    needs: kernels
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          name: official-kernels
+          path: out
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+        with:
+          cache-read-only: true
+      - name: Build the probe APK (x86_64 kernels for the emulator)
+        run: |
+          mkdir -p tools/kernel-probe/app/jniLibs/x86_64
+          cp out/amd64/libxray.so out/amd64/libmihomo.so out/amd64/libfdexec.so tools/kernel-probe/app/jniLibs/x86_64/
+          clients/android/gradlew -p tools/kernel-probe :app:assembleDebug --no-daemon --console=plain
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 34
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          script: bash tools/kernel-probe/run-probe.sh tools/kernel-probe/app/build/outputs/apk/debug/app-debug.apk probe-logs
+      - if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: probe-logs
+          path: probe-logs/
+          retention-days: 14
