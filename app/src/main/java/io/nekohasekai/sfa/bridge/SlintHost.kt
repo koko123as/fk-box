@@ -22,6 +22,9 @@ object SlintHost {
 
     fun wire(value: Any?): String = JSONObject().put("v", json(value)).toString()
 
+    /** [value] as plain JSON text (data handed to Go). */
+    fun jsonText(value: Any?): String = json(value).toString()
+
     private fun json(value: Any?): Any = when (value) {
         null, Unit -> JSONObject.NULL
         is Map<*, *> -> JSONObject().also { obj -> value.forEach { (k, v) -> obj.put(k.toString(), json(v)) } }

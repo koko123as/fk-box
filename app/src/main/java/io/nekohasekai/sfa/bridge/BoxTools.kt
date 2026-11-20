@@ -3,20 +3,19 @@ package io.nekohasekai.sfa.bridge
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.OpenVPNChallengeResponse
 import io.nekohasekai.libbox.UIToolHost
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
 import io.nekohasekai.sfa.backend.tools.NetworkQualityViewModel
-import io.nekohasekai.sfa.backend.tools.OpenConnectStatusViewModel
-import io.nekohasekai.sfa.backend.tools.OpenVPNStatusViewModel
 import io.nekohasekai.sfa.backend.tools.STUNTestViewModel
 import io.nekohasekai.sfa.backend.tools.TaildropFiles
 import io.nekohasekai.sfa.backend.tools.TaildropSendManager
 import io.nekohasekai.sfa.backend.tools.TaildropViewModel
 import io.nekohasekai.sfa.backend.tools.TailscalePingViewModel
-import io.nekohasekai.sfa.backend.tools.TailscaleStatusViewModel
 import io.nekohasekai.sfa.backend.usbip.USBIPStatusViewModel
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.sfa.usbip.USBIPManager
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandTarget
@@ -33,9 +32,8 @@ import java.io.Closeable
 internal class BoxTools(private val activity: BoxActivity, private val emit: (String, Any?) -> Unit) : Closeable {
     private val scope = activity.lifecycleScope
     private val provider = ViewModelProvider(activity)
-    val tailscale = provider[TailscaleStatusViewModel::class.java]
-    val openConnect = provider[OpenConnectStatusViewModel::class.java]
-    private val openVPN = provider[OpenVPNStatusViewModel::class.java]
+    // Tailscale / OpenConnect / OpenVPN status streams and the "tools" event are
+    // kept by Go (libbox core_endpoint_status.go); readers use its lookups.
     private val usb = provider[USBIPStatusViewModel::class.java]
     // Scopes the Go STUN tool to this activity (reset on create, stopped on clear).
     private val stun = provider[STUNTestViewModel::class.java]
@@ -46,7 +44,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
     private val usbController = BoxUsb(activity)
-    val ssh = BoxSSH(scope, tailscale, emit)
+    val ssh = BoxSSH(scope, emit)
     val terminalSettings = BoxTerminalSettings(activity)
     private var inboxTag: String? = null
     private var sessionKey: Long? = null
@@ -76,9 +74,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 val available = if (remote != null) connected else status == Status.Started
                 Triple(foreground && available, available, remote?.id ?: 0L)
             }.distinctUntilChanged().collect { (connected, available, target) ->
-                tailscale.cancel()
-                openConnect.cancel()
-                openVPN.cancel()
+                Libbox.uiEndpointStatusCancel()
                 usb.cancel()
                 outbounds.disconnect()
                 if (sessionKey != target || !available) {
@@ -91,9 +87,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 sessionKey = target
                 if (connected) {
                     outbounds.connect()
-                    tailscale.subscribe()
-                    openConnect.subscribe()
-                    openVPN.subscribe()
+                    Libbox.uiEndpointStatusSubscribe(toolHost)
                     usb.subscribe()
                     inboxTag?.let { inbox.subscribe(it) }
                 } else {
@@ -101,10 +95,10 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 }
             }
         }
-        jobs += scope.launch { tailscale.uiState.collect { emit("tools", snapshot()) } }
-        jobs += scope.launch { openConnect.uiState.collect { emit("tools", snapshot()) } }
-        jobs += scope.launch { openVPN.uiState.collect { emit("tools", snapshot()) } }
-        jobs += scope.launch { usb.uiState.collect { emit("tools", snapshot()) } }
+        // Later "tools" payloads are sent by Go; the USBIP part is handed in here.
+        Libbox.uiToolsSetUSBIP(usbWire())
+        emit("tools", snapshot())
+        jobs += scope.launch { usb.uiState.collect { Libbox.uiToolsSetUSBIP(usbWire()) } }
         // Later STUN states are sent by Go (the "stun" event).
         emit("stun", GoWire(Libbox.uiStunPayload()))
         // Later quality states are sent by Go (the "quality" event).
@@ -126,12 +120,9 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         } }
     }
 
-    fun snapshot(): Map<String, Any?> = mapOf(
-        "tailscale" to tailscale.uiState.value.endpoints.map { it.toWire() },
-        "openconnect" to openConnect.uiState.value.endpoints.map { it.toWire() },
-        "openvpn" to openVPN.uiState.value.endpoints.map { it.toWire() },
-        "usbip" to usb.uiState.value.servers.map { it.toWire() },
-    )
+    private fun usbWire(): String = SlintHost.jsonText(usb.uiState.value.servers.map { it.toWire() })
+
+    fun snapshot(): GoWire = GoWire(Libbox.uiToolsPayload())
 
     fun diagnostics(): Map<String, Any?> = mapOf("quality" to GoWire(Libbox.uiQualityPayload()), "stun" to GoWire(Libbox.uiStunDiagnostics()))
 
@@ -157,10 +148,11 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     suspend fun stopQuality() { Libbox.uiQualityStop() }
 
     suspend fun setTailscaleExitNode(endpointTag: String?, peer: String?) {
-        val endpoint = tailscale.endpoint(required(endpointTag, "endpoint")) ?: error("Endpoint no longer exists")
+        val tag = required(endpointTag, "endpoint")
+        if (!Libbox.uiTailscaleHasEndpoint(tag)) error("Endpoint no longer exists")
         val stableID = required(peer, "peer")
-        require(stableID.isEmpty() || endpoint.userGroups.any { group -> group.peers.any { it.stableID == stableID && it.exitNodeOption } }) { "Not an available exit node" }
-        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setTailscaleExitNode(endpoint.endpointTag, stableID) }
+        require(stableID.isEmpty() || Libbox.uiTailscaleIsExitNodeOption(tag, stableID)) { "Not an available exit node" }
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setTailscaleExitNode(tag, stableID) }
     }
 
     suspend fun tailscaleLogout(endpoint: String?) {
@@ -168,8 +160,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     }
 
     suspend fun tailscalePing(endpoint: String?, peerID: String?) {
-        val peer = tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
-        Libbox.uiTailscalePingStart(required(endpoint, "endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"), toolHost)
+        val peer = Libbox.uiTailscalePeer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
+        Libbox.uiTailscalePingStart(required(endpoint, "endpoint"), peer.tailscaleIPs().toList().firstOrNull() ?: error("Peer has no address"), toolHost)
     }
 
     suspend fun stopTailscalePing() { Libbox.uiTailscalePingStop() }
@@ -209,20 +201,20 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     suspend fun sendShare(token: String?, endpointTag: String?, peerID: String?): Any? {
         val endpoint = required(endpointTag, "endpoint")
-        val peer = tailscale.peer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        val peer = Libbox.uiTailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
         require(peer.canReceiveFiles && peer.online) { "Peer is not available for file transfer" }
         val files = withContext(Dispatchers.IO) { activity.openShare(required(token, "token")) }
-        return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
+        return TaildropSendManager.send(endpoint, peer.stableID, Libbox.uiTailscalePeerDisplayName(peer), files)
     }
 
     /** Null when the user dismissed the file picker. */
     suspend fun sendTaildropFile(endpointTag: String?, peerID: String?): Any? {
         val endpoint = required(endpointTag, "endpoint")
-        val peer = tailscale.peer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        val peer = Libbox.uiTailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
         require(peer.canReceiveFiles) { "This peer cannot receive files" }
         val uri = activity.pickDocument() ?: return null
         val files = withContext(Dispatchers.IO) { TaildropSendManager.openURIs(listOf(uri)) }
-        return TaildropSendManager.send(endpoint, peer.stableID, peer.displayName, files)
+        return TaildropSendManager.send(endpoint, peer.stableID, Libbox.uiTailscalePeerDisplayName(peer), files)
     }
 
     suspend fun cancelTaildropSend(id: Long) { TaildropSendManager.cancel(id) }
@@ -230,17 +222,51 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     suspend fun dismissTaildropSend(id: Long) { TaildropSendManager.dismiss(id) }
 
     suspend fun submitOpenConnect(endpoint: String?, challenge: String?, values: Map<String, String>) {
-        val error = openConnect.submitAuthFormResponse(required(endpoint, "endpoint"), required(challenge, "challenge"), values)
+        val endpointTag = required(endpoint, "endpoint")
+        val challengeID = required(challenge, "challenge")
+        val error = withContext(Dispatchers.IO) {
+            try {
+                val formValues = Libbox.newOpenConnectFormValues()
+                for ((key, value) in values) {
+                    formValues.add(key, value)
+                }
+                val response = Libbox.newOpenConnectAuthFormResponse(formValues)
+                CommandTarget.standaloneClient().submitOpenConnectAuthResponse(endpointTag, challengeID, response)
+                null
+            } catch (e: Exception) {
+                e.message ?: "submit auth form failed"
+            }
+        }
         if (error != null) kotlin.error(error)
     }
 
     suspend fun cancelOpenConnect(endpoint: String?, challenge: String?) {
-        openConnect.cancelAuthChallenge(required(endpoint, "endpoint"), required(challenge, "challenge"))
+        val endpointTag = required(endpoint, "endpoint")
+        val challengeID = required(challenge, "challenge")
+        scope.launch(Dispatchers.IO) {
+            try {
+                CommandTarget.standaloneClient().cancelOpenConnectAuthChallenge(endpointTag, challengeID)
+            } catch (exception: Exception) {
+                toolHost.reportError(exception.message ?: "cancel authentication failed")
+            }
+        }
     }
 
     suspend fun submitOpenVPN(endpoint: String?, challenge: String?, username: String?, password: String?, secret: String?) {
-        val error = openVPN.submitChallengeResponse(required(endpoint, "endpoint"), required(challenge, "challenge"),
-            username ?: "", password ?: "", secret ?: "")
+        val endpointTag = required(endpoint, "endpoint")
+        val challengeID = required(challenge, "challenge")
+        val error = withContext(Dispatchers.IO) {
+            try {
+                val response = OpenVPNChallengeResponse()
+                response.username = username ?: ""
+                response.password = password ?: ""
+                response.secret = secret ?: ""
+                CommandTarget.standaloneClient().submitOpenVPNChallengeResponse(endpointTag, challengeID, response)
+                null
+            } catch (e: Exception) {
+                e.message ?: "submit challenge response failed"
+            }
+        }
         if (error != null) kotlin.error(error)
     }
 
@@ -261,9 +287,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     override fun close() {
         jobs.forEach { it.cancel() }
-        tailscale.cancel()
-        openConnect.cancel()
-        openVPN.cancel()
+        Libbox.uiEndpointStatusCancel()
         usb.cancel()
         outbounds.disconnect()
         inbox.cancel()
