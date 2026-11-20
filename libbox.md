@@ -6,22 +6,22 @@
 
 上游为 [SagerNet/sing-box](https://github.com/SagerNet/sing-box)，绑定位于 `experimental/libbox`。当前基线是 [`v1.15.0-alpha.13`](https://github.com/SagerNet/sing-box/tree/v1.15.0-alpha.13/experimental/libbox)，Go 为 `go1.27.3`；实际版本由 [version.properties](version.properties) 的 `VERSION_NAME` 和 `GO_VERSION` 决定，工作流检出 `v${VERSION_NAME}`。
 
-本仓库不存储完整核心或 AAR，构建补丁与扩展源码统一保存在 [core/](core/)。CI 通过 [setup-core](.github/actions/setup-core/action.yml) 检出上游至 `.core/`，先准备版本文件指定的 Go，再应用 sing-tun 兼容补丁、HTTP 调试补丁和 DNS 计数补丁，并放入 fk-box 自己的包。抓取引擎、路由适配及所有 `ui_*.go`及相应测试使用同一安装入口；Android 构建由 [build-libbox](.github/actions/build-libbox/action.yml) 经 fk-box 自己的 `cmd/fk-bind` 生成标准 `libbox.aar`。仅有上游原版 AAR 不足以编译当前 B-box，因为它没有下面的 UI 扩展绑定，也不包含本仓库的路由和自动重定向兼容补丁。
+本仓库不存储完整核心或 AAR，构建补丁与扩展源码统一保存在 [core/](legacy/core/)。CI 通过 [setup-core](.github/actions/setup-core/action.yml) 检出上游至 `.core/`，先准备版本文件指定的 Go，再应用 sing-tun 兼容补丁、HTTP 调试补丁和 DNS 计数补丁，并放入 fk-box 自己的包。抓取引擎、路由适配及所有 `ui_*.go`及相应测试使用同一安装入口；Android 构建由 [build-libbox](.github/actions/build-libbox/action.yml) 经 fk-box 自己的 `cmd/fk-bind` 生成标准 `libbox.aar`。仅有上游原版 AAR 不足以编译当前 B-box，因为它没有下面的 UI 扩展绑定，也不包含本仓库的路由和自动重定向兼容补丁。
 
 | 差异 | 文件 | 作用 |
 | --- | --- | --- |
-| Android 构建命令 | [core/fkbind](core/fkbind/main.go)（`cmd/fk-bind`，由 [patch_entry.py](tools/patch_entry.py) 放入） | 用上游 `cmd/internal/build_libbox` 的参数与标签（加 mihomo 的 `cmfa`）绑定 `./experimental/libbox` 与 `./experimental/fkbox`，只产出 API 24 的 `libbox.aar`，不构建 API 21 legacy AAR；上游 build_libbox 不修改 |
-| Android 自动重定向兼容 | [sing-tun-android-ingress.patch](core/sing-tun-android-ingress.patch) | 兼容 ingress discard BPF map 的 4/8 字节 value，保留接口归属检查和原值恢复 |
-| 运行时内存绑定 | [ui_dashboard.go](core/ui_dashboard.go) | 读取 Go 运行时内存和 goroutine 数，提供释放内存操作 |
-| HTTP/WebDAV 绑定 | [ui_http.go](core/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
-| 订阅获取绑定 | [ui_subscription.go](core/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |
-| 出口探测绑定 | [ui_egress.go](core/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询、质量请求传输与只读响应头的可达性探测 |
-| 服务状态检测 | [ui_service_check.go](core/ui_service_check.go) | FlClash 13 项服务检测规则，经出口探测会话发送 |
-| DNS 查询计数 | [patch_dns_count.py](tools/patch_dns_count.py)、[dns/](core/dns/)、[ui_dns.go](core/ui_dns.go) | 仪表盘 DNS 查询数，见[仪表盘 DNS 查询计数](#仪表盘-dns-查询计数) |
-| fk-box 自己的包 | [patch_entry.py](tools/patch_entry.py)、[core/fkhost](core/fkhost/)、[core/fkbox](core/fkbox/)、[core/fkcore](core/fkcore/) | 宿主服务（`experimental/fkhost`）、与 libbox 一起绑定进 `libbox.aar` 的 gomobile 入口包（`experimental/fkbox`，Java `io.nekohasekai.fkbox.Fkbox`）和桌面核心进程（`cmd/fk-core`），见 [core/README.md](core/README.md) |
-| 局域网代理配置绑定 | [ui_lan.go](core/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
-| HTTP/HTTPS 请求抓取 | [httpdebug.patch](core/httpdebug.patch)、[httpdebug/](core/httpdebug/)、[route/](core/route/)、[ui_capture.go](core/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
-| JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](core/http_rewrite.patch)、[rewrite_config.go](core/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](core/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
+| Android 构建命令 | [core/fkbind](legacy/core/fkbind/main.go)（`cmd/fk-bind`，由 [patch_entry.py](tools/patch_entry.py) 放入） | 用上游 `cmd/internal/build_libbox` 的参数与标签（加 mihomo 的 `cmfa`）绑定 `./experimental/libbox` 与 `./experimental/fkbox`，只产出 API 24 的 `libbox.aar`，不构建 API 21 legacy AAR；上游 build_libbox 不修改 |
+| Android 自动重定向兼容 | [sing-tun-android-ingress.patch](legacy/core/sing-tun-android-ingress.patch) | 兼容 ingress discard BPF map 的 4/8 字节 value，保留接口归属检查和原值恢复 |
+| 运行时内存绑定 | [ui_dashboard.go](legacy/core/ui_dashboard.go) | 读取 Go 运行时内存和 goroutine 数，提供释放内存操作 |
+| HTTP/WebDAV 绑定 | [ui_http.go](legacy/core/ui_http.go) | 返回 HTTP 状态码和有大小上限的响应，供备份及 Release 元数据使用 |
+| 订阅获取绑定 | [ui_subscription.go](legacy/core/ui_subscription.go) | 返回订阅正文及 `subscription-userinfo`、`profile-update-interval`、`profile-web-page-url` 原始响应头 |
+| 出口探测绑定 | [ui_egress.go](legacy/core/ui_egress.go) | 可取消的设备网络/运行中路由探测、出口 IP 多源查询、质量请求传输与只读响应头的可达性探测 |
+| 服务状态检测 | [ui_service_check.go](legacy/core/ui_service_check.go) | FlClash 13 项服务检测规则，经出口探测会话发送 |
+| DNS 查询计数 | [patch_dns_count.py](tools/patch_dns_count.py)、[dns/](legacy/core/dns/)、[ui_dns.go](legacy/core/ui_dns.go) | 仪表盘 DNS 查询数，见[仪表盘 DNS 查询计数](#仪表盘-dns-查询计数) |
+| fk-box 自己的包 | [patch_entry.py](tools/patch_entry.py)、[core/fkhost](legacy/core/fkhost/)、[core/fkbox](legacy/core/fkbox/)、[core/fkcore](legacy/core/fkcore/) | 宿主服务（`experimental/fkhost`）、与 libbox 一起绑定进 `libbox.aar` 的 gomobile 入口包（`experimental/fkbox`，Java `io.nekohasekai.fkbox.Fkbox`）和桌面核心进程（`cmd/fk-core`），见 [core/README.md](legacy/core/README.md) |
+| 局域网代理配置绑定 | [ui_lan.go](legacy/core/ui_lan.go) | 读取 mixed/http/socks 监听端点、修改 listen 或显式新增 mixed 入站 |
+| HTTP/HTTPS 请求抓取 | [httpdebug.patch](legacy/core/httpdebug.patch)、[httpdebug/](legacy/core/httpdebug/)、[route/](legacy/core/route/)、[ui_capture.go](legacy/core/ui_capture.go) | HTTP 录制、HTTPS MITM、平台签名、域名提取、记录及导出绑定 |
+| JSON 配置驱动的 HTTP 改写 | [http_rewrite.patch](legacy/core/http_rewrite.patch)、[rewrite_config.go](legacy/core/httpdebug/rewrite_config.go)、[ui_http_rewrite.go](legacy/core/ui_http_rewrite.go) | MITM、Map Remote、Header/URL/Body Rewrite、Map Local/API Mock 与 JavaScript 请求/响应脚本 |
 
 ## 多内核：Xray 与 mihomo
 
@@ -36,7 +36,7 @@
 
 Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/masque` 传输，`main/distro/all` 一并链接），并要求 Go 1.27；libXray v1.261031.0 起要求 go 1.27.3（v1.261109.0 相同）。因此 `GO_VERSION` 为 `go1.27.3`，sing-box `v1.15.0-alpha.13`（2026-11-12 仍是 sing-box 最新发布，预发布；最新稳定版为 v1.14.4，旧线，不回退）与 mihomo v1.19.34（go 1.20）同用该 Go 编译。只编译 arm64，不再构建 amd64。
 
-[setup-core](.github/actions/setup-core/action.yml) 在 sing-box 自身依赖整理完后再加入两个内核并 `go mod tidy`，把被抬高或新增的模块写入 `core-module-bumps.txt`，并断言 `github.com/sagernet/sing` 未被改变。[core_link.go](core/core_link.go) 以空导入把两个内核真正链接进 libbox。
+[setup-core](.github/actions/setup-core/action.yml) 在 sing-box 自身依赖整理完后再加入两个内核并 `go mod tidy`，把被抬高或新增的模块写入 `core-module-bumps.txt`，并断言 `github.com/sagernet/sing` 未被改变。[core_link.go](legacy/core/core_link.go) 以空导入把两个内核真正链接进 libbox。
 
 ### 依赖冲突核查（第 0 阶段）
 
@@ -47,18 +47,18 @@ Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/ma
 - Xray 要求的 `sagernet/sing v0.5.1`、`sing-shadowsocks v0.2.7` 低于 sing-box 现用版本，最小版本选择保持 sing-box 版本，Xray 对应代码可编译。
 - 被抬高的共用模块：`metacubex/utls` v1.8.7→v1.8.8、`google.golang.org/grpc` v1.79.1→v1.82.1、`genproto/googleapis/rpc`、`pires/go-proxyproto` v0.8.1→v0.15.0（sing-box 未使用）、`go4.org/netipx`、`lukechampine.com/blake3` v1.3.0→v1.4.1、`klauspost/cpuid/v2`、`andybalholm/brotli`、`ajg/form`、`coreos/go-iptables`、`go-jose/v4`、`pierrec/lz4/v4`、`testify` 及 Windows 专用的 `wireguard/windows`。`golang.org/x/*` 未被抬高。暂无需 `replace`；实际结果以 Actions 中的 `core-module-bumps.txt` 为准，升级任一内核时重新核查。
 - Xray v26.11.9 / libXray v1.261109.0（2026-11-12，`core-routing` 分支）：相对 v26.10.31 共 24 个提交，libbox 用到的 `proxy/tun`（仅 Windows 文件变化）、`features/routing`、libXray `share` 无改动；`infra/conf` 的 freedom `finalRules`（`blockDelay` 改名 `delay`）、tun 的 Windows WFP 选项与 geodata `.dat.gz` 下载有变化，Android 不受影响。uTLS 经过 XTLS/utls 分叉后又回到官方 `refraction-networking/utls` 的 20261108164504 提交，REALITY 为 20261108101329，以 Actions 的 `core-module-bumps.txt` 为准。
-- mihomo v1.19.34（2026-11-12，`core-routing` 分支）：相对 v1.19.33 共 17 个提交，libbox 用到的 `hub/executor`、`listener/sing_tun`、`tunnel/statistic`、`config`、`component/dialer` 未改；`common/convert` 现把 `httpupgrade` 分享链接转为 `network: ws` + `ws-opts.v2ray-http-upgrade: true`，[core_profile.go](core/core_profile.go) 的 `clashTransport` 两种写法都转成 sing-box `httpupgrade`，无需修改；另有 Snell v6、多用户 Shadowsocks 入站、tfo-go 在 go1.27.2+ 的修复及 uTLS 依赖更新。
-- 上一次核查（Xray v26.10.31、libXray v1.261031.0、mihomo v1.19.33、Go 1.27.3，2026-11-06 Actions 的 `core-module-bumps.txt`）：新增 103 个模块，相对 sing-box `v1.15.0-alpha.13` 的 `go.mod` 抬高 29 个，`github.com/sagernet/sing` 不变。与上面相比新出现或更高的有：`golang.org/x/crypto` v0.54.0→v0.58.0、`x/net` v0.57.0→v0.62.0、`x/sys` v0.47.0→v0.49.0、`x/term`、`x/time`、`x/mod`、`x/exp`；`google.golang.org/grpc` v1.79.1→v1.85.0、`protobuf` v1.36.11→v1.36.12；`miekg/dns` v1.1.72→v1.1.73；`pires/go-proxyproto` →v0.16.0；`klauspost/compress` v1.19.1→v1.20.3；`pion/dtls/v3` v3.1.5→v3.1.15、`pion/transport/v4`；`koron/go-ssdp`、`libp2p/go-netroute`、`jackpal/go-nat-pmp`。仍无需 `replace`，Go 扩展测试通过；运行时影响需实机核对。libXray v1.261031.0 的 `share.ConvertShareLinksToXrayJson(links, ageKey)` 改为返回只含投影字段的 `{"outbounds": [...]}`，节点名放在 `tag`，[core_profile.go](core/core_profile.go) 已随之调整。
+- mihomo v1.19.34（2026-11-12，`core-routing` 分支）：相对 v1.19.33 共 17 个提交，libbox 用到的 `hub/executor`、`listener/sing_tun`、`tunnel/statistic`、`config`、`component/dialer` 未改；`common/convert` 现把 `httpupgrade` 分享链接转为 `network: ws` + `ws-opts.v2ray-http-upgrade: true`，[core_profile.go](legacy/core/core_profile.go) 的 `clashTransport` 两种写法都转成 sing-box `httpupgrade`，无需修改；另有 Snell v6、多用户 Shadowsocks 入站、tfo-go 在 go1.27.2+ 的修复及 uTLS 依赖更新。
+- 上一次核查（Xray v26.10.31、libXray v1.261031.0、mihomo v1.19.33、Go 1.27.3，2026-11-06 Actions 的 `core-module-bumps.txt`）：新增 103 个模块，相对 sing-box `v1.15.0-alpha.13` 的 `go.mod` 抬高 29 个，`github.com/sagernet/sing` 不变。与上面相比新出现或更高的有：`golang.org/x/crypto` v0.54.0→v0.58.0、`x/net` v0.57.0→v0.62.0、`x/sys` v0.47.0→v0.49.0、`x/term`、`x/time`、`x/mod`、`x/exp`；`google.golang.org/grpc` v1.79.1→v1.85.0、`protobuf` v1.36.11→v1.36.12；`miekg/dns` v1.1.72→v1.1.73；`pires/go-proxyproto` →v0.16.0；`klauspost/compress` v1.19.1→v1.20.3；`pion/dtls/v3` v3.1.5→v3.1.15、`pion/transport/v4`；`koron/go-ssdp`、`libp2p/go-netroute`、`jackpal/go-nat-pmp`。仍无需 `replace`，Go 扩展测试通过；运行时影响需实机核对。libXray v1.261031.0 的 `share.ConvertShareLinksToXrayJson(links, ageKey)` 改为返回只含投影字段的 `{"outbounds": [...]}`，节点名放在 `tag`，[core_profile.go](legacy/core/core_profile.go) 已随之调整。
 - 各内核的 gVisor、quic-go 均为不同模块路径（`sagernet/gvisor`、`gvisor.dev/gvisor`、`metacubex/gvisor`；`sagernet/quic-go`、`apernet/quic-go`、`metacubex/quic-go`），互不覆盖，但会增加体积。
 
 ### 订阅识别与配置（第 1 阶段）
 
-[core_profile.go](core/core_profile.go) 提供：
+[core_profile.go](legacy/core/core_profile.go) 提供：
 
 | 接口 | 作用 |
 | --- | --- |
 | `DetectCoreConfig` | Clash YAML → `mihomo`；JSON 的 inbounds/outbounds 带 `protocol` → `xray`（含 `"protocol": "masque"` 出站）；顶层为对象数组的 JSON → `array`；其余 JSON → `sing-box`；分享链接或 Base64 节点列表 → `links`。裸 `http(s)://` 视为订阅地址，不当作 HTTP 代理节点 |
-| `SplitCoreConfigArray` / `CoreConfigRemarks` | [core_array.go](core/core_array.go)：把 v2rayNG 式“多个完整配置的 JSON 数组”拆成逐个元素（`CoreConfigEntries` 按下标读 `Remarks`/`Content`/`Core`），每个元素单独识别内核；内容按原键顺序缩进。Xray 元素保留全部键（Xray 忽略未知键，如 `remarks` 和 `_AsteriskNG…`），sing-box 元素去掉 `remarks`（sing-box 拒绝未知字段），不做其他转换。例外：全部元素都是 Xray，且除 `remarks` 外只有同一位置、同一 tag 的一个出站不同（如 MASQUE-To-Xray 每个元素一个节点）时，[core_array_merge.go](core/core_array_merge.go) 合并为一个无 `remarks` 的元素：各节点出站以元素 `remarks` 为 tag（空则“原 tag 序号”，重名加“ #2”），指向原 tag 的路由规则 `outboundTag` 改为同名 balancer 的 `balancerTag`，balancer 用 `leastPing`、`fallbackTag` 为第一个节点，另加 `observatory`（`https://www.gstatic.com/generate_204`，10 分钟，并发探测）；该节点原是第一个出站时末尾补一条 `network: tcp,udp` 规则承接未匹配流量。界面按 balancer 显示为可选组（auto 跟随 leastPing，选节点即固定）。已有 balancer/observatory、其他位置（`dialerProxy`、`proxySettings` 等）引用该 tag、或有其他差异时照常逐个拆分。`array` 不能直接 `ResolveProfileCore`/`CheckCoreConfig`，必须先拆分 |
+| `SplitCoreConfigArray` / `CoreConfigRemarks` | [core_array.go](legacy/core/core_array.go)：把 v2rayNG 式“多个完整配置的 JSON 数组”拆成逐个元素（`CoreConfigEntries` 按下标读 `Remarks`/`Content`/`Core`），每个元素单独识别内核；内容按原键顺序缩进。Xray 元素保留全部键（Xray 忽略未知键，如 `remarks` 和 `_AsteriskNG…`），sing-box 元素去掉 `remarks`（sing-box 拒绝未知字段），不做其他转换。例外：全部元素都是 Xray，且除 `remarks` 外只有同一位置、同一 tag 的一个出站不同（如 MASQUE-To-Xray 每个元素一个节点）时，[core_array_merge.go](legacy/core/core_array_merge.go) 合并为一个无 `remarks` 的元素：各节点出站以元素 `remarks` 为 tag（空则“原 tag 序号”，重名加“ #2”），指向原 tag 的路由规则 `outboundTag` 改为同名 balancer 的 `balancerTag`，balancer 用 `leastPing`、`fallbackTag` 为第一个节点，另加 `observatory`（`https://www.gstatic.com/generate_204`，10 分钟，并发探测）；该节点原是第一个出站时末尾补一条 `network: tcp,udp` 规则承接未匹配流量。界面按 balancer 显示为可选组（auto 跟随 leastPing，选节点即固定）。已有 balancer/observatory、其他位置（`dialerProxy`、`proxySettings` 等）引用该 tag、或有其他差异时照常逐个拆分。`array` 不能直接 `ResolveProfileCore`/`CheckCoreConfig`，必须先拆分 |
 | `ResolveProfileCore` | 配置文件的 `core`（`auto` 或指定内核）解析为实际运行的内核 |
 | `CheckCoreConfig` | sing-box 走 `CheckConfig`；Xray 用 Xray 自带 JSON 解析并逐个构建 outbound/inbound，路由与 DNS 仅在 geo 文件存在时构建；mihomo 用 mihomo 的原始配置解析、逐个 `adapter.ParseProxy` 并检查策略组成员。mihomo 规则与 provider 要到启动时完整解析（会读取/下载 geo 数据库），导入时不做 |
 | `FormatCoreConfig` | sing-box 走 `FormatConfig`；Xray 只做 JSON 缩进；mihomo 只规范换行，保留注释与键顺序 |
@@ -69,24 +69,24 @@ Xray v26.9.30 起包含 MASQUE（`proxy/masque` 出站与 `transport/internet/ma
 
 libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，并把未设置的 `json.RawMessage` 序列化成 `null`（Xray 会把 `"dest": null` 当成已设置，按服务端构建 REALITY）。转换后统一改为 `tag` 并清除 `null`。
 
-应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 转调 libbox `PrepareCoreProfile`（[core_prepare.go](core/core_prepare.go)，传入设置里开启的内核），统一负责链接转换、sing-box 退役捕获选项清理、内核开关检查与分内核校验。设置仍存放在应用的 Room 键值库（`Settings.kt`），libbox 经 [core_settings.go](core/core_settings.go) 的 `UISettingsStore`（应用端 `GoSettingsStore`，在 `setupLibbox` 中安装）按同样的键和默认值读取内核开关，并按 `Settings.kt` 复现 `coreEnabled`/`enabledCores`/`autoFetchCore`/`requireCoreEnabled`；界面的 `checkConfig` 与 `decodeProfileText` 由 libbox 直接应答（[core_method.go](core/core_method.go)，`protocol/methods.json` 中 owner 为 `go`），JSON 数组的拆分、命名与逐个准备为 `PrepareCoreProfileArray`。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
+应用侧 `TypedProfile.core`（Parcel 版本 2，旧数据读为 `auto`，无需 Room 迁移）记录用户选择；`ProfileContent.prepare` 转调 libbox `PrepareCoreProfile`（[core_prepare.go](legacy/core/core_prepare.go)，传入设置里开启的内核），统一负责链接转换、sing-box 退役捕获选项清理、内核开关检查与分内核校验。设置仍存放在应用的 Room 键值库（`Settings.kt`），libbox 经 [core_settings.go](legacy/core/core_settings.go) 的 `UISettingsStore`（应用端 `GoSettingsStore`，在 `setupLibbox` 中安装）按同样的键和默认值读取内核开关，并按 `Settings.kt` 复现 `coreEnabled`/`enabledCores`/`autoFetchCore`/`requireCoreEnabled`；界面的 `checkConfig` 与 `decodeProfileText` 由 libbox 直接应答（[core_method.go](legacy/core/core_method.go)，`protocol/methods.json` 中 owner 为 `go`），JSON 数组的拆分、命名与逐个准备为 `PrepareCoreProfileArray`。第 2 阶段接入前，选中非 sing-box 配置启动服务会明确报错。
 
 ### 服务层（第 2 阶段）
 
-[core_service.go](core/core_service.go) 在同一个 `CommandServer` 里运行 Xray 或 mihomo，同一时间只运行一个内核：
+[core_service.go](legacy/core/core_service.go) 在同一个 `CommandServer` 里运行 Xray 或 mihomo，同一时间只运行一个内核：
 
 - `StartOrReloadCoreService(core, content, options)`：sing-box 由 fk-box 自己启动（见[sing-box 作为普通内核](#sing-box-作为普通内核)）；Xray/mihomo 先停掉 sing-box 和上一个内核，再经 `PlatformInterface.OpenTun`（即 VpnService.Builder）建 TUN（`172.19.0.1/30`、`fdfe:dcba:9876::1/126`、MTU 9000、DNS `172.19.0.2`，分应用代理沿用设置），把 dup 后的 fd 直接交给内核，不经本地转发。`CloseCoreService` 停止当前内核。Xray/mihomo 的启停由 `coreLifecycle` 串行化；`coreAccess` 只保护 `activeCore` 的读写，启停期间不持有，因此首次启动 mihomo 时 `ApplyConfig` 等待远程代理/规则提供者下载（每个最多约 20 秒，日志会提示数量）也不会卡住仪表盘数据流、探测和 `CoreDefaultNetworkChanged`。mihomo 的 TUN 在 `ApplyConfig` 返回、DNS 计数包装好解析器之后才经 `listener.ReCreateTun` 创建，TUN 未能启动时本次启动失败。
-- 切换内核与重载：`StartOrReloadCoreService` 与 `StartOrReloadCoreServiceWithRouting` 在整个切换期间（含规则回退时的第二次启动）标记“正在切换”（[core_api.go](core/core_api.go) 的 `beginCoreSwitch`/`endCoreSwitch`）。切换期间旧内核已停、新内核未起，界面的 groups、mode、status、connections、outbounds 数据流若在此时结束（sing-box 空闲或停止中回 `invalid argument`），或底下内核已变，不再结束订阅，而是等待切换结束；每次切换结束（成功或失败，sing-box 到 sing-box 也一样）都把所有流移到当时运行的内核。未在切换中时流的错误照旧返回。应用侧 `BoxService.reloadGeneration` 在每次成功重载（及失败后回退到上一个配置）后加一，代理组、仪表盘（模式、状态、启动时间）和连接页据此重新订阅；切到另一个内核的配置时 `BoxActivity` 完整停止再启动；重载失败且未能回退时服务停止并报错，不会停在“运行中”。测试为 [core_switch_test.go](core/core_switch_test.go) 的 `TestUICoreSwitch*`。
+- 切换内核与重载：`StartOrReloadCoreService` 与 `StartOrReloadCoreServiceWithRouting` 在整个切换期间（含规则回退时的第二次启动）标记“正在切换”（[core_api.go](legacy/core/core_api.go) 的 `beginCoreSwitch`/`endCoreSwitch`）。切换期间旧内核已停、新内核未起，界面的 groups、mode、status、connections、outbounds 数据流若在此时结束（sing-box 空闲或停止中回 `invalid argument`），或底下内核已变，不再结束订阅，而是等待切换结束；每次切换结束（成功或失败，sing-box 到 sing-box 也一样）都把所有流移到当时运行的内核。未在切换中时流的错误照旧返回。应用侧 `BoxService.reloadGeneration` 在每次成功重载（及失败后回退到上一个配置）后加一，代理组、仪表盘（模式、状态、启动时间）和连接页据此重新订阅；切到另一个内核的配置时 `BoxActivity` 完整停止再启动；重载失败且未能回退时服务停止并报错，不会停在“运行中”。测试为 [core_switch_test.go](legacy/core/core_switch_test.go) 的 `TestUICoreSwitch*`。
 - 出站保护：Xray 用 `transport/internet.RegisterDialerController`，mihomo 用 `component/dialer.DefaultSocketHook`，都转到宿主的 `Platform.Protect`（libbox 实现为 `AutoDetectInterfaceControl`，即 `VpnService.protect`）。两个钩子是进程级、无法注销，只在 `init` 注册一次，运行时读取最近一次启动的内核所用的宿主（见下文“内核适配器与宿主接口”）。
 - Xray：配置中的 inbounds 换成 `tun` inbound（fd 经 `xray.tun.fd` 传入），发往 53 端口的流量走 `dns` outbound；控制台日志写入服务日志；`xray.location.asset` 指向共享地理数据目录（见下文“地理数据”）。MASQUE 出站经 `internet.DialSystem` 拨号，同样走上述保护钩子。
-- 默认日志级别（[core_loglevel.go](core/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。Xray 的访问日志（每个连接和 DNS 查询一行，同步写入服务日志）默认为 `access: "none"`，仅在配置自行设置 `access`（其 `"none"` 原样保留，文件路径仍写入服务日志）或 `loglevel` 为 info/debug 时输出。mihomo 无论级别都会发布全部日志事件，转发时按 `log.Level()` 丢弃低于运行级别的事件（与 mihomo 自身 `print()` 规则一致），避免格式化和阻塞日志通道。
+- 默认日志级别（[core_loglevel.go](legacy/core/core_loglevel.go)）：配置未设置级别时，sing-box 以 `log.level: "warn"`、Xray 以 `loglevel: "warning"`、mihomo 以 `log-level: warning` 运行；配置显式设置的级别始终保留，只改交给内核的内容，不改磁盘上的配置。`GetDefaultLogLevel` 对 Xray/mihomo 返回实际运行级别（此前固定为 info）。Xray 的访问日志（每个连接和 DNS 查询一行，同步写入服务日志）默认为 `access: "none"`，仅在配置自行设置 `access`（其 `"none"` 原样保留，文件路径仍写入服务日志）或 `loglevel` 为 info/debug 时输出。mihomo 无论级别都会发布全部日志事件，转发时按 `log.Level()` 丢弃低于运行级别的事件（与 mihomo 自身 `print()` 规则一致），避免格式化和阻塞日志通道。
 - mihomo：按 ClashMetaForAndroid 的嵌入方式加 `cmfa` 构建标签（`cmd/fk-bind` 的构建标签）；tun 改为 `file-descriptor` + `system` 栈，关闭 `auto-route`、`auto-redirect`、`auto-detect-interface`（Android 14 起应用不能用 netlink），关闭外部控制器；`parseTun` 按 fake-ip 网段推出的 TUN 地址改回 VpnService 分配的地址；系统 DNS 由应用在默认网络变化时经 `UpdateCoreSystemDNS` 推送；工作目录为 `<工作目录>/cores/mihomo`。启动/重载只解析一次 YAML：`parseCheckedMihomoConfig` 做导入时同样的检查并把原始配置交给启动流程；是否显式设置 `log-level` 以行扫描判断顶层键（JSON/flow 风格回退完整解析）。
-- 状态与分组轮询（[core_api.go](core/core_api.go)）：流量总量和连接数不再每秒构建完整连接快照（mihomo 用 `Total()` + `Range` 计数，Xray 在锁内累加）；分组列表只在内容变化（`proto.Equal`）时推送。
+- 状态与分组轮询（[core_api.go](legacy/core/core_api.go)）：流量总量和连接数不再每秒构建完整连接快照（mihomo 用 `Total()` + `Range` 计数，Xray 在锁内累加）；分组列表只在内容变化（`proto.Equal`）时推送。
 - 已知限制：Xray/mihomo 只支持 VPN 模式；mihomo 的 `PROCESS-NAME` 现经连接归属查询得到包名（见 [分流规则](#分流规则)），需实机确认；关闭时两内核都不关闭传入的 fd，由 libbox 关闭 dup，若内核读线程尚未退出存在极小的 fd 复用窗口，需实机观察。分组、连接、测速等界面数据在第 3 阶段接入。
 
 ### 地理数据
 
-[core_geo.go](core/core_geo.go) 参照 FlClash（`core/geo.go`、`defaultGeoXUrl`）为 Xray 和 mihomo 提供同一套地理数据：
+[core_geo.go](legacy/core/core_geo.go) 参照 FlClash（`core/geo.go`、`defaultGeoXUrl`）为 Xray 和 mihomo 提供同一套地理数据：
 
 | 资源 | 文件 | 默认下载地址 | 校验 |
 | --- | --- | --- | --- |
@@ -99,37 +99,37 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 - `NewGeoUpdate()` 返回一次可取消的更新，`Fetch(dir, name, url, installedSha256, etag, lastModified)`：经 libbox HTTP 客户端（与订阅相同，上限 96 MiB，5 分钟超时）流式下载到同目录临时文件并边写边算 SHA-256，整个文件不进 Go 堆；`Cancel()` 随时中止。`installedSha256` 与磁盘文件一致且给了 `etag`/`lastModified` 时发 `If-None-Match`/`If-Modified-Since`，304 返回 `Skipped`。校验：`.dat` 用 protowire 逐字段检查整体分帧（截断即失败），只解码到第一条可用条目；MMDB/ASN 用 `maxminddb.Open`（mmap）打开再关闭。与现有文件大小相同才流式比对哈希，相同返回 `Skipped`，否则 rename 覆盖；下载失败、HTTP 非 200/304、长度不符、校验失败都不动原文件。结果带服务器的 `Etag`、`LastModified` 供下次条件请求。写入后删除大小写不同的旧变体（如 mihomo 下载的 `GeoSite.dat`，大小写不敏感的文件系统上同一文件不删），并让 mihomo 重新读取：清除 GeoIP/GeoSite 匹配缓存，MMDB/ASN 调 `mmdb.ReloadIP/ReloadASN`（下次查询打开新文件，旧映射随之释放）；已建好的规则和 Xray 在内核下次启动时读到新文件。结束时 `debug.FreeOSMemory()`。并发由应用侧 `GeoResources` 的互斥锁串行化，Go 侧不再另加锁。
 - `FetchExpected(dir, name, url, expectedSha256)`：无条件下载，下载内容的 SHA-256 与给定值不符则拒绝（在格式校验和 rename 之前，原文件与临时文件都不留下），其余同 `Fetch`。应用用它在首次使用时下载 APK 未内置、但清单固定了提交与哈希的文件。
 - `GeoResourceFileName`、`GeoResourceDefaultURL`、`GeoDataDir` 供应用使用。APK 内置哪些文件、何时解压/按需下载和自动更新见 [app.md](app.md#地理数据资源)。
-- 测试 [core_geo_test.go](core/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理、`FetchExpected` 拒绝哈希不符或非法的期望值且不留文件；[core_memory_test.go](core/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
+- 测试 [core_geo_test.go](legacy/core/core_geo_test.go)（`TestCoreGeo*`，在 newui.yml 的多内核步骤运行）：资源表、HTML/截断/无可用条目等错误数据被拒、下载失败/错误内容/非 HTTP 地址/长度不足/中途取消都保留旧文件且不留临时文件、成功替换与相同内容跳过、条件请求 304 与记录失效时重新下载、旧大小写变体清理、`FetchExpected` 拒绝哈希不符或非法的期望值且不留文件；[core_memory_test.go](legacy/core/core_memory_test.go) 的 `TestCoreGeoUpdateMemory` 断言更新 ~9 MiB 的 GeoIP 时 Go 分配不超过文件一半，并与旧实现对比。
 
 ### 内核适配器与宿主接口
 
-三个内核实现同一个内部接口 `coreKernel`（[core_kernel.go](core/core_kernel.go)：`Name`、`NeedsTun`、`Prepare`、`Start`、`Stop`、`DefaultNetworkChanged`），`startOrReloadCore`/`stopOtherCoreLocked`（[core_service.go](core/core_service.go)）只经这个接口启停内核，并对任意宿主工作：Android 上是 libbox 的 `CommandServer`（`StartOrReloadCoreService`/`CloseCoreService`），桌面上是 fk-box 自己的独立宿主（[core_standalone.go](core/core_standalone.go)，不编进 Android）。内核不直接读 libbox 的全局变量或类型（`PlatformInterface`、`CommandServer`、`CoreServiceOptions`、HTTP 客户端），所需服务都经 fk-box 自己的宿主接口 `kernelHost`（[core_host.go](core/core_host.go)）传入，其实现在 fk-box 自己的包 [core/fkhost](core/fkhost/)（构建时成为 `experimental/fkhost`，不导入 libbox）。`CoreServiceOptions` 以不透明的 `kernelOptions` 经过内核交回宿主（只有建 TUN 与 sing-box 启动读取它，其应用列表迭代器只能读一次）。
+三个内核实现同一个内部接口 `coreKernel`（[core_kernel.go](legacy/core/core_kernel.go)：`Name`、`NeedsTun`、`Prepare`、`Start`、`Stop`、`DefaultNetworkChanged`），`startOrReloadCore`/`stopOtherCoreLocked`（[core_service.go](legacy/core/core_service.go)）只经这个接口启停内核，并对任意宿主工作：Android 上是 libbox 的 `CommandServer`（`StartOrReloadCoreService`/`CloseCoreService`），桌面上是 fk-box 自己的独立宿主（[core_standalone.go](legacy/core/core_standalone.go)，不编进 Android）。内核不直接读 libbox 的全局变量或类型（`PlatformInterface`、`CommandServer`、`CoreServiceOptions`、HTTP 客户端），所需服务都经 fk-box 自己的宿主接口 `kernelHost`（[core_host.go](legacy/core/core_host.go)）传入，其实现在 fk-box 自己的包 [core/fkhost](legacy/core/fkhost/)（构建时成为 `experimental/fkhost`，不导入 libbox）。`CoreServiceOptions` 以不透明的 `kernelOptions` 经过内核交回宿主（只有建 TUN 与 sing-box 启动读取它，其应用列表迭代器只能读一次）。
 
 | 内核 | 适配器（启动、停止、日志、保护钩子） | 其余与该内核相关的文件 | 测试 |
 | --- | --- | --- | --- |
-| sing-box | [core_kernel_singbox.go](core/core_kernel_singbox.go)：交给宿主 `Lifecycle.StartSingBox`/`StopSingBox`（Android 为 [core_singbox_host.go](core/core_singbox_host.go) 经 `fkhost.StartSingBox` 自己创建 `box.Box`），自己的 TUN 来自配置的 tun 入站 | [core_loglevel.go](core/core_loglevel.go)、[core_tunstack.go](core/core_tunstack.go)、[core_api.go](core/core_api.go)/[core_extra.go](core/core_extra.go)/[core_command_forward.go](core/core_command_forward.go) 中转发给 sing-box attached service 的部分、[core_touch_singbox.go](core/core_touch_singbox.go)、补丁（`core/*.patch`、`tools/patch_*.py`） | `TestUIKernelSingBox*`、`TestUICoreSwitch*` |
-| Xray | [core_kernel_xray.go](core/core_kernel_xray.go)：TUN 入站与 `xray.tun.fd`、拨号保护、控制台日志 | [core_xray_track.go](core/core_xray_track.go)、[core_routing_xray.go](core/core_routing_xray.go)、[core_array_merge.go](core/core_array_merge.go)、[core_profile.go](core/core_profile.go)（检查与链接转换）、[core_api.go](core/core_api.go)（分组、连接、测速） | `TestUIKernelXray*`、`TestCoreInternals*`、`TestCoreRouting*` |
-| mihomo | [core_kernel_mihomo.go](core/core_kernel_mihomo.go)：fd TUN、socket 钩子、日志转发、DNS 计数、停止时释放端口与状态 | [core_routing_mihomo.go](core/core_routing_mihomo.go)、[core_routing_owner.go](core/core_routing_owner.go)（`PROCESS-NAME`）、[core_dns_cmfa.go](core/core_dns_cmfa.go)、[core_memory.go](core/core_memory.go)（`mihomoReleaseState`）、[core_extra.go](core/core_extra.go)（`mihomoCloseListeners`）、[core_api.go](core/core_api.go) | `TestUIKernelMihomo*`、`TestCoreInternals*`、`TestCoreRouting*` |
+| sing-box | [core_kernel_singbox.go](legacy/core/core_kernel_singbox.go)：交给宿主 `Lifecycle.StartSingBox`/`StopSingBox`（Android 为 [core_singbox_host.go](legacy/core/core_singbox_host.go) 经 `fkhost.StartSingBox` 自己创建 `box.Box`），自己的 TUN 来自配置的 tun 入站 | [core_loglevel.go](legacy/core/core_loglevel.go)、[core_tunstack.go](legacy/core/core_tunstack.go)、[core_api.go](legacy/core/core_api.go)/[core_extra.go](legacy/core/core_extra.go)/[core_command_forward.go](legacy/core/core_command_forward.go) 中转发给 sing-box attached service 的部分、[core_touch_singbox.go](legacy/core/core_touch_singbox.go)、补丁（`core/*.patch`、`tools/patch_*.py`） | `TestUIKernelSingBox*`、`TestUICoreSwitch*` |
+| Xray | [core_kernel_xray.go](legacy/core/core_kernel_xray.go)：TUN 入站与 `xray.tun.fd`、拨号保护、控制台日志 | [core_xray_track.go](legacy/core/core_xray_track.go)、[core_routing_xray.go](legacy/core/core_routing_xray.go)、[core_array_merge.go](legacy/core/core_array_merge.go)、[core_profile.go](legacy/core/core_profile.go)（检查与链接转换）、[core_api.go](legacy/core/core_api.go)（分组、连接、测速） | `TestUIKernelXray*`、`TestCoreInternals*`、`TestCoreRouting*` |
+| mihomo | [core_kernel_mihomo.go](legacy/core/core_kernel_mihomo.go)：fd TUN、socket 钩子、日志转发、DNS 计数、停止时释放端口与状态 | [core_routing_mihomo.go](legacy/core/core_routing_mihomo.go)、[core_routing_owner.go](legacy/core/core_routing_owner.go)（`PROCESS-NAME`）、[core_dns_cmfa.go](legacy/core/core_dns_cmfa.go)、[core_memory.go](legacy/core/core_memory.go)（`mihomoReleaseState`）、[core_extra.go](legacy/core/core_extra.go)（`mihomoCloseListeners`）、[core_api.go](legacy/core/core_api.go) | `TestUIKernelMihomo*`、`TestCoreInternals*`、`TestCoreRouting*` |
 
 宿主接口与当前实现（Android）：
 
 | 接口 | 方法 | 实现 |
 | --- | --- | --- |
-| `Platform` | `OpenTun`、`Protect`、`ConnectionOwner`、`WatchDefaultNetwork` | `fkhost.Platform`（按构建标签分 [platform_android.go](core/fkhost/platform_android.go)、`_linux`、`_darwin`、`_windows`、`_other`）。Android 版自己构造 TUN 选项与路由范围、dup 描述符、保护套接字，经 `fkhost.AndroidVPN` 直接调用应用的平台实现（libbox 在 [core_host_android.go](core/core_host_android.go) 把应用已传入的 `PlatformInterface` 适配过去：`OpenTun`+`RegisterMyInterface`、`AutoDetectInterfaceControl`、`FindConnectionOwner`）；默认网络变化由应用调用 `Fkbox.defaultNetworkChanged()`（`Libbox.coreDefaultNetworkChanged` 仍转发） |
-| `CommandService` | `CoreChanged`、`GroupsChanged` | Android 为 fk-box 自己的命令服务（[core_command_server.go](core/core_command_server.go)，StartedService gRPC 接口）及 [core_api.go](core/core_api.go) 的切换通知；fk-box 的协议服务 `fkhost.ProtocolServer` 供桌面进程 `fk-core` 使用 |
-| `Lifecycle` | `StartSingBox`、`StopSingBox`、`WorkingDirectory` | `fkhost.StartSingBox`（[singbox.go](core/fkhost/singbox.go)）：Android 经 [core_singbox_host.go](core/core_singbox_host.go)，独立宿主经 [core_standalone.go](core/core_standalone.go)；工作目录取 `fkhost.WorkingDirectory()`，未设置时为 `Setup` 的路径 |
+| `Platform` | `OpenTun`、`Protect`、`ConnectionOwner`、`WatchDefaultNetwork` | `fkhost.Platform`（按构建标签分 [platform_android.go](legacy/core/fkhost/platform_android.go)、`_linux`、`_darwin`、`_windows`、`_other`）。Android 版自己构造 TUN 选项与路由范围、dup 描述符、保护套接字，经 `fkhost.AndroidVPN` 直接调用应用的平台实现（libbox 在 [core_host_android.go](legacy/core/core_host_android.go) 把应用已传入的 `PlatformInterface` 适配过去：`OpenTun`+`RegisterMyInterface`、`AutoDetectInterfaceControl`、`FindConnectionOwner`）；默认网络变化由应用调用 `Fkbox.defaultNetworkChanged()`（`Libbox.coreDefaultNetworkChanged` 仍转发） |
+| `CommandService` | `CoreChanged`、`GroupsChanged` | Android 为 fk-box 自己的命令服务（[core_command_server.go](legacy/core/core_command_server.go)，StartedService gRPC 接口）及 [core_api.go](legacy/core/core_api.go) 的切换通知；fk-box 的协议服务 `fkhost.ProtocolServer` 供桌面进程 `fk-core` 使用 |
+| `Lifecycle` | `StartSingBox`、`StopSingBox`、`WorkingDirectory` | `fkhost.StartSingBox`（[singbox.go](legacy/core/fkhost/singbox.go)）：Android 经 [core_singbox_host.go](legacy/core/core_singbox_host.go)，独立宿主经 [core_standalone.go](legacy/core/core_standalone.go)；工作目录取 `fkhost.WorkingDirectory()`，未设置时为 `Setup` 的路径 |
 | `HTTP` | `NewClient` | `fkhost.NewHTTPClient`（TLS 1.2+、全部安全套件、无 keep-alive，Android 上用 sing-box 证书库，与原 libbox 客户端相同）；geo、订阅、WebDAV/更新检查、出口探测也用它 |
-| `Log` | `Write`、`Diagnostic` | `fkhost.Log`（行环、订阅者）；Android 上每行转发到服务日志（[core_service_log.go](core/core_service_log.go)，应用日志页经命令服务读取），诊断写 sing-box 的 `log.Warn` |
+| `Log` | `Write`、`Diagnostic` | `fkhost.Log`（行环、订阅者）；Android 上每行转发到服务日志（[core_service_log.go](legacy/core/core_service_log.go)，应用日志页经命令服务读取），诊断写 sing-box 的 `log.Warn` |
 
-接口之外仍由 libbox 提供的服务：`Libbox.*` 的全部既有绑定（gomobile 入口包 [core/fkbox](core/fkbox/) 与它一起绑定，见 [core/README.md](core/README.md)）、`Setup` 与路径、`CommandServer` 对象（平台上下文、ManagedService）与 `CommandClient`（gRPC 客户端，含远程会话）、sing-box 在 Android 上的平台包装（它的 TUN、默认网卡监听、Wi-Fi 状态、通知、邻居表、Root/Shizuku 终端等，经 `CommandServer` 的上下文交给 fk-box 创建的 box）、OOM/电量报告、崩溃报告和 sing-box 配置的检查与格式化。
+接口之外仍由 libbox 提供的服务：`Libbox.*` 的全部既有绑定（gomobile 入口包 [core/fkbox](legacy/core/fkbox/) 与它一起绑定，见 [core/README.md](legacy/core/README.md)）、`Setup` 与路径、`CommandServer` 对象（平台上下文、ManagedService）与 `CommandClient`（gRPC 客户端，含远程会话）、sing-box 在 Android 上的平台包装（它的 TUN、默认网卡监听、Wi-Fi 状态、通知、邻居表、Root/Shizuku 终端等，经 `CommandServer` 的上下文交给 fk-box 创建的 box）、OOM/电量报告、崩溃报告和 sing-box 配置的检查与格式化。
 
 ### sing-box 作为普通内核
 
-Android 上 sing-box 不再在 libbox 的 `daemon.StartedService` 里启停：[core_singbox_host.go](core/core_singbox_host.go) 经 [fkhost.StartSingBox](core/fkhost/singbox.go) 自己创建、启动、关闭 `box.Box`，并完成原 libbox 服务在启动前后做的事（配置快照、`CoreServiceOptions` 的自动重定向与分应用列表、OOM killer 服务与重载窗口、电量报告、HTTP 抓包/改写的停止与激活、全新启动时清空服务日志）。应用读取核心用的 StartedService gRPC 服务由 fk-box 自己在 `command.sock` 上提供（[core_command_server.go](core/core_command_server.go)，`CommandServer.startCoreCommandServer` 取代 `start`）：Xray/mihomo 运行时 fk-box 自己作答，sing-box 运行时转给该 box 的 attached service（`daemon.NewAttachedService`，sing-box 自己的 `api` 服务用的同一实现），都不运行时转给空闲服务；版本、服务日志（[core_service_log.go](core/core_service_log.go)）与弃用提示由 fk-box 提供。应用、远程会话与 Go 侧工具继续使用 libbox 的 `CommandClient`，类型与调用不变。读取 libbox 自身服务的 `CommandServer` 方法都改用 fk-box 版本（`needWIFIStateCore`、`pauseCore`、`resetNetworkCore` 等），sing-box 配置的检查、格式化与 TUN 入站判断改用先清理退役字段的 `checkCoreConfig`、`formatCoreConfig`、`hasCoreTunInbound`；[verify_multicore.py](tools/verify_multicore.py) 拦下 Kotlin 对 libbox 原方法的调用。fk-box 不修改 `experimental/libbox` 与 `cmd/internal/build_libbox` 的上游文件。设计与仍由 libbox 提供的部分见 [core/README.md](core/README.md#sing-box-作为普通内核android)。
+Android 上 sing-box 不再在 libbox 的 `daemon.StartedService` 里启停：[core_singbox_host.go](legacy/core/core_singbox_host.go) 经 [fkhost.StartSingBox](legacy/core/fkhost/singbox.go) 自己创建、启动、关闭 `box.Box`，并完成原 libbox 服务在启动前后做的事（配置快照、`CoreServiceOptions` 的自动重定向与分应用列表、OOM killer 服务与重载窗口、电量报告、HTTP 抓包/改写的停止与激活、全新启动时清空服务日志）。应用读取核心用的 StartedService gRPC 服务由 fk-box 自己在 `command.sock` 上提供（[core_command_server.go](legacy/core/core_command_server.go)，`CommandServer.startCoreCommandServer` 取代 `start`）：Xray/mihomo 运行时 fk-box 自己作答，sing-box 运行时转给该 box 的 attached service（`daemon.NewAttachedService`，sing-box 自己的 `api` 服务用的同一实现），都不运行时转给空闲服务；版本、服务日志（[core_service_log.go](legacy/core/core_service_log.go)）与弃用提示由 fk-box 提供。应用、远程会话与 Go 侧工具继续使用 libbox 的 `CommandClient`，类型与调用不变。读取 libbox 自身服务的 `CommandServer` 方法都改用 fk-box 版本（`needWIFIStateCore`、`pauseCore`、`resetNetworkCore` 等），sing-box 配置的检查、格式化与 TUN 入站判断改用先清理退役字段的 `checkCoreConfig`、`formatCoreConfig`、`hasCoreTunInbound`；[verify_multicore.py](tools/verify_multicore.py) 拦下 Kotlin 对 libbox 原方法的调用。fk-box 不修改 `experimental/libbox` 与 `cmd/internal/build_libbox` 的上游文件。设计与仍由 libbox 提供的部分见 [core/README.md](legacy/core/README.md#sing-box-作为普通内核android)。
 
 行为差异（相对原 libbox 服务）：
 
-- `SubscribeServiceStatus` 由 fk-box 自己维护（[core_service_status.go](core/core_service_status.go)），对三个内核相同：切换开始为 STARTING，结束时有内核运行为 STARTED、否则为最后一次启动的错误（FATAL），被停止中断的启动为 IDLE；停止为 STOPPING → IDLE，启动失败后的停止保留 FATAL；`setCoreError` 置为 FATAL。重载不再先报 STOPPING。
+- `SubscribeServiceStatus` 由 fk-box 自己维护（[core_service_status.go](legacy/core/core_service_status.go)），对三个内核相同：切换开始为 STARTING，结束时有内核运行为 STARTED、否则为最后一次启动的错误（FATAL），被停止中断的启动为 IDLE；停止为 STOPPING → IDLE，启动失败后的停止保留 FATAL；`setCoreError` 置为 FATAL。重载不再先报 STOPPING。
 - 正在进行的 sing-box 启动会被停止或下一次启动中断（取消其上下文，不留下运行的 box），停止不必等规则集下载等慢启动结束；被中断的启动不返回错误。
 - 停止 sing-box 时，先把打开的数据流移到空闲服务再关闭 box；重载时数据流在切换结束后移到新 box 的 attached service。
 - 启动失败的错误同时写入服务日志；`setCoreError` 写入同一日志。
@@ -150,7 +150,7 @@ CI 测不到、需要实机确认：
 
 一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。升级防护：
 
-- [core_touch_singbox.go](core/core_touch_singbox.go) 引用 fk-box 用到的每个 sing-box、sing-tun 与 libbox 符号（libbox 宿主相关的写明签名），上游改名、删除或改类型时在这里编译失败并给出符号名；[verify_touchpoints.py](tools/verify_touchpoints.py)（newui.yml 的 core 任务，`--core .core`）检查清单完整。
+- [core_touch_singbox.go](legacy/core/core_touch_singbox.go) 引用 fk-box 用到的每个 sing-box、sing-tun 与 libbox 符号（libbox 宿主相关的写明签名），上游改名、删除或改类型时在这里编译失败并给出符号名；[verify_touchpoints.py](tools/verify_touchpoints.py)（newui.yml 的 core 任务，`--core .core`）检查清单完整。
 - 四个补丁脚本（[patch_sing_tun.py](tools/patch_sing_tun.py)、[patch_httpdebug.py](tools/patch_httpdebug.py)、[patch_dns_count.py](tools/patch_dns_count.py)、[patch_entry.py](tools/patch_entry.py)）都有 `--check`：不改源码树，在临时副本上试，失败时写明哪个补丁、哪个文件、第几个 hunk（`@@` 头与第一处改动），或哪个文件里的哪段锚点文本出现了几次；覆盖文件与上游同名也会报出。补丁不修改 `experimental/libbox` 或 `cmd/internal/build_libbox` 的上游文件。
 - [bump_core.py](tools/bump_core.py) 输出偏差报告：上游在旧版与新版之间改动了哪些 fk-box 依赖的文件（core/ 导入的该内核各包；sing-box 另加补丁改动的文件、`experimental/libbox/`、daemon 的 gRPC 服务、`go.mod` 与 sing-tun 版本）。
 - 按内核的测试 `TestUIKernel<名字>*`（`TestUIKernelSingBox*`、`TestUIKernelXray*`、`TestUIKernelMihomo*`）随 `^TestUI` 在 newui.yml 运行。
@@ -158,12 +158,12 @@ CI 测不到、需要实机确认：
 升级清单：
 
 1. 在 Actions 中手动运行 [bump-core.yml](.github/workflows/bump-core.yml)，输入 `kernel`（sing-box、xray、mihomo、libxray）和 `version`。它在 `bump/<kernel>-<version>` 分支用 `bump_core.py` 改写 [version.properties](version.properties)，开一个 DRAFT PR，正文含 `bump_core.py` 输出、偏差报告，以及（sing-box）各补丁脚本 `--check` 与 [verify_multicore.py](tools/verify_multicore.py) 的结果；它从不合并、打标签或发布。本地可先运行 `python3 tools/bump_core.py <内核> <版本> --dry-run`。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写；需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
-2. 逐行看偏差报告：每个改动过的文件对照上表中该内核的适配器与相关文件；sing-box 的 sing-tun 版本变化时先重做 [sing-tun-android-ingress.patch](core/sing-tun-android-ingress.patch) 并改 `patch_sing_tun.py` 的 `VERSION`；`--check` 报错的补丁按报出的文件与 hunk 重做。
+2. 逐行看偏差报告：每个改动过的文件对照上表中该内核的适配器与相关文件；sing-box 的 sing-tun 版本变化时先重做 [sing-tun-android-ingress.patch](legacy/core/sing-tun-android-ingress.patch) 并改 `patch_sing_tun.py` 的 `VERSION`；`--check` 报错的补丁按报出的文件与 hunk 重做。
 3. 工作流推送的分支不会自动触发其他工作流：在该分支上手动运行 `newui.yml` 与 `build-apk.yml`（或 `build-debug-apk.yml`）。CI 会拦下：
    - 编译错误：`core_touch_singbox.go` 中的符号；libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
    - [verify_touchpoints.py](tools/verify_touchpoints.py)：新用到的 sing-box/libbox 符号未写进接触点文件。
    - [verify_multicore.py](tools/verify_multicore.py)：sing-box 新增的 StartedService gRPC 方法必须由 `coreStartedService` 实现（Xray/mihomo 自己作答或转给 sing-box 的 attached service）。它嵌入 `UnimplementedStartedServiceServer`，漏掉的方法会对应用和远程会话回答 unimplemented。
-   - 偏差报告中的 `cmd/internal/build_libbox/main.go`：上游改了 Android 的 API 级别、参数或构建标签时，同步到 [core/fkbind](core/fkbind/main.go)。
+   - 偏差报告中的 `cmd/internal/build_libbox/main.go`：上游改了 Android 的 API 级别、参数或构建标签时，同步到 [core/fkbind](legacy/core/fkbind/main.go)。
    - `TestUIKernel*`、`TestUICoreSwitch*`、`TestCoreInternals*`：内核适配器、切换期间的数据流、Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
    - `core-module-bumps.txt`：被抬高的共用模块；`github.com/sagernet/sing` 不能变。
 4. 实机检查（CI 测不到）：三个内核分别启动、暂停、互相切换不闪退；同内核与跨内核切换配置后代理组可切换节点，速度与运行时长刷新；切换后 7890 等端口已释放；连接页、流量、IP 检测、网络质量有数据；分流规则命中正常；日志中没有新的 Warn/Error。mihomo 的 TUN 由它自己关闭描述符，所以它拿到的是单独的 dup；升级后如果再次出现无崩溃记录的闪退，先查描述符是否被重复关闭。
@@ -171,7 +171,7 @@ CI 测不到、需要实机确认：
 
 ## 分流规则
 
-应用为每个内核保存一套规则（数据模型与界面见 [app.md](app.md#分流规则)），[core_routing.go](core/core_routing.go) 在启动时把实际运行内核的那一套编译成该内核自己的路由语法：
+应用为每个内核保存一套规则（数据模型与界面见 [app.md](app.md#分流规则)），[core_routing.go](legacy/core/core_routing.go) 在启动时把实际运行内核的那一套编译成该内核自己的路由语法：
 
 | 接口 | 作用 |
 | --- | --- |
@@ -201,19 +201,19 @@ CI 测不到、需要实机确认：
 - DNS 与 IP 规则：三个内核都不为 IP 规则去解析域名。sing-box 的 `ip_cidr`/geoip 规则集本就只看连接的目标 IP；mihomo 的 `IP-CIDR`、`GEOIP` 和 ipcidr 规则列表都带 `no-resolve`；Xray 保留配置的 `routing.domainStrategy`（不再强制改成 `IPIfNonMatch`）。因此 IP 规则匹配目标为 IP 的连接（未嗅探出域名的 TCP/UDP、直接按 IP 连接的应用、mihomo 已解析或 fake-ip 映射过的主机），被嗅探出域名的连接按域名/geosite 规则匹配，不会为每个未命中的域名发一次本地 DNS 查询（时延与泄漏）。Xray 的 TUN 嗅探会把目标改写为域名，`AsIs` 下这类连接的 IP 规则匹配不到；需要时由用户在配置中设置 `IPIfNonMatch`/`IPOnDemand`（注意：有兜底规则时第一轮即命中，`IPIfNonMatch` 实际不会再解析）。界面在 Xray 分页底部提示这一点。
 - sing-box 远程规则集：上游在首次下载失败且无缓存、无 `initial_path` 时让整个启动失败。libbox 没有内置 .srs（避免 APK 增大和规则过期），而是按上面的回退用原配置启动并报告；规则集下载走主代理出站，代理起来后的下一次启动或重载会再下载并存入 cache_file。
 - mihomo 的 `find-process-mode: off`：mihomo 不会查应用归属，带应用的规则匹配不到，编译时给出警告。指定节点为 proxy-provider 里的节点时，警告会说明需选包含它的策略组；界面的候选列表来自 `CoreRoutingTargets`，只列配置自身的节点与组，且仅当所选配置正运行在该分页的内核上时显示。
-- mihomo 应用匹配：cmfa 构建下 mihomo 不读 `/proc`，而是调用 `process.DefaultPackageNameResolver`。[core_routing_owner.go](core/core_routing_owner.go) 参照 ClashMetaForAndroid，经 `PlatformInterface.FindConnectionOwner`（应用端 `getConnectionOwnerUid` + 包管理器，与 sing-box `package_name` 用的同一实现）返回包名，地址优先用 mihomo 改写前的 `RawSrcAddr`/`RawDstAddr`。因此此前“cmfa 模式下 PROCESS-NAME 取不到进程名”的限制对包名规则已解除；共享 UID 的应用返回第一个包名，fake-ip 下取不到原始目标地址的连接仍无法匹配，需实机确认。
+- mihomo 应用匹配：cmfa 构建下 mihomo 不读 `/proc`，而是调用 `process.DefaultPackageNameResolver`。[core_routing_owner.go](legacy/core/core_routing_owner.go) 参照 ClashMetaForAndroid，经 `PlatformInterface.FindConnectionOwner`（应用端 `getConnectionOwnerUid` + 包管理器，与 sing-box `package_name` 用的同一实现）返回包名，地址优先用 mihomo 改写前的 `RawSrcAddr`/`RawDstAddr`。因此此前“cmfa 模式下 PROCESS-NAME 取不到进程名”的限制对包名规则已解除；共享 UID 的应用返回第一个包名，fake-ip 下取不到原始目标地址的连接仍无法匹配，需实机确认。
 - 规则列表 URL：libbox 下载（单个 15 秒超时；一次启动的多个列表并行下载，最多 4 个同时进行，合计不超过 20 秒，超时的列表用缓存或跳过；最大 16 MiB，最多 30 万项）到 `<工作目录>/routing/lists/<URL 哈希>.txt`，24 小时内直接用缓存，过期后尝试刷新，失败继续用旧副本并警告，从未下载成功则跳过该规则。解析 AdBlock（`||example.com^`；带 `$` 选项、例外 `@@`、元素隐藏规则忽略）、hosts（`0.0.0.0 host`，按完整域名）、Clash 经典规则（`DOMAIN-SUFFIX`/`DOMAIN`/`DOMAIN-KEYWORD`/`DOMAIN-REGEX`/`IP-CIDR(6)`，含 YAML `payload`）、Clash 域名文本（`+.example.com`）、v2fly domain-list-community 行（`full:`/`domain:`/`keyword:`/`regexp:`，`@cn` 等属性忽略，`include:` 跳过）和纯 IP/CIDR/域名行。`DOMAIN-REGEX` 取逗号后的整段，正则里的逗号保留。`.srs`/`.mrs`/`.dat`/`.mmdb` 等二进制格式不支持。sing-box 与 Xray 把条目内联进规则；mihomo 写成 mihomo 主目录 `fk-routing/` 下的本地 rule-provider 文件（`domain`、`ipcidr`、`classical` 三种 behavior，`format: text`），规则写作 `RULE-SET,fk-list-<哈希>-<behavior>,目标`，以使用 mihomo 自己的集合匹配。
-- 测试：[core_routing_test.go](core/core_routing_test.go) 与 [core_routing_start_test.go](core/core_routing_start_test.go) 的 `TestCoreRouting*`（newui.yml 多内核步骤）：列表解析（含 v2fly 与带逗号的正则）、条目分类与端口、`off`/空规则不改内容；sing-box 对链接转换配置编译后 `CheckConfig` 通过并核对规则顺序、规则集、cache_file、兜底与 override，以及 sniff 不在开头时补插；Xray 编译后 `CheckCoreConfig` 通过并核对拆分、ruleTag 唯一、balancer、兜底替换和 domainStrategy 不变；`TestCoreRoutingXrayStarts` 写入含所需代码的测试用 geosite.dat/geoip.dat，按 `startXrayCore` 的同一构造（`xrayStartRoot`，去掉需要 fd 的 TUN 入站）对每个预设（prepend/override）、全部预设同名、混合规则与已占用 tag 的配置调用 `xrayCore.New`（会初始化路由并执行 `ReloadRules` 的检查），并确认重复 ruleTag 被 Xray 和 `checkXrayConfig` 拒绝；兜底识别覆盖 `0-65535`/`1-65535`/分段端口与 tcp,udp 写法；mihomo 编译后 `CheckCoreConfig` 通过，非 GEO/RULE-SET 规则逐条交给 mihomo 自己的 `rules.ParseRule`，IP 规则对只有域名的连接不触发解析，目标必须是已有节点/组，并检查 provider 文件、find-process-mode 与 proxy-provider 警告；列表并行下载与总超时用本地 HTTP 服务测。CI 测不到：实际下载规则集、GEO 规则命中、`PROCESS-NAME` 在真机上的归属查询、带规则启动失败后的回退重启。
+- 测试：[core_routing_test.go](legacy/core/core_routing_test.go) 与 [core_routing_start_test.go](legacy/core/core_routing_start_test.go) 的 `TestCoreRouting*`（newui.yml 多内核步骤）：列表解析（含 v2fly 与带逗号的正则）、条目分类与端口、`off`/空规则不改内容；sing-box 对链接转换配置编译后 `CheckConfig` 通过并核对规则顺序、规则集、cache_file、兜底与 override，以及 sniff 不在开头时补插；Xray 编译后 `CheckCoreConfig` 通过并核对拆分、ruleTag 唯一、balancer、兜底替换和 domainStrategy 不变；`TestCoreRoutingXrayStarts` 写入含所需代码的测试用 geosite.dat/geoip.dat，按 `startXrayCore` 的同一构造（`xrayStartRoot`，去掉需要 fd 的 TUN 入站）对每个预设（prepend/override）、全部预设同名、混合规则与已占用 tag 的配置调用 `xrayCore.New`（会初始化路由并执行 `ReloadRules` 的检查），并确认重复 ruleTag 被 Xray 和 `checkXrayConfig` 拒绝；兜底识别覆盖 `0-65535`/`1-65535`/分段端口与 tcp,udp 写法；mihomo 编译后 `CheckCoreConfig` 通过，非 GEO/RULE-SET 规则逐条交给 mihomo 自己的 `rules.ParseRule`，IP 规则对只有域名的连接不触发解析，目标必须是已有节点/组，并检查 provider 文件、find-process-mode 与 proxy-provider 警告；列表并行下载与总超时用本地 HTTP 服务测。CI 测不到：实际下载规则集、GEO 规则命中、`PROCESS-NAME` 在真机上的归属查询、带规则启动失败后的回退重启。
 
 ## 新增接口与行为
 
-### 配置存储（[core_profile_store.go](core/core_profile_store.go)）
+### 配置存储（[core_profile_store.go](legacy/core/core_profile_store.go)）
 
 配置与远程服务器的行（原 Room `profiles.db` 第 3 版的 `profiles`、`remote_servers` 两表）由 libbox 持有，保存在应用 `databases/profiles-store.json`（`format` `fk-box-profile-store`，`version` 1），每次写入为临时文件、fsync、rename 再 fsync 目录。`TypedProfile` 不再以 Parcel 二进制保存，而是逐字段写出（path、type 序号、remoteURL、lastUpdated 毫秒、autoUpdate、autoUpdateInterval、core、upload/download/total/expire、webPageUrl、intervalUserSet）；`icon` 的 null 与空串分开保存。配置内容文件仍在原路径，存储只记录路径。
 
 语义沿用 Room DAO：id 不复用（导入时带上 `sqlite_sequence`），插入 id 为 0 时取下一个 id、带 id 时保留该 id（已存在则报 `UNIQUE constraint failed`），更新/删除返回匹配的行数，列表按 `userOrder` 升序、相同时按 id，`nextOrder` 为最大 `userOrder`+1，空表为 0。`UIProfileStoreBegin`/`Commit`/`Rollback` 对应 Room 的 `withTransaction`：事务内的调用带令牌，读写私有副本，提交时一次写盘；事务进行中，不带令牌的读看到已提交状态，不带令牌的写和新的事务等待其结束；提交写盘失败时变更丢弃、事务结束。
 
-首次运行由应用从 Room 一次性导入：`UIProfileStoreStageImport` 写出并读回 `profiles-store.json.import`，应用逐行逐字段与 Room 比对，`UIProfileStoreCommitImport` 校验同一份字节的 SHA-256 后 rename 到位。rename 之前存储不存在，中断后下次重新导入；之后不再导入。存储文件存在但无法读取（损坏或版本更新）时报错，不重新导入，也不覆盖。不使用 SQLite：gomobile 构建开启 CGO，但核心准备步骤要求 `go.mod` 依赖与固定版本一致（新增 modernc.org/sqlite 或 mattn/go-sqlite3 会改动上游依赖并增加数 MB 原生代码），配置行数很少，单个原子写入的 JSON 文件即可满足一致性。回归为 [core_profile_store_test.go](core/core_profile_store_test.go)（CRUD、排序、Room 形状数据导入、幂等与中断导入、事务、写盘失败、并发）。
+首次运行由应用从 Room 一次性导入：`UIProfileStoreStageImport` 写出并读回 `profiles-store.json.import`，应用逐行逐字段与 Room 比对，`UIProfileStoreCommitImport` 校验同一份字节的 SHA-256 后 rename 到位。rename 之前存储不存在，中断后下次重新导入；之后不再导入。存储文件存在但无法读取（损坏或版本更新）时报错，不重新导入，也不覆盖。不使用 SQLite：gomobile 构建开启 CGO，但核心准备步骤要求 `go.mod` 依赖与固定版本一致（新增 modernc.org/sqlite 或 mattn/go-sqlite3 会改动上游依赖并增加数 MB 原生代码），配置行数很少，单个原子写入的 JSON 文件即可满足一致性。回归为 [core_profile_store_test.go](legacy/core/core_profile_store_test.go)（CRUD、排序、Room 形状数据导入、幂等与中断导入、事务、写盘失败、并发）。
 
 ### 运行时内存
 
@@ -221,7 +221,7 @@ CI 测不到、需要实机确认：
 
 `Resident`/`HugePages` 是 `/proc/self/smaps` 中 Go 运行时自己命名的映射（`[anon: Go: …]`，Go 1.25+）的 Rss 与 AnonHugePages；内核不支持映射命名时为 0。只有透明大页为 `always` 且 `PR_SET_THP_DISABLE` 失败（`coreTHPRefill`）时才遍历 smaps；其余情况内核不会回填已释放内存，两项为 0，避免每 2 秒扫描 smaps 并持有 `mmap_lock`。内核用透明大页把 Go 已释放的内存重新填满时，`Resident` 会大于总量，Android 端把多出的部分计入核心（“其他运行时内存”），不再算进“应用”。
 
-### 进程内存（[core_memory.go](core/core_memory.go)）
+### 进程内存（[core_memory.go](legacy/core/core_memory.go)）
 
 - 透明大页：libbox 加载时若 `/sys/kernel/mm/transparent_hugepage/enabled` 为 `[always]`，或某个 mTHP 档位（`hugepages-*kB/enabled`）为 `always`（或 `inherit` 且上级为 `always`），调用 `prctl(PR_SET_THP_DISABLE)`；`madvise`/`never` 时不调用。原因：Go 以 MADV_DONTNEED 小块归还内存，THP `always` 时 khugepaged/大页缺页会把这些区域重新填满，RSS 远高于 Go 实际持有量，FreeOSMemory 也被抵消（golang/go#64332）。`GODEBUG=disablethp` 对 gomobile 库无法设置（`//go:debug` 只接受登记过的设置，库加载时运行时已读过 GODEBUG）。该标志作用于整个进程（含 ART/HWUI），代价只是少了大页的 TLB 收益。
 - 内核启停：Xray/mihomo 启动后、`CloseCoreService` 停止它们后调用 `debug.FreeOSMemory()`（sing-box 的 daemon 自己在启停时这样做）。mihomo 停止时除关闭监听外还关闭已跟踪连接和代理/规则 provider（停止其更新与健康检查），清空 tunnel 中的规则与代理、GeoIP/GeoSite 匹配缓存并重置 MMDB/ASN 读取器；DNS 解析器与 fake-IP 映射保留，以便下次启动沿用。
@@ -234,10 +234,10 @@ CI 测不到、需要实机确认：
 - `UIWebDAVRequest` 支持 GET、PUT、OPTIONS、MKCOL，使用上游 HTTP 客户端的证书库和 Modern TLS；请求/响应内容上限 64 MiB，超时 30 秒。
 - WebDAV 不跨源转发凭据和正文，不接受 HTTPS 降级；会改变请求方法的重定向交回调用方判断，防止把失败写入报告为成功。
 - `UIHTTPGet` 用于匿名 Release 元数据 GET，上限 2 MiB，超时 15 秒。允许访问重定向后的资产地址，剥离凭据头且禁止 HTTPS 降级。
-- `UISubscriptionGet(link, userAgent)` 返回 `UISubscriptionResponse{Content, UserInfo, UpdateInterval, WebPage, HasInfo, Upload, Download, Total, Expire, IntervalMinutes}`，Kotlin 调用为 `Libbox.uiSubscriptionGet`，字段为 `content`/`userInfo`/`updateInterval`/`webPage`/`hasInfo`/`upload`/…/`intervalMinutes`。行为与上游 `HTTPRequest.Execute` 的订阅获取一致（证书库、Modern TLS、URL 凭据作为 Basic 认证、默认重定向、非 200 报 `HTTP <状态>: <正文>`），另加 32 MiB 正文上限和 60 秒超时；响应头名不区分大小写，缺失时为空字符串，单个值超过 4 KiB 视为缺失。`subscription-userinfo` 与 `profile-update-interval` 由 [core_subscription_info.go](core/core_subscription_info.go) 按原 `SubscriptionHeaders.kt` 的规则解析（Kotlin `trim`/`lowercase`/`toLongOrNull`/`toDoubleOrNull` 语义，含任意 BMP 十进制数字、`Double.valueOf` 的十六进制与 f/d 后缀；`HasInfo` 为假即无该头或无可用值，`IntervalMinutes` 为 0 即无效，取值四舍五入并限制在 15 分钟至一年）；`profile-web-page-url` 仍由应用以 `java.net.URI` 检查。回归见 [ui_subscription_test.go](core/ui_subscription_test.go) 与 [core_subscription_info_test.go](core/core_subscription_info_test.go)。
-- WebDAV 备份传输 `UIWebDAVCheck`/`UIWebDAVUpload`/`UIWebDAVDownload`（[core_webdav.go](core/core_webdav.go)）：检查发 OPTIONS；上传先 MKCOL 备份目录（405 表示已存在），再 PUT；下载只接受 200。非 2xx 报 `WebDAV <方法> failed: HTTP <状态>`，2xx 但非 200 的下载报 `WebDAV download failed: HTTP <状态>`，超过 64 MiB 不发请求。账户（密码经 Keystore 加密保存）、地址校验与 `java.net.URI` 解析的目录/文件地址留在应用 [BoxWebDAV.kt](clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt)。
-- 更新检查（[core_updates.go](core/core_updates.go)，协议方法 `checkUpdates`，owner `go`）：原 `BoxUpdates.kt` 的逻辑，读取 `latest/download` 元数据与 REST Release 列表（含预发布），两者都失败才报错（报第一个来源的错误），连接中断与 5xx 重试一次；资产前缀 `fk-box`/`FK-box`；JSON 字段按 org.json 的 `optString`/`optLong`/`optBoolean` 语义读取。安装身份、版本号与设备 ABI 由应用在 `setupLibbox` 中经 `SetUIAppInfo` 提供。不下载也不安装 APK。
-- 备份文档检查（[core_backup.go](core/core_backup.go)）：`NewUIBackupCheck` 读取应用以 org.json 编码的 `bbox-1` 文档，按原 `BoxBackups.validate` 的顺序检查格式、来源、时间、配置列表，`CheckEntry`（名称、配置元数据、按声明内核校验内容、订阅地址类型）与 `CheckEntryIdentity`（备份身份、ID、更新间隔、自动更新、更新时间）逐条执行，应用在两者之间检查订阅地址，`Finish` 检查重复、选中配置与 64 MiB 上限；错误文本不变。`UIBackupProfileKey` 为配置的跨备份身份（文件名为 UUID 时取之，否则 `UUID.nameUUIDFromBytes("<origin>:<id>")`）。备份的生成与编码（字节不变）、暂存、恢复及需要 Android 或 `java.net.URI` 的检查仍在应用。已知问题（未改）：备份以明文携带 WebDAV 密码和远程服务器密钥。回归见 [core_backup_test.go](core/core_backup_test.go)（含按 org.json 格式写出的当前与旧版备份样例）。
+- `UISubscriptionGet(link, userAgent)` 返回 `UISubscriptionResponse{Content, UserInfo, UpdateInterval, WebPage, HasInfo, Upload, Download, Total, Expire, IntervalMinutes}`，Kotlin 调用为 `Libbox.uiSubscriptionGet`，字段为 `content`/`userInfo`/`updateInterval`/`webPage`/`hasInfo`/`upload`/…/`intervalMinutes`。行为与上游 `HTTPRequest.Execute` 的订阅获取一致（证书库、Modern TLS、URL 凭据作为 Basic 认证、默认重定向、非 200 报 `HTTP <状态>: <正文>`），另加 32 MiB 正文上限和 60 秒超时；响应头名不区分大小写，缺失时为空字符串，单个值超过 4 KiB 视为缺失。`subscription-userinfo` 与 `profile-update-interval` 由 [core_subscription_info.go](legacy/core/core_subscription_info.go) 按原 `SubscriptionHeaders.kt` 的规则解析（Kotlin `trim`/`lowercase`/`toLongOrNull`/`toDoubleOrNull` 语义，含任意 BMP 十进制数字、`Double.valueOf` 的十六进制与 f/d 后缀；`HasInfo` 为假即无该头或无可用值，`IntervalMinutes` 为 0 即无效，取值四舍五入并限制在 15 分钟至一年）；`profile-web-page-url` 仍由应用以 `java.net.URI` 检查。回归见 [ui_subscription_test.go](legacy/core/ui_subscription_test.go) 与 [core_subscription_info_test.go](legacy/core/core_subscription_info_test.go)。
+- WebDAV 备份传输 `UIWebDAVCheck`/`UIWebDAVUpload`/`UIWebDAVDownload`（[core_webdav.go](legacy/core/core_webdav.go)）：检查发 OPTIONS；上传先 MKCOL 备份目录（405 表示已存在），再 PUT；下载只接受 200。非 2xx 报 `WebDAV <方法> failed: HTTP <状态>`，2xx 但非 200 的下载报 `WebDAV download failed: HTTP <状态>`，超过 64 MiB 不发请求。账户（密码经 Keystore 加密保存）、地址校验与 `java.net.URI` 解析的目录/文件地址留在应用 [BoxWebDAV.kt](clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt)。
+- 更新检查（[core_updates.go](legacy/core/core_updates.go)，协议方法 `checkUpdates`，owner `go`）：原 `BoxUpdates.kt` 的逻辑，读取 `latest/download` 元数据与 REST Release 列表（含预发布），两者都失败才报错（报第一个来源的错误），连接中断与 5xx 重试一次；资产前缀 `fk-box`/`FK-box`；JSON 字段按 org.json 的 `optString`/`optLong`/`optBoolean` 语义读取。安装身份、版本号与设备 ABI 由应用在 `setupLibbox` 中经 `SetUIAppInfo` 提供。不下载也不安装 APK。
+- 备份文档检查（[core_backup.go](legacy/core/core_backup.go)）：`NewUIBackupCheck` 读取应用以 org.json 编码的 `bbox-1` 文档，按原 `BoxBackups.validate` 的顺序检查格式、来源、时间、配置列表，`CheckEntry`（名称、配置元数据、按声明内核校验内容、订阅地址类型）与 `CheckEntryIdentity`（备份身份、ID、更新间隔、自动更新、更新时间）逐条执行，应用在两者之间检查订阅地址，`Finish` 检查重复、选中配置与 64 MiB 上限；错误文本不变。`UIBackupProfileKey` 为配置的跨备份身份（文件名为 UUID 时取之，否则 `UUID.nameUUIDFromBytes("<origin>:<id>")`）。备份的生成与编码（字节不变）、暂存、恢复及需要 Android 或 `java.net.URI` 的检查仍在应用。已知问题（未改）：备份以明文携带 WebDAV 密码和远程服务器密钥。回归见 [core_backup_test.go](legacy/core/core_backup_test.go)（含按 org.json 格式写出的当前与旧版备份样例）。
 
 这些接口不使用下述 `UIEgressProbe` 路由注入。需要查询当前 sing-box 出口时必须走探测接口，不能用一般 HTTP 请求替代。
 
@@ -256,11 +256,11 @@ CI 测不到、需要实机确认：
 
 ### 服务状态检测
 
-[ui_service_check.go](core/ui_service_check.go) 移植 FlClash v0.9.3 的 `core/service_check.go`、`core/service_rules.go`、`core/region.go` 和 `core/probe.go` 的请求部分：Google（`generate_204`）与 GitHub 只看状态码；YouTube Premium、ChatGPT（iOS 页、trace 与合规接口合并为一项）、Claude、Gemini、Netflix（fast.com CDN，再看两部片目）、Disney+（设备注册、令牌交换、会话查询三步）、Prime Video、Spotify、TikTok、Discord、Bilibili（大陆与港澳台番剧）按 FlClash 的地址、标记、地区和正文上限判断，返回状态（`available`、`unavailable`、`restricted`、`disallowed-isp`、`blocked`、`unsupported-region`、`originals-only`、`coming-soon`、`timeout`、`failed`）、地区（ISO 3166 两位码，只在判定依赖地区时保留）、首个应答请求的延迟和完成时间。请求经 `UIEgressProbe` 的传输（运行中的内核路由或停服时的设备网络），支持 POST、请求头、正文上限、边读边找标记（扫描上限 8 MiB）及不跟随重定向；单个请求超时 1～10000 毫秒，整项检测预算为其 6 倍，超时且预算尚足时重试一次。FlClash 返回的出口链路与路由命中不移植。回归见 [ui_service_check_test.go](core/ui_service_check_test.go)（各规则的判定、超时重试，以及经直连探测的 POST、重定向、不跟随重定向与扫描读取）。
+[ui_service_check.go](legacy/core/ui_service_check.go) 移植 FlClash v0.9.3 的 `core/service_check.go`、`core/service_rules.go`、`core/region.go` 和 `core/probe.go` 的请求部分：Google（`generate_204`）与 GitHub 只看状态码；YouTube Premium、ChatGPT（iOS 页、trace 与合规接口合并为一项）、Claude、Gemini、Netflix（fast.com CDN，再看两部片目）、Disney+（设备注册、令牌交换、会话查询三步）、Prime Video、Spotify、TikTok、Discord、Bilibili（大陆与港澳台番剧）按 FlClash 的地址、标记、地区和正文上限判断，返回状态（`available`、`unavailable`、`restricted`、`disallowed-isp`、`blocked`、`unsupported-region`、`originals-only`、`coming-soon`、`timeout`、`failed`）、地区（ISO 3166 两位码，只在判定依赖地区时保留）、首个应答请求的延迟和完成时间。请求经 `UIEgressProbe` 的传输（运行中的内核路由或停服时的设备网络），支持 POST、请求头、正文上限、边读边找标记（扫描上限 8 MiB）及不跟随重定向；单个请求超时 1～10000 毫秒，整项检测预算为其 6 倍，超时且预算尚足时重试一次。FlClash 返回的出口链路与路由命中不移植。回归见 [ui_service_check_test.go](legacy/core/ui_service_check_test.go)（各规则的判定、超时重试，以及经直连探测的 POST、重定向、不跟随重定向与扫描读取）。
 
 ### 仪表盘 DNS 查询计数
 
-[patch_dns_count.py](tools/patch_dns_count.py)（setup-core 在 multicore 补丁后执行）把 [dns/ui_query_count.go](core/dns/ui_query_count.go) 放进核心的 `dns` 包，并在 `dns.Router` 的 `Exchange`、`ExchangeAsync` 开头计数：sing-box 为客户端应答的每条 DNS 消息（hijack-dns、DNS 出站、DNS 入站，含缓存命中）都经过这两处，路由为出站拨号做的 `Lookup` 不计。Xray 在 TUN 连接跟踪（[core_xray_track.go](core/core_xray_track.go)）里按目标 53 端口计数（UDP 按数据报，一条查询一个；TCP 每条连接计一次），mihomo 在 `ApplyConfig` 之后把 `resolver.DefaultService`（TUN dns-hijack 经 `resolver.ServeMsg` 使用它）包一层计数（[core_service.go](core/core_service.go)）。[ui_dns.go](core/ui_dns.go) 的 `ReadUIDNSQueryCount` 返回自 `StartOrReloadCoreService` 上次调用（启动或重载）以来的总数；只反映本进程内的本机内核。
+[patch_dns_count.py](tools/patch_dns_count.py)（setup-core 在 multicore 补丁后执行）把 [dns/ui_query_count.go](legacy/core/dns/ui_query_count.go) 放进核心的 `dns` 包，并在 `dns.Router` 的 `Exchange`、`ExchangeAsync` 开头计数：sing-box 为客户端应答的每条 DNS 消息（hijack-dns、DNS 出站、DNS 入站，含缓存命中）都经过这两处，路由为出站拨号做的 `Lookup` 不计。Xray 在 TUN 连接跟踪（[core_xray_track.go](legacy/core/core_xray_track.go)）里按目标 53 端口计数（UDP 按数据报，一条查询一个；TCP 每条连接计一次），mihomo 在 `ApplyConfig` 之后把 `resolver.DefaultService`（TUN dns-hijack 经 `resolver.ServeMsg` 使用它）包一层计数（[core_service.go](legacy/core/core_service.go)）。[ui_dns.go](legacy/core/ui_dns.go) 的 `ReadUIDNSQueryCount` 返回自 `StartOrReloadCoreService` 上次调用（启动或重载）以来的总数；只反映本进程内的本机内核。
 
 ### 局域网代理
 
@@ -272,15 +272,15 @@ CI 测不到、需要实机确认：
 
 ### HTTP/HTTPS 请求调试
 
-[httpdebug/](core/httpdebug/) 在 sing-box 已选定路由后记录 HTTP，并按本机设置接管 HTTPS。仅抓取时不修改配置、DNS 映射或出站选择；可选的配置改写另见 [JSON 配置中的 HTTP 改写](#json-配置中的-http-改写)。它没有另开代理监听端口。抓取模式参考 mitmproxy 的上游优先握手及证书校验设计，核对版本为 [`b08148b35d7679bc9be8d4a3d85b32bcea5ce250`](https://github.com/mitmproxy/mitmproxy/tree/b08148b35d7679bc9be8d4a3d85b32bcea5ce250)，主要依据 `addons/tlsconfig.py`、`proxy/layers/tls.py` 和 `certs.py`；生产代码使用 Go `crypto/tls`，没有嵌入 mitmproxy。FlClash 的独立补充参考见 [界面来源](flclash.md#参考版本与来源清单)。
+[httpdebug/](legacy/core/httpdebug/) 在 sing-box 已选定路由后记录 HTTP，并按本机设置接管 HTTPS。仅抓取时不修改配置、DNS 映射或出站选择；可选的配置改写另见 [JSON 配置中的 HTTP 改写](#json-配置中的-http-改写)。它没有另开代理监听端口。抓取模式参考 mitmproxy 的上游优先握手及证书校验设计，核对版本为 [`b08148b35d7679bc9be8d4a3d85b32bcea5ce250`](https://github.com/mitmproxy/mitmproxy/tree/b08148b35d7679bc9be8d4a3d85b32bcea5ce250)，主要依据 `addons/tlsconfig.py`、`proxy/layers/tls.py` 和 `certs.py`；生产代码使用 Go `crypto/tls`，没有嵌入 mitmproxy。FlClash 的独立补充参考见 [界面来源](flclash.md#参考版本与来源清单)。
 
-[路由钩子](core/route/httpdebug.go) 将嗅探结果仅用于抓取选择。转发继续调用原选定出站的 `ConnectionHandler` 或原连接管理器，保留原目的地址、解析结果、网络策略、TLS 分片、规则、代理组和应用归属。CONNECT/SOCKS 隧道先通过核心握手成功接口响应客户端，再等待请求或 ClientHello，避免双方等待。需要观察的流通过普通 stream 路径处理；未命中流保留嗅探读到的所有字节继续原路由。
+[路由钩子](legacy/core/route/httpdebug.go) 将嗅探结果仅用于抓取选择。转发继续调用原选定出站的 `ConnectionHandler` 或原连接管理器，保留原目的地址、解析结果、网络策略、TLS 分片、规则、代理组和应用归属。CONNECT/SOCKS 隧道先通过核心握手成功接口响应客户端，再等待请求或 ClientHello，避免双方等待。需要观察的流通过普通 stream 路径处理；未命中流保留嗅探读到的所有字节继续原路由。
 
-HTTPS 默认关闭。开启后，[MITM 处理器](core/httpdebug/mitm.go) 用只读 TLS 探测器读取实际 ClientHello，探测阶段不会向客户端写 ServerHello 或 alert。域名以实际 SNI 为准；没有 SNI 时仅接受已知 IP 目标，不以 DNS 映射冒充 SNI。排除项、非 HTTP ALPN、无法解析的 hello 或未命中的流原样回放。包含列表为空表示不限制域名，精确名称只匹配本域，`*.example.com` 匹配子域，排除优先。端口按原始连接目的端口筛选，route 的端口覆写不改变抓取 authority；默认 80、443、8080、8443，最多 32 个。应用筛选来自核心归属，未知归属不能匹配指定应用，共享 UID 的包使用同一归属结果。
+HTTPS 默认关闭。开启后，[MITM 处理器](legacy/core/httpdebug/mitm.go) 用只读 TLS 探测器读取实际 ClientHello，探测阶段不会向客户端写 ServerHello 或 alert。域名以实际 SNI 为准；没有 SNI 时仅接受已知 IP 目标，不以 DNS 映射冒充 SNI。排除项、非 HTTP ALPN、无法解析的 hello 或未命中的流原样回放。包含列表为空表示不限制域名，精确名称只匹配本域，`*.example.com` 匹配子域，排除优先。端口按原始连接目的端口筛选，route 的端口覆写不改变抓取 authority；默认 80、443、8080、8443，最多 32 个。应用筛选来自核心归属，未知归属不能匹配指定应用，共享 UID 的包使用同一归属结果。
 
 命中后先通过原路由完成上游 TLS 握手，用 `adapter.RootPoolFromContext` 的当前证书库验证服务器链、有效期和名称，成功后才签发客户端证书。已验证的上游连接直接交给 HTTP transport 复用，后续连接也重新验证；没有跳过证书验证的选项。两端支持 TLS 1.2/1.3，ALPN 跟随上游协商 HTTP/1.1 或 HTTP/2；没有 ALPN 时使用 HTTP/1.1。SNI、双方 TLS 版本、ALPN 和上游叶证书 SHA-256 写入记录。客户端与上游握手失败分阶段记录，失败条目为 TLS/仅域名，不伪造 HTTP 响应或解密成功。
 
-[签发器](core/httpdebug/authority.go) 使用平台提供的 P-256 `crypto.Signer`，根私钥始终留在 Android Keystore，Go 只持有签名接口。生成三年期、自签名、名称包含公钥摘要的独立 CA；启动验证 CA 约束、有效期、公钥一致性及随机挑战签名。[绑定](core/ui_capture_signer.go) 只接受 SHA-256 摘要并验证平台返回的 ECDSA 签名。临时叶证书只含当前名称的一个 SAN，有效期不超过十二小时和根证书有效期，最多缓存 128 个。不同 HTTP authority 返回 421，客户端须为该 origin 建立自己的 TLS 连接，避免通过 HTTP/2 合并连接绕过排除项。证书持久化、安装和信任边界见 [app.md](app.md#请求抓取与-mitm)。
+[签发器](legacy/core/httpdebug/authority.go) 使用平台提供的 P-256 `crypto.Signer`，根私钥始终留在 Android Keystore，Go 只持有签名接口。生成三年期、自签名、名称包含公钥摘要的独立 CA；启动验证 CA 约束、有效期、公钥一致性及随机挑战签名。[绑定](legacy/core/ui_capture_signer.go) 只接受 SHA-256 摘要并验证平台返回的 ECDSA 签名。临时叶证书只含当前名称的一个 SAN，有效期不超过十二小时和根证书有效期，最多缓存 128 个。不同 HTTP authority 返回 421，客户端须为该 origin 建立自己的 TLS 连接，避免通过 HTTP/2 合并连接绕过排除项。证书持久化、安装和信任边界见 [app.md](app.md#请求抓取与-mitm)。
 
 HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供的 Forwarded/X-Forwarded 字段。正文边转发边保存前缀，不因存储限额截断实际传输；SSE 立即刷新，WebSocket 透传升级后的连接且只记录 HTTP 握手。请求/响应 trailers 单独保存，不混入初始头部；并发 HTTP/2 流独立记录，取消保留已收到的正文及未完成标志。嵌套 CONNECT 不支持。客户端证书认证、真实 ECH 加密名称和 HTTP/3 解密不在支持范围；应用证书固定校验或独立信任库仍可拒绝连接，需配置排除或由目标客户端调整信任/ECH 设置，不能宣称全应用解密。
 
@@ -292,7 +292,7 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 - 最多保存 300 条、磁盘 32 MiB；每方向正文默认保留 64 KiB，最高 1 MiB；头部和 trailers 分别最多 64 KiB。存储失败、截断、未完成和流错误分别保留，不能把保存的前缀当成完整消息。
 - 预览/HAR 的 gzip/deflate 解码最多 64 KiB；不支持的编码或二进制使用 Base64，HAR 另保留原始前缀与完整性标志。HAR 使用 `_trailers` 扩展保存尾部字段，耗时仅为总时长。cURL 只允许完整且未截断的请求头和正文，含请求 trailers 时拒绝导出，避免给出不完整重放命令。
 
-[抓包日志](core/httpdebug/logs.go) 与请求存储独立，记录启停、握手阶段和失败原因，不记录正文。缓冲最多 1000 条、512 KiB，每条 4 KiB，UTF-8 截断安全。状态统计实际握手尝试/失败、QUIC 拒绝、解密连接、正文字节、解析/筛选/保存数量；停抓保留本次计数，下次开始重置。清日志不清请求，进程退出清内存日志，保存记录在停服后仍可读取。
+[抓包日志](legacy/core/httpdebug/logs.go) 与请求存储独立，记录启停、握手阶段和失败原因，不记录正文。缓冲最多 1000 条、512 KiB，每条 4 KiB，UTF-8 截断安全。状态统计实际握手尝试/失败、QUIC 拒绝、解密连接、正文字节、解析/筛选/保存数量；停抓保留本次计数，下次开始重置。清日志不清请求，进程退出清内存日志，保存记录在停服后仍可读取。
 
 `CommandServer.StartUICapture(directory, config, certificate, signer)` 与核心重载/关闭串行；`GenerateUICaptureCA(publicKeyDER, UICaptureSigner)` 只接收平台公钥和签名回调，不接收或导出根私钥。其他 `Open/Validate/Stop/Read/List/Clear/ExportUICapture*`、`ExtractUICaptureHosts` 及日志绑定提供本地访问，轮询只传有界预览，正文文件通过导出读取。Root 采集器、FD 管道和手动 TLS 偏移已移除；普通 Root/Shizuku 与完整核心协议保持原有能力。
 
@@ -348,7 +348,7 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 
 处理顺序为请求 Header → URL → Map Remote → Body → 请求脚本 → Map Local → 上游 → 响应 Header → Body → 响应脚本。重定向、拒绝或脚本 Mock 会提前结束请求路径，生成的响应仍经过响应阶段。首条命中脚本失败不会改用下一条脚本。错误写入诊断；脚本异常、超时、非法结果或上游失败返回 502，超限请求正文返回 413，不把失败改写默认为成功。
 
-脚本接口由 [rewrite_script.go](core/httpdebug/rewrite_script.go) 提供：
+脚本接口由 [rewrite_script.go](legacy/core/httpdebug/rewrite_script.go) 提供：
 
 - `$request`: `url`、`method`、`headers`、稳定的 `id`；请求脚本设置 `requires_body: true` 时提供 `body`。响应脚本中的 request 不携带正文。URL 是前序规则处理后的值。
 - `$response`: 响应脚本可读取 `status`、`headers`，`requires_body: true` 时提供 `body`。先执行静态正文改写，脚本读取其结果。
@@ -361,9 +361,9 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 
 正文与协议边界：只缓冲命中的报文，支持 identity/gzip/deflate，压缩前后分别检查限额；不支持的编码和非 UTF-8 文本改写会保留原报文并记录原因。响应超限会回放已读前缀并继续原样转发，不截断数据；SSE、WebSocket 升级、HEAD 和 206 响应跳过正文处理。改写后移除旧压缩、摘要、ETag、范围及 trailer 信息，重新计算 Content-Length；禁止规则/脚本手动改变消息分帧、升级头或 101 升级状态，HEAD/204/205/304 不发送不允许的正文。
 
-最初连接仍须通过 sing-box 路由选择，改写不会绕过原路由的拒绝。未改变 origin 的请求沿用原出站、解析结果及网络选项；跨 origin 的目标经 [route/httpdebug.go](core/route/httpdebug.go) 重新进入同一核心，保留入站、来源和应用归属，清除旧目的地/规则缓存，并阻止递归改写。没有直连回退。记录保存改写后的请求/响应、原 URL 与命中说明；映射条目的连接路由字段仍表示原连接，界面明确标为原连接出站/规则。
+最初连接仍须通过 sing-box 路由选择，改写不会绕过原路由的拒绝。未改变 origin 的请求沿用原出站、解析结果及网络选项；跨 origin 的目标经 [route/httpdebug.go](legacy/core/route/httpdebug.go) 重新进入同一核心，保留入站、来源和应用归属，清除旧目的地/规则缓存，并阻止递归改写。没有直连回退。记录保存改写后的请求/响应、原 URL 与命中说明；映射条目的连接路由字段仍表示原连接，界面明确标为原连接出站/规则。
 
-配置 MITM 允许 Map Local 和脚本在原服务器离线时响应，因此 [rewrite_transport.go](core/httpdebug/rewrite_transport.go) 先完成客户端握手，实际需要上游时再连接；每次真实 HTTPS 上游（含映射目标）仍验证证书链、名称和有效期。本地 Mock 不伪造上游 TLS 信息，实际转发后才记录上游 TLS 和证书。仅手动抓包的连接继续使用前文的上游优先握手。CA 信任、证书固定校验、ECH、HTTP/3 及连接/HTTP2 并发边界仍见前文。
+配置 MITM 允许 Map Local 和脚本在原服务器离线时响应，因此 [rewrite_transport.go](legacy/core/httpdebug/rewrite_transport.go) 先完成客户端握手，实际需要上游时再连接；每次真实 HTTPS 上游（含映射目标）仍验证证书链、名称和有效期。本地 Mock 不伪造上游 TLS 信息，实际转发后才记录上游 TLS 和证书。仅手动抓包的连接继续使用前文的上游优先握手。CA 信任、证书固定校验、ECH、HTTP/3 及连接/HTTP2 并发边界仍见前文。
 
 参考依据为 2026-11-03 读取的 Surge [HTTP Processing](https://manual.nssurge.com/http/overview.html)、[MITM](https://manual.nssurge.com/http/mitm.html)、[URL Rewrite](https://manual.nssurge.com/http/url-rewrite.html)、[Header Rewrite](https://manual.nssurge.com/http/header-rewrite.html)、[Body Rewrite](https://manual.nssurge.com/http/body-rewrite.html)、[Map Local](https://manual.nssurge.com/http/map-local.html)、[请求脚本](https://manual.nssurge.com/scripting/http-request.html)和[响应脚本](https://manual.nssurge.com/scripting/http-response.html)。Surge 的 URL header 模式提供透明远端映射；B-box 另提供 map_remote 列表。上表明确 B-box 的字段、顺序与支持范围，不宣称配置或脚本完全兼容 Surge。
 
@@ -371,19 +371,19 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 
 ### 旧抓包配置清理
 
-抓包筛选是应用私有设置，不属于 sing-box schema。`experimental.http_debug` 类型、编辑绑定及示例已移除。[兼容清理](core/ui_capture_migration.go) 在 libbox 解析前仅删除该退役字段，不解释或执行其中内容；其他未知字段继续由核心拒绝。格式化以及应用配置保存会移除它，未包含该字段的内容保持原样。原字段中嵌入的规则/脚本不会迁移为可执行内容，也不会自动开启抓包。
+抓包筛选是应用私有设置，不属于 sing-box schema。`experimental.http_debug` 类型、编辑绑定及示例已移除。[兼容清理](legacy/core/ui_capture_migration.go) 在 libbox 解析前仅删除该退役字段，不解释或执行其中内容；其他未知字段继续由核心拒绝。格式化以及应用配置保存会移除它，未包含该字段的内容保持原样。原字段中嵌入的规则/脚本不会迁移为可执行内容，也不会自动开启抓包。
 
-打开请求存储时，[存储清理](core/httpdebug/store_migration.go) 删除旧版 `wire/` 中以 64 个十六进制字符组成的 ID 命名的 `.wire` 包/密钥日志及 `warning.txt`，删除失败返回错误。清理不读取日志内容、不跟随目录符号链接，保留 HTTP 请求和无关文件，仅移除已清空的专用目录。旧本机设置的原子迁移见 [app.md](app.md#请求抓取与-mitm)。
+打开请求存储时，[存储清理](legacy/core/httpdebug/store_migration.go) 删除旧版 `wire/` 中以 64 个十六进制字符组成的 ID 命名的 `.wire` 包/密钥日志及 `warning.txt`，删除失败返回错误。清理不读取日志内容、不跟随目录符号链接，保留 HTTP 请求和无关文件，仅移除已清空的专用目录。旧本机设置的原子迁移见 [app.md](app.md#请求抓取与-mitm)。
 
 ## Android 自动重定向兼容
 
 当前核心依赖 [sing-tun `611d83b7a57b4719be45581eb674942ff561de6c`](https://github.com/SagerNet/sing-tun/tree/611d83b7a57b4719be45581eb674942ff561de6c)，模块版本为 `v0.9.7-0.20261023115453-611d83b7a57b`。该版本的 `redirect_ingress_discard_android.go` 只接受 hash 类型、16 字节 key、8 字节 value 的系统 map；[AOSP Android 15 的实现](https://android.googlesource.com/platform/packages/modules/Connectivity/+/refs/tags/android-15.0.0_r1/bpf_progs/netd.c) 使用两个接口编号。一加 10 Pro / Android 15 的问题报告返回 `type 1, key 16, value 4`，因此会在自动重定向启动时被上游的布局检查拒绝。不能仅按 Android 版本号选择布局。
 
-[兼容补丁](core/sing-tun-android-ingress.patch) 从 BPF map 元数据读取实际 value 大小，支持单接口编号的 4 字节值及双接口编号的 8 字节值。只处理当前 TUN 的 IPv4 地址，且所有 value 槽位都必须匹配当前 TUN 接口编号；其他 map 类型、key 长度和 value 大小继续报错。保存条目保留原始长度及字节，关闭时只向布局未变且 TUN 接口编号仍匹配的 map 恢复，继续使用 `BPF_NOEXIST` 避免覆盖系统新建条目。不跳过整张系统 map 的校验或清空无关规则。
+[兼容补丁](legacy/core/sing-tun-android-ingress.patch) 从 BPF map 元数据读取实际 value 大小，支持单接口编号的 4 字节值及双接口编号的 8 字节值。只处理当前 TUN 的 IPv4 地址，且所有 value 槽位都必须匹配当前 TUN 接口编号；其他 map 类型、key 长度和 value 大小继续报错。保存条目保留原始长度及字节，关闭时只向布局未变且 TUN 接口编号仍匹配的 map 恢复，继续使用 `BPF_NOEXIST` 避免覆盖系统新建条目。不跳过整张系统 map 的校验或清空无关规则。
 
 [patch_sing_tun.py](tools/patch_sing_tun.py) 在匹配的 Go 工具链准备完成后运行，核对依赖版本，将 Go 模块缓存中的源码复制到全新 `.core/.b-box/sing-tun/`，检查并应用补丁，通过当前核心的本地 `replace` 引用副本；共享模块缓存不被修改。依赖版本变化或副本已存在时失败，升级核心须重新核对补丁，不能静默沿用。该处理用于 UI 验证、Android smoke 和 Release 三条工作流，不改变核心标签、应用上游或 FlClash 基线。
 
-[布局回归测试](core/sing-tun/redirect_ingress_discard_linux_test.go) 在 Linux CI 中测试生产代码的布局校验、单/双接口归属和恢复条件，覆盖 4/8 字节、未知布局、其他接口、map 大小变化和 TUN 更换。它不操作系统固定路径的 BPF map；一加设备上的实际启动、联网、停服恢复及与其他 VPN 的交互仍需 Root 实机验证。
+[布局回归测试](legacy/core/sing-tun/redirect_ingress_discard_linux_test.go) 在 Linux CI 中测试生产代码的布局校验、单/双接口归属和恢复条件，覆盖 4/8 字节、未知布局、其他接口、map 大小变化和 TUN 更换。它不操作系统固定路径的 BPF map；一加设备上的实际启动、联网、停服恢复及与其他 VPN 的交互仍需 Root 实机验证。
 
 ## 保留与已撤销的差异
 
@@ -396,11 +396,11 @@ HTTP 转发保留 Host、原始查询参数、重复响应头和客户端提供�
 - [Release 工作流](.github/workflows/build-release.yml) 复用 UI 验证工作流运行下述核心测试，再通过共享构建 Action 使用 JDK 17、版本文件指定的 Go 和 NDK 28.0.13004108，执行上游 `make lib_install` 与 fk-box 的 `go run ./cmd/fk-bind -platform android/arm64`。
 - [Android smoke 工作流](.github/workflows/newui-android.yml) 使用同一构建 Action，核心目标为 `android/amd64`，用于 x86_64 模拟器。两种构建均要求不存在 `libbox-legacy.aar`，再将标准产物放到 `clients/android/app/libs/libbox.aar`。
 - [UI 验证工作流](.github/workflows/newui.yml) 使用共享准备 Action，运行 `go test -ldflags=-checklinkname=0 github.com/sagernet/sing-tun -run '^TestAndroidIngressDiscard' -count=1` 及 `go test -ldflags=-checklinkname=0 ./experimental/libbox -run '^TestUI' -count=1`。所有生产扩展均参与编译，所有 `TestUI` 测试自动纳入，不再维护具体扩展名的筛选清单；它不构建核心 AAR。另执行 `go test -race ./experimental/httpdebug -count=1` 和 `go test -ldflags=-checklinkname=0 ./route -run '^TestBboxHTTPDebug' -count=1`，覆盖 HTTP/MITM 抓取引擎、数据竞争及原出站和嗅探字节保留。
-- 对应回归文件为 [ui_http_test.go](core/ui_http_test.go)、[ui_egress_test.go](core/ui_egress_test.go)、[ui_lan_test.go](core/ui_lan_test.go)，覆盖请求限制/重定向、源回退/公网 IP 校验/解析失败后继续竞速/取消/服务替换、监听转换和端点生成。
+- 对应回归文件为 [ui_http_test.go](legacy/core/ui_http_test.go)、[ui_egress_test.go](legacy/core/ui_egress_test.go)、[ui_lan_test.go](legacy/core/ui_lan_test.go)，覆盖请求限制/重定向、源回退/公网 IP 校验/解析失败后继续竞速/取消/服务替换、监听转换和端点生成。
 
-[httpdebug_test.go](core/httpdebug/httpdebug_test.go) 覆盖 HTTP、SSE/WebSocket、存储和导出；[mitm_test.go](core/httpdebug/mitm_test.go) 覆盖 TLS 1.2/1.3、HTTP/1.1/2、上游连接复用、独立信任链、过期/错误名称/不受信任上游、客户端 pinning、排除和非 HTTP hello 回放、重复 Cookie、请求/响应 trailers、大正文、并发流、SSE 取消、跨 authority 拒绝、QUIC 筛选及停止/拨号超时。[authority_test.go](core/httpdebug/authority_test.go) 覆盖独立根身份、SAN/IP、叶证书缓存和密钥错配；[ui_capture_signer_test.go](core/ui_capture_signer_test.go) 验证平台签名接口的摘要、算法及返回签名校验。
+[httpdebug_test.go](legacy/core/httpdebug/httpdebug_test.go) 覆盖 HTTP、SSE/WebSocket、存储和导出；[mitm_test.go](legacy/core/httpdebug/mitm_test.go) 覆盖 TLS 1.2/1.3、HTTP/1.1/2、上游连接复用、独立信任链、过期/错误名称/不受信任上游、客户端 pinning、排除和非 HTTP hello 回放、重复 Cookie、请求/响应 trailers、大正文、并发流、SSE 取消、跨 authority 拒绝、QUIC 筛选及停止/拨号超时。[authority_test.go](legacy/core/httpdebug/authority_test.go) 覆盖独立根身份、SAN/IP、叶证书缓存和密钥错配；[ui_capture_signer_test.go](legacy/core/ui_capture_signer_test.go) 验证平台签名接口的摘要、算法及返回签名校验。
 
-[ui_capture_test.go](core/ui_capture_test.go) 覆盖本地设置、schema/退役字段和未启动时日志；[路由测试](core/route/httpdebug_test.go) 通过真实 TLS 握手核对原选定出站、SNI 与 DNS 映射隔离、端口覆写、CONNECT 确认顺序、证书库及排除流的字节回放。[logs_test.go](core/httpdebug/logs_test.go) 检查日志限额、UTF-8 和并发访问；[store_migration_test.go](core/httpdebug/store_migration_test.go) 覆盖旧文件清理、请求保留和符号链接隔离。Android 真正的 Keystore/gomobile 签名与模块打包由 [平台测试](app.md#验证与历史记录) 覆盖；Linux 测试不能代替 Android 系统 CA 模块或目标应用的实机验收。获准本机测试时可使用 [verify_httpdebug.py](tools/verify_httpdebug.py)，它不构建 Android 绑定。
+[ui_capture_test.go](legacy/core/ui_capture_test.go) 覆盖本地设置、schema/退役字段和未启动时日志；[路由测试](legacy/core/route/httpdebug_test.go) 通过真实 TLS 握手核对原选定出站、SNI 与 DNS 映射隔离、端口覆写、CONNECT 确认顺序、证书库及排除流的字节回放。[logs_test.go](legacy/core/httpdebug/logs_test.go) 检查日志限额、UTF-8 和并发访问；[store_migration_test.go](legacy/core/httpdebug/store_migration_test.go) 覆盖旧文件清理、请求保留和符号链接隔离。Android 真正的 Keystore/gomobile 签名与模块打包由 [平台测试](app.md#验证与历史记录) 覆盖；Linux 测试不能代替 Android 系统 CA 模块或目标应用的实机验收。获准本机测试时可使用 [verify_httpdebug.py](tools/verify_httpdebug.py)，它不构建 Android 绑定。
 
 升级核心时先检查补丁是否仍准确排除 legacy 分支，核对 sing-tun 依赖版本及自动重定向补丁，检查 HTTP 调试路由/服务生命周期补丁及覆盖文件，再逐项核对扩展所依赖的路由、配置解析、HTTP 客户端和生成绑定。Go 导出名与 gomobile 生成的 Java 方法名不能凭拼写推断，例如 `UIHTTPGet` 当前由 Kotlin 调用为 `Libbox.uihttpGet`。任何扩展增删都要核对共享准备 Action 的安装范围及三条工作流的调用。
 

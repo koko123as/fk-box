@@ -63,7 +63,7 @@ Each is implemented by fk-box's own package `fkhost` (Lifecycle on Android:
 `PlatformInterface` 对象（`core_host_android.go`）。 `core_touch_singbox.go`
 lists every sing-box, sing-tun and libbox symbol the code here uses, so an
 upgrade that changes one fails to compile there by name; the upgrade checklist
-is in [libbox.md](../libbox.md#升级内核).
+is in [libbox.md](../../libbox.md#升级内核).
 
 The core switch (`startOrReloadCore`, `closeCore` in `core_service.go`) runs
 against any kernel host: the `CommandServer` host on Android (sing-box via
@@ -74,7 +74,7 @@ Android) that the desktop core uses.
 
 Android 上 sing-box 不运行在 libbox 的 `daemon.StartedService` 里；fk-box 不修改
 `experimental/libbox` 与 `cmd/internal/build_libbox` 的上游文件（`httpdebug.patch`、
-`http_rewrite.patch` 只改 option/route，见 [libbox.md](../libbox.md)）。
+`http_rewrite.patch` 只改 option/route，见 [libbox.md](../../libbox.md)）。
 
 - **启动与停止**：`core_singbox_host.go` 的 `coreSingBoxLifecycle` 调用
   `fkhost.StartSingBox`（`core/fkhost/singbox.go`）自己创建、启动、关闭
@@ -138,4 +138,4 @@ Android 上 sing-box 不运行在 libbox 的 `daemon.StartedService` 里；fk-bo
   （`fkhost.ProtocolServer`）不变。Windows 上 Xray/mihomo 的会话式 TUN 适配仍未做
   （sing-box 自己打开 wintun）。
 
-需要实机验证的范围见 [libbox.md](../libbox.md#sing-box-作为普通内核)。
+需要实机验证的范围见 [libbox.md](../../libbox.md#sing-box-作为普通内核)。

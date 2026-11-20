@@ -6,11 +6,11 @@
 
 Overlays (new directories in the sing-box tree, under its go.mod):
 
-- core/fkhost/  -> experimental/fkhost  fk-box's host services (no libbox import)
-- core/fkbox/   -> experimental/fkbox   the gomobile entry package (Java
+- legacy/core/fkhost/  -> experimental/fkhost  fk-box's host services (no libbox import)
+- legacy/core/fkbox/   -> experimental/fkbox   the gomobile entry package (Java
   io.nekohasekai.fkbox.Fkbox), bound into libbox.aar next to libbox
-- core/fkcore/  -> cmd/fk-core          the desktop core process
-- core/fkbind/  -> cmd/fk-bind          the Android build: binds ./experimental/libbox
+- legacy/core/fkcore/  -> cmd/fk-core          the desktop core process
+- legacy/core/fkbind/  -> cmd/fk-bind          the Android build: binds ./experimental/libbox
   and ./experimental/fkbox into one libbox.aar (one .so), without the legacy
   AAR of sing-box's cmd/internal/build_libbox
 
@@ -30,10 +30,10 @@ from patchcheck import check_absent, report  # noqa: E402
 
 LABEL = "patch_entry"
 OVERLAYS = [
-    ("core/fkhost", "experimental/fkhost"),
-    ("core/fkbox", "experimental/fkbox"),
-    ("core/fkcore", "cmd/fk-core"),
-    ("core/fkbind", "cmd/fk-bind"),
+    ("legacy/core/fkhost", "experimental/fkhost"),
+    ("legacy/core/fkbox", "experimental/fkbox"),
+    ("legacy/core/fkcore", "cmd/fk-core"),
+    ("legacy/core/fkbind", "cmd/fk-bind"),
 ]
 
 
