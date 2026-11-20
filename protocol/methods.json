@@ -1,6 +1,18 @@
 {
  "version": 1,
+ "minClient": 1,
  "methods": [
+  {
+   "name": "hello",
+   "owner": "go",
+   "target": "core",
+   "args": [
+    "protocolVersion",
+    "client",
+    "clientVersion"
+   ],
+   "section": "Handshake"
+  },
   {
    "name": "ready",
    "owner": "host",

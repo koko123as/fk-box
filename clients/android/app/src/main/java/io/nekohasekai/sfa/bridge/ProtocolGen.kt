@@ -3,12 +3,19 @@ package io.nekohasekai.sfa.bridge
 
 /** The UI protocol's methods by owner (protocol/methods.json). */
 internal object ProtocolGen {
+    /** The UI protocol version (protocol/methods.json "version"). */
+    const val VERSION: Int = 1
+
+    /** The oldest client protocol version the core accepts. */
+    const val MIN_CLIENT: Int = 1
+
     /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */
     val GO_METHODS: Set<String> = setOf(
         "checkConfig",
         "checkUpdates",
         "decodeProfileText",
         "formatConfig",
+        "hello",
     )
 
     /** Answered by BoxBridge (hostDispatch in SlintHost.kt). */

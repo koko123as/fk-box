@@ -23,6 +23,7 @@ mod native_ime;
 mod nav;
 mod pages;
 mod platform;
+mod protocol_gen;
 mod records;
 mod rows;
 mod theme;

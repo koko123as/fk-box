@@ -2,8 +2,15 @@
 
 package libbox
 
+// ProtocolVersion is the UI protocol version this core speaks (protocol/methods.json).
+const ProtocolVersion = 1
+
+// ProtocolMinClient is the oldest client protocol version this core accepts.
+const ProtocolMinClient = 1
+
 // uiProtocolMethods maps every protocol method to its owner.
 var uiProtocolMethods = map[string]string{
+	"hello": "go",
 	"ready": "host",
 	"startService": "host",
 	"stopService": "host",

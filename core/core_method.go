@@ -22,6 +22,7 @@ var uiMethods = map[string]uiMethodHandler{
 	"checkUpdates":      uiCheckUpdates,
 	"decodeProfileText": uiDecodeProfileText,
 	"formatConfig":      uiFormatConfig,
+	"hello":             uiHello,
 }
 
 // UIEventSink receives events Go raises for the UI: kind is the event name in

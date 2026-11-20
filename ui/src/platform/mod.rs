@@ -8,6 +8,7 @@
 //! - `log_info`, `log_error`: the platform's log.
 //! - `purge_renderer`: drop the renderer's GPU caches on the next frame.
 //! - `trim_heap`: give the native heap's free pages back to the system.
+//! - `CLIENT`: the client name the hello handshake sends.
 //! - `NATIVE_UI`: menus, dialogs and text editing use the platform's widgets.
 //!
 //! Android is the only client today (`android/`). Off Android the crate builds
@@ -16,9 +17,9 @@
 #[cfg(target_os = "android")]
 mod android;
 #[cfg(target_os = "android")]
-pub use android::{invoke, NATIVE_UI, log_error, log_info, purge_renderer, trim_heap};
+pub use android::{invoke, CLIENT, NATIVE_UI, log_error, log_info, purge_renderer, trim_heap};
 
 #[cfg(not(target_os = "android"))]
 mod desktop;
 #[cfg(not(target_os = "android"))]
-pub use desktop::{invoke, NATIVE_UI, log_error, log_info, purge_renderer, trim_heap};
+pub use desktop::{invoke, CLIENT, NATIVE_UI, log_error, log_info, purge_renderer, trim_heap};

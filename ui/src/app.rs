@@ -670,6 +670,39 @@ pub fn apply_insets(value: &Value) {
 fn initialize() {
     with_window(|w| w.global::<Nav>().set_startup_error(SharedString::new()));
     call("attach", json!({}), |_| {});
+    hello(load_ready);
+}
+
+/// The protocol handshake: the core checks this UI's protocol version once
+/// before anything else is loaded. On a mismatch the start-up error replaces
+/// the splash and nothing else is called; on a match nothing visible changes.
+fn hello(then: fn()) {
+    let args = json!({
+        "protocolVersion": crate::protocol_gen::PROTOCOL_VERSION,
+        "client": crate::platform::CLIENT,
+        "clientVersion": env!("CARGO_PKG_VERSION"),
+    });
+    call("hello", args, move |result| {
+        let error = match result {
+            Ok(reply) if reply["ok"] == true && reply["protocolVersion"] == crate::protocol_gen::PROTOCOL_VERSION => None,
+            Ok(reply) => Some(format!(
+                "protocol version mismatch: core={} client={}",
+                reply["protocolVersion"],
+                crate::protocol_gen::PROTOCOL_VERSION
+            )),
+            Err(error) => Some(error),
+        };
+        match error {
+            None => then(),
+            Some(error) => {
+                crate::platform::log_error(&format!("hello failed: {error}"));
+                with_window(|w| w.global::<Nav>().set_startup_error(format::clean_error(&error).into()));
+            }
+        }
+    });
+}
+
+fn load_ready() {
     call("ready", json!({}), |result| match result {
         Ok(result) => {
             data_mut(|d| {

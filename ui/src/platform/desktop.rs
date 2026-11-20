@@ -4,6 +4,9 @@
 /// No platform widgets: menus, dialogs and text editing are drawn in Slint.
 pub const NATIVE_UI: bool = false;
 
+/// The client name the hello handshake sends. Off Android: host unit tests and the screenshot harness.
+pub const CLIENT: &str = "desktop";
+
 /// Without a host, calls fail and the window shows the error.
 #[cfg(not(feature = "shot"))]
 pub fn invoke(_id: i64, _method: &str, _args: &str) -> Result<(), String> {
