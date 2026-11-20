@@ -17,7 +17,6 @@ import io.nekohasekai.sfa.backend.tools.TaildropFileData
 import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
 import io.nekohasekai.sfa.backend.tools.TaildropInboxState
 import io.nekohasekai.sfa.backend.tools.TailscalePingState
-import io.nekohasekai.sfa.backend.tools.NetworkQualityState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
 import io.nekohasekai.sfa.backend.usbip.UsbipServerData
@@ -167,20 +166,6 @@ internal fun TailscalePingState.toWire(): Map<String, Any?> = mapOf(
     "derpRegionCode" to derpRegionCode,
     "endpoint" to endpoint,
     "error" to error,
-)
-
-internal fun NetworkQualityState.toWire(): Map<String, Any?> = mapOf(
-    "phase" to phase,
-    "idleLatencyMs" to idleLatencyMs,
-    "downloadCapacity" to downloadCapacity,
-    "uploadCapacity" to uploadCapacity,
-    "downloadRPM" to downloadRPM,
-    "uploadRPM" to uploadRPM,
-    "isRunning" to isRunning,
-    "configURL" to configURL,
-    "serial" to serial,
-    "http3" to http3,
-    "showMeteredWarning" to showMeteredWarning,
 )
 
 internal fun UsbSharedInterfaceData.toWire(): Map<String, Any?> = mapOf(
