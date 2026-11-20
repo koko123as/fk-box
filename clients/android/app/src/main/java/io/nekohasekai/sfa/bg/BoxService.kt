@@ -41,6 +41,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -81,6 +82,19 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
         private val _routingStatus = MutableStateFlow<RoutingStatus?>(null)
         internal val routingStatus = _routingStatus.asStateFlow()
+
+        private val _reloadGeneration = MutableStateFlow(0L)
+
+        /**
+         * Bumped after every successful reload: the UI subscriptions (groups,
+         * mode, status, connections) connect again so they follow the core
+         * that runs now, and the dashboard reads the new start time.
+         */
+        internal val reloadGeneration = _reloadGeneration.asStateFlow()
+
+        /** The core the local service runs (Libbox.CoreSingBox/CoreXray/CoreMihomo), null while none does. */
+        @Volatile internal var runningCore: String? = null
+            private set
 
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
@@ -255,6 +269,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 if (fellBack.isSuccess) {
                     Log.w(TAG, "reload failed, kept the previous configuration", e)
                     lastReloadFellBack = true
+                    // The previous profile was started again: a new core instance
+                    // and start time, so the UI subscribes again as after a reload.
+                    _reloadGeneration.update { it + 1 }
                     throw e
                 }
                 fellBack.exceptionOrNull()?.let(e::addSuppressed)
@@ -267,6 +284,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
         dashboardServer = commandServer
         _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
+        _reloadGeneration.update { it + 1 }
         if (commandServer.needWIFIState()) {
             val wifiPermission =
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
@@ -339,7 +357,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
         // The rules never keep the profile from running: libbox starts it
         // without them and reports why (CoreRoutingResult.error).
+        // The running core is stopped before the next one starts: until this
+        // start returns, none runs (a failed start leaves none).
+        runningCore = null
         val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+        runningCore = core
         publishRoutingStatus(core, result, unreadable)
         rules
     }
@@ -440,6 +462,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private fun closeService() {
+        runningCore = null
         if (dashboardConfig.value?.server === commandServer) _dashboardConfig.value = null
         if (dashboardServer === commandServer) dashboardServer = null
         runCatching {
