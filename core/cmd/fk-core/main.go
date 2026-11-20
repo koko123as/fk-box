@@ -5,7 +5,13 @@
 // Xray and mihomo executables as child processes and reads sing-box through
 // its official control socket.
 //
-//	fk-core [-dir DIR] [-socket PATH] [-version]
+//	fk-core [-dir DIR] [-socket PATH] [-libdir DIR] [-files DIR] [-working DIR]
+//	        [-temp DIR] [-singbox-version VERSION] [-version]
+//
+// Besides hello and version it answers every function package fk registers
+// (fk.Register: the profile store, profile checks and conversion, routing,
+// geo data, WebDAV, the UI protocol methods, ...); fk reaches the app back
+// through reverse calls and events on the active connection (fk.Host).
 //
 // With -socket, fk-core exits when its standard input ends, so it never
 // outlives the app process that started it (Java's ProcessBuilder keeps the
@@ -24,9 +30,13 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"sync/atomic"
 	"syscall"
+	"time"
 
+	"github.com/koko123as/fk-box/core/fk"
 	"github.com/koko123as/fk-box/core/protocol"
+	"github.com/koko123as/fk-box/core/rpc"
 )
 
 // ProtocolVersion is the version of the fk-core protocol this build speaks;
@@ -39,9 +49,61 @@ const (
 // Version is set at build time (-ldflags "-X main.Version=...").
 var Version = "dev"
 
+// SingBoxVersion is the version of the official libbox the app ships (the
+// sing-box subscription User-Agent); -singbox-version overrides it.
+var SingBoxVersion = ""
+
+// hostCallTimeout bounds one reverse call to the app.
+const hostCallTimeout = 60 * time.Second
+
+// registry holds every function of package fk the client calls by name.
+var registry = rpc.New()
+
+// activeServer is the connection fk reaches the app through.
+var activeServer atomic.Pointer[protocol.Server]
+
+// serverHost is fk.Host over the active connection.
+type serverHost struct{}
+
+func (serverHost) Call(method string, args ...any) (json.RawMessage, error) {
+	server := activeServer.Load()
+	if server == nil {
+		return nil, protocol.ErrClosed
+	}
+	if args == nil {
+		args = []any{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), hostCallTimeout)
+	defer cancel()
+	return server.Call(ctx, method, args)
+}
+
+func (serverHost) Emit(kind string, payload string) {
+	if server := activeServer.Load(); server != nil {
+		server.Emit(kind, payload)
+	}
+}
+
+// serve answers one client on conn until it ends; its objects are released
+// when it is gone.
+func serve(ctx context.Context, conn io.Reader, out io.Writer) error {
+	server := protocol.NewServer(handle, out)
+	activeServer.Store(server)
+	defer func() {
+		activeServer.CompareAndSwap(server, nil)
+		registry.ReleaseAll()
+	}()
+	return server.Serve(ctx, conn)
+}
+
 func main() {
 	directory := flag.String("dir", ".", "working directory")
 	socket := flag.String("socket", "", "serve a Unix socket at this path instead of stdio")
+	libDir := flag.String("libdir", "", "directory of the kernel executables (the app's nativeLibraryDir)")
+	filesDir := flag.String("files", "", "the app's files directory")
+	workingDir := flag.String("working", "", "the app's working directory (geo data, rule lists)")
+	tempDir := flag.String("temp", "", "directory for temporary files")
+	singBoxVersion := flag.String("singbox-version", SingBoxVersion, "version of the app's official libbox")
 	version := flag.Bool("version", false, "print the version and exit")
 	flag.Parse()
 	if *version {
@@ -52,6 +114,10 @@ func main() {
 		fmt.Fprintln(os.Stderr, "fk-core:", err)
 		os.Exit(1)
 	}
+	fk.SetPaths(*libDir, *filesDir, *workingDir, *tempDir)
+	fk.SetVersion(Version, *singBoxVersion)
+	fk.Register(registry)
+	fk.SetHost(serverHost{})
 	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer cancel()
 	var err error
@@ -63,7 +129,7 @@ func main() {
 		}()
 		err = serveSocket(ctx, *socket)
 	} else {
-		err = protocol.NewServer(handle, os.Stdout).Serve(ctx, os.Stdin)
+		err = serve(ctx, os.Stdin, os.Stdout)
 	}
 	if err != nil && !errors.Is(err, context.Canceled) {
 		fmt.Fprintln(os.Stderr, "fk-core:", err)
@@ -114,7 +180,7 @@ func serveSocket(ctx context.Context, path string) error {
 			<-connCtx.Done()
 			conn.Close()
 		}()
-		if err = protocol.NewServer(handle, conn).Serve(connCtx, conn); err != nil && connCtx.Err() == nil {
+		if err = serve(connCtx, conn, conn); err != nil && connCtx.Err() == nil {
 			fmt.Fprintln(os.Stderr, "fk-core: client:", err)
 		}
 		connCancel()
@@ -150,6 +216,13 @@ func handle(ctx context.Context, request protocol.Request) (json.RawMessage, err
 		return json.Marshal(helloReply{ProtocolVersion: ProtocolVersion, CoreVersion: Version, OK: true})
 	case "version":
 		return json.Marshal(map[string]string{"fkCore": Version, "go": runtime.Version()})
+	}
+	if registry.Has(request.Method) {
+		args := request.Args
+		if len(args) == 0 {
+			args = json.RawMessage("[]")
+		}
+		return registry.Call(request.Method, args)
 	}
 	return nil, fmt.Errorf("%s: unknown method", request.Method)
 }

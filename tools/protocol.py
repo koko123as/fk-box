@@ -30,6 +30,7 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "protocol" / "methods.json"
 GO_OUT = ROOT / "legacy" / "core" / "core_protocol_gen.go"
+GO_FK_OUT = ROOT / "core" / "fk" / "core_protocol_gen.go"
 RS_OUT = ROOT / "ui" / "src" / "protocol_gen.rs"
 KT_OUT = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProtocolGen.kt"
 KT_DISPATCH = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/SlintHost.kt"
@@ -157,8 +158,39 @@ def render_rs(spec):
     ])
 
 
+def gofmt_map_values(text):
+    """Align the values of consecutive "key": value lines the way gofmt does."""
+    lines = text.split("\n")
+    out, block = [], []
+    pattern = re.compile(r'^(\t+)("[^"]*"):\s*(.*)$')
+
+    def flush():
+        if block:
+            width = max(len(m.group(2)) for m in block)
+            for m in block:
+                out.append(f"{m.group(1)}{m.group(2)}:{' ' * (width - len(m.group(2)) + 1)}{m.group(3)}")
+            block.clear()
+
+    for line in lines:
+        m = pattern.match(line)
+        if m:
+            if block and block[0].group(1) != m.group(1):
+                flush()
+            block.append(m)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return "\n".join(out)
+
+
+def render_go_fk(spec):
+    """The same table for fk-core's package fk (core/fk), gofmt-clean."""
+    return gofmt_map_values(render_go(spec).replace("package libbox", "package fk", 1))
+
+
 def outputs(spec):
-    return {GO_OUT: render_go(spec), RS_OUT: render_rs(spec), KT_OUT: render_kt(spec)}
+    return {GO_OUT: render_go(spec), GO_FK_OUT: render_go_fk(spec), RS_OUT: render_rs(spec), KT_OUT: render_kt(spec)}
 
 
 VERSION_PATTERNS = {
