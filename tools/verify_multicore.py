@@ -53,7 +53,9 @@ for path in sorted((ROOT / "clients/android/app/src").rglob("*.kt")):
     if "io.nekohasekai.libbox.CommandServer" in text:
         for match in LIBBOX_SERVICE_CALLS.finditer(text):
             stale.append((path, text.count("\n", 0, match.start()) + 1, f"CommandServer.{match.group(1)}"))
-    if main_sources in path.parents:
+    # FkCoreHost answers fk-core's sing-box checks with the official parser,
+    # after fk-core removed the retired fields (docs/kernel-isolation.md).
+    if main_sources in path.parents and path.name != "FkCoreHost.kt":
         for match in LIBBOX_PARSE_CALLS.finditer(text):
             stale.append((path, text.count("\n", 0, match.start()) + 1, f"Libbox.{match.group(1)}"))
 for path, line, call in stale:

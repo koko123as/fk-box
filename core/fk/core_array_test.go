@@ -142,8 +142,10 @@ func TestCoreConfigArraySplit(t *testing.T) {
 		if entries.Remarks(i) != wantRemarks[i] || entries.Core(i) != wantCore[i] {
 			t.Fatalf("entry %d: %q %s", i, entries.Remarks(i), entries.Core(i))
 		}
-		if err := CheckCoreConfig(entries.Core(i), entries.Content(i)); err != nil {
-			t.Fatalf("entry %d: %v", i, err)
+		if entries.Core(i) != CoreXray || kernelsAvailable() {
+			if err := CheckCoreConfig(entries.Core(i), entries.Content(i)); err != nil {
+				t.Fatalf("entry %d: %v", i, err)
+			}
 		}
 		if DetectCoreConfig(entries.Content(i)) != wantCore[i] {
 			t.Fatalf("entry %d content re-detects differently", i)

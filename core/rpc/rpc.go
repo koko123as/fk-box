@@ -212,6 +212,12 @@ func (r *Registry) invoke(name string, function reflect.Value, raw []json.RawMes
 		}
 		fallthrough
 	case 1:
+		if function.Type().Out(0) == errorType {
+			if !out[0].IsNil() {
+				return nil, out[0].Interface().(error)
+			}
+			break
+		}
 		value = r.wrap(out[0])
 	}
 	encoded, err := json.Marshal(value)
