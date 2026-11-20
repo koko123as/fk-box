@@ -3,10 +3,36 @@ name: Core and source validation
 on:
   push:
     branches: [main]
-    paths-ignore: ['**/*.md']
+    paths:
+      # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
+      - 'core/**'
+      - 'protocol/**'
+      - 'ui/**'
+      - 'tools/**'
+      - 'version.properties'
+      - 'flclash-manifest.json'
+      - 'licenses/**'
+      - '.github/actions/**'
+      - 'clients/**'
+      - '.github/workflows/newui.yml'
+      # docs-only changes never build
+      - '!**/*.md'
   pull_request:
     branches: [main]
-    paths-ignore: ['**/*.md']
+    paths:
+      # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
+      - 'core/**'
+      - 'protocol/**'
+      - 'ui/**'
+      - 'tools/**'
+      - 'version.properties'
+      - 'flclash-manifest.json'
+      - 'licenses/**'
+      - '.github/actions/**'
+      - 'clients/**'
+      - '.github/workflows/newui.yml'
+      # docs-only changes never build
+      - '!**/*.md'
   workflow_dispatch:
   workflow_call:
 
@@ -50,3 +76,5 @@ jobs:
         run: python3 tools/verify_newui.py
       - name: UI protocol (protocol/methods.json against Go, Kotlin and Rust)
         run: python3 tools/protocol.py check
+      - name: Client isolation (no clients/<a> -> clients/<b> references)
+        run: python3 tools/check_isolation.py
