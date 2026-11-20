@@ -17,7 +17,6 @@ import io.nekohasekai.sfa.backend.tools.TaildropFileData
 import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
 import io.nekohasekai.sfa.backend.tools.TaildropInboxState
 import io.nekohasekai.sfa.backend.tools.TailscalePingState
-import io.nekohasekai.sfa.backend.tools.STUNTestState
 import io.nekohasekai.sfa.backend.tools.NetworkQualityState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
@@ -168,15 +167,6 @@ internal fun TailscalePingState.toWire(): Map<String, Any?> = mapOf(
     "derpRegionCode" to derpRegionCode,
     "endpoint" to endpoint,
     "error" to error,
-)
-
-internal fun STUNTestState.toWire(): Map<String, Any?> = mapOf(
-    "phase" to phase,
-    "externalAddr" to externalAddr,
-    "latencyMs" to latencyMs,
-    "natTypeSupported" to natTypeSupported,
-    "isRunning" to isRunning,
-    "server" to server,
 )
 
 internal fun NetworkQualityState.toWire(): Map<String, Any?> = mapOf(
