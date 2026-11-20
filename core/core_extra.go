@@ -216,15 +216,15 @@ func (s *coreStartedService) StartNetworkQualityTest(request *daemon.NetworkQual
 		return s.StartedService.StartNetworkQualityTest(request, server)
 	}
 	nqDialer := &coreDialer{running: running, tag: request.OutboundTag}
-	httpClient := networkquality.NewHTTPClient(nqDialer)
-	defer httpClient.CloseIdleConnections()
+	nqClient := networkquality.NewHTTPClient(nqDialer)
+	defer nqClient.CloseIdleConnections()
 	factory, err := networkquality.NewOptionalHTTP3Factory(nqDialer, request.Http3)
 	if err != nil {
 		return err
 	}
 	result, nqErr := networkquality.Run(networkquality.Options{
 		ConfigURL:            request.ConfigURL,
-		HTTPClient:           httpClient,
+		HTTPClient:           nqClient,
 		NewMeasurementClient: factory,
 		Serial:               request.Serial,
 		MaxRuntime:           time.Duration(request.MaxRuntimeSeconds) * time.Second,

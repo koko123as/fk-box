@@ -37,7 +37,7 @@ func (v androidVPN) Protect(fd int32) error {
 	return nil
 }
 
-func (v androidVPN) FindConnectionOwner(protocol int32, sourceAddress string, sourcePort int32, destinationAddress string, destinationPort int32) (*fkhost.ConnectionOwner, bool, error) {
+func (v androidVPN) LookupConnectionOwner(protocol int32, sourceAddress string, sourcePort int32, destinationAddress string, destinationPort int32) (*fkhost.ConnectionOwner, bool, error) {
 	platform := v.server.platformInterface
 	if platform == nil {
 		return nil, false, nil

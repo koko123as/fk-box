@@ -19,9 +19,9 @@ type AndroidVPN interface {
 	OpenTun(options *tun.Options, routeRanges []netip.Prefix) (int32, error)
 	// Protect is VpnService.protect.
 	Protect(fd int32) error
-	// FindConnectionOwner is ConnectivityManager.getConnectionOwnerUid and
+	// LookupConnectionOwner is ConnectivityManager.getConnectionOwnerUid and
 	// the package manager. ok is false when the app gives no owners.
-	FindConnectionOwner(protocol int32, sourceAddress string, sourcePort int32, destinationAddress string, destinationPort int32) (owner *ConnectionOwner, ok bool, err error)
+	LookupConnectionOwner(protocol int32, sourceAddress string, sourcePort int32, destinationAddress string, destinationPort int32) (owner *ConnectionOwner, ok bool, err error)
 }
 
 // NewPlatform is Android's platform: the VpnService's TUN, protect and
@@ -57,5 +57,5 @@ func (p androidPlatform) Protect(conn syscall.RawConn) error {
 }
 
 func (p androidPlatform) ConnectionOwner(protocol int32, source, destination netip.AddrPort) (*ConnectionOwner, bool, error) {
-	return p.vpn.FindConnectionOwner(protocol, source.Addr().String(), int32(source.Port()), destination.Addr().String(), int32(destination.Port()))
+	return p.vpn.LookupConnectionOwner(protocol, source.Addr().String(), int32(source.Port()), destination.Addr().String(), int32(destination.Port()))
 }
