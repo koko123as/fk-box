@@ -4,19 +4,17 @@ package libbox
 
 // The standalone host: fk-box runs the kernels itself, without libbox's
 // CommandServer (the desktop core, cmd/fk-core). Here sing-box is an
-// ordinary kernel: fk-box starts its box.Box directly (it opens its own TUN
-// from the profile's tun inbound, as sing-box does on desktop systems), and
-// Xray and mihomo run on the TUN of fkhost's platform for this operating
-// system. Android keeps running sing-box inside libbox's CommandServer
-// (core/README.md says why); this file is not built there.
+// ordinary kernel: fk-box starts it with fkhost.StartSingBox (it opens its
+// own TUN from the profile's tun inbound, as sing-box does on desktop
+// systems), and Xray and mihomo run on the TUN of fkhost's platform for this
+// operating system. Android still runs sing-box inside libbox's
+// CommandServer; this file is not built there.
 
 import (
 	"sync"
 
-	box "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/experimental/fkhost"
 	"github.com/sagernet/sing-box/log"
-	E "github.com/sagernet/sing/common/exceptions"
 )
 
 var (
@@ -59,7 +57,7 @@ func (standaloneCommands) GroupsChanged() {}
 
 var (
 	standaloneAccess sync.Mutex
-	standaloneBox    *box.Box
+	standaloneBox    *fkhost.SingBox
 )
 
 type standaloneLifecycle struct{}
@@ -73,13 +71,9 @@ func (standaloneLifecycle) StartSingBox(content string, _ kernelOptions) error {
 	if err != nil {
 		return err
 	}
-	instance, err := box.New(box.Options{Context: ctx, Options: options, PlatformLogWriter: standaloneLogWriter{}})
+	instance, err := fkhost.StartSingBox(fkhost.SingBoxOptions{Context: ctx, Options: options, LogWriter: standaloneLogWriter{}})
 	if err != nil {
-		return E.Cause(err, "create sing-box")
-	}
-	if err = instance.Start(); err != nil {
-		_ = instance.Close()
-		return E.Cause(err, "start sing-box")
+		return err
 	}
 	standaloneBox = instance
 	fkhost.Log.Write(fkhost.LevelInfo, "sing-box started")
