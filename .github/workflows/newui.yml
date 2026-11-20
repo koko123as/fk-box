@@ -59,7 +59,10 @@ jobs:
         run: go build -ldflags=-checklinkname=0 ./experimental/fkbox
       - name: fk-box host services (experimental/fkhost) tests
         working-directory: .core
-        run: go test ./experimental/fkhost -count=1
+        run: |
+          go test ./experimental/fkhost -count=1
+          # Platform files by build tag: every system's fkhost compiles.
+          for os in windows darwin; do GOOS=$os GOARCH=amd64 CGO_ENABLED=0 go vet ./experimental/fkhost; done
       - name: Android ingress-discard map compatibility tests
         working-directory: .core
         run: go test -ldflags=-checklinkname=0 github.com/sagernet/sing-tun -run '^TestAndroidIngressDiscard' -count=1
