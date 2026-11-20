@@ -52,8 +52,7 @@ jobs:
         with:
           platform: android/arm64
 
-      # The official kernels and fk-core (docs/kernel-isolation.md); the APK
-      # packages them only with -PofficialLibbox=true.
+      # The official kernels and fk-core (docs/kernel-isolation.md).
       - uses: ./.github/actions/build-kernels
 
       - name: Set up Java for Gradle

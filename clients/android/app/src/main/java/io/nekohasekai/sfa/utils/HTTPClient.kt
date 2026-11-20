@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.utils
 
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.SubscriptionFetch
 import io.nekohasekai.sfa.database.SubscriptionHeaders
@@ -20,8 +21,8 @@ class HTTPClient : Closeable {
         }
 
         fun userAgentFor(core: String): String = when (if (core == "auto" || core.isEmpty()) Settings.autoFetchCore() else core) {
-            "xray" -> Libbox.coreSubscriptionUserAgent("xray", "")
-            "mihomo" -> Libbox.coreSubscriptionUserAgent("mihomo", "")
+            "xray" -> FkLib.coreSubscriptionUserAgent("xray", "")
+            "mihomo" -> FkLib.coreSubscriptionUserAgent("mihomo", "")
             else -> userAgent
         }
     }
@@ -33,7 +34,7 @@ class HTTPClient : Closeable {
      */
     fun getSubscription(url: String, core: String = "sing-box"): SubscriptionFetch {
         // gomobile lowercases the initial uppercase run in UISubscriptionGet.
-        val response = Libbox.uiSubscriptionGet(url, userAgentFor(core))
+        val response = FkLib.uiSubscriptionGet(url, userAgentFor(core))
         return SubscriptionFetch(
             content = response.content,
             info = if (response.hasInfo) SubscriptionInfo(response.upload, response.download, response.total, response.expire) else null,

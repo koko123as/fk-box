@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.database
 
 import android.util.Log
+import io.nekohasekai.sfa.fkcore.FkLib
 import androidx.room.Room
 import androidx.room.withTransaction
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.constant.Path
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -79,46 +79,46 @@ object ProfileManager {
 
         private suspend fun tx(): Long = currentCoroutineContext()[Transaction]?.token ?: 0L
 
-        override suspend fun nextOrder(table: String): Long = Libbox.uiProfileStoreNextOrder(tx(), table)
+        override suspend fun nextOrder(table: String): Long = FkLib.uiProfileStoreNextOrder(tx(), table)
 
         override suspend fun getProfile(id: Long): Profile? =
-            ProfileStoreCodec.parse(Libbox.uiProfileStoreGet(tx(), PROFILES, id)).takeUnless { it is JsonNull }?.let(ProfileStoreCodec::decodeProfile)
+            ProfileStoreCodec.parse(FkLib.uiProfileStoreGet(tx(), PROFILES, id)).takeUnless { it is JsonNull }?.let(ProfileStoreCodec::decodeProfile)
 
-        override suspend fun listProfiles(): List<Profile> = ProfileStoreCodec.decodeProfiles(Libbox.uiProfileStoreList(tx(), PROFILES))
+        override suspend fun listProfiles(): List<Profile> = ProfileStoreCodec.decodeProfiles(FkLib.uiProfileStoreList(tx(), PROFILES))
 
-        override suspend fun insert(profile: Profile): Long = Libbox.uiProfileStoreInsert(tx(), PROFILES, ProfileStoreCodec.encode(profile).toString())
+        override suspend fun insert(profile: Profile): Long = FkLib.uiProfileStoreInsert(tx(), PROFILES, ProfileStoreCodec.encode(profile).toString())
 
         override suspend fun updateProfiles(profiles: List<Profile>): Int =
-            Libbox.uiProfileStoreUpdate(tx(), PROFILES, ProfileStoreCodec.encodeProfiles(profiles)).toInt()
+            FkLib.uiProfileStoreUpdate(tx(), PROFILES, ProfileStoreCodec.encodeProfiles(profiles)).toInt()
 
         override suspend fun deleteProfiles(profiles: List<Profile>): Int =
-            Libbox.uiProfileStoreDelete(tx(), PROFILES, ProfileStoreCodec.encodeIds(profiles.map { it.id })).toInt()
+            FkLib.uiProfileStoreDelete(tx(), PROFILES, ProfileStoreCodec.encodeIds(profiles.map { it.id })).toInt()
 
         override suspend fun getServer(id: Long): RemoteServer? =
-            ProfileStoreCodec.parse(Libbox.uiProfileStoreGet(tx(), SERVERS, id)).takeUnless { it is JsonNull }?.let(ProfileStoreCodec::decodeServer)
+            ProfileStoreCodec.parse(FkLib.uiProfileStoreGet(tx(), SERVERS, id)).takeUnless { it is JsonNull }?.let(ProfileStoreCodec::decodeServer)
 
-        override suspend fun listServers(): List<RemoteServer> = ProfileStoreCodec.decodeServers(Libbox.uiProfileStoreList(tx(), SERVERS))
+        override suspend fun listServers(): List<RemoteServer> = ProfileStoreCodec.decodeServers(FkLib.uiProfileStoreList(tx(), SERVERS))
 
-        override suspend fun insert(server: RemoteServer): Long = Libbox.uiProfileStoreInsert(tx(), SERVERS, ProfileStoreCodec.encode(server).toString())
+        override suspend fun insert(server: RemoteServer): Long = FkLib.uiProfileStoreInsert(tx(), SERVERS, ProfileStoreCodec.encode(server).toString())
 
         override suspend fun updateServers(servers: List<RemoteServer>): Int =
-            Libbox.uiProfileStoreUpdate(tx(), SERVERS, ProfileStoreCodec.encodeServers(servers)).toInt()
+            FkLib.uiProfileStoreUpdate(tx(), SERVERS, ProfileStoreCodec.encodeServers(servers)).toInt()
 
         override suspend fun deleteServers(servers: List<RemoteServer>): Int =
-            Libbox.uiProfileStoreDelete(tx(), SERVERS, ProfileStoreCodec.encodeIds(servers.map { it.id })).toInt()
+            FkLib.uiProfileStoreDelete(tx(), SERVERS, ProfileStoreCodec.encodeIds(servers.map { it.id })).toInt()
 
         override suspend fun <T> transaction(block: suspend () -> T): T {
             // Nested calls join the open transaction, as Room's do.
             if (currentCoroutineContext()[Transaction] != null) return block()
-            val token = Libbox.uiProfileStoreBegin()
+            val token = FkLib.uiProfileStoreBegin()
             var ended = false
             try {
                 val result = withContext(Transaction(token)) { block() }
                 ended = true
-                withContext(NonCancellable) { Libbox.uiProfileStoreCommit(token) }
+                withContext(NonCancellable) { FkLib.uiProfileStoreCommit(token) }
                 return result
             } finally {
-                if (!ended) withContext(NonCancellable) { runCatching { Libbox.uiProfileStoreRollback(token) } }
+                if (!ended) withContext(NonCancellable) { runCatching { FkLib.uiProfileStoreRollback(token) } }
             }
         }
     }
@@ -170,7 +170,7 @@ object ProfileManager {
         val roomFile = Application.application.getDatabasePath(Path.PROFILES_DATABASE_PATH)
         roomFile.parentFile?.mkdirs()
         val storeFile = Application.application.getDatabasePath(Path.PROFILES_STORE_PATH)
-        if (Libbox.uiProfileStoreOpen(storeFile.path)) return@lazy GoStore
+        if (FkLib.uiProfileStoreOpen(storeFile.path)) return@lazy GoStore
         // A fresh install has no Room database; do not create one just to read nothing.
         val room = if (roomFile.exists()) openRoom() else null
         try {
@@ -192,10 +192,10 @@ object ProfileManager {
             while (cursor.moveToNext()) sequences[cursor.getString(0)] = cursor.getLong(1)
         }
         val dataset = ProfileStoreCodec.importDataset(sequences[PROFILES] ?: 0L, sequences[SERVERS] ?: 0L, profiles, servers)
-        val readBack = Libbox.uiProfileStoreStageImport(storeFile.path, dataset)
+        val readBack = FkLib.uiProfileStoreStageImport(storeFile.path, dataset)
         ProfileStoreCodec.importMismatch(readBack, profiles, servers)?.let { error("Profile import check failed: $it") }
         val digest = ProfileStoreCodec.parse(readBack).jsonObject["sha256"]!!.jsonPrimitive.content
-        Libbox.uiProfileStoreCommitImport(storeFile.path, digest)
+        FkLib.uiProfileStoreCommitImport(storeFile.path, digest)
         Log.i(TAG, "Imported ${profiles.size} profiles and ${servers.size} remote servers from Room")
     }
 

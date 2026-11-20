@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import android.content.SharedPreferences
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.utils.SecretBox
 import org.json.JSONObject
 import java.net.URI
@@ -34,7 +34,7 @@ internal class BoxWebDAV(activity: BoxActivity) {
     // account and the addresses, resolved with java.net.URI, stay here.
     fun check(): Boolean {
         val props = snapshot() ?: error("Configure a WebDAV account first")
-        Libbox.uiWebDAVCheck(url(props, ""), props["user"] as String, props["password"] as String)
+        FkLib.uiWebDAVCheck(url(props, ""), props["user"] as String, props["password"] as String)
         return true
     }
 
@@ -42,13 +42,13 @@ internal class BoxWebDAV(activity: BoxActivity) {
         val props = snapshot() ?: error("Configure a WebDAV account first")
         require(content.size <= BoxBackups.MAX_BYTES) { "Backup exceeds 64 MiB" }
         val directory = url(props, "B-box/")
-        Libbox.uiWebDAVUpload(directory, url(props, "B-box/" + props.getValue("fileName")),
+        FkLib.uiWebDAVUpload(directory, url(props, "B-box/" + props.getValue("fileName")),
             props["user"] as String, props["password"] as String, content)
     }
 
     fun download(): ByteArray {
         val props = snapshot() ?: error("Configure a WebDAV account first")
-        return Libbox.uiWebDAVDownload(url(props, "B-box/" + props.getValue("fileName")),
+        return FkLib.uiWebDAVDownload(url(props, "B-box/" + props.getValue("fileName")),
             props["user"] as String, props["password"] as String) ?: ByteArray(0)
     }
 

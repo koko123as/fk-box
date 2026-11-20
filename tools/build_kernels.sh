@@ -85,7 +85,7 @@ for abi in "${abis[@]}"; do
     -o "$jni/libfkcore.so" -trimpath -buildvcs=false \
     -ldflags "-X main.Version=$app_version -s -w -buildid=" ./cmd/fk-core)
   (cd "$root/core/tools/xrayshare" && CC="$cc" CGO_ENABLED=1 GOOS=android GOARCH="$abi" go build \
-    -o "$jni/libxrayshare.so" -trimpath -buildvcs=false -ldflags "-s -w -buildid=" .)
+    -o "$jni/libxrayshare.so" -trimpath -buildvcs=false -ldflags "-s -w -buildid= -checklinkname=0" .)
 done
 unmodified "$src/xray"
 unmodified "$src/mihomo"

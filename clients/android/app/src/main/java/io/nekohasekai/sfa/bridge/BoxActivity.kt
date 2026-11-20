@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import android.Manifest
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.annotation.SuppressLint
 import android.content.Intent
 import android.net.Uri
@@ -598,7 +599,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         val running = BoxService.runningCore ?: return@withContext false
         runCatching {
             val profile = ProfileManager.get(Settings.selectedProfile) ?: return@runCatching false
-            Libbox.resolveProfileCore(profile.typed.core, java.io.File(profile.typed.path).readText()) != running
+            FkLib.resolveProfileCore(profile.typed.core, java.io.File(profile.typed.path).readText()) != running
         }.getOrDefault(false)
     }
 

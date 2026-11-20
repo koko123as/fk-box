@@ -195,10 +195,8 @@ android {
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs").get().asFile)
     // The official kernels and fk-core as executables (lib*.so, run from
     // nativeLibraryDir), built by .github/actions/build-kernels
-    // (docs/kernel-isolation.md); packaged with -PofficialLibbox=true.
-    if (officialLibbox) {
-        sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("kernelJniLibs").get().asFile)
-    }
+    // (docs/kernel-isolation.md). fk-core is required from P2 on.
+    sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("kernelJniLibs").get().asFile)
 
     lint {
         fatal += "NewApi"

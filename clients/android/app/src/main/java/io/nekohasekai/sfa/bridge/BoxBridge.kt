@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import android.content.Intent
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.net.Uri
 import android.os.PowerManager
 import androidx.lifecycle.ViewModelProvider
@@ -164,6 +165,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         // Events libbox raises for the UI (protocol/methods.json) take the same path.
         uiEventOwner.set(this)
         Libbox.setUIEventSink { kind, payload -> emit(kind, GoWire(payload)) }
+        FkCoreClient.setEventListener { kind, payload -> emit(kind, GoWire(payload)) }
         streamJob?.cancel()
         streamJob = scope.launch {
             try {
@@ -202,9 +204,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                         // UI event sink while shown and in the foreground.
                         launch {
                             try {
-                                logsVisible.collect { visible -> withContext(Dispatchers.Default) { Libbox.uiLogStreamSetVisible(visible) } }
+                                logsVisible.collect { visible -> withContext(Dispatchers.Default) { FkLib.uiLogStreamSetVisible(visible) } }
                             } finally {
-                                withContext(NonCancellable + Dispatchers.Default) { Libbox.uiLogStreamSetVisible(false) }
+                                withContext(NonCancellable + Dispatchers.Default) { FkLib.uiLogStreamSetVisible(false) }
                             }
                         }
                         launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
@@ -305,7 +307,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         val (settingsValue, preferencesValue) = stored.await()
         mapOf(
             "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
-            "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
+            "xrayVersion" to FkLib.xrayVersion(), "mihomoVersion" to FkLib.mihomoVersion(),
             "systemAccentColor" to systemAccentColor(),
             "dashboard" to dashboard.uiState.value.toWire(),
             "profiles" to profileList.await(),
@@ -545,7 +547,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             val profile = ProfileManager.get(id) ?: error("Profile no longer exists")
             val content = java.io.File(profile.typed.path).readText()
             val core = ProfileContent.coreOf(profile, content)
-            val result = Libbox.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
+            val result = FkLib.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
             mapOf(
                 "profile" to profile.name, "core" to core, "content" to result.content,
                 "applied" to result.applied, "active" to result.active,
@@ -567,7 +569,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             val profile = ProfileManager.get(id) ?: return@withContext emptyList()
             val content = java.io.File(profile.typed.path).readText()
             if (ProfileContent.coreOf(profile, content) != core) return@withContext emptyList()
-            Libbox.coreRoutingTargets(core, content).lines().filter { it.isNotBlank() }
+            FkLib.coreRoutingTargets(core, content).lines().filter { it.isNotBlank() }
         }
     }
 
@@ -920,7 +922,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         // Only the bridge that installed the sink removes it: a recreated
         // activity's bridge may already have installed its own.
-        if (uiEventOwner.compareAndSet(this, null)) Libbox.setUIEventSink(null)
+        if (uiEventOwner.compareAndSet(this, null)) {
+            Libbox.setUIEventSink(null)
+            FkCoreClient.setEventListener(null)
+        }
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
             dashboard.setTrafficVisible(false)
