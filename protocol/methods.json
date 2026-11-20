@@ -1398,7 +1398,7 @@
   },
   {
    "name": "logs",
-   "owner": "host"
+   "owner": "go"
   },
   {
    "name": "memory",

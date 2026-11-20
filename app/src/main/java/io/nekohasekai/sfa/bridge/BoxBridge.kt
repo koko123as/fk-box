@@ -34,6 +34,7 @@ import io.nekohasekai.sfa.vendor.PerAppProxyScanner
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -191,18 +192,14 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                             if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
                             if (sent) delay(UI_UPDATE_INTERVAL_MILLIS)
                         } }
+                        // libbox's log stream sends "logs" (snapshot on show,
+                        // then increments at most once a second) through the
+                        // UI event sink while shown and in the foreground.
                         launch {
-                            val stream = LogStream()
-                            logsVisible.collectLatest { visible ->
-                                stream.reset()
-                                if (!visible) return@collectLatest
-                                logs.uiState.collect { state ->
-                                    val update = withContext(Dispatchers.Default) { stream.update(state) }
-                                    if (update != null) {
-                                        emit("logs", update)
-                                        delay(UI_UPDATE_INTERVAL_MILLIS)
-                                    }
-                                }
+                            try {
+                                logsVisible.collect { visible -> withContext(Dispatchers.Default) { Libbox.uiLogStreamSetVisible(visible) } }
+                            } finally {
+                                withContext(NonCancellable + Dispatchers.Default) { Libbox.uiLogStreamSetVisible(false) }
                             }
                         }
                         launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
@@ -936,7 +933,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     }
 }
 
-/** The streamed connection list and logs reach the UI at most this often. */
+/** The streamed connection list reaches the UI at most this often (logs: core_log_stream.go). */
 private const val UI_UPDATE_INTERVAL_MILLIS = 1000L
 
 internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
