@@ -1,9 +1,9 @@
 package libbox
 
 // sing-box as a kernel. This adapter hands the profile to the host's
-// lifecycle: on Android that is libbox's own service (daemon.StartedService,
-// whose gRPC streams the app reads), in the standalone host (desktop,
-// core_standalone.go) fk-box starts box.Box itself. Either way sing-box opens
+// lifecycle, which starts box.Box itself through fkhost.StartSingBox: the
+// CommandServer host on Android (core_singbox_host.go) and the standalone
+// host on the desktop (core_standalone.go). Either way sing-box opens
 // its own TUN from the profile's tun inbound and resets its own connections
 // when the default interface changes.
 

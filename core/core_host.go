@@ -3,13 +3,13 @@ package libbox
 // fk-box's host interfaces: the services a kernel adapter (core_kernel_*.go)
 // gets from the program that hosts it. Kernels see only these interfaces and
 // fk-box's own types; they never read libbox globals or libbox types (the
-// PlatformInterface, the CommandServer, OverrideOptions, the HTTP client).
+// PlatformInterface, the CommandServer, CoreServiceOptions, the HTTP client).
 //
-// The services are fk-box's own (experimental/fkhost): log, HTTP, platform,
-// working directory. On Android libbox still provides what only it can give
-// (the app's PlatformInterface object, the StartedService log the app reads,
-// sing-box's start and stop, the command service); core/README.md has the
-// status of moving the rest out of libbox.
+// The services are fk-box's own: log, HTTP, platform and working directory
+// (experimental/fkhost), sing-box's start and stop (fkhost.SingBox,
+// core_singbox_host.go) and the command service (core_command_server.go).
+// On Android libbox still provides the app's PlatformInterface object, which
+// the platform adapts (core_host_android.go).
 
 import (
 	"net/http"
@@ -19,7 +19,6 @@ import (
 	"time"
 
 	"github.com/sagernet/sing-box/experimental/fkhost"
-	"github.com/sagernet/sing-box/log"
 )
 
 // kernelHost bundles the host services one kernel start uses.
@@ -34,7 +33,7 @@ type kernelHost struct {
 // kernelOptions carries the host's own start options through a kernel to the
 // host services that read them: the TUN's per-app lists (Platform.OpenTun)
 // and sing-box's start (Lifecycle.StartSingBox). Kernels do not look inside.
-// With libbox it holds the *OverrideOptions the app passed; its package
+// On Android it holds the *CoreServiceOptions the app passed; its package
 // iterators can be read only once, so only the service that uses them does.
 type kernelOptions struct {
 	host any
@@ -70,7 +69,7 @@ type hostPlatform interface {
 }
 
 // hostCommandService is the control channel the UI reads the core through
-// (libbox: the CommandServer's StartedService gRPC service).
+// (Android: fk-box's command service, core_command_server.go).
 type hostCommandService interface {
 	// CoreChanged moves every open UI stream to the core that runs now.
 	CoreChanged()
@@ -80,10 +79,9 @@ type hostCommandService interface {
 
 // hostLifecycle is the service lifecycle around the kernels.
 type hostLifecycle interface {
-	// StartSingBox starts or reloads sing-box inside the host's own service
-	// (libbox: CommandServer.StartOrReloadService).
+	// StartSingBox starts or reloads sing-box (fkhost.SingBox).
 	StartSingBox(content string, options kernelOptions) error
-	// StopSingBox stops it (libbox: CommandServer.CloseService).
+	// StopSingBox stops it.
 	StopSingBox() error
 	// WorkingDirectory is the app's working directory; kernels keep their
 	// files below it.
@@ -122,10 +120,10 @@ type hostLog interface {
 func (s *CommandServer) kernelHost() kernelHost {
 	return kernelHost{
 		Platform:  fkhostPlatform{s.hostPlatform()},
-		Commands:  libboxCommandService{},
-		Lifecycle: libboxLifecycle{s},
+		Commands:  coreCommandService{},
+		Lifecycle: coreSingBoxLifecycle{s},
 		HTTP:      fkhostHTTP{},
-		Log:       s.hostLog(),
+		Log:       fkhostLog{},
 	}
 }
 
@@ -136,9 +134,9 @@ type fkhostPlatform struct{ platform fkhost.Platform }
 
 func (p fkhostPlatform) OpenTun(request hostTunRequest, options kernelOptions) (int, error) {
 	tunRequest := fkhost.TunRequest{Inet4: request.Inet4, Inet6: request.Inet6, MTU: request.MTU}
-	if override, _ := options.host.(*OverrideOptions); override != nil {
-		tunRequest.IncludePackage = iteratorToArray(override.IncludePackage)
-		tunRequest.ExcludePackage = iteratorToArray(override.ExcludePackage)
+	if serviceOptions, _ := options.host.(*CoreServiceOptions); serviceOptions != nil {
+		tunRequest.IncludePackage = iteratorToArray(serviceOptions.IncludePackage)
+		tunRequest.ExcludePackage = iteratorToArray(serviceOptions.ExcludePackage)
 	}
 	return p.platform.OpenTun(tunRequest)
 }
@@ -165,28 +163,14 @@ func (fkhostPlatform) WatchDefaultNetwork(onChange func()) func() {
 // Fkbox.defaultNetworkChanged; this name stays for older callers.
 func CoreDefaultNetworkChanged() { fkhost.DefaultNetworkChanged() }
 
-type libboxCommandService struct{}
+type coreCommandService struct{}
 
-func (libboxCommandService) CoreChanged()   { notifyCoreChange() }
-func (libboxCommandService) GroupsChanged() { notifyGroupsChange() }
+func (coreCommandService) CoreChanged()   { notifyCoreChange() }
+func (coreCommandService) GroupsChanged() { notifyGroupsChange() }
 
-// Lifecycle: on Android sing-box still starts and stops inside this
-// CommandServer (daemon.StartedService); core/README.md says why (step 3).
-// Xray and mihomo are started and stopped by fk-box itself (core_service.go),
-// and the standalone host starts sing-box itself (core_standalone.go).
-type libboxLifecycle struct{ server *CommandServer }
-
-func (l libboxLifecycle) StartSingBox(content string, options kernelOptions) error {
-	override, _ := options.host.(*OverrideOptions)
-	return l.server.StartOrReloadService(content, override)
-}
-
-func (l libboxLifecycle) StopSingBox() error { return l.server.CloseService() }
-
-// WorkingDirectory is fkhost's when the host set one (the desktop core),
-// otherwise libbox's Setup path (Android: the app's files directory).
-func (libboxLifecycle) WorkingDirectory() string { return coreWorkingPath() }
-
+// coreWorkingPath is fkhost's working directory when the host set one (the
+// desktop core), otherwise libbox's Setup path (Android: the app's files
+// directory).
 func coreWorkingPath() string {
 	if directory := fkhost.WorkingDirectory(); directory != "" {
 		return directory
@@ -201,39 +185,15 @@ func (fkhostHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
 	return fkhost.NewHTTPClientTimeout(timeout)
 }
 
-// Log: fk-box's own log (fkhost.Log). sing-box still runs inside this
-// CommandServer and the app's log page reads its StartedService log, so every
-// fk-box line is forwarded there too; diagnostics go to sing-box's logger
-// (logcat), as before.
+// Log: fk-box's own log (fkhost.Log). The command service forwards its lines
+// to the service log the app reads (core_service_log.go); diagnostics go to
+// sing-box's logger (logcat).
 
 type fkhostLog struct{}
 
 func (fkhostLog) Write(level hostLogLevel, message string) { fkhost.Log.Write(level, message) }
 
 func (fkhostLog) Diagnostic(message string) { fkhost.Log.Diagnostic(message) }
-
-// hostLog connects fkhost.Log to this server's service log and returns it.
-func (s *CommandServer) hostLog() hostLog {
-	if server := s.StartedService; server != nil {
-		fkhost.Log.SetForward(func(entry fkhost.Entry) {
-			server.WriteMessage(libboxLogLevel(entry.Level), entry.Message)
-		})
-	}
-	fkhost.Log.SetDiagnostic(func(message string) { log.Warn(message) })
-	return fkhostLog{}
-}
-
-func libboxLogLevel(level hostLogLevel) log.Level {
-	switch level {
-	case hostLogError:
-		return log.LevelError
-	case hostLogWarn:
-		return log.LevelWarn
-	case hostLogDebug:
-		return log.LevelDebug
-	}
-	return log.LevelInfo
-}
 
 // ---- the host the running kernel uses ----
 

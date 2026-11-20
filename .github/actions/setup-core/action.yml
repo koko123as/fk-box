@@ -74,7 +74,6 @@ runs:
         git -C .core apply ../core/libbox-no-legacy.patch
         python3 tools/patch_sing_tun.py .core
         python3 tools/patch_httpdebug.py .core
-        python3 tools/patch_multicore.py .core
         python3 tools/patch_dns_count.py .core
         cp core/ui_*.go .core/experimental/libbox/
         # fk-box's own packages (core/fkhost, core/fkbox, core/fkcore) and the

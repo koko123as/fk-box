@@ -70,7 +70,8 @@ var (
 )
 
 // StartOrReloadCoreService starts the profile on its core, stopping whichever
-// core ran before. sing-box goes through StartOrReloadService unchanged.
+// core ran before. sing-box is started by the host's lifecycle
+// (fkhost.StartSingBox).
 //
 // Starting and stopping are serialized by coreLifecycle, which is held for
 // the whole switch; coreAccess only guards activeCore and is never held while
@@ -86,7 +87,7 @@ var (
 // to the new core when it returns, whether it started or failed, so the
 // groups, status, mode and connection subscriptions follow a reload instead
 // of ending on the stopped core.
-func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *OverrideOptions) error {
+func (s *CommandServer) StartOrReloadCoreService(core string, configContent string, options *CoreServiceOptions) error {
 	return startOrReloadCore(s.kernelHost, core, configContent, kernelOptions{host: options})
 }
 

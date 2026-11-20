@@ -18,9 +18,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
 import io.nekohasekai.libbox.CommandServer
 import io.nekohasekai.libbox.CommandServerHandler
+import io.nekohasekai.libbox.CoreServiceOptions
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.Notification
-import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.sfa.Application
@@ -137,7 +137,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         Libbox.promoteOOMDraft()
         Libbox.discardPowerReportDraft()
         val commandServer = CommandServer(this, platformInterface)
-        commandServer.start()
+        // fk-box's command service (sing-box runs as an ordinary kernel).
+        commandServer.startCoreCommandServer()
         this.commandServer = commandServer
         dashboardServer = commandServer
     }
@@ -194,7 +195,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             dashboardServer = commandServer
             _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
-            if (commandServer.needWIFIState()) {
+            if (commandServer.needWIFIStateCore()) {
                 val wifiPermission =
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                         android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -285,7 +286,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         dashboardServer = commandServer
         _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
         _reloadGeneration.update { it + 1 }
-        if (commandServer.needWIFIState()) {
+        if (commandServer.needWIFIStateCore()) {
             val wifiPermission =
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -332,7 +333,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private fun startCoreLocked(core: String, content: String, rules: String, unreadable: String?): String = synchronized(MitmCertificate.accessLock) {
-        val overrides = OverrideOptions().apply {
+        val overrides = CoreServiceOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
                 val appList = Settings.getEffectivePerAppProxyList()
@@ -443,7 +444,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             DefaultNetworkMonitor.stop()
             if (::commandServer.isInitialized) {
                 closeService()
-                runCatching { commandServer.close() }
+                runCatching { commandServer.closeCoreCommandServer() }
             }
             Libbox.discardPowerReportDraft()
             PowerReportManager.refresh()
@@ -468,7 +469,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         runCatching {
             commandServer.closeCoreService()
         }.onFailure {
-            commandServer.setError("android: close service: ${it.message}")
+            commandServer.setCoreError("android: close service: ${it.message}")
         }
     }
 
@@ -486,7 +487,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             closeService()
             // A failing close must not skip the alert and stopSelf below, which
             // would leave the service in Starting with its notification up.
-            runCatching { commandServer.close() }.onFailure { Log.w(TAG, "close command server", it) }
+            runCatching { commandServer.closeCoreCommandServer() }.onFailure { Log.w(TAG, "close command server", it) }
         }
         withContext(Dispatchers.Main) {
             if (stopRequested) return@withContext

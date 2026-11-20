@@ -11,6 +11,7 @@ import (
 	"github.com/sagernet/sing-box/common/networkquality"
 	"github.com/sagernet/sing-box/common/stun"
 	"github.com/sagernet/sing-box/daemon"
+	"github.com/sagernet/sing-box/experimental/locale"
 	M "github.com/sagernet/sing/common/metadata"
 
 	mihomoYAML "github.com/metacubex/mihomo/common/yaml"
@@ -86,25 +87,25 @@ func idleWhileOtherCore[T any](server grpc.ServerStreamingServer[T], singBox fun
 
 func (s *coreStartedService) SubscribeTailscaleStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.TailscaleStatusUpdate]) error {
 	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.TailscaleStatusUpdate]) error {
-		return s.StartedService.SubscribeTailscaleStatus(empty, stream)
+		return s.singBox().SubscribeTailscaleStatus(empty, stream)
 	})
 }
 
 func (s *coreStartedService) SubscribeOpenConnectStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.OpenConnectStatusUpdate]) error {
 	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.OpenConnectStatusUpdate]) error {
-		return s.StartedService.SubscribeOpenConnectStatus(empty, stream)
+		return s.singBox().SubscribeOpenConnectStatus(empty, stream)
 	})
 }
 
 func (s *coreStartedService) SubscribeOpenVPNStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.OpenVPNStatusUpdate]) error {
 	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.OpenVPNStatusUpdate]) error {
-		return s.StartedService.SubscribeOpenVPNStatus(empty, stream)
+		return s.singBox().SubscribeOpenVPNStatus(empty, stream)
 	})
 }
 
 func (s *coreStartedService) SubscribeTaildropInbox(request *daemon.SubscribeTaildropInboxRequest, server grpc.ServerStreamingServer[daemon.TaildropInbox]) error {
 	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.TaildropInbox]) error {
-		return s.StartedService.SubscribeTaildropInbox(request, stream)
+		return s.singBox().SubscribeTaildropInbox(request, stream)
 	})
 }
 
@@ -160,7 +161,7 @@ func coreGroupExpanded(tag string) bool {
 
 func (s *coreStartedService) SetGroupExpand(ctx context.Context, request *daemon.SetGroupExpandRequest) (*emptypb.Empty, error) {
 	if otherCore() == nil {
-		return s.StartedService.SetGroupExpand(ctx, request)
+		return s.singBox().SetGroupExpand(ctx, request)
 	}
 	coreGroupExpandAccess.Lock()
 	coreGroupCollapsed[request.GroupTag] = !request.IsExpand
@@ -172,16 +173,35 @@ func (s *coreStartedService) SetGroupExpand(ctx context.Context, request *daemon
 func (s *coreStartedService) GetDefaultLogLevel(ctx context.Context, empty *emptypb.Empty) (*daemon.DefaultLogLevel, error) {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.GetDefaultLogLevel(ctx, empty)
+		return s.singBox().GetDefaultLogLevel(ctx, empty)
 	}
 	return &daemon.DefaultLogLevel{Level: running.logLevel}, nil
 }
 
+// GetDeprecatedWarnings returns the deprecation notes the running sing-box
+// reported while it started (fkhost.SingBox collects them; the attached
+// service only reads daemon's own collector).
 func (s *coreStartedService) GetDeprecatedWarnings(ctx context.Context, empty *emptypb.Empty) (*daemon.DeprecatedWarnings, error) {
-	if otherCore() == nil {
-		return s.StartedService.GetDeprecatedWarnings(ctx, empty)
+	if otherCore() != nil {
+		return &daemon.DeprecatedWarnings{}, nil
 	}
-	return &daemon.DeprecatedWarnings{}, nil
+	running := runningSingBox()
+	if running == nil {
+		return s.singBox().GetDeprecatedWarnings(ctx, empty)
+	}
+	selectedLocale := locale.FromContext(ctx)
+	var warnings []*daemon.DeprecatedWarning
+	for _, note := range running.DeprecatedNotes() {
+		warnings = append(warnings, &daemon.DeprecatedWarning{
+			Message:           note.MessageForLocale(selectedLocale),
+			Impending:         note.Impending(),
+			MigrationLink:     note.MigrationLink,
+			Description:       note.Description,
+			DeprecatedVersion: note.DeprecatedVersion,
+			ScheduledVersion:  note.ScheduledVersion,
+		})
+	}
+	return &daemon.DeprecatedWarnings{Warnings: warnings}, nil
 }
 
 // ---- network quality / STUN through Xray or mihomo ----
@@ -213,7 +233,7 @@ func (d *coreDialer) ListenPacket(ctx context.Context, destination M.Socksaddr) 
 func (s *coreStartedService) StartNetworkQualityTest(request *daemon.NetworkQualityTestRequest, server grpc.ServerStreamingServer[daemon.NetworkQualityTestProgress]) error {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.StartNetworkQualityTest(request, server)
+		return s.singBox().StartNetworkQualityTest(request, server)
 	}
 	nqDialer := &coreDialer{running: running, tag: request.OutboundTag}
 	nqClient := networkquality.NewHTTPClient(nqDialer)
@@ -242,7 +262,7 @@ func (s *coreStartedService) StartNetworkQualityTest(request *daemon.NetworkQual
 func (s *coreStartedService) StartSTUNTest(request *daemon.STUNTestRequest, server grpc.ServerStreamingServer[daemon.STUNTestProgress]) error {
 	running := otherCore()
 	if running == nil {
-		return s.StartedService.StartSTUNTest(request, server)
+		return s.singBox().StartSTUNTest(request, server)
 	}
 	result, stunErr := stun.Run(stun.Options{
 		Server:  request.Server,
@@ -278,7 +298,7 @@ func mihomoCloseListeners() {
 
 func (s *coreStartedService) SubscribeUSBIPServerStatus(empty *emptypb.Empty, server grpc.ServerStreamingServer[daemon.USBIPServerStatusUpdate]) error {
 	return idleWhileOtherCore(server, func(stream grpc.ServerStreamingServer[daemon.USBIPServerStatusUpdate]) error {
-		return s.StartedService.SubscribeUSBIPServerStatus(empty, stream)
+		return s.singBox().SubscribeUSBIPServerStatus(empty, stream)
 	})
 }
 
@@ -293,5 +313,5 @@ func (s *coreStartedService) ProvideUSBDevices(server grpc.BidiStreamingServer[d
 			return server.Context().Err()
 		}
 	}
-	return s.StartedService.ProvideUSBDevices(server)
+	return s.singBox().ProvideUSBDevices(server)
 }

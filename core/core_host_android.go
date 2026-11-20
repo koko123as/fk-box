@@ -4,7 +4,7 @@ package libbox
 
 // Android's fkhost platform calls the app's platform implementation: the
 // PlatformInterface object the app gives this CommandServer (VPNService.kt),
-// the same one sing-box uses while it still runs inside libbox.
+// the same one sing-box reads through the CommandServer's context.
 
 import (
 	"net/netip"

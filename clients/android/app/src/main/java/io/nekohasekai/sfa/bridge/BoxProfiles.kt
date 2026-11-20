@@ -51,7 +51,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
                     mapOf("groups" to stats.optInt("groups"), "outbounds" to stats.optInt("outbounds"), "rules" to stats.optInt("rules"))
                 } }.getOrNull())
         }
-        val formatted = Libbox.formatConfig(content).value
+        val formatted = Libbox.formatCoreConfig(TypedProfile.CORE_SING_BOX, content).value
         val root = JSONObject(formatted)
         val outbounds = root.optJSONArray("outbounds")
         var groupCount = 0

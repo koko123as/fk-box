@@ -7,8 +7,8 @@ package libbox
 // ordinary kernel: fk-box starts it with fkhost.StartSingBox (it opens its
 // own TUN from the profile's tun inbound, as sing-box does on desktop
 // systems), and Xray and mihomo run on the TUN of fkhost's platform for this
-// operating system. Android still runs sing-box inside libbox's
-// CommandServer; this file is not built there.
+// operating system. Android uses the CommandServer host instead
+// (core_singbox_host.go); this file is not built there.
 
 import (
 	"sync"
@@ -67,7 +67,7 @@ func (standaloneLifecycle) StartSingBox(content string, _ kernelOptions) error {
 	defer standaloneAccess.Unlock()
 	_ = closeStandaloneBoxLocked()
 	ctx := baseContext(nil)
-	options, err := parseConfig(ctx, content)
+	options, err := parseCoreConfig(ctx, content)
 	if err != nil {
 		return err
 	}

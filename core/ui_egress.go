@@ -71,11 +71,11 @@ func (s *CommandServer) NewUIEgressProbe() (*UIEgressProbe, error) {
 				return dialThroughCore(ctx, running, network, address)
 			}), nil
 	}
-	instance := s.Instance()
+	instance := runningSingBox()
 	if instance == nil {
 		return nil, fmt.Errorf("service is not running")
 	}
-	return newUIEgressProbe(func() bool { return s.Instance() == instance },
+	return newUIEgressProbe(func() bool { return runningSingBox() == instance },
 		func(ctx context.Context, conn net.Conn, address string, onClose func(error)) {
 			instance.Box().Router().RouteConnectionEx(ctx, conn, adapter.InboundContext{
 				Inbound: "b-box-dashboard", Network: "tcp", Source: M.ParseSocksaddr("127.0.0.1:0"), Destination: M.ParseSocksaddr(address),

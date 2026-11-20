@@ -8,7 +8,7 @@ import (
 )
 
 func NeedsUIHTTPRewriteCA(configContent string) (bool, error) {
-	options, err := parseConfig(baseContext(nil), configContent)
+	options, err := parseCoreConfig(baseContext(nil), configContent)
 	if err != nil {
 		return false, err
 	}
@@ -16,8 +16,8 @@ func NeedsUIHTTPRewriteCA(configContent string) (bool, error) {
 		options.Experimental.HTTPRewrite.Enabled && options.Experimental.HTTPRewrite.MITM.Enabled, nil
 }
 
-func (s *CommandServer) prepareUIHTTPRewrite(configContent string, overrides *OverrideOptions) (*httpdebug.PreparedRewrite, error) {
-	options, err := parseConfig(s.ctx, configContent)
+func (s *CommandServer) prepareUIHTTPRewrite(configContent string, overrides *CoreServiceOptions) (*httpdebug.PreparedRewrite, error) {
+	options, err := parseCoreConfig(s.ctx, configContent)
 	if err != nil {
 		return nil, err
 	}

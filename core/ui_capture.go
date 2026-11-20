@@ -21,7 +21,7 @@ func OpenUICapture(directory string) error { return httpdebug.Open(directory) }
 func (s *CommandServer) StartUICapture(directory, configJSON, certificate string, signer UICaptureSigner) error {
 	uiCaptureLifecycle.Lock()
 	defer uiCaptureLifecycle.Unlock()
-	if s.Instance() == nil {
+	if runningSingBox() == nil {
 		return os.ErrClosed
 	}
 	if signer == nil {

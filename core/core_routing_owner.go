@@ -90,7 +90,7 @@ func mihomoPackageName(metadata *mihomoConstant.Metadata) (string, error) {
 // (routingStartErrorFromRules); any other start error, and an error of the
 // profile itself, is returned as an error. The app shows Error and Warnings on
 // the routing page and as a notice.
-func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *OverrideOptions) (*CoreRoutingResult, error) {
+func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configContent string, rules string, options *CoreServiceOptions) (*CoreRoutingResult, error) {
 	// One switch for the start and its fallback start without the rules, so
 	// the UI streams wait for the second instead of ending after the first.
 	beginCoreSwitch()
@@ -105,7 +105,7 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 			return nil, err
 		}
 		failed := &CoreRoutingResult{Content: configContent, Error: routingErr.Error()}
-		s.hostLog().Write(hostLogError, "分流规则未应用："+failed.Error)
+		fkhostLog{}.Write(hostLogError, "分流规则未应用："+failed.Error)
 		return failed, nil
 	}
 	if !result.Active {
@@ -134,11 +134,11 @@ func (s *CommandServer) StartOrReloadCoreServiceWithRouting(core string, configC
 			reason = label + " did not start with the rules: " + reason
 		}
 		fallback := &CoreRoutingResult{Content: configContent, Warnings: result.Warnings, Error: reason, Fallback: true}
-		s.hostLog().Write(hostLogError, "分流规则未应用，已按原配置启动："+reason)
+		fkhostLog{}.Write(hostLogError, "分流规则未应用，已按原配置启动："+reason)
 		s.writeRoutingWarnings(fallback)
 		return fallback, nil
 	}
-	s.hostLog().Write(hostLogInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
+	fkhostLog{}.Write(hostLogInfo, fmt.Sprintf("已应用 %s 分流规则 %d 条", label, result.Applied))
 	s.writeRoutingWarnings(result)
 	return result, nil
 }
@@ -167,7 +167,7 @@ func routingStartErrorFromRules(message string) bool {
 func (s *CommandServer) writeRoutingWarnings(result *CoreRoutingResult) {
 	for _, warning := range strings.Split(result.Warnings, "\n") {
 		if warning != "" {
-			s.hostLog().Write(hostLogWarn, "分流规则："+warning)
+			fkhostLog{}.Write(hostLogWarn, "分流规则："+warning)
 		}
 	}
 }

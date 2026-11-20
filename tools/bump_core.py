@@ -40,12 +40,17 @@ KERNELS = {
     "mihomo": ("MetaCubeX/mihomo", "github.com/metacubex/mihomo"),
     "libxray": ("XTLS/libXray", "github.com/xtls/libxray"),
 }
-# sing-box files fk-box edits by text (tools/patch_*.py) or depends on as a whole.
+# sing-box files fk-box edits by text (tools/patch_*.py) or depends on as a
+# whole: libbox (fk-box's files are built into it), the StartedService gRPC
+# service fk-box implements (core_command_server.go) and the attached service
+# it forwards sing-box calls to.
 SING_BOX_WATCHED = [
     "experimental/libbox/",
     "daemon/started_service.go",
     "daemon/started_service.proto",
     "daemon/started_service_grpc.pb.go",
+    "daemon/attached_service.go",
+    "daemon/instance.go",
     "dns/router.go",
     "cmd/internal/build_libbox/main.go",
     "go.mod",

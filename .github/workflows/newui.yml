@@ -50,7 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-core
-      - name: Multi-core gRPC coverage (every StartedService method handled or reviewed)
+      - name: Command service coverage (every StartedService method implemented by fk-box)
         run: python3 tools/verify_multicore.py
       - name: sing-box touchpoints (every sing-box/libbox symbol core/ uses is listed in core_touch_singbox.go)
         run: python3 tools/verify_touchpoints.py --core .core

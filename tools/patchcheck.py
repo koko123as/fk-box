@@ -2,8 +2,8 @@
 """Dry-run fk-box's sing-box patches and say exactly which part no longer fits.
 
 Shared by the patch scripts' --check mode (patch_sing_tun.py,
-patch_httpdebug.py, patch_multicore.py, patch_dns_count.py) and usable on its
-own for the patches setup-core applies directly:
+patch_httpdebug.py, patch_dns_count.py, patch_entry.py) and usable on its own
+for the patches setup-core applies directly:
 
     python3 tools/patchcheck.py .core core/libbox-no-legacy.patch
 
