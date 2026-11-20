@@ -16,7 +16,6 @@ import io.nekohasekai.sfa.backend.tools.OpenVPNEndpointData
 import io.nekohasekai.sfa.backend.tools.TaildropFileData
 import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
 import io.nekohasekai.sfa.backend.tools.TaildropInboxState
-import io.nekohasekai.sfa.backend.tools.TailscalePingState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
 import io.nekohasekai.sfa.backend.usbip.UsbipServerData
@@ -157,15 +156,6 @@ internal fun TaildropReceivingFileData.toWire(): Map<String, Any?> = mapOf(
 internal fun TaildropInboxState.toWire(): Map<String, Any?> = mapOf(
     "files" to files.map { it.toWire() },
     "receiving" to receiving.map { it.toWire() },
-)
-
-internal fun TailscalePingState.toWire(): Map<String, Any?> = mapOf(
-    "isRunning" to isRunning,
-    "latencyMs" to latencyMs,
-    "isDirect" to isDirect,
-    "derpRegionCode" to derpRegionCode,
-    "endpoint" to endpoint,
-    "error" to error,
 )
 
 internal fun UsbSharedInterfaceData.toWire(): Map<String, Any?> = mapOf(
