@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.backend.log
 
 import androidx.lifecycle.viewModelScope
+import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.LogEntry
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.bg.BoxService
@@ -10,23 +11,26 @@ import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/**
+ * Keeps the core log subscription. The lines go to libbox's log stream
+ * (core_log_stream.go: ring, ANSI strip, the "logs" events); the bridge
+ * tells it when the Logs page is shown.
+ */
 class LogViewModel :
     BaseViewModel<LogUiState>(),
     CommandClient.Handler {
-    private val buffer = LogBuffer()
     override fun createInitialState() = LogUiState()
 
-    // Buffer work (ANSI strip, ring append, snapshot) runs off the main
-    // thread. One lane keeps clear/append in arrival order.
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val bufferLane = Dispatchers.Default.limitedParallelism(1)
+    init {
+        // A new view model starts from an empty buffer, as before.
+        Libbox.uiLogStreamClear()
+    }
 
     private val commandClient =
         CommandClient(
@@ -80,15 +84,11 @@ class LogViewModel :
     fun setVisible(visible: Boolean) { visibleFlow.value = visible }
 
     override fun setDefaultLogLevel(level: Int) {
+        Libbox.uiLogStreamSetDefaultLevel(level)
         updateState { copy(defaultLogLevel = LogLevel.from(level)) }
     }
 
-    override fun clearLogs() {
-        viewModelScope.launch(bufferLane) {
-            buffer.clear()
-            updateState { copy(logs = emptyList()) }
-        }
-    }
+    override fun clearLogs() = Libbox.uiLogStreamClear()
 
     fun requestClearLogs() {
         viewModelScope.launch {
@@ -106,12 +106,12 @@ class LogViewModel :
         }
     }
 
+    // One batch at a time: CommandClient delivers clear/append in order on its
+    // reader, and the stream's lock keeps a batch whole.
+    @Synchronized
     override fun appendLogs(message: List<LogEntry>) {
-        val entries = message.map { LogEntryData(LogLevel.from(it.level), it.message) }
-        viewModelScope.launch(bufferLane) {
-            buffer.append(entries)
-            updateState { copy(logs = buffer.snapshot()) }
-        }
+        for (entry in message) Libbox.uiLogStreamAppend(entry.level, entry.message)
+        Libbox.uiLogStreamCommit()
     }
 
     override fun onCleared() {
