@@ -3,7 +3,7 @@
 # fk-box's own executables for Android (docs/kernel-isolation.md, "构建"):
 #
 #   OUT/jni/<abi>/libxray.so       Xray-core  ./main   (release.yml flags)
-#   OUT/jni/<abi>/libmihomo.so     mihomo     .        (build.yml flags, with_gvisor)
+#   OUT/jni/<abi>/libmihomo.so     mihomo     .        (build.yml linux job, with_gvisor, static)
 #   OUT/jni/<abi>/libfkcore.so     fk-box     core/cmd/fk-core
 #   OUT/jni/<abi>/libxrayshare.so  fk-box     core/tools/xrayshare (official libXray)
 #   OUT/libbox-official.aar        sing-box   cmd/internal/build_libbox (arm64 only)
@@ -72,11 +72,15 @@ for abi in "${abis[@]}"; do
     -o "$jni/libxray.so" -trimpath -buildvcs=false -gcflags="all=-l=4" \
     -ldflags="-X github.com/xtls/xray-core/core.build=$(git describe --always --dirty) -s -w -buildid= -checklinkname=0 -extldflags=-Wl,--pack-dyn-relocs=android" \
     ./main)
-  # mihomo .github/workflows/build.yml: android build, verbatim tags and
-  # flags; android24 instead of upstream's android34 (the app's minSdk).
-  (cd "$src/mihomo" && CC="$cc" CGO_ENABLED=1 GOOS=android GOARCH="$abi" go build \
+  # mihomo .github/workflows/build.yml: the static linux-<arch> job, verbatim
+  # tags and flags (CGO_ENABLED=0, -extldflags --static). Its android build
+  # (android && !cmfa) reads /data/system/packages.xml before it opens any
+  # TUN, which an app cannot (P0, docs/kernel-isolation.md); the cmfa build
+  # expects the embedding app to call into it. The static linux binary runs
+  # on Android and takes the TUN as fd 3 without netlink.
+  (cd "$src/mihomo" && CGO_ENABLED=0 GOOS=linux GOARCH="$abi" GOAMD64=v1 go build \
     -o "$jni/libmihomo.so" -tags "with_gvisor" -trimpath \
-    -ldflags "-X 'github.com/metacubex/mihomo/constant.Version=v$mihomo_version' -X 'github.com/metacubex/mihomo/constant.BuildTime=fk-box' -w -s -buildid=")
+    -ldflags "-extldflags --static -X 'github.com/metacubex/mihomo/constant.Version=v$mihomo_version' -X 'github.com/metacubex/mihomo/constant.BuildTime=fk-box' -w -s -buildid=")
   (cd "$root/core" && CC="$cc" CGO_ENABLED=1 GOOS=android GOARCH="$abi" go build \
     -o "$jni/libfkcore.so" -trimpath -buildvcs=false \
     -ldflags "-X main.Version=$app_version -s -w -buildid=" ./cmd/fk-core)
