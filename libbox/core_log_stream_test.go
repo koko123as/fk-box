@@ -119,7 +119,7 @@ func TestUILogStreamRingBoundsOversizedBatchesAndIDsSurviveClear(t *testing.T) {
 	uiLogTestAppend(s, "old")
 	uiLogTestAppend(s, uiLogTestRange(1, 10)...)
 	u := s.update()
-	if fmt.Sprint(u.Entries[0].Message, u.Entries[1].Message, u.Entries[2].Message) != "8 9 10" || len(u.Entries) != 3 {
+	if len(u.Entries) != 3 || u.Entries[0].Message+","+u.Entries[1].Message+","+u.Entries[2].Message != "8,9,10" {
 		t.Fatalf("ring %+v", u.Entries)
 	}
 	// Only the kept lines of a batch are numbered (Kotlin takeLast).
