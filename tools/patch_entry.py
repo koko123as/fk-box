@@ -14,8 +14,9 @@ Overlays (new directories in the sing-box tree, under its go.mod):
 
 The Android build in cmd/internal/build_libbox/main.go is changed to bind
 ./experimental/fkbox together with ./experimental/libbox (one AAR, one .so).
-Run it after the core_*.go files are copied: fkbox and fk-core import libbox,
-which needs the pinned Xray and mihomo modules.
+setup-core runs it right after copying ui_*.go, before the first `go mod
+tidy` (ui_*.go import experimental/fkhost); fkbox and fk-core only import
+packages of the sing-box module, so the tidy resolves nothing new for them.
 """
 import argparse
 import shutil
