@@ -43,10 +43,13 @@ object FkCoreClient {
         fun onEvent(kind: String, payload: String)
     }
 
-    /** Answers one reverse call; returns a JSON-encodable value (JSONObject, JSONArray, String, Number, Boolean, null). */
+    /** Answers one reverse call; returns a JSON-encodable value (JSONObject, JSONArray, String, Number, Boolean, null) or a [WithDescriptor]. */
     fun interface ReverseHandler {
         fun handle(args: JSONArray): Any?
     }
+
+    /** A reverse call's result with a descriptor attached (closed once sent). */
+    class WithDescriptor(val result: Any?, val descriptor: android.os.ParcelFileDescriptor)
 
     private class Connection(val process: Process, val socket: LocalSocket, val output: OutputStream) {
         @Volatile var alive = true
@@ -233,13 +236,24 @@ object FkCoreClient {
         reverseExecutor.execute {
             val reply = JSONObject().put("reply", callId)
             val handler = handlers[method]
+            var descriptor: android.os.ParcelFileDescriptor? = null
             try {
                 if (handler == null) throw IllegalStateException("$method: not answered by the app")
-                reply.put("result", wrap(handler.handle(args)))
+                when (val result = handler.handle(args)) {
+                    is WithDescriptor -> {
+                        descriptor = result.descriptor
+                        reply.put("result", wrap(result.result)).put("fd", true)
+                    }
+                    else -> reply.put("result", wrap(result))
+                }
             } catch (e: Throwable) {
                 reply.put("error", e.message ?: e.toString())
             }
-            runCatching { write(current, reply.toString()) }
+            try {
+                runCatching { write(current, reply.toString(), descriptor?.fileDescriptor) }
+            } finally {
+                descriptor?.close()
+            }
         }
     }
 
