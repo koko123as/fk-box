@@ -18,6 +18,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/sagernet/sing-box/experimental/fkhost"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 	tun "github.com/sagernet/sing-tun"
@@ -98,13 +99,14 @@ type hostHTTP interface {
 	NewClient(timeout time.Duration) (*http.Client, func())
 }
 
-type hostLogLevel uint8
+// hostLogLevel is fk-box's log level (fkhost.Level).
+type hostLogLevel = fkhost.Level
 
 const (
-	hostLogError hostLogLevel = iota
-	hostLogWarn
-	hostLogInfo
-	hostLogDebug
+	hostLogError = fkhost.LevelError
+	hostLogWarn  = fkhost.LevelWarn
+	hostLogInfo  = fkhost.LevelInfo
+	hostLogDebug = fkhost.LevelDebug
 )
 
 // hostLog is where kernels log.
@@ -125,7 +127,7 @@ func (s *CommandServer) kernelHost() kernelHost {
 		Commands:  libboxCommandService{},
 		Lifecycle: libboxLifecycle{s},
 		HTTP:      libboxHTTP{},
-		Log:       libboxLog{s},
+		Log:       s.hostLog(),
 	}
 }
 
@@ -250,13 +252,27 @@ func (libboxHTTP) NewClient(timeout time.Duration) (*http.Client, func()) {
 	return &client.client, client.Close
 }
 
-type libboxLog struct{ server *CommandServer }
+// Log: fk-box's own log (fkhost.Log). sing-box still runs inside this
+// CommandServer and the app's log page reads its StartedService log, so every
+// fk-box line is forwarded there too; diagnostics go to sing-box's logger
+// (logcat), as before.
 
-func (l libboxLog) Write(level hostLogLevel, message string) {
-	l.server.StartedService.WriteMessage(libboxLogLevel(level), message)
+type fkhostLog struct{}
+
+func (fkhostLog) Write(level hostLogLevel, message string) { fkhost.Log.Write(level, message) }
+
+func (fkhostLog) Diagnostic(message string) { fkhost.Log.Diagnostic(message) }
+
+// hostLog connects fkhost.Log to this server's service log and returns it.
+func (s *CommandServer) hostLog() hostLog {
+	if server := s.StartedService; server != nil {
+		fkhost.Log.SetForward(func(entry fkhost.Entry) {
+			server.WriteMessage(libboxLogLevel(entry.Level), entry.Message)
+		})
+	}
+	fkhost.Log.SetDiagnostic(func(message string) { log.Warn(message) })
+	return fkhostLog{}
 }
-
-func (libboxLog) Diagnostic(message string) { log.Warn(message) }
 
 func libboxLogLevel(level hostLogLevel) log.Level {
 	switch level {
