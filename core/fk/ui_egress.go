@@ -59,10 +59,33 @@ type uiEgressRequestContextKey struct{}
 // NewUIDirectEgressProbe checks the device's current network without starting
 // sing-box. The Android host permits it only while the local service is stopped.
 func NewUIDirectEgressProbe() *UIEgressProbe {
-	return newUIEgressProbe(func() bool { return true }, nil, nil)
+	probe, transport := newUIEgressProbeTransport(func() bool { return true }, nil, nil)
+	transport.Proxy = nil
+	return probe
+}
+
+// NewUIServiceEgressProbe checks the egress of the kernel fk-core runs:
+// every request goes through its local inbound and the profile's rules.
+func NewUIServiceEgressProbe() (*UIEgressProbe, error) {
+	running := runningKernel()
+	if running == nil {
+		return nil, fmt.Errorf("no kernel is running")
+	}
+	proxy, err := url.Parse(ServiceLocalProxy())
+	if err != nil {
+		return nil, err
+	}
+	probe, transport := newUIEgressProbeTransport(func() bool { return runningKernel() == running }, nil, nil)
+	transport.Proxy = http.ProxyURL(proxy)
+	return probe, nil
 }
 
 func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn, string, func(error)), dial func(context.Context, string, string) (net.Conn, error)) *UIEgressProbe {
+	probe, _ := newUIEgressProbeTransport(current, route, dial)
+	return probe
+}
+
+func newUIEgressProbeTransport(current func() bool, route func(context.Context, net.Conn, string, func(error)), dial func(context.Context, string, string) (net.Conn, error)) (*UIEgressProbe, *http.Transport) {
 	ctx, cancel := context.WithCancel(context.Background())
 	wrapped := newHTTPClient()
 	probe := &UIEgressProbe{
@@ -99,7 +122,7 @@ func newUIEgressProbe(current func() bool, route func(context.Context, net.Conn,
 		go route(requestContext, routed, address, func(error) { stop(); routed.Close() })
 		return local, nil
 	}
-	return probe
+	return probe, &wrapped.Transport
 }
 
 func (p *UIEgressProbe) Close() {

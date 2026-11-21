@@ -97,11 +97,12 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
     fun setLanVisible(visible: Boolean) { lanVisible.value = visible }
 
     /**
-     * Where the next memory sample reads from. The cores run in this process:
-     * whatever the status says, the Go runtime's memory is the core's.
+     * Where the next memory sample reads from. sing-box runs in this process:
+     * whatever the status says, the Go runtime's memory is its. Xray and
+     * mihomo run as fk-core's child processes: their status reports it.
      */
     private fun pushMemorySource() {
-        Libbox.uiDashboardMemorySetSource(CommandTarget.isRemote, remoteMemory, activity.serviceStatus.value == Status.Started)
+        Libbox.uiDashboardMemorySetSource(CommandTarget.isRemote || BoxService.coreInFkCore, remoteMemory, activity.serviceStatus.value == Status.Started)
     }
 
     @Suppress("DEPRECATION")
@@ -245,7 +246,12 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         egressSessions[id] = active
         return try {
             withContext(Dispatchers.IO) {
-                val probe = if (server == null) EgressProbe.of(FkLib.newUIDirectEgressProbe()) else EgressProbe.of(server.newUIEgressProbe())
+                val probe = when {
+                    server == null -> EgressProbe.of(FkLib.newUIDirectEgressProbe())
+                    // Xray/mihomo run in fk-core: probe through its kernel.
+                    BoxService.coreInFkCore -> EgressProbe.of(FkLib.newUIServiceEgressProbe())
+                    else -> EgressProbe.of(server.newUIEgressProbe())
+                }
                 active.attach(probe)
             }
             check(session(id) === active) { "IP probe changed during creation" }
@@ -312,6 +318,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
 
     suspend fun releaseMemory(): Map<String, Any?> = withContext(Dispatchers.IO) {
         require(!CommandTarget.isRemote) { "Remote memory collection is not supported" }
+        require(!BoxService.coreInFkCore) { "Memory collection is not supported for Xray and mihomo" }
         pushMemorySource()
         jsonObject(JSONObject(Libbox.uiDashboardReleaseMemory()))
     }

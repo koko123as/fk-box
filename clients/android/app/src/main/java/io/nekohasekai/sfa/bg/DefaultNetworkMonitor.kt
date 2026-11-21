@@ -1,10 +1,12 @@
 package io.nekohasekai.sfa.bg
 
+import android.util.Log
 import android.net.Network
 import io.nekohasekai.fkbox.Fkbox
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
+import io.nekohasekai.sfa.fkcore.FkLib
 import java.net.NetworkInterface
 
 object DefaultNetworkMonitor {
@@ -37,11 +39,20 @@ object DefaultNetworkMonitor {
         lastNetwork = null
     }
 
-    /** mihomo (cmfa build) resolves "system" DNS with the underlying network's servers. */
+    /** The underlying network's DNS servers (none while there is no network). */
+    fun systemDNS(): List<String> {
+        val network = defaultNetwork ?: Application.connectivity.activeNetwork ?: return emptyList()
+        val servers = runCatching { Application.connectivity.getLinkProperties(network)?.dnsServers }.getOrNull() ?: return emptyList()
+        return servers.mapNotNull { it.hostAddress?.substringBefore('%') }
+    }
+
+    /** mihomo resolves "system" DNS with the underlying network's servers (fk-core regenerates its configuration). */
     fun pushSystemDNS() {
-        val network = defaultNetwork ?: return
-        val servers = runCatching { Application.connectivity.getLinkProperties(network)?.dnsServers }.getOrNull() ?: return
-        Libbox.updateCoreSystemDNS(servers.mapNotNull { it.hostAddress?.substringBefore('%') }.joinToString(","))
+        if (!BoxService.coreInFkCore) return
+        val servers = systemDNS()
+        if (servers.isEmpty()) return
+        runCatching { FkLib.serviceDefaultNetworkChanged(org.json.JSONArray(servers).toString()) }
+            .onFailure { Log.w("DefaultNetworkMonitor", "push DNS to fk-core", it) }
     }
 
     fun setListener(listener: InterfaceUpdateListener?) {

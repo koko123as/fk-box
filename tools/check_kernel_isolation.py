@@ -6,12 +6,17 @@ and fails when a package of sing-box, xray-core or mihomo shows up, or when
 core/go.mod requires one of them. core/tools/xrayshare is its own module and
 deliberately depends on libXray (and through it xray-core); it is not part of
 fk-core.
+
+It also checks that the generated StartedService code fk-core serves on
+command.sock (core/internal/daemonpb) is byte for byte the file of the
+sing-box tag the app ships (version.properties CORE_VERSION).
 """
 import json
 import os
 import pathlib
 import subprocess
 import sys
+import urllib.request
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 CORE = ROOT / "core"
@@ -32,8 +37,27 @@ def deps(goos, goarch):
     return result.stdout.split()
 
 
-def main():
+COPIED = {
+    "core/internal/daemonpb/started_service.pb.go": "daemon/started_service.pb.go",
+    "core/internal/daemonpb/started_service_grpc.pb.go": "daemon/started_service_grpc.pb.go",
+}
+
+
+def copied_protos():
     failures = []
+    properties = dict(line.strip().split("=", 1) for line in (ROOT / "version.properties").read_text().splitlines() if "=" in line)
+    tag = "v" + properties["CORE_VERSION"]
+    for local, upstream in COPIED.items():
+        url = f"https://raw.githubusercontent.com/SagerNet/sing-box/{tag}/{upstream}"
+        with urllib.request.urlopen(url, timeout=60) as response:
+            original = response.read()
+        if (ROOT / local).read_bytes() != original:
+            failures.append(f"{local} differs from sing-box {tag} {upstream}")
+    return failures
+
+
+def main():
+    failures = copied_protos()
     module = json.loads(subprocess.run(["go", "mod", "edit", "-json"], cwd=CORE,
                                        capture_output=True, text=True, check=True).stdout)
     for require in (module.get("Require") or []) + [r["New"] for r in module.get("Replace") or []]:

@@ -148,6 +148,7 @@ internal class BoxCapture(private val activity: BoxActivity) {
         require(!status().optBoolean("active")) { "Capture is already running" }
         require(activity.serviceStatus.value == Status.Started) { "Start the local service before capturing requests" }
         val running = BoxService.dashboardConfig.value ?: error("Local service is not running")
+        require(!BoxService.coreInFkCore) { "Request capture needs a sing-box profile for now" }
         val value = settings.config()
         return ProfileContent.mutex.withLock {
             requireLocal()

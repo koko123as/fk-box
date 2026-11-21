@@ -51,6 +51,67 @@ class VPNService :
     var systemProxyAvailable = false
     var systemProxyEnabled = false
 
+    /**
+     * The TUN for a kernel fk-core runs (Xray, mihomo; fk-core's reverse call
+     * vpn.openTun): [spec] gives the addresses, DNS address and MTU. The app
+     * itself stays outside the VPN (docs/kernel-isolation.md decision D1), so
+     * fk-core and the kernels reach the network directly. Returns a duplicate
+     * for fk-core; the service keeps the original.
+     */
+    fun openTunForCore(spec: org.json.JSONObject): android.os.ParcelFileDescriptor {
+        if (prepare(this) != null) error("android: missing vpn permission")
+        val builder = Builder()
+            .setSession("sing-box")
+            .setMtu(spec.optInt("mtu", 9000))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setMetered(false)
+        }
+        if (Settings.allowBypass) {
+            builder.allowBypass()
+        }
+        fun addAddress(text: String) {
+            if (text.isEmpty()) return
+            val (address, prefix) = text.split('/', limit = 2)
+            builder.addAddress(address, prefix.toInt())
+        }
+        val inet4 = spec.optString("inet4")
+        val inet6 = spec.optString("inet6")
+        addAddress(inet4)
+        addAddress(inet6)
+        if (inet4.isNotEmpty()) builder.addRoute("0.0.0.0", 0)
+        if (inet6.isNotEmpty()) builder.addRoute("::", 0)
+        spec.optString("dns").takeIf { it.isNotEmpty() }?.let { builder.addDnsServer(it) }
+        val self = packageName
+        if (Settings.perAppProxyEnabled && Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
+            // Only the listed apps use the VPN; this app is never one of them.
+            for (name in Settings.getEffectivePerAppProxyList() - self) {
+                try {
+                    builder.addAllowedApplication(name)
+                } catch (e: NameNotFoundException) {
+                    Log.e("VPNService", "addAllowedApplication failed", e)
+                }
+            }
+        } else {
+            val excluded = if (Settings.perAppProxyEnabled) Settings.getEffectivePerAppProxyList() + self else listOf(self)
+            for (name in excluded.toSet()) {
+                try {
+                    builder.addDisallowedApplication(name)
+                } catch (e: NameNotFoundException) {
+                    Log.e("VPNService", "addDisallowedApplication failed", e)
+                }
+            }
+        }
+        systemProxyAvailable = false
+        systemProxyEnabled = false
+        val pfd = builder.establish() ?: error("android: the application is not prepared or is revoked")
+        val previous = service.fileDescriptor
+        service.fileDescriptor = pfd
+        if (previous != null && previous !== pfd) {
+            runCatching { previous.close() }
+        }
+        return pfd.dup()
+    }
+
     override fun openTun(options: TunOptions): Int {
         if (prepare(this) != null) error("android: missing vpn permission")
 
