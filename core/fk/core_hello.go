@@ -75,4 +75,3 @@ func uiSetClient(declared []string) []string {
 	uiClientAccess.Unlock()
 	return names
 }
-
