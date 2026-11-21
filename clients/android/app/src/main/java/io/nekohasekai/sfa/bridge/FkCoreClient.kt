@@ -159,7 +159,7 @@ object FkCoreClient {
         val deadline = SystemClock.elapsedRealtime() + 10_000
         var lastError: Exception? = null
         while (SystemClock.elapsedRealtime() < deadline) {
-            if (!process.isAlive) throw FkCoreException("fk-core exited at start (status ${process.exitValue()})")
+            if (!process.running()) throw FkCoreException("fk-core exited at start (status ${process.exitValue()})")
             if (socketFile.exists()) {
                 try {
                     val socket = LocalSocket()
@@ -267,7 +267,7 @@ object FkCoreClient {
         synchronized(lock) {
             if (connection === current) connection = null
         }
-        if (current.process.isAlive) current.process.destroy()
+        if (current.process.running()) current.process.destroy()
     }
 
     /** Stops fk-core (it also exits on its own when this process dies). */
@@ -300,4 +300,12 @@ object FkCoreClient {
         JSONObject.NULL -> null
         else -> value
     }
+}
+
+/** Process.isAlive needs API 26: a process without an exit value is running. */
+private fun Process.running(): Boolean = try {
+    exitValue()
+    false
+} catch (_: IllegalThreadStateException) {
+    true
 }
