@@ -101,26 +101,41 @@ runs:
         grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go
         sed -i 's/"tfogo_checklinkname0")/"tfogo_checklinkname0", "cmfa")/' cmd/internal/build_libbox/main.go
         xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
-        mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
         libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
+        mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
         [[ "$libxray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$xray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$mihomo" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
         cp go.mod ../core-go.mod.before
-        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/metacubex/mihomo@v"$mihomo" -require=github.com/xtls/libxray@"$libxray"
+        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/xtls/libxray@"$libxray"
         go mod tidy
-        # libXray's share converter must be built against the same Xray commit.
+        # Resolve Xray/libXray before mihomo enters the module graph so each
+        # core's dependency impact can be reviewed separately.
         test "$(go list -m -f '{{.Version}}' github.com/xtls/xray-core)" = "$xray"
         test "$(go list -m -f '{{.Version}}' github.com/xtls/libxray)" = "$libxray"
-        # REALITY must be the version this Xray commit was built against.
         xray_reality=$(curl -fsSL "https://proxy.golang.org/github.com/xtls/xray-core/@v/$xray.mod" | awk '$1=="github.com/xtls/reality" {print $2}')
         test "$(go list -m -f '{{.Version}}' github.com/xtls/reality)" = "$xray_reality"
-        # The core must stay on the sing-box module versions it was released with;
-        # report every shared module the extra cores raised.
+        cp go.mod ../core-go.mod.after-xray
+        diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             <(go mod edit -json ../core-go.mod.after-xray | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             | sed -n 's/^> //p' > ../core-module-bumps-xray.txt || true
+        # Add mihomo only after taking the Xray snapshot; report its incremental
+        # impact as well as the combined change from the sing-box baseline.
+        go mod edit -require=github.com/metacubex/mihomo@v"$mihomo"
+        go mod tidy
+        test "$(go list -m -f '{{.Version}}' github.com/metacubex/mihomo)" = "v$mihomo"
+        diff <(go mod edit -json ../core-go.mod.after-xray | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             <(go mod edit -json go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             | sed -n 's/^> //p' > ../core-module-bumps-mihomo.txt || true
         diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
              <(go mod edit -json go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
              | sed -n 's/^> //p' > ../core-module-bumps.txt || true
-        echo "Shared or new modules after adding Xray $xray and mihomo v$mihomo:"
-        wc -l < ../core-module-bumps.txt
-        cat ../core-module-bumps.txt
+        # The core must stay on the sing-box module versions it was released with.
         test "$(go list -m -f '{{.Version}}' github.com/sagernet/sing)" = "$(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing") | .Version')"
+        {
+          echo "Shared/new module requirements added or raised by Xray $xray + libXray $libxray: $(wc -l < ../core-module-bumps-xray.txt)"
+          cat ../core-module-bumps-xray.txt
+          echo "Additional shared/new module requirements added or raised by mihomo v$mihomo: $(wc -l < ../core-module-bumps-mihomo.txt)"
+          cat ../core-module-bumps-mihomo.txt
+          echo "Combined module impact: $(wc -l < ../core-module-bumps.txt) requirement changes"
+        } | tee -a "$GITHUB_STEP_SUMMARY"

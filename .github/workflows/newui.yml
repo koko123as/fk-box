@@ -32,10 +32,19 @@ jobs:
       - name: HTTP, routed IP and LAN tests against the matching core
         working-directory: .core
         run: go test -ldflags=-checklinkname=0 ./experimental/libbox -run '^TestUI' -count=1
-      - name: Multi-core profile detection, conversion and validation tests
+      - name: sing-box adapter regressions
         working-directory: .core
         # with_quic: converted sing-box profiles carry Hysteria2 nodes.
-        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(DetectCoreConfig|Convert|CheckMihomo|CheckXray|ResolveProfileCore|SubscriptionURL|DropUnbuiltTunStack|ConvertCoreShareLinksEnabled|CoreProfileStats|CoreInternals|CoreConfigArray|CoreDefaultLogLevel|CoreGeo|CoreMemory|CoreRouting)' -count=1 -v
+        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(CoreRoutingSingBox.*|DropUnbuiltTunStack|ConvertLinksDefaultsToSingBox)$' -count=1 -v
+      - name: Xray adapter regressions
+        working-directory: .core
+        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(CheckXray.*|ConvertLinksWithXHTTPUsesXray|CoreInternalsXray.*|CoreRoutingXray.*)$' -count=1 -v
+      - name: mihomo adapter regressions
+        working-directory: .core
+        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(CheckMihomo.*|ConvertLinksForMihomo|CoreInternalsMihomo.*|CoreRoutingMihomo.*)$' -count=1 -v
+      - name: Shared profile, lifecycle and cross-core regressions
+        working-directory: .core
+        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(DetectCoreConfig|ResolveProfileCore|SubscriptionURLIsNotLinks|ConvertCoreShareLinksEnabled|CoreProfileStats|CoreInternalsStartDoesNotBlockReaders|CoreConfigArray.*|CoreDefaultLogLevel|CoreGeo.*|CoreMemory.*|CoreRoutingTargets|CoreRoutingListFormats|CoreRoutingListsParallel|CoreRoutingRuleSetDownloadError|CoreRoutingStartErrorFromRules|CoreRoutingParseList|CoreRoutingValues|CoreRoutingOffAndEmpty|CoreRoutingListCache|CoreRoutingAppOnly)$' -count=1 -v
       - name: HTTP/MITM, profile rewrite, JavaScript, storage and route tests
         working-directory: .core
         run: |

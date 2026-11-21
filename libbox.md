@@ -101,10 +101,10 @@ libXray 的分享链接转换会把节点名放进 outbound 的 `sendThrough`，
 
 ### 升级内核
 
-一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。
+一次只升一个内核，在单独分支上做，CI 通过并实机检查后再合并。核心适配按文件分区：路由分别位于 `core_routing_singbox.go`、`core_routing_xray.go`、`core_routing_mihomo.go`；运行时入口分别是 `StartOrReloadService`、`startXrayCore`、`startMihomoCore`。单体 libbox 中仍共享进程、Go 模块图及若干宿主状态，这些边界便于审查和定位回归，不代表二进制或依赖隔离。
 
 1. `python3 tools/bump_core.py <sing-box|xray|mihomo|libxray> <版本>`（可先加 `--dry-run`）。脚本确认标签存在、Go 代理可解析（Xray 自动换算伪版本），新版本 `go.mod` 要求的 Go 不高于 `GO_VERSION` 时才改写 [version.properties](version.properties)。需要更新 Go 时先单独升 `GO_VERSION`，三个内核都要能用它编译。升 Xray 后确认 libXray 仍兼容。
-2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`（两者在非 `main` 分支都需 `workflow_dispatch` 指定 ref）。CI 会拦下：
+2. 推送分支，运行 `newui.yml` 与 `build-debug-apk.yml`（两者在非 `main` 分支都需 `workflow_dispatch` 指定 ref）。`newui.yml` 按 sing-box、Xray、mihomo 和共享/跨核用例分别报告回归；`setup-core` 先解析 Xray + libXray，再解析 mihomo，并在 job summary 中列出两阶段及总依赖变化（`core-module-bumps-xray.txt`、`core-module-bumps-mihomo.txt`、`core-module-bumps.txt`）。这能帮助归因升级影响，但仍是在同一个 Go module 中解析和编译全部内核。CI 会拦下：
    - 编译错误：libbox 用到的 Xray/mihomo 内部接口（mihomo `hub/executor`、`listener`、`tunnel/statistic`、`config`；Xray `proxy/tun`、`features/routing`、libXray 分享链接转换）改名或改签名。
    - [verify_multicore.py](tools/verify_multicore.py)：sing-box 新增的 StartedService gRPC 方法必须在 `coreStartedService` 中处理，或经审核后写入 [core_grpc_passthrough.txt](libbox/core_grpc_passthrough.txt)。否则 Xray/mihomo 运行时它会打到空闲的 sing-box，返回 `invalid argument`。
    - `TestCoreInternals*`：Xray TUN handler 的私有 `dispatcher` 字段（连接页和流量统计依赖它）、mihomo tun 的 `FileDescriptor` 字段。
