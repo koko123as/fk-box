@@ -17,7 +17,6 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
-	"sort"
 	"sync"
 )
 
@@ -95,23 +94,6 @@ func checkResults(t reflect.Type) error {
 		return errors.New("too many results")
 	}
 	return nil
-}
-
-// Names lists every callable name, sorted.
-func (r *Registry) Names() []string {
-	r.access.RLock()
-	defer r.access.RUnlock()
-	var names []string
-	for name := range r.functions {
-		names = append(names, name)
-	}
-	for t, typeName := range r.objects {
-		for i := 0; i < t.NumMethod(); i++ {
-			names = append(names, typeName+"."+t.Method(i).Name)
-		}
-	}
-	sort.Strings(names)
-	return names
 }
 
 // Has reports whether name is a registered function or object method.

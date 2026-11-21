@@ -54,12 +54,6 @@ func (b *statusBroadcaster) set(kind daemonpb.ServiceStatus_Type, message string
 	}
 }
 
-func (b *statusBroadcaster) get() *daemonpb.ServiceStatus {
-	b.access.Lock()
-	defer b.access.Unlock()
-	return b.current
-}
-
 func (b *statusBroadcaster) subscribe() (chan *daemonpb.ServiceStatus, *daemonpb.ServiceStatus) {
 	b.access.Lock()
 	defer b.access.Unlock()

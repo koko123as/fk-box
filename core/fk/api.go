@@ -30,8 +30,8 @@
 //   - LAN proxy: readUILANProxyListeners, setUILANProxyEnabled
 //   - Egress probe: newUIDirectEgressProbe, newUIServiceEgressProbe
 //     (object UIEgressProbe)
-//   - Service: serviceStart, serviceStop, serviceRunning,
-//     serviceDefaultNetworkChanged, serviceMemory, serviceLocalProxy,
+//   - Service: serviceStart, serviceStop,
+//     serviceDefaultNetworkChanged,
 //     closeCommandServer
 //   - Versions: xrayVersion, mihomoVersion
 //
@@ -135,10 +135,7 @@ func Register(r *rpc.Registry) {
 	// Xray and mihomo as child processes (core_service.go).
 	r.Func("serviceStart", ServiceStart)
 	r.Func("serviceStop", ServiceStop)
-	r.Func("serviceRunning", ServiceRunning)
 	r.Func("serviceDefaultNetworkChanged", ServiceDefaultNetworkChanged)
-	r.Func("serviceMemory", ServiceMemory)
-	r.Func("serviceLocalProxy", ServiceLocalProxy)
 	r.Func("singBoxServiceContent", SingBoxServiceContent)
 	r.Func("singBoxServiceStarted", SingBoxServiceStarted)
 	r.Func("singBoxServiceStopped", SingBoxServiceStopped)

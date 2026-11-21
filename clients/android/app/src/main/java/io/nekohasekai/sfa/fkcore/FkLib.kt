@@ -84,12 +84,9 @@ object FkLib {
     fun serviceStop() {
         FkCoreClient.call("serviceStop")
     }
-    fun serviceRunning(): String = FkCodec.string(CallResult(FkCoreClient.call("serviceRunning")))
     fun serviceDefaultNetworkChanged(dns: String) {
         FkCoreClient.call("serviceDefaultNetworkChanged", dns)
     }
-    fun serviceMemory(): Long = FkCodec.long(CallResult(FkCoreClient.call("serviceMemory")))
-    fun serviceLocalProxy(): String = FkCodec.string(CallResult(FkCoreClient.call("serviceLocalProxy")))
     fun singBoxServiceContent(content: String): String = FkCodec.string(CallResult(FkCoreClient.call("singBoxServiceContent", content)))
     fun singBoxServiceStarted() {
         FkCoreClient.call("singBoxServiceStarted")
