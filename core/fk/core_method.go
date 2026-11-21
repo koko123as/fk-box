@@ -61,12 +61,6 @@ func uiEmit(kind string, value any) error {
 	return nil
 }
 
-// UIHandlesMethod reports whether Go answers method (owner "go").
-func UIHandlesMethod(method string) bool {
-	_, ok := uiMethods[method]
-	return ok
-}
-
 // UIInvoke runs method with its JSON arguments and answers the JSON result.
 // Empty args are read as {}.
 func UIInvoke(method string, args string) (string, error) {

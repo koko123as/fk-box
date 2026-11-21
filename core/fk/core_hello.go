@@ -76,12 +76,3 @@ func uiSetClient(declared []string) []string {
 	return names
 }
 
-// UIClientHasCapability reports whether the client that last completed the
-// hello handshake declared capability (a protocol/methods.json "capabilities"
-// name).
-func UIClientHasCapability(capability string) bool {
-	uiClientAccess.RLock()
-	defer uiClientAccess.RUnlock()
-	_, ok := uiClientCapabilities[capability]
-	return ok
-}

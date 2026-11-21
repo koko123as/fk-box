@@ -66,7 +66,7 @@ func TestUIHelloCapabilities(t *testing.T) {
 	if strings.Join(reply.Capabilities, ",") != "usbip,vpn_service" {
 		t.Fatalf("effective capabilities %v, want known names deduplicated and sorted", reply.Capabilities)
 	}
-	if !UIClientHasCapability("usbip") || !UIClientHasCapability("vpn_service") || UIClientHasCapability("teleport") || UIClientHasCapability("taildrop") {
+	if !clientHasCapability("usbip") || !clientHasCapability("vpn_service") || clientHasCapability("teleport") || clientHasCapability("taildrop") {
 		t.Fatal("stored capabilities disagree with the answer")
 	}
 	// A client that declares nothing gets an empty list (not null) and clears the old set.
@@ -74,12 +74,12 @@ func TestUIHelloCapabilities(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(result, `"capabilities":[]`) || UIClientHasCapability("usbip") {
+	if !strings.Contains(result, `"capabilities":[]`) || clientHasCapability("usbip") {
 		t.Fatalf("no capabilities: %s", result)
 	}
 	// A rejected handshake leaves the stored set alone.
 	uiSetClient([]string{"taildrop"})
-	if _, err = UIInvoke("hello", `{"protocolVersion": 0, "capabilities": []}`); err == nil || !UIClientHasCapability("taildrop") {
+	if _, err = UIInvoke("hello", `{"protocolVersion": 0, "capabilities": []}`); err == nil || !clientHasCapability("taildrop") {
 		t.Fatalf("mismatch changed capabilities: %v", err)
 	}
 }
@@ -97,4 +97,11 @@ func TestUIHelloKnowsProtocolCapabilities(t *testing.T) {
 	if got := uiSetClient(all); len(got) != len(all) {
 		t.Fatalf("effective %v, declared %v", got, all)
 	}
+}
+
+func clientHasCapability(capability string) bool {
+	uiClientAccess.RLock()
+	defer uiClientAccess.RUnlock()
+	_, ok := uiClientCapabilities[capability]
+	return ok
 }

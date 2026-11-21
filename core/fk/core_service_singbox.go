@@ -41,7 +41,7 @@ func SingBoxServiceContent(content string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	root, err := decodeOrderedJSON(cleaned)
+	root, err := decodeOrderedJSON(withDefaultSingBoxLogLevel(cleaned))
 	if err != nil {
 		return "", err
 	}
