@@ -31,7 +31,7 @@
 //   - Egress probe: newUIDirectEgressProbe, newUIServiceEgressProbe
 //     (object UIEgressProbe)
 //   - Service: serviceStart, serviceStop,
-//     serviceDefaultNetworkChanged,
+//     serviceDefaultNetworkChanged, serviceNetworkSwitched,
 //     closeCommandServer
 //   - Versions: xrayVersion, mihomoVersion
 //
@@ -136,6 +136,7 @@ func Register(r *rpc.Registry) {
 	r.Func("serviceStart", ServiceStart)
 	r.Func("serviceStop", ServiceStop)
 	r.Func("serviceDefaultNetworkChanged", ServiceDefaultNetworkChanged)
+	r.Func("serviceNetworkSwitched", ServiceNetworkSwitched)
 	r.Func("singBoxServiceContent", SingBoxServiceContent)
 	r.Func("singBoxServiceStarted", SingBoxServiceStarted)
 	r.Func("singBoxServiceStopped", SingBoxServiceStopped)

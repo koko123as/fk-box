@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.bg
 
 import android.util.Log
 import android.net.Network
-import io.nekohasekai.fkbox.Fkbox
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.fkcore.FkLib
@@ -26,7 +25,7 @@ object DefaultNetworkMonitor {
                 val previous = lastNetwork
                 lastNetwork = it
                 if (previous != null && previous != it) {
-                    runCatching { Fkbox.defaultNetworkChanged() }
+                    if (BoxService.coreInFkCore) runCatching { FkLib.serviceNetworkSwitched() }
                 }
             }
         }

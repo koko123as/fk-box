@@ -497,6 +497,20 @@ func ServiceDefaultNetworkChanged(dns string) error {
 	return running.mihomo.Reload(ctx, running.config)
 }
 
+// ServiceNetworkSwitched is called when the underlying default network is
+// replaced (Wi-Fi to cellular and back). mihomo keeps connections bound to the
+// old network alive until they time out, so they are closed now; Xray's
+// sockets fail on their own and sing-box handles the switch itself.
+func ServiceNetworkSwitched() error {
+	running := runningKernel()
+	if running == nil || running.core != CoreMihomo {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return running.mihomo.CloseAllConnections(ctx)
+}
+
 func currentDNS() []string {
 	serviceAccess.RLock()
 	defer serviceAccess.RUnlock()

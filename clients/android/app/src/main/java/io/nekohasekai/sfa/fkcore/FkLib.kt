@@ -87,6 +87,9 @@ object FkLib {
     fun serviceDefaultNetworkChanged(dns: String) {
         FkCoreClient.call("serviceDefaultNetworkChanged", dns)
     }
+    fun serviceNetworkSwitched() {
+        FkCoreClient.call("serviceNetworkSwitched")
+    }
     fun singBoxServiceContent(content: String): String = FkCodec.string(CallResult(FkCoreClient.call("singBoxServiceContent", content)))
     fun singBoxServiceStarted() {
         FkCoreClient.call("singBoxServiceStarted")
