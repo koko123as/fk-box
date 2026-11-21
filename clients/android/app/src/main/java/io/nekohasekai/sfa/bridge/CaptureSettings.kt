@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.util.AtomicFile
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.database.ProfileContent
 import org.json.JSONObject
 import java.io.File
@@ -45,7 +45,7 @@ internal class CaptureSettings(private val directory: File, private val retiredK
                     retired.forEach(value::remove)
                     // Passive capture consent does not enable active TLS interception.
                     value.put("version", 2).put("https", false)
-                    writeCaptureFile(file, Libbox.validateUICaptureConfig(value.toString()))
+                    writeCaptureFile(file, FkLib.captureValidate(value.toString()))
                 }
             }
             migrated = true
@@ -56,14 +56,14 @@ internal class CaptureSettings(private val directory: File, private val retiredK
     fun snapshot(): Map<String, Any?> {
         val raw = raw()
         return mapOf("revision" to ProfileContent.revision(raw),
-            "config" to jsonObject(JSONObject(Libbox.validateUICaptureConfig(raw.ifEmpty { "{}" }))))
+            "config" to jsonObject(JSONObject(FkLib.captureValidate(raw.ifEmpty { "{}" }))))
     }
 
-    fun config(): String = Libbox.validateUICaptureConfig(raw().ifEmpty { "{}" })
+    fun config(): String = FkLib.captureValidate(raw().ifEmpty { "{}" })
 
     fun save(expectedRevision: String, content: String): Map<String, Any?> {
         require(ProfileContent.revision(raw()) == expectedRevision) { "Capture settings changed; reload them before saving" }
-        val validated = Libbox.validateUICaptureConfig(content)
+        val validated = FkLib.captureValidate(content)
         writeCaptureFile(file, validated)
         return snapshot()
     }

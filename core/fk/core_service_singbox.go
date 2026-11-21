@@ -29,8 +29,23 @@ var (
 // SingBoxServiceContent answers content with the local inbound added. The
 // first call after SingBoxServiceStopped picks the port and credentials; the
 // next calls (the same start's fallback without the routing rules) reuse them.
+//
+// It also activates the profile's HTTP rewriting (experimental.http_rewrite,
+// taken out of what sing-box reads) and routes to the capture proxy while
+// rewriting or a capture runs.
 func SingBoxServiceContent(content string) (string, error) {
-	root, err := decodeOrderedJSON(content)
+	if err := prepareServiceRewrite(CoreSingBox, content); err != nil {
+		return "", err
+	}
+	cleaned, err := singBoxHostContent(content)
+	if err != nil {
+		return "", err
+	}
+	root, err := decodeOrderedJSON(cleaned)
+	if err != nil {
+		return "", err
+	}
+	route, err := currentCaptureRoute()
 	if err != nil {
 		return "", err
 	}
@@ -56,6 +71,9 @@ func SingBoxServiceContent(content string) (string, error) {
 		"listen_port": singBoxNext.port,
 		"users":       []any{map[string]any{"username": localReturnUser, "password": singBoxNext.password}},
 	})
+	if route != nil {
+		singBoxCaptureRoute(root, route)
+	}
 	return encodeRoutingJSON(root)
 }
 
@@ -67,11 +85,13 @@ func SingBoxServiceStarted() {
 	singBoxAccess.Unlock()
 }
 
-// SingBoxServiceStopped records that no sing-box runs.
+// SingBoxServiceStopped records that no sing-box runs; rewriting and a
+// running capture end with it.
 func SingBoxServiceStopped() {
 	singBoxAccess.Lock()
 	singBoxActive, singBoxNext = nil, nil
 	singBoxAccess.Unlock()
+	stopServiceCapture()
 }
 
 func singBoxLocalProxy() *singBoxLocal {

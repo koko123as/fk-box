@@ -144,6 +144,25 @@ func Register(r *rpc.Registry) {
 	r.Func("singBoxServiceStopped", SingBoxServiceStopped)
 	r.Func("closeCommandServer", CloseCommandServer)
 
+	// HTTP capture and profile rewriting (capture_service.go).
+	r.Func("captureGenerateCA", CaptureGenerateCA)
+	r.Func("captureSetMaterial", CaptureSetMaterial)
+	r.Func("captureOpen", CaptureOpen)
+	r.Func("captureValidate", CaptureValidate)
+	r.Func("captureStart", CaptureStart)
+	r.Func("captureStop", CaptureStop)
+	r.Func("captureStatus", CaptureStatus)
+	r.Func("captureLogs", CaptureLogs)
+	r.Func("captureAppendLog", CaptureAppendLog)
+	r.Func("captureClearLogs", CaptureClearLogs)
+	r.Func("captureList", CaptureList)
+	r.Func("captureHosts", CaptureHosts)
+	r.Func("captureRead", CaptureRead)
+	r.Func("captureClear", CaptureClear)
+	r.Func("captureExportHAR", CaptureExportHAR)
+	r.Func("captureExportCurl", CaptureExportCurl)
+	r.Func("removeUIRetiredCaptureOptions", RemoveUIRetiredCaptureOptions)
+
 	// Kernel versions (core_kernel_exec.go).
 	r.Func("xrayVersion", XrayVersion)
 	r.Func("mihomoVersion", MihomoVersion)

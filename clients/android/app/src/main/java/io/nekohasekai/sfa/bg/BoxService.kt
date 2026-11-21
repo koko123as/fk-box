@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.bg
 
+import io.nekohasekai.sfa.bridge.MitmCertificate
 import android.app.NotificationChannel
 import io.nekohasekai.sfa.fkcore.CoreRoutingResult
 import io.nekohasekai.sfa.fkcore.FkLib
@@ -341,12 +342,22 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         // routing rules need them, outside the CA lock since it may take a while.
         val geoMissing = if (core != TypedProfile.CORE_SING_BOX) GeoResources.prepareForCoreBlocking(core, content + "\n" + rules, service) else null
         if (geoMissing != null) notifyGeoMissing(geoMissing)
+        prepareCaptureMaterial()
         return try {
             startCoreLocked(core, content, rules, unreadable)
         } catch (error: Exception) {
             if (geoMissing == null) throw error
             throw Exception("${error.message}\n\n${geoMissingText(geoMissing)}", error)
         }
+    }
+
+    /** The capture store and MITM CA fk-core uses for profile HTTP rewriting and capture. */
+    private fun prepareCaptureMaterial() {
+        val directory = File(service.noBackupFilesDir, "http-debug")
+        val material = synchronized(MitmCertificate.accessLock) {
+            runCatching { MitmCertificate(service, directory).material() }.getOrNull()
+        }
+        FkLib.captureSetMaterial(File(directory, "captures").absolutePath, material?.first.orEmpty(), material?.second.orEmpty())
     }
 
     private fun startCoreLocked(core: String, content: String, rules: String, unreadable: String?): String {

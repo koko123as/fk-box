@@ -24,6 +24,9 @@ object FkCoreHost {
         }
         FkCoreClient.handle("singbox.formatConfig") { args -> Libbox.formatConfig(args.getString(0)).value }
         FkCoreClient.handle("singbox.hasTunInbound") { args -> Libbox.hasTunInbound(args.getString(0)) }
+        FkCoreClient.handle("capture.sign") { args ->
+            MitmCertificate.sign(args.getString(0), android.util.Base64.decode(args.getString(1), android.util.Base64.NO_WRAP))
+        }
         // The TUN for Xray or mihomo (fk-core core_service.go); the descriptor
         // travels back with the reply.
         FkCoreClient.handle("vpn.openTun") { args ->

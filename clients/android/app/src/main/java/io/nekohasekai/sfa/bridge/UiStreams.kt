@@ -80,12 +80,12 @@ internal object UiConnectionStream {
 
     private fun applyEvent(event: io.nekohasekai.libbox.ConnectionEvent): Boolean {
         val id = event.id
-        when (event.type) {
-            Libbox.ConnectionEventNew -> {
+        when (event.type.toLong()) {
+            Libbox.ConnectionEventNew.toLong() -> {
                 val connection = event.connection ?: return false
                 put(id, entryFrom(connection))
             }
-            Libbox.ConnectionEventUpdate -> {
+            Libbox.ConnectionEventUpdate.toLong() -> {
                 val current = entries[id] ?: return false
                 if (event.uplinkDelta == 0L && event.downlinkDelta == 0L && current.row["upload"] == 0L && current.row["download"] == 0L) return false
                 val next = current.copy()
@@ -95,7 +95,7 @@ internal object UiConnectionStream {
                 next.row["downloadTotal"] = (next.row["downloadTotal"] as Long) + event.downlinkDelta
                 entries[id] = next
             }
-            Libbox.ConnectionEventClosed -> {
+            Libbox.ConnectionEventClosed.toLong() -> {
                 val next = event.connection?.let(::entryFrom) ?: entries[id]?.copy() ?: return false
                 next.row["closedAt"] = if (event.closedAt > 0) event.closedAt else null
                 next.row["upload"] = 0L

@@ -144,6 +144,12 @@ func ServiceStart(core string, content string, rules string, options string) (*C
 	serviceAccess.Unlock()
 
 	serviceStatus.set(daemonpb.ServiceStatus_STARTING, "")
+	// Profile rewriting belongs to sing-box profiles: this turns it off and
+	// keeps a running capture, which these kernels route to as well.
+	if err := prepareServiceRewrite(core, content); err != nil {
+		serviceStatus.set(daemonpb.ServiceStatus_IDLE, "")
+		return nil, err
+	}
 	result := &CoreRoutingResult{Content: content}
 	withRules := content
 	if strings.TrimSpace(rules) != "" {
@@ -444,6 +450,7 @@ func ServiceStop() error {
 	defer serviceLifecycle.Unlock()
 	serviceStatus.set(daemonpb.ServiceStatus_STOPPING, "")
 	stopKernelLocked()
+	stopServiceCapture()
 	serviceStatus.set(daemonpb.ServiceStatus_IDLE, "")
 	CloseCommandServer()
 	return nil

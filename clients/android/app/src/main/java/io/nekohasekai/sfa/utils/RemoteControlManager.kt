@@ -1,6 +1,6 @@
 package io.nekohasekai.sfa.utils
 
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
@@ -82,7 +82,7 @@ object RemoteControlManager : CommandClient.Handler {
         }
         // Set the target before stopping: concurrent local starts recheck it after
         // libbox acknowledges capture, including restoration of a saved session.
-        withContext(NonCancellable + Dispatchers.IO) { Libbox.stopUICapture() }
+        withContext(NonCancellable + Dispatchers.IO) { FkLib.captureStop() }
     }
 
     fun exitRemoteControl() {

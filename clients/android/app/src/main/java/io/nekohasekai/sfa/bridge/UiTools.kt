@@ -485,7 +485,7 @@ internal object UiPingTool {
                     return@background
                 }
             }
-            closeQuietly { started.close() }
+            closeQuietly { started?.close() }
         }
     }
 

@@ -5,9 +5,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.AtomicFile
 import android.util.Base64
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.UICaptureSigner
 import io.nekohasekai.sfa.database.ProfileContent
+import io.nekohasekai.sfa.fkcore.FkLib
 import org.json.JSONObject
 import java.io.File
 import java.io.FileNotFoundException
@@ -39,33 +38,21 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
 
     private fun record(): JSONObject = JSONObject(read().ifEmpty { error("Generate a MITM CA first") }).also {
         require(it.getInt("version") == 1) { "Unsupported MITM certificate record" }
-        require(it.getString("alias").matches(Regex("b_box_mitm_v2_[0-9a-f-]{36}"))) { "Invalid MITM key alias" }
+        require(it.getString("alias").matches(aliasPattern)) { "Invalid MITM key alias" }
     }
 
     private fun parse(value: JSONObject): X509Certificate = CertificateFactory.getInstance("X.509")
         .generateCertificate(value.getString("certificate").byteInputStream(Charsets.US_ASCII)) as X509Certificate
 
-    private class PlatformSigner(private val key: PrivateKey) : UICaptureSigner {
-        override fun sign(digest: ByteArray): ByteArray {
-            require(digest.size == 32) { "MITM CA signs only SHA-256 digests" }
-            // x509.CreateCertificate has already hashed the message. Android's
-            // NONEwithECDSA supports this operation from API 23 onward.
-            return Signature.getInstance("NONEwithECDSA").run {
-                initSign(key)
-                update(digest)
-                sign()
-            }
-        }
-    }
-
-    fun material(): Pair<String, UICaptureSigner> {
+    /** The CA certificate and the alias fk-core signs with (capture.sign). */
+    fun material(): Pair<String, String> {
         synchronized(accessLock) {
             val value = record()
             val certificate = parse(value)
             certificate.checkValidity()
-            val key = keyStore.getKey(value.getString("alias"), null) as? PrivateKey
-                ?: error("MITM signing key is unavailable; regenerate the CA")
-            return value.getString("certificate") to PlatformSigner(key)
+            val alias = value.getString("alias")
+            require(keyStore.containsAlias(alias)) { "MITM signing key is unavailable; regenerate the CA" }
+            return value.getString("certificate") to alias
         }
     }
 
@@ -97,7 +84,7 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
 
     fun generate(expectedRevision: String): Map<String, Any?> {
         synchronized(accessLock) {
-            val processing = JSONObject(Libbox.readUICaptureStatus())
+            val processing = JSONObject(FkLib.captureStatus())
             require(!processing.optBoolean("active") && !processing.optBoolean("rewriteActive")) {
                 "Stop capture and the local service before changing the MITM certificate"
             }
@@ -113,7 +100,7 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
                         .setUserAuthenticationRequired(false).build())
                     generateKeyPair()
                 }
-                val pem = Libbox.generateUICaptureCA(pair.public.encoded, PlatformSigner(pair.private))
+                val pem = FkLib.captureGenerateCA(pair.public.encoded, alias)
                 val value = JSONObject().put("version", 1).put("alias", alias).put("certificate", pem)
                 parse(value).verify(pair.public)
                 writeCaptureFile(file, value.toString())
@@ -122,7 +109,7 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
                 throw error
             }
             if (oldAlias != null) runCatching { keyStore.deleteEntry(oldAlias) }.onFailure {
-                Libbox.appendUICaptureLog("warn", "Unable to remove the previous MITM signing key: ${it.message}")
+                FkLib.captureAppendLog("warn", "Unable to remove the previous MITM signing key: ${it.message}")
             }
             return snapshot()
         }
@@ -137,6 +124,22 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
 
     companion object {
         internal val accessLock = Any()
+        private val aliasPattern = Regex("b_box_mitm_v2_[0-9a-f-]{36}")
+
+        /** Signs a SHA-256 digest for fk-core's MITM CA with the key under alias. */
+        fun sign(alias: String, digest: ByteArray): ByteArray {
+            require(alias.matches(aliasPattern)) { "Invalid MITM key alias" }
+            require(digest.size == 32) { "MITM CA signs only SHA-256 digests" }
+            val key = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.getKey(alias, null) as? PrivateKey
+                ?: error("MITM signing key is unavailable; regenerate the CA")
+            // x509.CreateCertificate has already hashed the message. Android's
+            // NONEwithECDSA supports this operation from API 23 onward.
+            return Signature.getInstance("NONEwithECDSA").run {
+                initSign(key)
+                update(digest)
+                sign()
+            }
+        }
         fun fingerprint(certificate: X509Certificate): String = MessageDigest.getInstance("SHA-256")
             .digest(certificate.encoded).joinToString("") { "%02x".format(it.toInt() and 255) }
 

@@ -100,6 +100,39 @@ object FkLib {
     fun closeCommandServer() {
         FkCoreClient.call("closeCommandServer")
     }
+    fun captureGenerateCA(publicKey: ByteArray, signerID: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureGenerateCA", publicKey, signerID)))
+    fun captureSetMaterial(directory: String, certificate: String, signerID: String) {
+        FkCoreClient.call("captureSetMaterial", directory, certificate, signerID)
+    }
+    fun captureOpen(directory: String) {
+        FkCoreClient.call("captureOpen", directory)
+    }
+    fun captureValidate(config: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureValidate", config)))
+    fun captureStart(directory: String, config: String, certificate: String, signerID: String) {
+        FkCoreClient.call("captureStart", directory, config, certificate, signerID)
+    }
+    fun captureStop() {
+        FkCoreClient.call("captureStop")
+    }
+    fun captureStatus(): String = FkCodec.string(CallResult(FkCoreClient.call("captureStatus")))
+    fun captureLogs(): String = FkCodec.string(CallResult(FkCoreClient.call("captureLogs")))
+    fun captureAppendLog(level: String, message: String) {
+        FkCoreClient.call("captureAppendLog", level, message)
+    }
+    fun captureClearLogs() {
+        FkCoreClient.call("captureClearLogs")
+    }
+    fun captureList(limit: Int, query: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureList", limit, query)))
+    fun captureHosts(query: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureHosts", query)))
+    fun captureRead(id: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureRead", id)))
+    fun captureClear() {
+        FkCoreClient.call("captureClear")
+    }
+    fun captureExportHAR(path: String, query: String) {
+        FkCoreClient.call("captureExportHAR", path, query)
+    }
+    fun captureExportCurl(id: String): String = FkCodec.string(CallResult(FkCoreClient.call("captureExportCurl", id)))
+    fun removeUIRetiredCaptureOptions(content: String): String = FkCodec.string(CallResult(FkCoreClient.call("removeUIRetiredCaptureOptions", content)))
     fun xrayVersion(): String = FkCodec.string(CallResult(FkCoreClient.call("xrayVersion")))
     fun mihomoVersion(): String = FkCodec.string(CallResult(FkCoreClient.call("mihomoVersion")))
 }

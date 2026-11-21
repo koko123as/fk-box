@@ -95,6 +95,15 @@ func writeXrayConfig(running *serviceKernel) error {
 		"port":     running.localPort,
 		"settings": map[string]any{"accounts": accounts, "allowTransparent": false},
 	})
+	route, err := currentCaptureRoute()
+	if err != nil {
+		return err
+	}
+	if route != nil {
+		if err = xrayCaptureRoute(root, route); err != nil {
+			return err
+		}
+	}
 	routing, _ := root["routing"].(map[string]any)
 	rules, _ := routing["rules"].([]any)
 	routing["rules"] = append(testRules, rules...)
@@ -303,6 +312,16 @@ func writeMihomoConfig(running *serviceKernel) (netip.Prefix, error) {
 	users.Content = append(users.Content, user)
 	yamlSetMapValue(local, "users", users)
 	listeners.Content = append(listeners.Content, local)
+
+	route, err := currentCaptureRoute()
+	if err != nil {
+		return netip.Prefix{}, err
+	}
+	if route != nil {
+		if err = mihomoCaptureRoute(root, route); err != nil {
+			return netip.Prefix{}, err
+		}
+	}
 
 	encoded, err := yaml.Marshal(&document)
 	if err != nil {
