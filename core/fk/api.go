@@ -139,6 +139,9 @@ func Register(r *rpc.Registry) {
 	r.Func("serviceDefaultNetworkChanged", ServiceDefaultNetworkChanged)
 	r.Func("serviceMemory", ServiceMemory)
 	r.Func("serviceLocalProxy", ServiceLocalProxy)
+	r.Func("singBoxServiceContent", SingBoxServiceContent)
+	r.Func("singBoxServiceStarted", SingBoxServiceStarted)
+	r.Func("singBoxServiceStopped", SingBoxServiceStopped)
 	r.Func("closeCommandServer", CloseCommandServer)
 
 	// Kernel versions (core_kernel_exec.go).

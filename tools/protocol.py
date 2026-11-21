@@ -130,7 +130,7 @@ def render_kt(spec):
         "    /** The oldest client protocol version the core accepts. */",
         f"    const val MIN_CLIENT: Int = {spec['minClient']}",
         "",
-        "    /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */",
+        "    /** Answered by fk-core ([io.nekohasekai.sfa.fkcore.FkLib.uiInvoke]); the host only forwards them. */",
         f"    val GO_METHODS: Set<String> = {kt_set(names(spec, 'methods', 'go'))}",
         "",
         "    /** Answered by BoxBridge (hostDispatch in SlintHost.kt). */",

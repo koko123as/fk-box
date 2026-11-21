@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bg
 
 import android.app.NotificationChannel
+import io.nekohasekai.sfa.fkcore.CoreRoutingResult
 import io.nekohasekai.sfa.fkcore.FkLib
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -19,9 +20,9 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.MutableLiveData
 import io.nekohasekai.libbox.CommandServer
 import io.nekohasekai.libbox.CommandServerHandler
-import io.nekohasekai.libbox.CoreServiceOptions
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.Notification
+import io.nekohasekai.libbox.OverrideOptions
 import io.nekohasekai.libbox.PlatformInterface
 import io.nekohasekai.libbox.SystemProxyStatus
 import io.nekohasekai.sfa.Application
@@ -34,7 +35,6 @@ import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.bridge.CoreRouting
-import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -74,6 +74,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         internal val dashboardConfig = _dashboardConfig.asStateFlow()
         private const val TAG = "BoxService"
 
+        // sing-box log levels (log/level.go) for CommandServer.writeMessage.
+        private const val LOG_ERROR = 2
+        private const val LOG_WARN = 3
+        private const val LOG_INFO = 4
+
         /**
          * Set when the last reload failed but the previous configuration of the same
          * profile was started again, so the service never stopped.
@@ -93,7 +98,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
          */
         internal val reloadGeneration = _reloadGeneration.asStateFlow()
 
-        /** The core the local service runs (Libbox.CoreSingBox/CoreXray/CoreMihomo), null while none does. */
+        /** The core the local service runs (TypedProfile.CORE_*), null while none does. */
         @Volatile internal var runningCore: String? = null
             private set
 
@@ -150,8 +155,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         Libbox.promoteOOMDraft()
         Libbox.discardPowerReportDraft()
         val commandServer = CommandServer(this, platformInterface)
-        // fk-box's command service (sing-box runs as an ordinary kernel).
-        commandServer.startCoreCommandServer()
+        commandServer.start()
         this.commandServer = commandServer
         dashboardServer = commandServer
     }
@@ -208,7 +212,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             dashboardServer = commandServer
             _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
-            if (!coreInFkCore && commandServer.needWIFIStateCore()) {
+            if (!coreInFkCore && commandServer.needWIFIState()) {
                 val wifiPermission =
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                         android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -299,7 +303,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         dashboardServer = commandServer
         _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
         _reloadGeneration.update { it + 1 }
-        if (!coreInFkCore && commandServer.needWIFIStateCore()) {
+        if (!coreInFkCore && commandServer.needWIFIState()) {
             val wifiPermission =
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -345,24 +349,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    private fun startCoreLocked(core: String, content: String, rules: String, unreadable: String?): String = synchronized(MitmCertificate.accessLock) {
-        val overrides = CoreServiceOptions().apply {
-            autoRedirect = Settings.autoRedirect
-            if (Settings.perAppProxyEnabled) {
-                val appList = Settings.getEffectivePerAppProxyList()
-                if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                    includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                } else {
-                    excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                }
-            }
-            rewriteDirectory = File(service.noBackupFilesDir, "http-debug/captures").absolutePath
-            if (core == TypedProfile.CORE_SING_BOX && Libbox.needsUIHTTPRewriteCA(content)) {
-                val material = MitmCertificate(service).material()
-                rewriteCertificate = material.first
-                rewriteSigner = material.second
-            }
-        }
+    private fun startCoreLocked(core: String, content: String, rules: String, unreadable: String?): String {
         // The rules never keep the profile from running: the profile starts
         // without them and the result says why (CoreRoutingResult.error).
         // The running core is stopped before the next one starts: until this
@@ -373,27 +360,95 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             // Xray and mihomo run as child processes of fk-core, which opens
             // the TUN through vpn.openTun (FkCoreHost) and serves command.sock.
             if (!wasInFkCore) {
-                runCatching { commandServer.closeCoreService() }
-                commandServer.closeCoreCommandServer()
+                runCatching { commandServer.closeService() }
+                runCatching { FkLib.singBoxServiceStopped() }
+                commandServer.close()
             }
             val result = FkLib.serviceStart(core, content, rules, fkCoreServiceOptions())
             runningCore = core
             publishRoutingStatus(core, result.applied, result.active, result.fallback, unreadable ?: "", result.error, result.warnings)
         } else {
             if (wasInFkCore) {
-                // sing-box runs in libbox: fk-core stops its kernel and hands
-                // command.sock back to a new libbox command server.
+                // sing-box runs in the official libbox: fk-core stops its kernel
+                // and hands command.sock back to a new libbox command server.
                 runCatching { FkLib.serviceStop() }.onFailure { Log.w(TAG, "stop fk-core kernel", it) }
                 runCatching { FkLib.closeCommandServer() }
                 startCommandServer()
             }
-            // The libbox lifecycle prepares the rules/CA, starts the core, then
-            // activates profile processing before reporting startup success.
-            val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+            val result = startSingBox(content, rules)
             runningCore = core
-            publishRoutingStatus(core, result?.applied ?: 0, result?.active == true, result?.fallback == true, unreadable ?: "", result?.error.orEmpty(), result?.warnings.orEmpty())
+            publishRoutingStatus(core, result.applied, result.active, result.fallback, unreadable ?: "", result.error, result.warnings)
         }
-        rules
+        return rules
+    }
+
+    private fun singBoxOverrides(): OverrideOptions = OverrideOptions().apply {
+        autoRedirect = Settings.autoRedirect
+        if (Settings.perAppProxyEnabled) {
+            val appList = Settings.getEffectivePerAppProxyList()
+            if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
+                includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
+            } else {
+                excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
+            }
+        }
+    }
+
+    /** Starts content on the official libbox, with fk-core's local inbound added (FkLib.singBoxServiceContent). */
+    private fun startSingBoxContent(content: String) {
+        commandServer.startOrReloadService(FkLib.singBoxServiceContent(content), singBoxOverrides())
+        FkLib.singBoxServiceStarted()
+    }
+
+    /**
+     * sing-box with the routing rules, falling back to the profile alone when
+     * the rules cannot be applied or the start fails because of them; a start
+     * error that does not point at the rules is the profile's own.
+     */
+    private fun startSingBox(content: String, rules: String): CoreRoutingResult {
+        val routed = runCatching { FkLib.applyCoreRouting(TypedProfile.CORE_SING_BOX, content, rules) }
+        val result = routed.getOrElse { error ->
+            startSingBoxContent(content)
+            return CoreRoutingResult(content, 0, "", false, error.message.orEmpty(), false).also {
+                commandServer.writeMessage(LOG_ERROR, "分流规则未应用：" + it.error)
+            }
+        }
+        if (!result.active) {
+            startSingBoxContent(content)
+            writeRoutingWarnings(result.warnings)
+            return result
+        }
+        try {
+            startSingBoxContent(result.content)
+        } catch (startError: Exception) {
+            val message = startError.message.orEmpty()
+            if (!routingStartErrorFromRules(message)) throw startError
+            startSingBoxContent(content)
+            val reason = if (message.contains("initial rule-set")) {
+                "a remote rule-set could not be downloaded ($message); the rules are applied again at the next start or reload"
+            } else {
+                "sing-box did not start with the rules: $message"
+            }
+            commandServer.writeMessage(LOG_ERROR, "分流规则未应用，已按原配置启动：$reason")
+            writeRoutingWarnings(result.warnings)
+            return CoreRoutingResult(content, 0, result.warnings, false, reason, true)
+        }
+        commandServer.writeMessage(LOG_INFO, "已应用 sing-box 分流规则 ${result.applied} 条")
+        writeRoutingWarnings(result.warnings)
+        return result
+    }
+
+    private fun writeRoutingWarnings(warnings: String) {
+        warnings.split('\n').filter { it.isNotEmpty() }.forEach { commandServer.writeMessage(LOG_WARN, "分流规则：$it") }
+    }
+
+    /**
+     * Whether a start error can come from the routing rules fk-core added: a
+     * rule or rule-set, the geo data they reference, or an fk- tag.
+     */
+    private fun routingStartErrorFromRules(message: String): Boolean {
+        val lower = message.lowercase()
+        return listOf("rule", "geosite", "geoip", "balancer", "process-name", "package_name", "fk-", "fk ").any { lower.contains(it) }
     }
 
     /** fk-core's reverse call vpn.openTun: the VPN TUN for its kernel. */
@@ -484,7 +539,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             DefaultNetworkMonitor.stop()
             if (::commandServer.isInitialized) {
                 closeService()
-                runCatching { commandServer.closeCoreCommandServer() }
+                runCatching { commandServer.close() }
             }
             Libbox.discardPowerReportDraft()
             PowerReportManager.refresh()
@@ -512,10 +567,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             runCatching { FkLib.closeCommandServer() }
             return
         }
+        runCatching { FkLib.singBoxServiceStopped() }
         runCatching {
-            commandServer.closeCoreService()
+            commandServer.closeService()
         }.onFailure {
-            commandServer.setCoreError("android: close service: ${it.message}")
+            commandServer.setError("android: close service: ${it.message}")
         }
     }
 
@@ -540,7 +596,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             closeService()
             // A failing close must not skip the alert and stopSelf below, which
             // would leave the service in Starting with its notification up.
-            runCatching { commandServer.closeCoreCommandServer() }.onFailure { Log.w(TAG, "close command server", it) }
+            runCatching { commandServer.close() }.onFailure { Log.w(TAG, "close command server", it) }
         }
         withContext(Dispatchers.Main) {
             if (stopRequested) return@withContext

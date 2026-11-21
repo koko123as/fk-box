@@ -30,7 +30,7 @@ internal class BoxBackups(
     private fun origin(): String = preferences.getString("backupOrigin", null) ?: UUID.randomUUID().toString().also {
         check(preferences.edit().putString("backupOrigin", it).commit()) { "Unable to save backup identity" }
     }
-    // The file name when it is a UUID, else a name UUID of origin and ID (libbox core_backup.go).
+    // The file name when it is a UUID, else a name UUID of origin and ID (fk-core core_backup.go).
     private fun profileKey(profile: Profile, origin: String): String = FkLib.uiBackupProfileKey(profile.typed.path, origin, profile.id)
     private fun readPreferences() = BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
     private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }

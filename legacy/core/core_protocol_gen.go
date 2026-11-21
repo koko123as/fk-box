@@ -26,7 +26,6 @@ var uiProtocolMethods = map[string]string{
 	"closeProbe": "host",
 	"readQualityCache": "host",
 	"writeQualityCache": "host",
-	"releaseMemory": "host",
 	"setMemoryVisible": "host",
 	"setLanVisible": "host",
 	"refreshLan": "host",

@@ -4,7 +4,6 @@ import android.util.Log
 import android.net.Network
 import io.nekohasekai.fkbox.Fkbox
 import io.nekohasekai.libbox.InterfaceUpdateListener
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.fkcore.FkLib
 import java.net.NetworkInterface

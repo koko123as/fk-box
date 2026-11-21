@@ -1,20 +1,20 @@
 package io.nekohasekai.sfa.backend.tools
 
+import io.nekohasekai.sfa.bridge.UiPingTool
 import androidx.lifecycle.ViewModel
-import io.nekohasekai.libbox.Libbox
 
 /**
- * Scopes the Go Tailscale ping (libbox core_tailscale_ping.go) to the
+ * Scopes the Tailscale ping (UiPingTool) to the
  * activity, as the old Kotlin state holder was: a new one starts from the
  * initial state, and clearing it stops the ping.
  */
 class TailscalePingViewModel : ViewModel() {
     init {
-        Libbox.uiTailscalePingReset()
+        UiPingTool.stopWith(true)
     }
 
     override fun onCleared() {
-        Libbox.uiTailscalePingStop()
+        UiPingTool.stopWith(false)
         super.onCleared()
     }
 }

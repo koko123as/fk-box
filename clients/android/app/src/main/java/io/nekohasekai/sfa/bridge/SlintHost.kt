@@ -8,7 +8,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.json.JSONTokener
 
-/** A JSON value libbox already encoded (a [Libbox.uiInvoke] result or a Go event), passed to the UI unchanged. */
+/** A JSON value fk-core already encoded (an [FkLib.uiInvoke] result or an fk-core event), passed to the UI unchanged. */
 internal class GoWire(val json: String)
 
 /**
@@ -95,7 +95,6 @@ private suspend fun BoxBridge.hostDispatch(method: String, args: JSONObject): An
     "closeProbe" -> closeProbe(args.getString("id"))
     "readQualityCache" -> readQualityCache(args.getString("ip"))
     "writeQualityCache" -> writeQualityCache(args.getString("ip"), args.map("value"))
-    "releaseMemory" -> releaseMemory()
     "setMemoryVisible" -> setMemoryVisible(args.getBoolean("visible"))
     "setLanVisible" -> setLanVisible(args.getBoolean("visible"))
     "refreshLan" -> refreshLan()

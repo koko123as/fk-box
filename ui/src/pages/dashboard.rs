@@ -37,7 +37,6 @@ struct Local {
     editing: Option<Vec<String>>,
     saving: bool,
     updating: bool,
-    releasing: bool,
     lan_port: String,
     lan_port_invalid: bool,
     lan_target: Option<(i64, String)>,
@@ -575,7 +574,7 @@ pub fn project(w: &AppWindow, m: Mark) {
     dash.set_service_verdict(ss(verdict));
     dash.set_service_verdict_tone(tone);
 
-    let (editing, saving, updating, releasing) = local(|l| (l.editing.clone(), l.saving, l.updating, l.releasing));
+    let (editing, saving, updating) = local(|l| (l.editing.clone(), l.saving, l.updating));
     let available_cards = available();
     let shown_now = shown_cards();
     sync!(dash, get_cards, set_cards, shown_now.iter().map(ss).collect());
@@ -744,7 +743,6 @@ pub fn project(w: &AppWindow, m: Mark) {
         }
         sync!(dash, get_memory_core_rows, set_memory_core_rows, core_rows);
         sync!(dash, get_memory_core_percents, set_memory_core_percents, percents);
-        dash.set_releasing(releasing);
 
         // Intranet
         let addresses = d.lan_addresses();
@@ -855,23 +853,6 @@ pub fn act(id: &str, arg: &str) -> bool {
                     mark(Mark::DASH);
                 });
             }
-        }
-        "memory-release" => {
-            local(|l| l.releasing = true);
-            mark(Mark::DASH);
-            app::call("releaseMemory", json!({}), |r| {
-                local(|l| l.releasing = false);
-                match r {
-                    Ok(v) => {
-                        if v.is_object() {
-                            app::data_mut(|d| d.memory = crate::app::obj(&v));
-                        }
-                        app::message("Memory released");
-                    }
-                    Err(e) => app::report(&e),
-                }
-                mark(Mark::DASH);
-            });
         }
         "lan-toggle" => change_lan(arg == "1"),
         "lan-copy" => {

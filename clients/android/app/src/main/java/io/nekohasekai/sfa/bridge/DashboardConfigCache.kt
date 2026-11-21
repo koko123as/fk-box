@@ -27,7 +27,7 @@ internal class DashboardConfigCache(
         private var parsed: Result<List<Map<String, Any?>>>? = null
         private var detected: String? = null
 
-        /** The content's core kind (Libbox.detectCoreConfig), detected once per content. */
+        /** The content's core kind (FkLib.detectCoreConfig), detected once per content. */
         val core: String
             get() = detected ?: detectCore(content).also { detected = it }
 

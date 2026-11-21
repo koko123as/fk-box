@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OpenVPNChallengeResponse
-import io.nekohasekai.libbox.UIToolHost
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
 import io.nekohasekai.sfa.backend.tools.NetworkQualityViewModel
@@ -33,13 +32,13 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     private val scope = activity.lifecycleScope
     private val provider = ViewModelProvider(activity)
     // Tailscale / OpenConnect / OpenVPN status streams and the "tools" event are
-    // kept by Go (libbox core_endpoint_status.go); readers use its lookups.
+    // kept by UiEndpointStatus (UiTools.kt); readers use its lookups.
     private val usb = provider[USBIPStatusViewModel::class.java]
-    // Scopes the Go STUN tool to this activity (reset on create, stopped on clear).
+    // Scopes the STUN tool to this activity (reset on create, stopped on clear).
     private val stun = provider[STUNTestViewModel::class.java]
-    // Scopes the Go network quality tool to this activity (reset on create, stopped on clear).
+    // Scopes the network quality tool to this activity (reset on create, stopped on clear).
     private val quality = provider[NetworkQualityViewModel::class.java]
-    // Scopes the Go Tailscale ping to this activity (reset on create, stopped on clear).
+    // Scopes the Tailscale ping to this activity (reset on create, stopped on clear).
     private val ping = provider[TailscalePingViewModel::class.java]
     private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
@@ -54,7 +53,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         }
     })
 
-    private val toolHost = object : UIToolHost {
+    private val toolHost = object : UiToolHost {
         override fun commandClient(): io.nekohasekai.libbox.CommandClient = CommandTarget.standaloneClient()
 
         override fun reportError(message: String) {
@@ -74,20 +73,20 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 val available = if (remote != null) connected else status == Status.Started
                 Triple(foreground && available, available, remote?.id ?: 0L)
             }.distinctUntilChanged().collect { (connected, available, target) ->
-                Libbox.uiEndpointStatusCancel()
+                UiEndpointStatus.cancel()
                 usb.cancel()
                 outbounds.disconnect()
                 if (sessionKey != target || !available) {
-                    Libbox.uiStunStop()
-                    Libbox.uiQualityDisconnected()
-                    Libbox.uiTailscalePingStop()
+                    UiStunTool.stop()
+                    UiQualityTool.stopWith(true, false)
+                    UiPingTool.stopWith(false)
                     inbox.cancel()
                     inboxTag = null
                 }
                 sessionKey = target
                 if (connected) {
                     outbounds.connect()
-                    Libbox.uiEndpointStatusSubscribe(toolHost)
+                    UiEndpointStatus.subscribe(toolHost)
                     usb.subscribe()
                     inboxTag?.let { inbox.subscribe(it) }
                 } else {
@@ -95,16 +94,16 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 }
             }
         }
-        // Later "tools" payloads are sent by Go; the USBIP part is handed in here.
-        Libbox.uiToolsSetUSBIP(usbWire())
+        // Later "tools" payloads are sent by UiEndpointStatus; the USBIP part is handed in here.
+        UiEndpointStatus.setUSBIP(usbWire())
         emit("tools", snapshot())
-        jobs += scope.launch { usb.uiState.collect { Libbox.uiToolsSetUSBIP(usbWire()) } }
-        // Later STUN states are sent by Go (the "stun" event).
-        emit("stun", GoWire(Libbox.uiStunPayload()))
-        // Later quality states are sent by Go (the "quality" event).
-        emit("quality", GoWire(Libbox.uiQualityPayload()))
-        // Later ping states are sent by Go (the "ping" event).
-        emit("ping", GoWire(Libbox.uiTailscalePingPayload()))
+        jobs += scope.launch { usb.uiState.collect { UiEndpointStatus.setUSBIP(usbWire()) } }
+        // Later STUN states are sent by UiStunTool (the "stun" event).
+        emit("stun", GoWire(UiStunTool.payload()))
+        // Later quality states are sent by UiQualityTool (the "quality" event).
+        emit("quality", GoWire(UiQualityTool.payload()))
+        // Later ping states are sent by UiPingTool (the "ping" event).
+        emit("ping", GoWire(UiPingTool.payload()))
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
         jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
             emit("transfers", sessions.map { session ->
@@ -122,36 +121,36 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     private fun usbWire(): String = SlintHost.jsonText(usb.uiState.value.servers.map { it.toWire() })
 
-    fun snapshot(): GoWire = GoWire(Libbox.uiToolsPayload())
+    fun snapshot(): GoWire = GoWire(UiEndpointStatus.payload())
 
-    fun diagnostics(): Map<String, Any?> = mapOf("quality" to GoWire(Libbox.uiQualityPayload()), "stun" to GoWire(Libbox.uiStunDiagnostics()))
+    fun diagnostics(): Map<String, Any?> = mapOf("quality" to GoWire(UiQualityTool.payload()), "stun" to GoWire(UiStunTool.diagnostics()))
 
     private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
 
     suspend fun startStun(server: String?, outbound: String?) {
-        Libbox.uiStunStart(running, required(server, "server"), outbound ?: "", toolHost)
+        UiStunTool.start(running, required(server, "server"), outbound ?: "", toolHost)
     }
 
-    suspend fun stopStun() { Libbox.uiStunStop() }
+    suspend fun stopStun() { UiStunTool.stop() }
 
     suspend fun startQuality(url: String?, outbound: String?, serial: Boolean, http3: Boolean, seconds: Int?) {
-        require(!Libbox.uiQualityRunning()) { "A network quality test is already running" }
+        require(!UiQualityTool.running()) { "A network quality test is already running" }
         val configURL = BoxProfiles.validateUrl(required(url, "url"))
         val connectivity = activity.getSystemService(android.content.Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        Libbox.uiQualityStart(running, connectivity.isActiveNetworkMetered, configURL, outbound ?: "", serial, http3, seconds ?: 30, toolHost)
+        UiQualityTool.request(running, connectivity.isActiveNetworkMetered, configURL, outbound ?: "", serial, http3, seconds ?: 30, toolHost)
     }
 
-    suspend fun confirmQuality() { Libbox.uiQualityConfirm(running, toolHost) }
+    suspend fun confirmQuality() { UiQualityTool.confirm(running, toolHost) }
 
-    suspend fun dismissQuality() { Libbox.uiQualityDismiss() }
+    suspend fun dismissQuality() { UiQualityTool.dismiss() }
 
-    suspend fun stopQuality() { Libbox.uiQualityStop() }
+    suspend fun stopQuality() { UiQualityTool.stopWith(false, false) }
 
     suspend fun setTailscaleExitNode(endpointTag: String?, peer: String?) {
         val tag = required(endpointTag, "endpoint")
-        if (!Libbox.uiTailscaleHasEndpoint(tag)) error("Endpoint no longer exists")
+        if (!UiEndpointStatus.tailscaleHasEndpoint(tag)) error("Endpoint no longer exists")
         val stableID = required(peer, "peer")
-        require(stableID.isEmpty() || Libbox.uiTailscaleIsExitNodeOption(tag, stableID)) { "Not an available exit node" }
+        require(stableID.isEmpty() || UiEndpointStatus.tailscaleIsExitNodeOption(tag, stableID)) { "Not an available exit node" }
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setTailscaleExitNode(tag, stableID) }
     }
 
@@ -160,11 +159,11 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     }
 
     suspend fun tailscalePing(endpoint: String?, peerID: String?) {
-        val peer = Libbox.uiTailscalePeer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
-        Libbox.uiTailscalePingStart(required(endpoint, "endpoint"), peer.tailscaleIPs().toList().firstOrNull() ?: error("Peer has no address"), toolHost)
+        val peer = UiEndpointStatus.tailscalePeer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
+        UiPingTool.start(required(endpoint, "endpoint"), peer.tailscaleIPs().toList().firstOrNull() ?: error("Peer has no address"), toolHost)
     }
 
-    suspend fun stopTailscalePing() { Libbox.uiTailscalePingStop() }
+    suspend fun stopTailscalePing() { UiPingTool.stopWith(false) }
 
     suspend fun subscribeTaildrop(endpoint: String?) {
         inboxTag = required(endpoint, "endpoint")
@@ -201,20 +200,20 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     suspend fun sendShare(token: String?, endpointTag: String?, peerID: String?): Any? {
         val endpoint = required(endpointTag, "endpoint")
-        val peer = Libbox.uiTailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        val peer = UiEndpointStatus.tailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
         require(peer.canReceiveFiles && peer.online) { "Peer is not available for file transfer" }
         val files = withContext(Dispatchers.IO) { activity.openShare(required(token, "token")) }
-        return TaildropSendManager.send(endpoint, peer.stableID, Libbox.uiTailscalePeerDisplayName(peer), files)
+        return TaildropSendManager.send(endpoint, peer.stableID, UiEndpointStatus.tailscalePeerDisplayName(peer), files)
     }
 
     /** Null when the user dismissed the file picker. */
     suspend fun sendTaildropFile(endpointTag: String?, peerID: String?): Any? {
         val endpoint = required(endpointTag, "endpoint")
-        val peer = Libbox.uiTailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
+        val peer = UiEndpointStatus.tailscalePeer(endpoint, required(peerID, "peer")) ?: error("Peer no longer exists")
         require(peer.canReceiveFiles) { "This peer cannot receive files" }
         val uri = activity.pickDocument() ?: return null
         val files = withContext(Dispatchers.IO) { TaildropSendManager.openURIs(listOf(uri)) }
-        return TaildropSendManager.send(endpoint, peer.stableID, Libbox.uiTailscalePeerDisplayName(peer), files)
+        return TaildropSendManager.send(endpoint, peer.stableID, UiEndpointStatus.tailscalePeerDisplayName(peer), files)
     }
 
     suspend fun cancelTaildropSend(id: Long) { TaildropSendManager.cancel(id) }
@@ -287,13 +286,13 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
 
     override fun close() {
         jobs.forEach { it.cancel() }
-        Libbox.uiEndpointStatusCancel()
+        UiEndpointStatus.cancel()
         usb.cancel()
         outbounds.disconnect()
         inbox.cancel()
-        Libbox.uiTailscalePingStop()
-        Libbox.uiStunStop()
-        Libbox.uiQualityStop()
+        UiPingTool.stopWith(false)
+        UiStunTool.stop()
+        UiQualityTool.stopWith(false, false)
         usbController.close()
         ssh.close()
     }

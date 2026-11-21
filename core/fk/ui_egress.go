@@ -64,18 +64,20 @@ func NewUIDirectEgressProbe() *UIEgressProbe {
 	return probe
 }
 
-// NewUIServiceEgressProbe checks the egress of the kernel fk-core runs:
+// NewUIServiceEgressProbe checks the egress of the running kernel (fk-core's
+// child, or sing-box):
 // every request goes through its local inbound and the profile's rules.
 func NewUIServiceEgressProbe() (*UIEgressProbe, error) {
-	running := runningKernel()
-	if running == nil {
+	running, local := runningKernel(), singBoxLocalProxy()
+	if running == nil && local == nil {
 		return nil, fmt.Errorf("no kernel is running")
 	}
 	proxy, err := url.Parse(ServiceLocalProxy())
 	if err != nil {
 		return nil, err
 	}
-	probe, transport := newUIEgressProbeTransport(func() bool { return runningKernel() == running }, nil, nil)
+	current := func() bool { return runningKernel() == running && singBoxLocalProxy() == local }
+	probe, transport := newUIEgressProbeTransport(current, nil, nil)
 	transport.Proxy = http.ProxyURL(proxy)
 	return probe, nil
 }

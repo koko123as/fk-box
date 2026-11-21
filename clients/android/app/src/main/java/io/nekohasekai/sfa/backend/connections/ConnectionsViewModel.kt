@@ -1,8 +1,8 @@
 package io.nekohasekai.sfa.backend.connections
 
+import io.nekohasekai.sfa.bridge.UiConnectionStream
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.ConnectionEvents
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
@@ -40,7 +40,7 @@ class ConnectionsViewModel :
 
     private val _visibleCount = MutableStateFlow(0)
 
-    // Every event batch, reset and clear is handed to libbox on one lane, in
+    // Every event batch, reset and clear is handed to UiConnectionStream on one lane, in
     // arrival order, so NEW/UPDATE/CLOSED deltas can never be applied out of
     // order.
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -49,9 +49,9 @@ class ConnectionsViewModel :
     override fun createInitialState() = Unit
 
     init {
-        // The libbox store is process-wide; a new view model starts empty, as
+        // The store is process-wide; a new view model starts empty, as
         // its own store did.
-        viewModelScope.launch(connectionsLane) { Libbox.uiConnectionStreamClear(CommandTarget.isRemote) }
+        viewModelScope.launch(connectionsLane) { UiConnectionStream.clear() }
         viewModelScope.launch {
             combine(
                 AppLifecycleObserver.isForeground,
@@ -92,7 +92,7 @@ class ConnectionsViewModel :
             return
         }
         if (status != Status.Started) {
-            withContext(connectionsLane) { Libbox.uiConnectionStreamClear(CommandTarget.isRemote) }
+            withContext(connectionsLane) { UiConnectionStream.clear() }
         }
     }
 
@@ -106,10 +106,10 @@ class ConnectionsViewModel :
     }
 
     override fun onDisconnected() {
-        viewModelScope.launch(connectionsLane) { Libbox.uiConnectionStreamClear(CommandTarget.isRemote) }
+        viewModelScope.launch(connectionsLane) { UiConnectionStream.clear() }
     }
 
     override fun writeConnectionEvents(events: ConnectionEvents) {
-        viewModelScope.launch(connectionsLane) { Libbox.uiConnectionStreamApply(events, CommandTarget.isRemote) }
+        viewModelScope.launch(connectionsLane) { UiConnectionStream.apply(events) }
     }
 }

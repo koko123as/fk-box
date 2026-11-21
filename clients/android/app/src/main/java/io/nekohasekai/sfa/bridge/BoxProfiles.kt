@@ -303,7 +303,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         val text = data.toString(Charsets.UTF_8)
         decodeArray(text, name.substringBeforeLast('.'))?.let { return it }
         val detected = FkLib.detectCoreConfig(text)
-        if (text.trimStart().startsWith("{") || detected == Libbox.CoreMihomo || detected == Libbox.CoreLinks) {
+        if (text.trimStart().startsWith("{") || detected == TypedProfile.CORE_MIHOMO || detected == TypedProfile.CONTENT_LINKS) {
             val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
             return mapOf("name" to name.substringBeforeLast('.'), "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
                 "detectedCore" to prepared.core)

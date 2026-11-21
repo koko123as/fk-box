@@ -183,13 +183,6 @@
    "section": "Dashboard details"
   },
   {
-   "name": "releaseMemory",
-   "owner": "host",
-   "target": "core",
-   "args": [],
-   "section": "Dashboard details"
-  },
-  {
    "name": "setMemoryVisible",
    "owner": "host",
    "target": "core",

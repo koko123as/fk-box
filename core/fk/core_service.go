@@ -524,11 +524,13 @@ func ServiceMemory() int64 {
 // "http://user:password@127.0.0.1:port" URL whose traffic follows the
 // profile's ordinary rules, or "" when no kernel runs.
 func ServiceLocalProxy() string {
-	running := runningKernel()
-	if running == nil {
-		return ""
+	if running := runningKernel(); running != nil {
+		return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, running.localPassword, running.localPort)
 	}
-	return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, running.localPassword, running.localPort)
+	if local := singBoxLocalProxy(); local != nil {
+		return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, local.password, local.port)
+	}
+	return ""
 }
 
 // serviceProxy is http.Transport.Proxy for fk-core's own requests: the

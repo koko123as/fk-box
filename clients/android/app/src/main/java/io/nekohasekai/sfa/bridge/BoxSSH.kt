@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.terminal.DEFAULT_SSH_TERMINAL_TYPE
@@ -45,7 +44,7 @@ internal class BoxSSH(scope: CoroutineScope,
     private fun required(value: String?, key: String) = value ?: error("Missing terminal argument: $key")
 
     private fun sshPeer(endpoint: String?, peerID: String?) =
-        (Libbox.uiTailscalePeer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")).also { peer ->
+        (UiEndpointStatus.tailscalePeer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")).also { peer ->
             require(peer.sshHostKeys().hasNext()) { "Peer has no authenticated SSH host keys" }
         }
 

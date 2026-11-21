@@ -47,6 +47,8 @@
 | `:singbox` | `SingBoxService`（绑定式服务，`android:process=":singbox"`），官方 `libbox.aar` | 主进程 `bindService` | `linkToDeath` 通知主进程，主进程按退避重启 |
 | Xray / mihomo | 官方可执行文件 | fk-core（`exec.Cmd`） | fk-core 监管：退避重启，有次数上限 |
 
+**决策 D4（P4 实施时调整）：sing-box 留在主进程，不另开 `:singbox` 进程。** 官方 libbox 的 `PlatformInterface`（`openTun`、`autoDetectInterfaceControl` 对每个出站 socket 调 `VpnService.protect`、`findConnectionOwner`、默认网络监视）都是对 `VpnService` 的同步回调；放进另一个进程后每个 socket 都要跨进程 Binder 调用，并要把整个 `PlatformInterfaceWrapper` 拆成 AIDL。上游 SFA 也是在应用进程里运行 libbox。因此 P4 的做法是：主进程加载**官方、未修改的** `libbox.aar`，`BoxService` 用官方 `CommandServer.startOrReloadService` 启动 sing-box；分流规则与本地入站（`fkbox-local`，127.0.0.1 随机端口与凭据，供 fk-core 自己的请求和出口探测走配置的普通规则）由 fk-core 生成（`applyCoreRouting`、`singBoxServiceContent`）。原 fork 里的界面工具（连接流、内存卡片、网络质量、STUN、Tailscale ping、端点状态）改为 Kotlin（`bridge/UiTools.kt`、`bridge/UiStreams.kt`），直接调用官方 `CommandClient`。下文进程图与第 9 节中关于 `:singbox` 的部分以此为准。
+
 为什么 sing-box 不用命令行：官方 `sing-box` 命令行在没有 root 的 `VpnService` 下拿不到 TUN（它的 tun 入站自己打开 `/dev/tun`）；官方 `experimental/libbox` 是上游给 Android 的正式入口，`PlatformInterface.OpenTun` 由应用返回 fd（sing-box `v1.15.0-alpha.13` `experimental/libbox/platform.go`）。Tailscale/Taildrop、OpenConnect、OpenVPN、USB/IP 也都在 libbox 里（`constant/proxy.go:29-45`），原样保留。
 
 gomobile 的 `libgojni.so`（官方 libbox 的库名为 `libbox.so`，`-libname=box`）一个 APK 只能有一份：fk-core 不用 gomobile，是普通 Go 可执行文件；APK 里唯一的 gomobile AAR 是官方 libbox。
@@ -213,7 +215,7 @@ fk-core 保存用户配置原文，启动时生成交给内核的配置（不改
 | P1 | `arch/kernel-isolation-p1` | `build-kernels` 动作：官方 libbox、`libxray.so`、`libmihomo.so`、`libxrayshare.so`、`libfkcore.so`；零修改与模块隔离检查；旧构建保留，`-PkernelIsolation=true` 切换 |
 | P2 | `-p2` | `core/go.mod` 独立模块；与内核无关的代码迁入；协议 `owner: core`；Kotlin `Libbox.*` 中 fk-box 的绑定改走 fk-core |
 | P3 | `-p3` | Xray/mihomo 子进程、fd 传递、监管、控制接口适配器、StartedService 作答 |
-| P4 | `-p4` | `:singbox` 进程与官方 libbox |
+| P4 | `-p4` | 官方 libbox 启动 sing-box（主进程，决策 D4）；fork 中的界面工具改为 Kotlin |
 | P5 | `-p5` | 外置抓包代理与 `http_rewrite` 迁移 |
 | P6 | `-p6` | 删除补丁、旧适配器、旧构建开关与脚本，更新文档 |
 | P7 | `main` | `build-release.yml`（`publish_release=false`） |

@@ -54,7 +54,7 @@ import java.io.Closeable
  */
 class BoxBridge(private val activity: BoxActivity) : Closeable {
     private companion object {
-        /** The bridge whose sink libbox holds (Libbox.setUIEventSink is process-wide). */
+        /** The bridge whose sink the UI tools hold (UiEvents.sink is process-wide). */
         val uiEventOwner = java.util.concurrent.atomic.AtomicReference<BoxBridge?>(null)
     }
 
@@ -162,9 +162,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     /** Former EventChannel onListen: starts streaming state to [eventSink]. */
     fun listen(eventSink: EventSink) {
         sink = eventSink
-        // Events libbox raises for the UI (protocol/methods.json) take the same path.
+        // Events the Kotlin tools and fk-core raise for the UI (protocol/methods.json) take the same path.
         uiEventOwner.set(this)
-        Libbox.setUIEventSink { kind, payload -> emit(kind, GoWire(payload)) }
+        UiEvents.sink = { kind, payload -> emit(kind, GoWire(payload)) }
         FkCoreClient.setEventListener { kind, payload -> emit(kind, GoWire(payload)) }
         streamJob?.cancel()
         streamJob = scope.launch {
@@ -181,7 +181,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     coroutineScope {
                         launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
                         launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
-                        // libbox's connection stream sends "connections" and
+                        // UiConnectionStream sends "connections" and
                         // "connectionStats" (each at once when shown, then each
                         // changed state at most once a second) while in the
                         // foreground.
@@ -191,15 +191,15 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                             var entered = false
                             try {
                                 withContext(Dispatchers.Default) {
-                                    Libbox.uiConnectionStreamSetForeground(true)
+                                    UiConnectionStream.setForeground(true)
                                     entered = true
                                 }
                                 awaitCancellation()
                             } finally {
-                                if (entered) withContext(NonCancellable + Dispatchers.Default) { Libbox.uiConnectionStreamSetForeground(false) }
+                                if (entered) withContext(NonCancellable + Dispatchers.Default) { UiConnectionStream.setForeground(false) }
                             }
                         }
-                        // libbox's log stream sends "logs" (snapshot on show,
+                        // fk-core's log stream sends "logs" (snapshot on show,
                         // then increments at most once a second) through the
                         // UI event sink while shown and in the foreground.
                         launch {
@@ -238,12 +238,12 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (connectionsVisible) {
             connectionsVisible = false
             connections.setVisible(false)
-            Libbox.uiConnectionStreamSetRowsVisible(false)
+            UiConnectionStream.show(true, false)
         }
         if (connectionStatsVisible) {
             connectionStatsVisible = false
             connections.setVisible(false)
-            Libbox.uiConnectionStreamSetStatsVisible(false)
+            UiConnectionStream.show(false, false)
         }
     }
 
@@ -281,7 +281,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun writeQualityCache(ip: String, value: Map<String, Any?>) { dashboardDetails.writeQualityCache(ip, value) }
 
-    suspend fun releaseMemory() = dashboardDetails.releaseMemory()
 
     fun setMemoryVisible(visible: Boolean) { dashboardDetails.setMemoryVisible(visible) }
 
@@ -469,9 +468,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (visible != connectionsVisible) {
             connectionsVisible = visible
             connections.setVisible(visible)
-            Libbox.uiConnectionStreamSetRowsVisible(visible)
+            UiConnectionStream.show(true, visible)
         } else if (visible) {
-            Libbox.uiConnectionStreamResendRows()
+            UiConnectionStream.resend(true)
         }
     }
 
@@ -480,9 +479,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (visible != connectionStatsVisible) {
             connectionStatsVisible = visible
             connections.setVisible(visible)
-            Libbox.uiConnectionStreamSetStatsVisible(visible)
+            UiConnectionStream.show(false, visible)
         } else if (visible) {
-            Libbox.uiConnectionStreamResendStats()
+            UiConnectionStream.resend(false)
         }
     }
 
@@ -888,7 +887,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     internal fun submitBrowserResult(endpoint: String, challengeID: String, value: io.nekohasekai.sfa.backend.tools.OpenConnectBrowserResultData) {
         scope.launch {
             try {
-                require(Libbox.uiOpenConnectChallenge(endpoint)?.id == challengeID) { "Authentication request expired" }
+                require(UiEndpointStatus.openConnectChallenge(endpoint)?.id == challengeID) { "Authentication request expired" }
                 // Keep this response on the session whose challenge was checked.
                 val client = CommandTarget.standaloneClient()
                 withContext(Dispatchers.IO) {
@@ -923,7 +922,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         // Only the bridge that installed the sink removes it: a recreated
         // activity's bridge may already have installed its own.
         if (uiEventOwner.compareAndSet(this, null)) {
-            Libbox.setUIEventSink(null)
+            UiEvents.sink = null
             FkCoreClient.setEventListener(null)
         }
         if (::dashboard.isInitialized) {

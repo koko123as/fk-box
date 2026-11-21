@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * Keeps the core log subscription. The lines go to libbox's log stream
+ * Keeps the core log subscription. The lines go to fk-core's log stream
  * (core_log_stream.go: ring, ANSI strip, the "logs" events); the bridge
  * tells it when the Logs page is shown.
  */

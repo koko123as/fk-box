@@ -90,6 +90,13 @@ object FkLib {
     }
     fun serviceMemory(): Long = FkCodec.long(CallResult(FkCoreClient.call("serviceMemory")))
     fun serviceLocalProxy(): String = FkCodec.string(CallResult(FkCoreClient.call("serviceLocalProxy")))
+    fun singBoxServiceContent(content: String): String = FkCodec.string(CallResult(FkCoreClient.call("singBoxServiceContent", content)))
+    fun singBoxServiceStarted() {
+        FkCoreClient.call("singBoxServiceStarted")
+    }
+    fun singBoxServiceStopped() {
+        FkCoreClient.call("singBoxServiceStopped")
+    }
     fun closeCommandServer() {
         FkCoreClient.call("closeCommandServer")
     }

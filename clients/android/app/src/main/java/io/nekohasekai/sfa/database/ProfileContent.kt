@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.database
 
 import android.util.AtomicFile
 import io.nekohasekai.sfa.fkcore.FkLib
-import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.sync.Mutex
 import java.io.File
 import java.io.OutputStream
@@ -39,7 +38,7 @@ internal object ProfileContent {
      * or null when [content] is not one. A single profile never stores an array.
      */
     fun splitArray(content: String): List<ProfileArray.Element>? {
-        if (FkLib.detectCoreConfig(content) != Libbox.CoreArray) return null
+        if (FkLib.detectCoreConfig(content) != TypedProfile.CONTENT_ARRAY) return null
         val split = FkLib.splitCoreConfigArray(content)
         return (0 until split.len()).map { ProfileArray.Element(split.remarks(it), split.content(it), split.core(it)) }
     }
