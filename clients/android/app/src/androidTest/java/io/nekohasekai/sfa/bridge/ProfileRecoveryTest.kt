@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.bridge
 
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.os.Build
 import androidx.lifecycle.ViewModelProvider
 import androidx.room.Room
@@ -108,8 +109,8 @@ class ProfileRecoveryTest {
                     }""").put("experimental", JSONObject().put("http_rewrite", extension)).toString()
                     profiles.writeContent(id, config, BoxProfiles.revision(profiles.read(id)))
                     assertEquals(Status.Started, activity.serviceStatus.value)
-                    assertTrue(JSONObject(Libbox.readUICaptureStatus()).getBoolean("rewriteActive"))
-                    assertFalse(JSONObject(Libbox.readUICaptureStatus()).getBoolean("active"))
+                    assertTrue(JSONObject(FkLib.captureStatus()).getBoolean("rewriteActive"))
+                    assertFalse(JSONObject(FkLib.captureStatus()).getBoolean("active"))
                     val static = request("offline.test", 443, "/static", true)
                     assertTrue(static.startsWith("HTTP/1.1 201"))
                     assertTrue(static.endsWith("local-response"))
@@ -117,14 +118,14 @@ class ProfileRecoveryTest {
                     assertEquals(0, origin.requests.get())
 
                     val captures = File(activity.noBackupFilesDir, "http-debug/captures")
-                    Libbox.openUICapture(captures.absolutePath)
-                    Libbox.clearUICapture()
-                    BoxService.dashboardServer!!.startUICapture(captures.absolutePath, "{}", "", null)
+                    FkLib.captureOpen(captures.absolutePath)
+                    FkLib.captureClear()
+                    FkLib.captureStart(captures.absolutePath, "{}", "", "")
                     assertTrue(request("source.test", 80, "/remote", false).contains("\"message\":\"script\""))
                     assertEquals(1, origin.requests.get())
-                    Libbox.stopUICapture()
-                    assertTrue(JSONObject(Libbox.readUICaptureStatus()).getBoolean("rewriteActive"))
-                    assertFalse(JSONObject(Libbox.readUICaptureStatus()).getBoolean("active"))
+                    FkLib.captureStop()
+                    assertTrue(JSONObject(FkLib.captureStatus()).getBoolean("rewriteActive"))
+                    assertFalse(JSONObject(FkLib.captureStatus()).getBoolean("active"))
                     assertTrue(request("offline.test", 443, "/static", true).endsWith("local-response"))
                     assertTrue(runCatching { authority.generate(authority.snapshot()["revision"] as String) }.isFailure)
 
@@ -135,14 +136,14 @@ class ProfileRecoveryTest {
                         assertTrue(runCatching { profiles.writeContent(id, invalid, BoxProfiles.revision(profiles.read(id))) }.isFailure)
                         assertEquals(config, profiles.read(id))
                         assertEquals(Status.Started, activity.serviceStatus.value)
-                        assertTrue(JSONObject(Libbox.readUICaptureStatus()).getBoolean("rewriteActive"))
+                        assertTrue(JSONObject(FkLib.captureStatus()).getBoolean("rewriteActive"))
                         assertTrue(request("offline.test", 443, "/dynamic", true).endsWith("script-mock"))
                     }
                     profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
-                    assertFalse(JSONObject(Libbox.readUICaptureStatus()).getBoolean("rewriteActive"))
+                    assertFalse(JSONObject(FkLib.captureStatus()).getBoolean("rewriteActive"))
                 }
             } catch (error: Exception) {
-                throw AssertionError("Profile HTTP rewrite failed: ${Libbox.readUICaptureLogs()}", error)
+                throw AssertionError("Profile HTTP rewrite failed: ${FkLib.captureLogs()}", error)
             } finally {
                 withContext(Dispatchers.Main) { activity.stopService() }
                 withTimeout(15_000) { activity.serviceStatus.first { it == Status.Stopped } }
@@ -172,12 +173,12 @@ class ProfileRecoveryTest {
                 profiles.writeContent(id, config, BoxProfiles.revision(profiles.read(id)))
                 assertEquals(Status.Started, activity.serviceStatus.value)
                 val captures = File(activity.noBackupFilesDir, "http-debug/captures")
-                Libbox.openUICapture(captures.absolutePath)
-                Libbox.clearUICapture()
+                FkLib.captureOpen(captures.absolutePath)
+                FkLib.captureClear()
                 val material = authority.material()
-                BoxService.dashboardServer!!.startUICapture(captures.absolutePath,
+                FkLib.captureStart(captures.absolutePath,
                     """{"version":2,"https":true,"ports":[$originPort],"decryptHosts":["origin.test"]}""", material.first, material.second)
-                assertTrue(JSONObject(Libbox.readUICaptureStatus()).getBoolean("active"))
+                assertTrue(JSONObject(FkLib.captureStatus()).getBoolean("active"))
 
                 val trustStore = KeyStore.getInstance(KeyStore.getDefaultType()).apply { load(null); setCertificateEntry("mitm", certificate) }
                 val managers = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm()).apply { init(trustStore) }
@@ -213,9 +214,9 @@ class ProfileRecoveryTest {
                 val detail = withTimeout(5_000) {
                     var result: JSONObject? = null
                     while (result == null) {
-                        val items = JSONObject(Libbox.listUICapture(10, "origin.test")).getJSONArray("items")
+                        val items = JSONObject(FkLib.captureList(10, "origin.test")).getJSONArray("items")
                         if (items.length() == 1 && items.getJSONObject(0).getBoolean("complete")) {
-                            result = JSONObject(Libbox.readUICapture(items.getJSONObject(0).getString("id")))
+                            result = JSONObject(FkLib.captureRead(items.getJSONObject(0).getString("id")))
                         } else delay(20)
                     }
                     checkNotNull(result)
@@ -230,13 +231,13 @@ class ProfileRecoveryTest {
                 assertTrue(detail.getJSONObject("response").getBoolean("bodyComplete"))
                 val headers = detail.getJSONObject("response").getJSONArray("headers")
                 assertEquals(2, (0 until headers.length()).count { headers.getJSONObject(it).getString("name").equals("Set-Cookie", true) })
-                assertTrue(Libbox.exportUICaptureCurl(detail.getString("id")).contains("origin.test:$originPort"))
+                assertTrue(FkLib.captureExportCurl(detail.getString("id")).contains("origin.test:$originPort"))
                 profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
-                assertFalse(JSONObject(Libbox.readUICaptureStatus()).getBoolean("active"))
+                assertFalse(JSONObject(FkLib.captureStatus()).getBoolean("active"))
             } catch (error: Exception) {
-                throw AssertionError("Android routed MITM failed: ${Libbox.readUICaptureLogs()}", error)
+                throw AssertionError("Android routed MITM failed: ${FkLib.captureLogs()}", error)
             } finally {
-                Libbox.stopUICapture()
+                FkLib.captureStop()
                 alias?.let { KeyStore.getInstance("AndroidKeyStore").apply { load(null); deleteEntry(it) } }
                 directory.deleteRecursively()
             }
@@ -286,7 +287,7 @@ class ProfileRecoveryTest {
             assertEquals(true, (reloaded["config"] as Map<*, *>)["https"])
             assertEquals(true, (reloaded["config"] as Map<*, *>)["blockQUIC"])
             val profile = """{"log":{"level":"warn"},"experimental":{"http_debug":{"scripts":[]},"cache_file":{"enabled":true}}}"""
-            val cleaned = Libbox.removeUIRetiredCaptureOptions(profile)
+            val cleaned = FkLib.removeUIRetiredCaptureOptions(profile)
             assertFalse(cleaned.contains("http_debug"))
             assertTrue(cleaned.contains("cache_file"))
             Libbox.checkConfig(cleaned)

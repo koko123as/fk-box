@@ -63,7 +63,6 @@ fun getVersionProps(propName: String): String {
 // The ABIs the APKs are split into; the Rust UI is built for the same set
 // (buildRustUi below), so no split ships without libfkui.so.
 val arm64Only = providers.gradleProperty("arm64Only").orNull.toBoolean()
-val officialLibbox = providers.gradleProperty("officialLibbox").orNull.toBoolean()
 val emulatorOnly = providers.gradleProperty("emulatorOnly").orNull.toBoolean()
 val apkAbis: List<String> = when {
     emulatorOnly -> listOf("x86_64")
@@ -326,14 +325,9 @@ androidComponents {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
-    // libbox: the multi-kernel libbox.aar of .github/actions/build-libbox, or
-    // with -PofficialLibbox=true sing-box's official, unmodified libbox.aar
+    // libbox: sing-box's official, unmodified libbox.aar
     // (.github/actions/build-kernels; docs/kernel-isolation.md).
-    if (officialLibbox) {
-        implementation(files("libs/libbox-official.aar"))
-    } else {
-        implementation(files("libs/libbox.aar"))
-    }
+    implementation(files("libs/libbox-official.aar"))
 
     // Both flavors use the same API 24+ backend.
     val lifecycleVersion = "2.11.0"

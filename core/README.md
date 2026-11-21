@@ -10,7 +10,9 @@ fails CI when `go list -deps` finds one.
 | `cmd/fk-core` | the executable, shipped in the APK as `libfkcore.so` and run from `nativeLibraryDir` |
 | `protocol` | JSON-lines framing in both directions (requests, events, reverse calls) and descriptor passing (SCM_RIGHTS) |
 | `rpc` | calls Go functions and object methods by name with JSON arguments (what gomobile bound into libbox.aar before) |
-| `fk` | the kernel-independent fk-box code ported from [legacy/core](../legacy/core/README.md) (profile store, profile checks and conversion, routing, geo data, subscriptions, WebDAV, backups, UI protocol methods, log stream, LAN proxy, direct egress probe); `fk.Register` lists what fk-core answers by name |
+| `capture` | the capture proxy kernels route selected traffic to (SOCKS5 on 127.0.0.1); recording and MITM in `httpdebug` |
+| `httpdebug` | HTTP/HTTPS recording, MITM, profile HTTP rewriting and its JavaScript runtime (goja) |
+| `fk` | the kernel-independent fk-box code, formerly the multi-kernel libbox overlay (profile store, profile checks and conversion, routing, geo data, subscriptions, WebDAV, backups, UI protocol methods, log stream, LAN proxy, direct egress probe); `fk.Register` lists what fk-core answers by name |
 | `internal/clashconvert` | mihomo's share-link converter, vendored (see below) |
 | `tools/xrayshare` | its own module: the official libXray share-link converter as `libxrayshare.so` (decision D2) |
 
@@ -18,9 +20,9 @@ Built by [tools/build_kernels.sh](../tools/build_kernels.sh) together with the
 official kernels; tested by the `kernels` job of
 [newui.yml](../.github/workflows/newui.yml).
 
-The multi-kernel libbox overlay this module replaces lives in
-[legacy/core](../legacy/core/README.md) until the migration's last phase
-removes it.
+It replaces the multi-kernel libbox overlay fk-box kept until P6 of
+[docs/kernel-isolation.md](../docs/kernel-isolation.md); the app now uses
+sing-box's official libbox.aar.
 
 ## Vendored code
 

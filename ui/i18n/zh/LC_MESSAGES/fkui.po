@@ -976,9 +976,6 @@ msgstr "内存"
 msgid "Memory limit"
 msgstr "内存限制"
 
-msgid "Memory released"
-msgstr "已释放可回收内存"
-
 msgid "Memory reported by the remote core. Detailed accounting is unavailable."
 msgstr "此数据由远程内核上报，暂不提供详细内存分类。"
 
@@ -1401,9 +1398,6 @@ msgstr "重新生成 MITM CA？之后需要替换 Android 和目标应用中已�
 
 msgid "Reject only observed QUIC connections whose names match the HTTPS filters. Apps may retry over TCP. Unknown names and other UDP stay unchanged."
 msgstr "只拒绝已识别且域名符合 HTTPS 筛选的 QUIC 连接，应用可能改用 TCP 重试。未知域名和其他 UDP 保持原样。"
-
-msgid "Release memory"
-msgstr "释放内存"
 
 msgid "Releases"
 msgstr "发布版本"

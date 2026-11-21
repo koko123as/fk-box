@@ -12,15 +12,13 @@
 Checks before writing: the tag exists, the module resolves on the Go proxy
 (Xray tags are not valid module versions, so the tag's commit is turned into
 the pseudo-version Go uses), and the go directive of the new go.mod is not
-newer than GO_VERSION (a newer one breaks setup-core). Only version.properties
+newer than GO_VERSION (a newer one breaks the build). Only version.properties
 changes; build and test on a branch (see "升级内核" in libbox.md).
 
 Drift report: the upstream files that changed between the pinned version and
 the new one, limited to what fk-box touches: the packages core/ imports from
-that kernel, and for sing-box also the files fk-box's patches and scripts
-edit, experimental/libbox (fk-box's files are copied into it), the daemon's
-gRPC service and go.mod (with the sing-tun version the Android ingress patch
-was made for). It reads GitHub's compare API (GITHUB_TOKEN raises the rate
+that kernel, and for sing-box also experimental/libbox (the API the app
+calls), the daemon's gRPC service fk-core serves and go.mod. It reads GitHub's compare API (GITHUB_TOKEN raises the rate
 limit); a failure to read it is reported and does not stop the bump.
 """
 import json
@@ -40,19 +38,15 @@ KERNELS = {
     "mihomo": ("MetaCubeX/mihomo", "github.com/metacubex/mihomo"),
     "libxray": ("XTLS/libXray", "github.com/xtls/libxray"),
 }
-# sing-box files fk-box edits by text (tools/patch_*.py) or depends on as a
-# whole: libbox (fk-box's files are built into it), the StartedService gRPC
-# service fk-box implements (core_command_server.go) and the attached service
-# it forwards sing-box calls to, and build_libbox, whose Android flags and
-# tags cmd/fk-bind (legacy/core/fkbind) copies.
+# sing-box files fk-box depends on as a whole: libbox's API (the app runs
+# the official libbox.aar), the StartedService gRPC service fk-core serves
+# for Xray and mihomo (core/fk/core_service_grpc.go), and build_libbox, which
+# builds that AAR (.github/actions/build-kernels).
 SING_BOX_WATCHED = [
     "experimental/libbox/",
     "daemon/started_service.go",
     "daemon/started_service.proto",
     "daemon/started_service_grpc.pb.go",
-    "daemon/attached_service.go",
-    "daemon/instance.go",
-    "dns/router.go",
     "cmd/internal/build_libbox/main.go",
     "go.mod",
 ]
@@ -137,26 +131,10 @@ def watched_packages(module):
     """The package directories (relative to the module) core/ imports."""
     pattern = re.compile(r'"' + re.escape(module) + r'(/[^"]*)?"')
     packages = set()
-    for path in (ROOT / "legacy" / "core").rglob("*.go"):
+    for path in (ROOT / "core").rglob("*.go"):
         for match in pattern.finditer(path.read_text()):
             packages.add((match.group(1) or "").strip("/"))
     return sorted(packages)
-
-
-def patched_files():
-    """sing-box files fk-box's .patch files change."""
-    files = set()
-    for patch in (ROOT / "legacy" / "core").glob("*.patch"):
-        if patch.name.startswith("sing-tun"):
-            continue
-        files |= set(re.findall(r"^diff --git a/(\S+) ", patch.read_text(), re.M))
-    return sorted(files)
-
-
-def sing_tun_version(ref):
-    mod = get(f"https://raw.githubusercontent.com/SagerNet/sing-box/{ref}/go.mod")
-    match = re.search(r"^\s*github\.com/sagernet/sing-tun\s+(\S+)", mod, re.M)
-    return match.group(1) if match else "?"
 
 
 def drift_report(core, old_ref, new_ref):
@@ -169,10 +147,9 @@ def drift_report(core, old_ref, new_ref):
              f"([compare](https://github.com/{repo}/compare/{old_ref}...{new_ref})).", ""]
     if len(changed) >= 300:
         lines += ["**The compare API lists at most 300 files: the list below may be incomplete; check the compare page.**", ""]
-    # fk-box's own overlay package inside sing-box's tree is not upstream code.
-    watched = [("package", package) for package in watched_packages(module) if package != "experimental/httpdebug"]
+    watched = [("package", package) for package in watched_packages(module)]
     if core == "sing-box":
-        watched += [("file", name) for name in sorted(set(patched_files() + SING_BOX_WATCHED))]
+        watched += [("file", name) for name in SING_BOX_WATCHED]
     hits = 0
     lines += ["| fk-box depends on | changed upstream |", "| --- | --- |"]
     for kind, name in watched:
@@ -191,10 +168,6 @@ def drift_report(core, old_ref, new_ref):
         else:
             detail = "—"
         lines.append(f"| {label} | {detail} |")
-    if core == "sing-box":
-        old_tun, new_tun = sing_tun_version(old_ref), sing_tun_version(new_ref)
-        note = "unchanged" if old_tun == new_tun else "**changed: rebase legacy/core/sing-tun-android-ingress.patch and VERSION in tools/patch_sing_tun.py**"
-        lines += ["", f"sing-tun: `{old_tun}` → `{new_tun}` ({note})."]
     lines += ["", f"{hits} changed upstream files in what fk-box depends on."]
     return "\n".join(lines) + "\n"
 

@@ -154,6 +154,10 @@ class TypedProfile() : Parcelable {
         const val CORE_SING_BOX = "sing-box"
         const val CORE_XRAY = "xray"
         const val CORE_MIHOMO = "mihomo"
+
+        /** Detected content kinds that are not a core (fk-core detectCoreConfig). */
+        const val CONTENT_LINKS = "links"
+        const val CONTENT_ARRAY = "array"
         val CORES = setOf(CORE_AUTO, CORE_SING_BOX, CORE_XRAY, CORE_MIHOMO)
         const val PARCEL_VERSION = 3
         const val DEFAULT_INTERVAL = 60

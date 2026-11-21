@@ -1,6 +1,6 @@
 package io.nekohasekai.sfa.backend.log
 
-/** The lines themselves live in libbox's log stream; the level is kept for the host (and its tests). */
+/** The lines themselves live in fk-core's log stream; the level is kept for the host (and its tests). */
 data class LogUiState(val defaultLogLevel: LogLevel? = null)
 
 enum class LogLevel(val label: String, val priority: Int) {

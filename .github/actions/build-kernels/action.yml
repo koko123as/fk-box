@@ -7,6 +7,9 @@ description: >-
   clients/android/app/libs/libbox-official.aar.
 
 outputs:
+  version:
+    description: The app version (VERSION_NAME in version.properties).
+    value: ${{ steps.inputs.outputs.version }}
   cache-hit:
     description: '"true" when the outputs came from the Actions cache.'
     value: ${{ steps.cache.outputs.cache-hit }}
@@ -18,6 +21,7 @@ runs:
       shell: bash
       run: |
         echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+        echo "version=$(sed -n 's/^VERSION_NAME=//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
         deps=$(grep -E '^(GO_VERSION|CORE_VERSION|XRAY_VERSION|MIHOMO_VERSION|LIBXRAY_MODULE_VERSION|VERSION_NAME)=' version.properties | tr -d '\r' | sort)
         echo "deps_key=$(printf '%s' "$deps" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
     - id: cache
@@ -41,9 +45,17 @@ runs:
     - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
       with:
         log-accepted-android-sdk-licenses: false
+        # The app build needs the platforms and build tools as well; the
+        # Slint UI needs NDK r30 (see "Select the NDK for the Slint UI").
         packages: >-
           platform-tools
+          platforms;android-36
+          platforms;android-37.1
+          build-tools;36.0.0
+          build-tools;37.0.0
           ndk;28.0.13004108
+          ndk;28.2.13676358
+          ndk;30.0.16248370
     - name: Build the kernels from unmodified upstream tags
       if: steps.cache.outputs.cache-hit != 'true'
       shell: bash
@@ -72,3 +84,13 @@ runs:
             echo "- $(basename "$f"): $(stat -c %s "$f") bytes"
           done
         } >> "$GITHUB_STEP_SUMMARY"
+    # The Rust + Slint UI (libfkui.so) links Slint 1.19's prebuilt Skia, which
+    # is built with NDK r30 and needs its static libc++ (std::__ndk1::__hash_memory
+    # is missing from r28's, and the library then fails to load on the device).
+    # clients/android/app/build.gradle.kts gives FKUI_NDK_HOME to cargo-ndk; the
+    # kernels and the app's own native packaging keep NDK 28.
+    - name: Select the NDK for the Slint UI
+      shell: bash
+      run: |
+        test -d "$ANDROID_HOME/ndk/30.0.16248370"
+        echo "FKUI_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"

@@ -39,12 +39,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: python3 tools/release_version.py
 
-      - id: core
-        uses: ./.github/actions/build-libbox
-        with:
-          platform: android/arm64
       # The official kernels and fk-core (docs/kernel-isolation.md).
-      - uses: ./.github/actions/build-kernels
+      - id: kernels
+        uses: ./.github/actions/build-kernels
 
       - name: Set up Java for Gradle
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -148,7 +145,7 @@ jobs:
       - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fk-box-${{ steps.core.outputs.version }}-arm64-v8a-release
+          name: fk-box-${{ steps.kernels.outputs.version }}-arm64-v8a-release
           path: clients/android/app/build/outputs/apk/other/release/*-arm64-v8a.apk
           if-no-files-found: error
           compression-level: 0
@@ -158,7 +155,7 @@ jobs:
         if: ${{ inputs.publish_release }}
         env:
           GH_TOKEN: ${{ github.token }}
-          VERSION_NAME: ${{ steps.core.outputs.version }}
+          VERSION_NAME: ${{ steps.kernels.outputs.version }}
         run: python3 tools/publish_release.py
 
       - name: Remove signing key

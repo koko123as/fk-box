@@ -4,7 +4,7 @@ import io.nekohasekai.libbox.OpenConnectBrowserRequest
 import io.nekohasekai.sfa.ktx.toList
 
 // OpenConnect browser sign-in data (WebView, stays Kotlin). The endpoint status
-// itself is kept by Go (libbox core_endpoint_status.go, UIOpenConnectChallenge).
+// itself is kept by UiEndpointStatus (openConnectChallenge).
 
 enum class OpenConnectBrowserCompletionMode {
     COOKIE,

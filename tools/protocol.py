@@ -5,7 +5,7 @@
     python3 tools/protocol.py check   fail when a table is stale or an implementation disagrees
 
 Owners:
-    go    answered by libbox (legacy/core/core_method.go); the Kotlin host forwards it unchanged
+    go    answered by fk-core (core/fk/core_method.go); the Kotlin host forwards it unchanged
     host  answered by the platform host (Android: BoxBridge, bridge/SlintHost.kt)
     ui    a platform UI service (menus, dialogs, IME, clipboard; Android: BoxActivity, NativeUi)
 
@@ -29,15 +29,14 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 SPEC = ROOT / "protocol" / "methods.json"
-GO_OUT = ROOT / "legacy" / "core" / "core_protocol_gen.go"
 GO_FK_OUT = ROOT / "core" / "fk" / "core_protocol_gen.go"
 RS_OUT = ROOT / "ui" / "src" / "protocol_gen.rs"
 KT_OUT = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProtocolGen.kt"
 KT_DISPATCH = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/SlintHost.kt"
 KT_ACTIVITY = ROOT / "clients/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxActivity.kt"
 KT_SOURCES = ROOT / "clients/android/app/src/main/java"
-GO_METHODS = ROOT / "legacy" / "core" / "core_method.go"
-GO_SOURCES = ROOT / "legacy" / "core"
+GO_METHODS = ROOT / "core" / "fk" / "core_method.go"
+GO_SOURCES = ROOT / "core" / "fk"
 RUST_SOURCES = ROOT / "ui" / "src"
 RUST_PLATFORM = RUST_SOURCES / "platform"
 RUST_ANDROID_PLATFORM = RUST_PLATFORM / "android" / "mod.rs"
@@ -130,7 +129,7 @@ def render_kt(spec):
         "    /** The oldest client protocol version the core accepts. */",
         f"    const val MIN_CLIENT: Int = {spec['minClient']}",
         "",
-        "    /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */",
+        "    /** Answered by fk-core ([io.nekohasekai.sfa.fkcore.FkLib.uiInvoke]); the host only forwards them. */",
         f"    val GO_METHODS: Set<String> = {kt_set(names(spec, 'methods', 'go'))}",
         "",
         "    /** Answered by BoxBridge (hostDispatch in SlintHost.kt). */",
@@ -190,11 +189,11 @@ def render_go_fk(spec):
 
 
 def outputs(spec):
-    return {GO_OUT: render_go(spec), GO_FK_OUT: render_go_fk(spec), RS_OUT: render_rs(spec), KT_OUT: render_kt(spec)}
+    return {GO_FK_OUT: render_go_fk(spec), RS_OUT: render_rs(spec), KT_OUT: render_kt(spec)}
 
 
 VERSION_PATTERNS = {
-    GO_OUT: r"^const ProtocolVersion = (\d+)$",
+    GO_FK_OUT: r"^const ProtocolVersion = (\d+)$",
     RS_OUT: r"^pub const PROTOCOL_VERSION: i64 = (\d+);$",
     KT_OUT: r"^\s*const val VERSION: Int = (\d+)$",
 }
@@ -308,9 +307,9 @@ def check(spec):
 
     handlers = go_handlers()
     for m in sorted(go - handlers):
-        errors.append(f"go method {m} has no handler in legacy/core/core_method.go")
+        errors.append(f"go method {m} has no handler in core/fk/core_method.go")
     for m in sorted(handlers - go):
-        errors.append(f"legacy/core/core_method.go handles {m}, which the protocol does not give to go")
+        errors.append(f"core/fk/core_method.go handles {m}, which the protocol does not give to go")
 
     activity = kotlin_activity()
     ui = set(names(spec, "methods", "ui"))

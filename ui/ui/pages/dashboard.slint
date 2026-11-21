@@ -1711,11 +1711,6 @@ export component DashboardPage inherits Rectangle {
 // MemoryDetails
 export component MemoryPage inherits ScrollPage {
     title: @tr("Memory");
-    loading: Dash.releasing;
-    actions: !Dash.memory-remote && Dash.memory-running
-        ? [{ id: "memory-release", glyph: Icons.broom, tooltip: @tr("Release memory"), enabled: !Dash.releasing }]
-        : [];
-    action(id) => { Nav.act(id, ""); }
     Rectangle { height: 8px; }
     T { text: @tr("Total"); role: TextRole.title-medium; }
     Rectangle { height: 4px; }

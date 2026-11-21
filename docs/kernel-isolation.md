@@ -8,7 +8,7 @@
 
 ## 1. 现状与问题
 
-- 三个内核以 Go 库的形式编进同一个 `libbox.aar`，跑在应用服务进程里，同一时间只运行一个（[core/README.md](../legacy/core/README.md)）。
+- 三个内核以 Go 库的形式编进同一个 `libbox.aar`，跑在应用服务进程里，同一时间只运行一个（[core/README.md](../core/README.md)）。
 - `core_*.go`、`ui_*.go` 拷进 sing-box 源码树的 `experimental/libbox`，`fkhost`、`fkbox`、`fkcore`、`fkbind` 由 `patch_entry.py` 放进同一棵树；Xray、mihomo 的依赖必须迁就 sing-box 的 `go.mod`（`core-module-bumps.txt`，`github.com/sagernet/sing` 不能变）。
 - 对上游的补丁：`httpdebug.patch`、`http_rewrite.patch`（改 `option`/`route`）、`sing-tun-android-ingress.patch`、`patch_dns_count.py`、`patch_entry.py`。
 - 适配器直接碰内核内部：Xray 用 `reflect`+`unsafe` 改 TUN handler 的私有字段 `dispatcher`；mihomo 用 `hub/executor`、`listener`、`tunnel/statistic`、tun 的 `FileDescriptor` 字段并替换 `resolver.DefaultService`；保护钩子是进程级的 `RegisterDialerController`、`DefaultSocketHook`。
@@ -47,6 +47,8 @@
 | `:singbox` | `SingBoxService`（绑定式服务，`android:process=":singbox"`），官方 `libbox.aar` | 主进程 `bindService` | `linkToDeath` 通知主进程，主进程按退避重启 |
 | Xray / mihomo | 官方可执行文件 | fk-core（`exec.Cmd`） | fk-core 监管：退避重启，有次数上限 |
 
+**决策 D4（P4 实施时调整）：sing-box 留在主进程，不另开 `:singbox` 进程。** 官方 libbox 的 `PlatformInterface`（`openTun`、`autoDetectInterfaceControl` 对每个出站 socket 调 `VpnService.protect`、`findConnectionOwner`、默认网络监视）都是对 `VpnService` 的同步回调；放进另一个进程后每个 socket 都要跨进程 Binder 调用，并要把整个 `PlatformInterfaceWrapper` 拆成 AIDL。上游 SFA 也是在应用进程里运行 libbox。因此 P4 的做法是：主进程加载**官方、未修改的** `libbox.aar`，`BoxService` 用官方 `CommandServer.startOrReloadService` 启动 sing-box；分流规则与本地入站（`fkbox-local`，127.0.0.1 随机端口与凭据，供 fk-core 自己的请求和出口探测走配置的普通规则）由 fk-core 生成（`applyCoreRouting`、`singBoxServiceContent`）。原 fork 里的界面工具（连接流、内存卡片、网络质量、STUN、Tailscale ping、端点状态）改为 Kotlin（`bridge/UiTools.kt`、`bridge/UiStreams.kt`），直接调用官方 `CommandClient`。下文进程图与第 9 节中关于 `:singbox` 的部分以此为准。
+
 为什么 sing-box 不用命令行：官方 `sing-box` 命令行在没有 root 的 `VpnService` 下拿不到 TUN（它的 tun 入站自己打开 `/dev/tun`）；官方 `experimental/libbox` 是上游给 Android 的正式入口，`PlatformInterface.OpenTun` 由应用返回 fd（sing-box `v1.15.0-alpha.13` `experimental/libbox/platform.go`）。Tailscale/Taildrop、OpenConnect、OpenVPN、USB/IP 也都在 libbox 里（`constant/proxy.go:29-45`），原样保留。
 
 gomobile 的 `libgojni.so`（官方 libbox 的库名为 `libbox.so`，`-libname=box`）一个 APK 只能有一份：fk-core 不用 gomobile，是普通 Go 可执行文件；APK 里唯一的 gomobile AAR 是官方 libbox。
@@ -55,7 +57,7 @@ gomobile 的 `libgojni.so`（官方 libbox 的库名为 `libbox.so`，`-libname=
 
 ## 3. 构建
 
-所有内核在 CI 里从官方仓库按 tag 浅克隆，构建结束后在每个源码目录运行 `git status --porcelain --ignored=no`，必须为空；构建过程不运行补丁脚本，不往源码树拷文件。实现：`.github/actions/build-kernels`（P1），P0 的验证版本是 [tools/kernel-probe/build-kernels.sh](../tools/kernel-probe/build-kernels.sh)。
+所有内核在 CI 里从官方仓库按 tag 浅克隆，构建结束后在每个源码目录运行 `git status --porcelain --ignored=no`，必须为空；构建过程不运行补丁脚本，不往源码树拷文件。实现：`.github/actions/build-kernels`（P1），P0 的验证版本是 tools/kernel-probe/build-kernels.sh。
 
 | 产物 | 来源与命令 | 出处 |
 | --- | --- | --- |
@@ -169,7 +171,17 @@ fk-core 保存用户配置原文，启动时生成交给内核的配置（不改
 - 应用归属：抓包代理按回程连接无法得知原应用；fk-core 用内核连接列表按（源地址、源端口）匹配：sing-box 的连接带 `process_info`，mihomo 的 `/connections` 带 `metadata.process`（非 root 时多为空）；匹配不到显示“未知”，不伪造。Xray 没有逐条连接接口，始终未知。
 - MITM CA 流程（Android Keystore 中的 P-256 根密钥，Go 只拿签名回调）不变：签名回调从进程内 gomobile 回调改为协议上的反向调用 `host.captureSign`（fk-core → 主进程，主进程用 Keystore 签名后回复），只传 SHA-256 摘要。
 
-### 7.3 `http_rewrite` 迁移（用户数据格式变化）
+**P5 实施时的调整：**
+
+- 抓包代理只做 SOCKS5（用户名 `fkbox-return`，随机密码），不做 HTTP CONNECT 入口；上游经内核本地入站 `fkbox-local` 的 HTTP CONNECT 回到内核（`core/capture/proxy.go`）。
+- 内核路由：sing-box 加 socks 出站 `fkbox-capture` 与逻辑规则（来自 `fkbox-local` 的不再送回，避免环路）；Xray、mihomo 加同等出站与规则，但按应用筛选只有 sing-box 支持，选了应用时这两个内核拒绝启动抓包并说明原因（`core/fk/capture_route.go`）。
+- 应用归属匹配未做，记录里的应用为空。
+- 反向调用名为 `capture.sign`（参数为密钥别名与摘要）。
+- 抓包启停后由应用重载服务，使路由生效。
+
+**决策 D5（P5 实施时调整）：不迁移 `http_rewrite` 的存储位置。** 规则继续写在配置内容的 `experimental.http_rewrite`；fk-core 在启动 sing-box 前取出并启用改写，再把去掉该字段（及退役的 `experimental.http_debug`）的内容交给官方解析器。这样不改用户数据格式、备份格式和编辑方式，7.3 的迁移不做。Xray/mihomo 的配置没有该字段，不支持改写。
+
+### 7.3 `http_rewrite` 迁移（用户数据格式变化，未实施，见决策 D5）
 
 - 改写规则成为 fk-box 自己的按配置文件存储的设置（`profiles.store` 中每个配置一项 `httpRewrite`，JSON，与原字段同一结构 `core/option/http_rewrite.go`）。
 - 一次性迁移：读取配置时若内容含 `experimental.http_rewrite`（或退役的 `experimental.http_debug`），取出存入该配置的设置，并从内容中删去；保存或格式化配置时同样处理。迁移走现有的修订冲突检查与原子写入；备份导出带上新设置，导入旧备份时同样迁移。
@@ -213,11 +225,11 @@ fk-core 保存用户配置原文，启动时生成交给内核的配置（不改
 | P1 | `arch/kernel-isolation-p1` | `build-kernels` 动作：官方 libbox、`libxray.so`、`libmihomo.so`、`libxrayshare.so`、`libfkcore.so`；零修改与模块隔离检查；旧构建保留，`-PkernelIsolation=true` 切换 |
 | P2 | `-p2` | `core/go.mod` 独立模块；与内核无关的代码迁入；协议 `owner: core`；Kotlin `Libbox.*` 中 fk-box 的绑定改走 fk-core |
 | P3 | `-p3` | Xray/mihomo 子进程、fd 传递、监管、控制接口适配器、StartedService 作答 |
-| P4 | `-p4` | `:singbox` 进程与官方 libbox |
-| P5 | `-p5` | 外置抓包代理与 `http_rewrite` 迁移 |
-| P6 | `-p6` | 删除补丁、旧适配器、旧构建开关与脚本，更新文档 |
+| P4 | `-p4` | 官方 libbox 启动 sing-box（主进程，决策 D4）；fork 中的界面工具改为 Kotlin |
+| P5 | `-p5` | 外置抓包代理；`http_rewrite` 留在配置内（决策 D5）。与 P4 一起合并（P4 单独时抓包仍依赖分支 libbox） |
+| P6 | `-p6` | 删除 `legacy/`、补丁、旧构建 Action（`build-libbox`、`setup-core`）与脚本；应用只用官方 `libbox.aar`；更新文档 |
 | P7 | `main` | `build-release.yml`（`publish_release=false`） |
 
 ## 12. P0 验证结果
 
-见 [kernel-feasibility.yml](../.github/workflows/kernel-feasibility.yml) 的运行记录（链接与数字在 PR 描述中更新）。
+见 kernel-feasibility.yml 的运行记录（链接与数字在 PR 描述中更新）。

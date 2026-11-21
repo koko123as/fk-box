@@ -1,5 +1,5 @@
 // Package fk is the kernel-independent part of fk-box's Go code, ported from
-// the libbox overlay (legacy/core, package libbox) into fk-core
+// the former libbox overlay (package libbox) into fk-core
 // (docs/kernel-isolation.md, phase P2). fk-core answers it over its protocol
 // by name; the names are the ones gomobile gave Kotlin (the Go name with its
 // first letter lowercased), so the app's Libbox.* calls switch to fk-core
@@ -30,8 +30,8 @@
 //   - LAN proxy: readUILANProxyListeners, setUILANProxyEnabled
 //   - Egress probe: newUIDirectEgressProbe, newUIServiceEgressProbe
 //     (object UIEgressProbe)
-//   - Service: serviceStart, serviceStop, serviceRunning,
-//     serviceDefaultNetworkChanged, serviceMemory, serviceLocalProxy,
+//   - Service: serviceStart, serviceStop,
+//     serviceDefaultNetworkChanged, serviceNetworkSwitched,
 //     closeCommandServer
 //   - Versions: xrayVersion, mihomoVersion
 //
@@ -135,11 +135,31 @@ func Register(r *rpc.Registry) {
 	// Xray and mihomo as child processes (core_service.go).
 	r.Func("serviceStart", ServiceStart)
 	r.Func("serviceStop", ServiceStop)
-	r.Func("serviceRunning", ServiceRunning)
 	r.Func("serviceDefaultNetworkChanged", ServiceDefaultNetworkChanged)
-	r.Func("serviceMemory", ServiceMemory)
-	r.Func("serviceLocalProxy", ServiceLocalProxy)
+	r.Func("serviceNetworkSwitched", ServiceNetworkSwitched)
+	r.Func("singBoxServiceContent", SingBoxServiceContent)
+	r.Func("singBoxServiceStarted", SingBoxServiceStarted)
+	r.Func("singBoxServiceStopped", SingBoxServiceStopped)
 	r.Func("closeCommandServer", CloseCommandServer)
+
+	// HTTP capture and profile rewriting (capture_service.go).
+	r.Func("captureGenerateCA", CaptureGenerateCA)
+	r.Func("captureSetMaterial", CaptureSetMaterial)
+	r.Func("captureOpen", CaptureOpen)
+	r.Func("captureValidate", CaptureValidate)
+	r.Func("captureStart", CaptureStart)
+	r.Func("captureStop", CaptureStop)
+	r.Func("captureStatus", CaptureStatus)
+	r.Func("captureLogs", CaptureLogs)
+	r.Func("captureAppendLog", CaptureAppendLog)
+	r.Func("captureClearLogs", CaptureClearLogs)
+	r.Func("captureList", CaptureList)
+	r.Func("captureHosts", CaptureHosts)
+	r.Func("captureRead", CaptureRead)
+	r.Func("captureClear", CaptureClear)
+	r.Func("captureExportHAR", CaptureExportHAR)
+	r.Func("captureExportCurl", CaptureExportCurl)
+	r.Func("removeUIRetiredCaptureOptions", RemoveUIRetiredCaptureOptions)
 
 	// Kernel versions (core_kernel_exec.go).
 	r.Func("xrayVersion", XrayVersion)

@@ -23,7 +23,6 @@ import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.backend.tools.TaildropFiles
 import io.nekohasekai.sfa.constant.Bugs
-import io.nekohasekai.sfa.database.GoSettingsStore
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import kotlinx.coroutines.Dispatchers
@@ -90,25 +89,6 @@ class Application : Application() {
         )
     }
 
-    /**
-     * UI, VPN service and the Go cores share this process. When the UI goes
-     * to the background or the system runs low, hand Go's idle heap back to
-     * the kernel (what Dashboard → Memory → Release memory does). HWUI frees
-     * the window's render targets itself when the UI is hidden.
-     */
-    @Suppress("DEPRECATION")
-    override fun onTrimMemory(level: Int) {
-        super.onTrimMemory(level)
-        if (!setupCompleted || level < TRIM_MEMORY_RUNNING_LOW) return
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastTrim < 10_000L) return
-        lastTrim = now
-        @Suppress("OPT_IN_USAGE")
-        GlobalScope.launch(Dispatchers.IO) { runCatching { Libbox.collectUIRuntimeMemory() } }
-    }
-
-    @Volatile private var lastTrim = 0L
-
     /** Sets the libbox locale once; the first libbox call that loads the library. */
     private fun applyLocale() {
         if (localeApplied) return
@@ -141,13 +121,10 @@ class Application : Application() {
     suspend fun setupLibbox() = setupAccess.withLock {
         if (setupCompleted) return@withLock
         applyLocale()
-        // Go reads the core switches (and later other settings) through this;
-        // every libbox caller that needs them waits on setupLibbox first.
-        Libbox.setUISettingsStore(GoSettingsStore)
         // fk-core (docs/kernel-isolation.md) asks the app for settings and
         // sing-box checks through reverse calls.
         io.nekohasekai.sfa.bridge.FkCoreHost.install()
-        // The update check (libbox core_updates.go) compares releases with this install.
+        // The update check (fk-core core_updates.go) compares releases with this install.
         FkLib.setUIAppInfo(BuildConfig.APPLICATION_ID, BuildConfig.VERSION_CODE.toLong(), Build.SUPPORTED_ABIS.joinToString("\n"))
         val dir = installWorkingDir() ?: error("android: external storage unavailable")
         Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))

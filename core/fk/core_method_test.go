@@ -20,14 +20,6 @@ func TestUIMethodTableMatchesProtocol(t *testing.T) {
 	if got := uiMethodNames(); !reflect.DeepEqual(got, owned) {
 		t.Fatalf("Go handlers %v, protocol owner go %v", got, owned)
 	}
-	for _, name := range owned {
-		if !UIHandlesMethod(name) {
-			t.Fatalf("UIHandlesMethod(%q) = false", name)
-		}
-	}
-	if UIHandlesMethod("startService") {
-		t.Fatal("a host method reported as handled by Go")
-	}
 }
 
 func TestUIMethodUnknownAndInvalid(t *testing.T) {

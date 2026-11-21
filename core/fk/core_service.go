@@ -144,6 +144,12 @@ func ServiceStart(core string, content string, rules string, options string) (*C
 	serviceAccess.Unlock()
 
 	serviceStatus.set(daemonpb.ServiceStatus_STARTING, "")
+	// Profile rewriting belongs to sing-box profiles: this turns it off and
+	// keeps a running capture, which these kernels route to as well.
+	if err := prepareServiceRewrite(core, content); err != nil {
+		serviceStatus.set(daemonpb.ServiceStatus_IDLE, "")
+		return nil, err
+	}
 	result := &CoreRoutingResult{Content: content}
 	withRules := content
 	if strings.TrimSpace(rules) != "" {
@@ -444,6 +450,7 @@ func ServiceStop() error {
 	defer serviceLifecycle.Unlock()
 	serviceStatus.set(daemonpb.ServiceStatus_STOPPING, "")
 	stopKernelLocked()
+	stopServiceCapture()
 	serviceStatus.set(daemonpb.ServiceStatus_IDLE, "")
 	CloseCommandServer()
 	return nil
@@ -490,6 +497,20 @@ func ServiceDefaultNetworkChanged(dns string) error {
 	return running.mihomo.Reload(ctx, running.config)
 }
 
+// ServiceNetworkSwitched is called when the underlying default network is
+// replaced (Wi-Fi to cellular and back). mihomo keeps connections bound to the
+// old network alive until they time out, so they are closed now; Xray's
+// sockets fail on their own and sing-box handles the switch itself.
+func ServiceNetworkSwitched() error {
+	running := runningKernel()
+	if running == nil || running.core != CoreMihomo {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return running.mihomo.CloseAllConnections(ctx)
+}
+
 func currentDNS() []string {
 	serviceAccess.RLock()
 	defer serviceAccess.RUnlock()
@@ -524,11 +545,13 @@ func ServiceMemory() int64 {
 // "http://user:password@127.0.0.1:port" URL whose traffic follows the
 // profile's ordinary rules, or "" when no kernel runs.
 func ServiceLocalProxy() string {
-	running := runningKernel()
-	if running == nil {
-		return ""
+	if running := runningKernel(); running != nil {
+		return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, running.localPassword, running.localPort)
 	}
-	return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, running.localPassword, running.localPort)
+	if local := singBoxLocalProxy(); local != nil {
+		return fmt.Sprintf("http://%s:%s@127.0.0.1:%d", localReturnUser, local.password, local.port)
+	}
+	return ""
 }
 
 // serviceProxy is http.Transport.Proxy for fk-core's own requests: the

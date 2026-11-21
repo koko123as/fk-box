@@ -263,7 +263,7 @@ func kernelExecutable(name string) (string, error) {
 
 // httpClient is the client for fk-box's own requests (geo data,
 // subscriptions, WebDAV, update checks, probes): TLS 1.2 or newer with every
-// secure cipher suite and no keep-alive, as legacy fkhost.NewHTTPClient. The
+// secure cipher suite and no keep-alive, as the former fkhost.NewHTTPClient. The
 // roots are Go's system roots (on Android Go reads /system/etc/security/cacerts).
 type httpClient struct {
 	Client    http.Client

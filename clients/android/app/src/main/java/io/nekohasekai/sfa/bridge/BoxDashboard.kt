@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.bridge
 
+import io.nekohasekai.sfa.database.TypedProfile
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.lifecycle.lifecycleScope
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.CommandServer
 import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.bg.BoxService
@@ -67,7 +67,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         RemoteControlManager.remoteServer.collect { pushMemorySource() }
     }
     private val qualityCache = activity.getSharedPreferences("dashboard_ip_quality", 0)
-    // libbox's dashboard stream (core_dashboard_stream.go) samples memory and
+    // UiDashboardMemory samples memory and
     // sends "memory" every 2 s while some owner is subscribed, in the
     // foreground and with the screen on; this bridge only reports its signals.
     private val memoryOwner = nextMemoryOwner.incrementAndGet()
@@ -77,10 +77,10 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
             combine(memoryVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn) { visible, foreground, screenOn ->
                 Triple(visible, foreground, screenOn)
             }.distinctUntilChanged().collect { (visible, foreground, screenOn) ->
-                withContext(Dispatchers.Default) { Libbox.uiDashboardMemorySetSignals(memoryOwner, visible, foreground, screenOn) }
+                withContext(Dispatchers.Default) { UiDashboardMemory.setSignals(memoryOwner, visible, foreground, screenOn) }
             }
         } finally {
-            withContext(NonCancellable + Dispatchers.Default) { Libbox.uiDashboardMemorySetSignals(memoryOwner, false, false, false) }
+            withContext(NonCancellable + Dispatchers.Default) { UiDashboardMemory.setSignals(memoryOwner, false, false, false) }
         }
     }
     // The LAN/intranet snapshot is only shown by the Intranet IP card and its
@@ -102,7 +102,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
      * mihomo run as fk-core's child processes: their status reports it.
      */
     private fun pushMemorySource() {
-        Libbox.uiDashboardMemorySetSource(CommandTarget.isRemote || BoxService.coreInFkCore, remoteMemory, activity.serviceStatus.value == Status.Started)
+        UiDashboardMemory.setSource(CommandTarget.isRemote, BoxService.coreInFkCore, remoteMemory, activity.serviceStatus.value == Status.Started)
     }
 
     @Suppress("DEPRECATION")
@@ -169,7 +169,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
                 }
                 if (config != null) {
                     revision = config.revision
-                    lanSwitchable = config.core !in setOf(Libbox.CoreXray, Libbox.CoreMihomo)
+                    lanSwitchable = config.core !in setOf(TypedProfile.CORE_XRAY, TypedProfile.CORE_MIHOMO)
                     bindings = config.listeners(encodedAddresses)
                 }
             } catch (error: CancellationException) {
@@ -248,9 +248,8 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
             withContext(Dispatchers.IO) {
                 val probe = when {
                     server == null -> EgressProbe.of(FkLib.newUIDirectEgressProbe())
-                    // Xray/mihomo run in fk-core: probe through its kernel.
-                    BoxService.coreInFkCore -> EgressProbe.of(FkLib.newUIServiceEgressProbe())
-                    else -> EgressProbe.of(server.newUIEgressProbe())
+                    // Through the running kernel's local inbound (fk-core adds it to every core's config).
+                    else -> EgressProbe.of(FkLib.newUIServiceEgressProbe())
                 }
                 active.attach(probe)
             }
@@ -316,13 +315,6 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         check(editor.commit()) { "Unable to cache IP quality" }
     }
 
-    suspend fun releaseMemory(): Map<String, Any?> = withContext(Dispatchers.IO) {
-        require(!CommandTarget.isRemote) { "Remote memory collection is not supported" }
-        require(!BoxService.coreInFkCore) { "Memory collection is not supported for Xray and mihomo" }
-        pushMemorySource()
-        jsonObject(JSONObject(Libbox.uiDashboardReleaseMemory()))
-    }
-
     override fun close() {
         serviceChanges.cancel()
         remoteChanges.cancel()
@@ -334,9 +326,8 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
 }
 
 /**
- * One egress probe session: fk-core's direct probe (service stopped) or the
- * running service's routed probe (legacy libbox, until fk-core owns the
- * service; docs/kernel-isolation.md).
+ * One egress probe session: fk-core's direct probe (service stopped) or its
+ * probe through the running kernel's local inbound.
  */
 private interface EgressProbe {
     fun lookupOutboundIP(): String
@@ -347,15 +338,6 @@ private interface EgressProbe {
     companion object {
         fun of(probe: io.nekohasekai.sfa.fkcore.UIEgressProbe): EgressProbe = object : EgressProbe {
             override fun lookupOutboundIP() = probe.lookupOutboundIP()
-            override fun get(url: String, timeoutMillis: Long) = probe.get(url, timeoutMillis).let { it.status to it.content }
-            override fun serviceCheck(name: String, timeoutMillis: Long) = probe.serviceCheck(name, timeoutMillis).let {
-                mapOf("name" to it.name, "status" to it.status, "region" to it.region, "delay" to it.delayMillis, "checkedAt" to it.checkedAt)
-            }
-            override fun close() = probe.close()
-        }
-
-        fun of(probe: io.nekohasekai.libbox.UIEgressProbe): EgressProbe = object : EgressProbe {
-            override fun lookupOutboundIP(): String = probe.lookupOutboundIP()
             override fun get(url: String, timeoutMillis: Long) = probe.get(url, timeoutMillis).let { it.status to it.content }
             override fun serviceCheck(name: String, timeoutMillis: Long) = probe.serviceCheck(name, timeoutMillis).let {
                 mapOf("name" to it.name, "status" to it.status, "region" to it.region, "delay" to it.delayMillis, "checkedAt" to it.checkedAt)

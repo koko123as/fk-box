@@ -9,7 +9,7 @@ internal object ProtocolGen {
     /** The oldest client protocol version the core accepts. */
     const val MIN_CLIENT: Int = 1
 
-    /** Answered by libbox ([io.nekohasekai.libbox.Libbox.uiInvoke]); the host only forwards them. */
+    /** Answered by fk-core ([io.nekohasekai.sfa.fkcore.FkLib.uiInvoke]); the host only forwards them. */
     val GO_METHODS: Set<String> = setOf(
         "checkConfig",
         "checkUpdates",
@@ -67,7 +67,6 @@ internal object ProtocolGen {
         "ready",
         "refreshLan",
         "releaseApps",
-        "releaseMemory",
         "reloadService",
         "remoteServers",
         "reorderProfiles",

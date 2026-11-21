@@ -20,7 +20,7 @@ internal class BoxBrowserFactory(private val bridge: BoxBridge) {
         val endpoint = params["endpoint"] as? String ?: ""
         val challengeID = params["challenge"] as? String ?: ""
         val container = FrameLayout(context)
-        val challenge = io.nekohasekai.libbox.Libbox.uiOpenConnectChallenge(endpoint)
+        val challenge = UiEndpointStatus.openConnectChallenge(endpoint)
         val request = challenge?.browser?.toData()
         if (challenge?.id != challengeID || request == null) {
             container.addView(TextView(context).apply { text = context.getString(R.string.error_start_service) })

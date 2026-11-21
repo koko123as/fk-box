@@ -1,5 +1,6 @@
 package io.nekohasekai.sfa.bridge
 
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.content.Intent
 import android.os.Build
 import android.provider.Settings as AndroidSettings
@@ -36,7 +37,7 @@ internal class BoxCapture(private val activity: BoxActivity) {
     private fun requireLocal() {
         require(!CommandTarget.isRemote) { "HTTP debugging is only available for the local service" }
     }
-    private fun status() = JSONObject(Libbox.readUICaptureStatus())
+    private fun status() = JSONObject(FkLib.captureStatus())
 
     private enum class Operation { CaSnapshot, CaGenerate, Snapshot, Settings, Logs, ClearLogs, Configure, Start, Stop, Clear, Domains, Detail }
 
@@ -95,7 +96,7 @@ internal class BoxCapture(private val activity: BoxActivity) {
             try {
                 withContext(Dispatchers.IO) {
                     requireLocal()
-                    if (method != Operation.Logs && method != Operation.ClearLogs && !certificateOperation) Libbox.openUICapture(captures.absolutePath)
+                    if (method != Operation.Logs && method != Operation.ClearLogs && !certificateOperation) FkLib.captureOpen(captures.absolutePath)
                     when (method) {
                         Operation.CaSnapshot -> certificate.snapshot() + mapOf(
                             "captureActive" to status().optBoolean("active"),
@@ -107,48 +108,52 @@ internal class BoxCapture(private val activity: BoxActivity) {
                         }
                         Operation.Snapshot -> mapOf(
                             "state" to jsonObject(status()),
-                            "page" to jsonObject(JSONObject(Libbox.listUICapture(
+                            "page" to jsonObject(JSONObject(FkLib.captureList(
                                 limit?.coerceIn(1, 300) ?: 50,
                                 query.orEmpty().take(1024),
                             ))),
                         )
                         Operation.Settings -> settings.snapshot()
-                        Operation.Logs -> jsonObject(JSONObject(Libbox.readUICaptureLogs()))
-                        Operation.ClearLogs -> { Libbox.clearUICaptureLogs(); null }
+                        Operation.Logs -> jsonObject(JSONObject(FkLib.captureLogs()))
+                        Operation.ClearLogs -> { FkLib.captureClearLogs(); null }
                         Operation.Configure -> {
                             require(!status().optBoolean("active")) { "Stop capture before changing its settings" }
                             val value = config ?: error("Missing capture settings")
                             settings.save(revision ?: error("Missing capture settings revision"), JSONObject(value).toString())
                         }
                         Operation.Start -> start { started = true }
-                        Operation.Stop -> { Libbox.stopUICapture(); jsonObject(status()) }
-                        Operation.Clear -> { Libbox.clearUICapture(); null }
+                        Operation.Stop -> { FkLib.captureStop(); reloadService(); jsonObject(status()) }
+                        Operation.Clear -> { FkLib.captureClear(); null }
                         Operation.Domains -> {
-                            val domains = JSONArray(Libbox.extractUICaptureHosts(query.orEmpty().take(1024)))
+                            val domains = JSONArray(FkLib.captureHosts(query.orEmpty().take(1024)))
                             List(domains.length()) { domains.getString(it) }
                         }
-                        Operation.Detail -> jsonObject(JSONObject(Libbox.readUICapture(id ?: error("Missing request ID"))))
+                        Operation.Detail -> jsonObject(JSONObject(FkLib.captureRead(id ?: error("Missing request ID"))))
                     }
                 }
             } catch (error: Exception) {
                 // Covers cancellation while returning from Dispatchers.IO as
                 // well as failures after the native session has been created.
                 if (started) withContext(NonCancellable + Dispatchers.IO) {
-                    runCatching { Libbox.stopUICapture() }.onFailure(error::addSuppressed)
+                    runCatching { FkLib.captureStop(); reloadService() }.onFailure(error::addSuppressed)
                 }
                 if (method == Operation.Start && error !is CancellationException) {
-                    Libbox.appendUICaptureLog("error", "Capture startup failed: ${error.message}")
+                    FkLib.captureAppendLog("error", "Capture startup failed: ${error.message}")
                 }
                 throw error
             }
         }
     }
 
+    private fun reloadService() {
+        if (activity.serviceStatus.value != Status.Started) return
+        Libbox.newStandaloneCommandClient().serviceReload()
+    }
+
     private suspend fun start(onStarted: () -> Unit): Map<String, Any?> {
         require(!status().optBoolean("active")) { "Capture is already running" }
         require(activity.serviceStatus.value == Status.Started) { "Start the local service before capturing requests" }
         val running = BoxService.dashboardConfig.value ?: error("Local service is not running")
-        require(!BoxService.coreInFkCore) { "Request capture needs a sing-box profile for now" }
         val value = settings.config()
         return ProfileContent.mutex.withLock {
             requireLocal()
@@ -159,9 +164,12 @@ internal class BoxCapture(private val activity: BoxActivity) {
             }
             synchronized(MitmCertificate.accessLock) {
                 val material = if (JSONObject(value).optBoolean("https")) certificate.material() else null
-                running.server.startUICapture(captures.absolutePath, value, material?.first.orEmpty(), material?.second)
+                FkLib.captureStart(captures.absolutePath, value, material?.first.orEmpty(), material?.second.orEmpty())
             }
             onStarted()
+            // The kernel routes the selected traffic to the capture proxy once
+            // it reloads with the capture running.
+            reloadService()
             currentCoroutineContext().ensureActive()
             requireLocal()
             val state = status()
@@ -213,17 +221,17 @@ internal class BoxCapture(private val activity: BoxActivity) {
         requireLocal()
         return mutex.withLock { withContext(Dispatchers.IO) {
             requireLocal()
-            Libbox.openUICapture(captures.absolutePath)
+            FkLib.captureOpen(captures.absolutePath)
             check(directory.isDirectory || directory.mkdirs()) { "Unable to create capture directory" }
             val file = File.createTempFile("export-", ".tmp", directory)
             try {
                 when {
-                    format == "curl" -> file.writeText(Libbox.exportUICaptureCurl(id ?: error("Missing request ID")))
+                    format == "curl" -> file.writeText(FkLib.captureExportCurl(id ?: error("Missing request ID")))
                     format == "domains" -> {
-                        val domains = JSONArray(Libbox.extractUICaptureHosts(query.orEmpty().take(1024)))
+                        val domains = JSONArray(FkLib.captureHosts(query.orEmpty().take(1024)))
                         file.writeText(List(domains.length()) { domains.getString(it) }.joinToString("\n", postfix = "\n"))
                     }
-                    else -> Libbox.exportUICaptureHAR(file.absolutePath, query.orEmpty().take(1024))
+                    else -> FkLib.captureExportHAR(file.absolutePath, query.orEmpty().take(1024))
                 }
                 activity.contentResolver.openOutputStream(destination, "wt")?.use { output ->
                     file.inputStream().use { it.copyTo(output) }
