@@ -90,7 +90,7 @@ class CoreConfigEntries internal constructor(private val handle: Long) : AutoClo
     fun len(): Int = FkCodec.int(CallResult(FkCoreClient.call("CoreConfigEntries.Len", handle)))
     fun remarks(index: Int): String = FkCodec.string(CallResult(FkCoreClient.call("CoreConfigEntries.Remarks", handle, index)))
     override fun close() {
-        runCatching { FkCoreClient.call("$release", handle) }
+        runCatching { FkCoreClient.call("\$release", handle) }
     }
 }
 
@@ -102,7 +102,7 @@ class GeoUpdate internal constructor(private val handle: Long) : AutoCloseable {
     fun fetch(dir: String, name: String, link: String, installedSha256: String, etag: String, lastModified: String): GeoUpdateResult = GeoUpdateResult.decode(FkCodec.obj(CallResult(FkCoreClient.call("GeoUpdate.Fetch", handle, dir, name, link, installedSha256, etag, lastModified))) ?: org.json.JSONObject())
     fun fetchExpected(dir: String, name: String, link: String, expectedSha256: String): GeoUpdateResult = GeoUpdateResult.decode(FkCodec.obj(CallResult(FkCoreClient.call("GeoUpdate.FetchExpected", handle, dir, name, link, expectedSha256))) ?: org.json.JSONObject())
     override fun close() {
-        runCatching { FkCoreClient.call("$release", handle) }
+        runCatching { FkCoreClient.call("\$release", handle) }
     }
 }
 
@@ -119,7 +119,7 @@ class UIBackupCheck internal constructor(private val handle: Long) : AutoCloseab
         FkCoreClient.call("UIBackupCheck.Finish", handle)
     }
     override fun close() {
-        runCatching { FkCoreClient.call("$release", handle) }
+        runCatching { FkCoreClient.call("\$release", handle) }
     }
 }
 
@@ -129,7 +129,7 @@ class UIEgressProbe internal constructor(private val handle: Long) : AutoCloseab
     fun lookupOutboundIP(): String = FkCodec.string(CallResult(FkCoreClient.call("UIEgressProbe.LookupOutboundIP", handle)))
     fun serviceCheck(name: String, timeoutMillis: Long): UIServiceCheck = UIServiceCheck.decode(FkCodec.obj(CallResult(FkCoreClient.call("UIEgressProbe.ServiceCheck", handle, name, timeoutMillis))) ?: org.json.JSONObject())
     override fun close() {
-        runCatching { FkCoreClient.call("$release", handle) }
+        runCatching { FkCoreClient.call("\$release", handle) }
     }
 }
 
@@ -140,7 +140,7 @@ class UIProfileArrayEntries internal constructor(private val handle: Long) : Aut
     fun len(): Int = FkCodec.int(CallResult(FkCoreClient.call("UIProfileArrayEntries.Len", handle)))
     fun name(index: Int): String = FkCodec.string(CallResult(FkCoreClient.call("UIProfileArrayEntries.Name", handle, index)))
     override fun close() {
-        runCatching { FkCoreClient.call("$release", handle) }
+        runCatching { FkCoreClient.call("\$release", handle) }
     }
 }
 

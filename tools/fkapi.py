@@ -207,7 +207,7 @@ class Generator:
                 if not method[0].isupper() or method == "Close":
                     continue
                 out.append(self.function(method[0].lower() + method[1:], params, results, f"{kt}.{method}", handle="handle"))
-            out.append('    override fun close() {\n        runCatching { FkCoreClient.call("$release", handle) }\n    }\n}\n\n')
+            out.append('    override fun close() {\n        runCatching { FkCoreClient.call("\\$release", handle) }\n    }\n}\n\n')
         done = set()
         while True:
             pending = [n for n in sorted(self.data_classes) if n not in done]
