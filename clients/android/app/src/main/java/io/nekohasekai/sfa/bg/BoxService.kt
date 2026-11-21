@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bg
 
 import android.app.NotificationChannel
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
@@ -302,7 +303,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */
     private fun currentRouting(declaredCore: String, content: String): String? = runCatching {
-        CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), Libbox.resolveProfileCore(declaredCore, content))
+        CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), FkLib.resolveProfileCore(declaredCore, content))
     }.getOrNull()
 
     /**
@@ -311,7 +312,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
      * returns the rule set used. [routing] overrides the saved rules (fallback).
      */
     private fun startOrReloadCore(content: String, declaredCore: String, routing: String? = null): String? {
-        val core = Libbox.resolveProfileCore(declaredCore, content)
+        val core = FkLib.resolveProfileCore(declaredCore, content)
         Settings.requireCoreEnabled(core)
         var unreadable: String? = null
         val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }

@@ -1,9 +1,9 @@
 package io.nekohasekai.sfa.bg
 
 import android.content.Context
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.util.Log
-import io.nekohasekai.libbox.GeoUpdate
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.GeoUpdate
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.CancellationException
@@ -64,13 +64,13 @@ object GeoResources {
         else -> "ASN"
     }
 
-    fun defaultUrl(name: String): String = Libbox.geoResourceDefaultURL(name)
+    fun defaultUrl(name: String): String = FkLib.geoResourceDefaultURL(name)
 
     fun url(name: String): String = GeoPolicy.decodeUrls(Settings.geoUrls)[name]?.takeIf { it.isNotBlank() } ?: defaultUrl(name)
 
-    private fun dir(): File = File(Libbox.geoDataDir())
+    private fun dir(): File = File(FkLib.geoDataDir())
 
-    private fun installed(dir: File, name: String): Boolean = File(dir, Libbox.geoResourceFileName(name)).let { it.isFile && it.length() > 0 }
+    private fun installed(dir: File, name: String): Boolean = File(dir, FkLib.geoResourceFileName(name)).let { it.isFile && it.length() > 0 }
 
     /**
      * For the service start path, which is not a coroutine: puts the files
@@ -96,7 +96,7 @@ object GeoResources {
             val dir = dir().apply { mkdirs() }
             val deadline = System.nanoTime() + ON_DEMAND_BUDGET_MS * 1_000_000
             val failures = wanted.filter { !installed(dir, it) }.mapNotNull { name ->
-                downloadMissingLocked(dir, name, bundle, deadline)?.let { "${Libbox.geoResourceFileName(name)}: $it" }
+                downloadMissingLocked(dir, name, bundle, deadline)?.let { "${FkLib.geoResourceFileName(name)}: $it" }
             }
             failures.takeIf { it.isNotEmpty() }?.joinToString("\n")
         }
@@ -170,7 +170,7 @@ object GeoResources {
                     GeoPolicy.Installed(GeoPolicy.SOURCE_DOWNLOAD, result.sha256, now, now, etag = result.etag, lastModified = result.lastModified)
                 }
                 writeState(dir, state)
-                Log.i(TAG, "downloaded ${Libbox.geoResourceFileName(name)} on first use (${if (sha256.isNotEmpty()) "pinned" else "configured address"})")
+                Log.i(TAG, "downloaded ${FkLib.geoResourceFileName(name)} on first use (${if (sha256.isNotEmpty()) "pinned" else "configured address"})")
                 return null
             } catch (_: TimeoutCancellationException) {
                 failure = "timed out"
@@ -192,7 +192,7 @@ object GeoResources {
      * WorkManager stopping the worker, a timeout); cancel it explicitly.
      */
     private suspend fun <T> cancellable(block: (GeoUpdate) -> T): T {
-        val task = Libbox.newGeoUpdate()
+        val task = FkLib.newGeoUpdate()
         return coroutineScope {
             val watcher = launch {
                 try {
@@ -266,7 +266,7 @@ object GeoResources {
             val dir = dir()
             val state = readState(dir)
             names.map { name ->
-                val file = File(dir, Libbox.geoResourceFileName(name))
+                val file = File(dir, FkLib.geoResourceFileName(name))
                 val exists = file.isFile
                 val installed = state[name]
                 val bundled = bundle?.files?.get(name)
@@ -414,7 +414,7 @@ object GeoPolicy {
      * itself, so a newer download (or a file mihomo fetched) is never overwritten.
      */
     fun shouldExtract(exists: Boolean, installed: Installed?, bundledSha256: String, bundleTime: Long, fileModified: Long): Boolean =
-        Libbox.geoShouldExtract(exists, installed != null, installed?.sha256.orEmpty(), installed?.time ?: 0L, bundledSha256, bundleTime, fileModified)
+        FkLib.geoShouldExtract(exists, installed != null, installed?.sha256.orEmpty(), installed?.time ?: 0L, bundledSha256, bundleTime, fileModified)
 
     /**
      * The resources [core] reads for [text] (its profile content plus the routing rules
@@ -422,9 +422,9 @@ object GeoPolicy {
      * still has mihomo's own download or the Resources page to fall back on.
      */
     fun needed(core: String, text: String): Set<String> =
-        Libbox.geoResourcesNeeded(core, text).split(',').filter { it.isNotEmpty() }.toCollection(LinkedHashSet())
+        FkLib.geoResourcesNeeded(core, text).split(',').filter { it.isNotEmpty() }.toCollection(LinkedHashSet())
 
-    fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean = Libbox.geoUpdateDue(lastChecked, intervalHours, now)
+    fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean = FkLib.geoUpdateDue(lastChecked, intervalHours, now)
 
     fun validUrl(value: String): Boolean = try {
         val uri = URI(value)

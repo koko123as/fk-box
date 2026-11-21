@@ -43,6 +43,8 @@ jobs:
         uses: ./.github/actions/build-libbox
         with:
           platform: android/arm64
+      # The official kernels and fk-core (docs/kernel-isolation.md).
+      - uses: ./.github/actions/build-kernels
 
       - name: Set up Java for Gradle
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5

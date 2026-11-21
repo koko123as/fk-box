@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.database
 
 import androidx.room.Room
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.ProxyService
 import io.nekohasekai.sfa.bg.VPNService
@@ -165,6 +165,6 @@ object Settings {
         // Xray and mihomo only run on the VpnService TUN fd; their YAML/Xray
         // JSON has no sing-box tun inbound for hasCoreTunInbound to find.
         if (ProfileContent.coreOf(profile, content) != TypedProfile.CORE_SING_BOX) return true
-        return Libbox.hasCoreTunInbound(content)
+        return FkLib.hasCoreTunInbound(content)
     }
 }

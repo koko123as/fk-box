@@ -12,6 +12,11 @@ from zipfile import ZipFile
 # The libraries every ABI directory must carry: the core (libbox.so) and the
 # Rust + Slint UI (libfkui.so), each an ELF shared object for that ABI.
 REQUIRED_LIBRARIES = ('libbox.so', 'libfkui.so')
+# Executables shipped as lib*.so and run from nativeLibraryDir
+# (docs/kernel-isolation.md): fk-core, the official Xray and mihomo, and the
+# libXray share-link converter. mihomo is the upstream static linux build, a
+# non-PIE executable (ELF type EXEC); the others are PIE (type DYN).
+REQUIRED_EXECUTABLES = ('libfkcore.so', 'libxray.so', 'libmihomo.so', 'libxrayshare.so')
 ELF_MACHINES = {'arm64-v8a': 183, 'armeabi-v7a': 40, 'x86_64': 62, 'x86': 3}
 
 
@@ -51,7 +56,7 @@ def verify_native_libraries(apk_path, abis):
     with ZipFile(apk_path) as apk:
         names = set(apk.namelist())
         for abi in sorted(abis):
-            for library in REQUIRED_LIBRARIES:
+            for library in REQUIRED_LIBRARIES + REQUIRED_EXECUTABLES:
                 name = f'lib/{abi}/{library}'
                 if name not in names:
                     raise SystemExit(f'Missing native library {name}')
@@ -65,14 +70,15 @@ def verify_native_libraries(apk_path, abis):
                 elf_type = int.from_bytes(header[16:18], 'little' if little else 'big')
                 machine = int.from_bytes(header[18:20], 'little' if little else 'big')
                 expected_class = 1 if abi in ('armeabi-v7a', 'x86') else 2
-                if elf_class != expected_class or elf_type != 3 or machine != ELF_MACHINES.get(abi):
+                expected_types = (2, 3) if name.rsplit('/', 1)[1] in REQUIRED_EXECUTABLES else (3,)
+                if elf_class != expected_class or elf_type not in expected_types or machine != ELF_MACHINES.get(abi):
                     raise SystemExit(f'{name}: class {elf_class}, type {elf_type}, machine {machine} do not match {abi}')
                 if name.endswith('/libfkui.so'):
                     missing = undefined_cxx_symbols(apk.read(name))
                     if missing:
                         raise SystemExit(f'{name}: unresolved C++ library symbols {missing[:5]} '
                                          '(Slint\'s prebuilt Skia needs the NDK it was built with, see FKUI_NDK_HOME)')
-    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES)} present, all ELF for their ABI, libfkui.so without unresolved C++ library symbols')
+    print(f'Verified native libraries for {sorted(abis)}: {", ".join(REQUIRED_LIBRARIES + REQUIRED_EXECUTABLES)} present, all ELF for their ABI, libfkui.so without unresolved C++ library symbols')
 
 
 def main():

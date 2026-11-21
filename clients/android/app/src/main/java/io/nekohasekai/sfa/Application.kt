@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa
 
 import android.app.Application
+import io.nekohasekai.sfa.fkcore.FkLib
 import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
@@ -143,8 +144,11 @@ class Application : Application() {
         // Go reads the core switches (and later other settings) through this;
         // every libbox caller that needs them waits on setupLibbox first.
         Libbox.setUISettingsStore(GoSettingsStore)
+        // fk-core (docs/kernel-isolation.md) asks the app for settings and
+        // sing-box checks through reverse calls.
+        io.nekohasekai.sfa.bridge.FkCoreHost.install()
         // The update check (libbox core_updates.go) compares releases with this install.
-        Libbox.setUIAppInfo(BuildConfig.APPLICATION_ID, BuildConfig.VERSION_CODE.toLong(), Build.SUPPORTED_ABIS.joinToString("\n"))
+        FkLib.setUIAppInfo(BuildConfig.APPLICATION_ID, BuildConfig.VERSION_CODE.toLong(), Build.SUPPORTED_ABIS.joinToString("\n"))
         val dir = installWorkingDir() ?: error("android: external storage unavailable")
         Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))
         setupCompleted = true

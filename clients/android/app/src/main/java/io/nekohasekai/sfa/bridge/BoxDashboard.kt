@@ -5,7 +5,7 @@ import android.net.NetworkCapabilities
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.CommandServer
-import io.nekohasekai.libbox.UIEgressProbe
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileContent
@@ -38,19 +38,19 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         set(value) { field = value; pushMemorySource() }
     private var networkSnapshot: Map<String, Any?>? = null
     private val networkMutex = Mutex()
-    private val configCache = DashboardConfigCache(ProfileContent::revision, Libbox::detectCoreConfig) { content, addresses ->
-        val values = JSONArray(Libbox.readUILANProxyListeners(content, addresses).value)
+    private val configCache = DashboardConfigCache(ProfileContent::revision, FkLib::detectCoreConfig) { content, addresses ->
+        val values = JSONArray(FkLib.readUILANProxyListeners(content, addresses).value)
         (0 until values.length()).map { jsonObject(values.getJSONObject(it)) }
     }
     private class EgressSession(val server: CommandServer?) {
         @Volatile var closed = false
             private set
-        private var probe: UIEgressProbe? = null
-        fun attach(value: UIEgressProbe) = synchronized(this) {
+        private var probe: EgressProbe? = null
+        fun attach(value: EgressProbe) = synchronized(this) {
             if (closed) { value.close(); throw CancellationException("IP probe cancelled") }
             probe = value
         }
-        fun get(): UIEgressProbe = synchronized(this) { probe ?: error("IP probe is not available") }
+        fun get(): EgressProbe = synchronized(this) { probe ?: error("IP probe is not available") }
         fun close() {
             val value = synchronized(this) { closed = true; probe.also { probe = null } }
             value?.close()
@@ -245,7 +245,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         egressSessions[id] = active
         return try {
             withContext(Dispatchers.IO) {
-                val probe = if (server == null) Libbox.newUIDirectEgressProbe() else server.newUIEgressProbe()
+                val probe = if (server == null) EgressProbe.of(FkLib.newUIDirectEgressProbe()) else EgressProbe.of(server.newUIEgressProbe())
                 active.attach(probe)
             }
             check(session(id) === active) { "IP probe changed during creation" }
@@ -276,7 +276,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         val active = session(id)
         val response = withContext(Dispatchers.IO) { active.get().get(url, timeoutMillis) }
         check(session(id) === active) { "IP probe changed during query" }
-        return mapOf("status" to response.status, "body" to response.content.toString(Charsets.UTF_8))
+        return mapOf("status" to response.first, "body" to response.second.toString(Charsets.UTF_8))
     }
 
     /**
@@ -287,8 +287,7 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         val active = session(id)
         val result = withContext(Dispatchers.IO) { active.get().serviceCheck(name, timeoutMillis) }
         check(session(id) === active) { "IP probe changed during query" }
-        return mapOf("name" to result.name, "status" to result.status, "region" to result.region,
-            "delay" to result.delayMillis, "checkedAt" to result.checkedAt)
+        return result
     }
 
     fun closeProbe(id: String) { egressSessions.remove(id)?.close() }
@@ -324,5 +323,37 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         memorySignals.cancel()
         egressSessions.values.forEach { it.close() }
         egressSessions.clear()
+    }
+}
+
+/**
+ * One egress probe session: fk-core's direct probe (service stopped) or the
+ * running service's routed probe (legacy libbox, until fk-core owns the
+ * service; docs/kernel-isolation.md).
+ */
+private interface EgressProbe {
+    fun lookupOutboundIP(): String
+    fun get(url: String, timeoutMillis: Long): Pair<Int, ByteArray>
+    fun serviceCheck(name: String, timeoutMillis: Long): Map<String, Any?>
+    fun close()
+
+    companion object {
+        fun of(probe: io.nekohasekai.sfa.fkcore.UIEgressProbe): EgressProbe = object : EgressProbe {
+            override fun lookupOutboundIP() = probe.lookupOutboundIP()
+            override fun get(url: String, timeoutMillis: Long) = probe.get(url, timeoutMillis).let { it.status to it.content }
+            override fun serviceCheck(name: String, timeoutMillis: Long) = probe.serviceCheck(name, timeoutMillis).let {
+                mapOf("name" to it.name, "status" to it.status, "region" to it.region, "delay" to it.delayMillis, "checkedAt" to it.checkedAt)
+            }
+            override fun close() = probe.close()
+        }
+
+        fun of(probe: io.nekohasekai.libbox.UIEgressProbe): EgressProbe = object : EgressProbe {
+            override fun lookupOutboundIP(): String = probe.lookupOutboundIP()
+            override fun get(url: String, timeoutMillis: Long) = probe.get(url, timeoutMillis).let { it.status to it.content }
+            override fun serviceCheck(name: String, timeoutMillis: Long) = probe.serviceCheck(name, timeoutMillis).let {
+                mapOf("name" to it.name, "status" to it.status, "region" to it.region, "delay" to it.delayMillis, "checkedAt" to it.checkedAt)
+            }
+            override fun close() = probe.close()
+        }
     }
 }

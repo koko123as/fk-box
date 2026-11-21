@@ -1,6 +1,6 @@
 package io.nekohasekai.sfa.database
 
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -28,5 +28,5 @@ internal object ProfileArray {
      * a one-element array always matches. Null when nothing matches.
      */
     fun select(remarks: List<String>, savedRemarks: String, profileName: String): Int? =
-        Libbox.profileArraySelect(Json.encodeToString(strings, remarks), savedRemarks, profileName).takeIf { it >= 0 }
+        FkLib.profileArraySelect(Json.encodeToString(strings, remarks), savedRemarks, profileName).takeIf { it >= 0 }
 }

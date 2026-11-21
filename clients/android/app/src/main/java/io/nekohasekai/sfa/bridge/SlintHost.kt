@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -72,7 +73,7 @@ private fun JSONObject.any(key: String): Any? = if (has(key) && !isNull(key)) {
  */
 internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): Any? {
     if (method in ProtocolGen.GO_METHODS) {
-        return GoWire(withContext(Dispatchers.IO) { Libbox.uiInvoke(method, args.toString()) })
+        return GoWire(withContext(Dispatchers.IO) { FkLib.uiInvoke(method, args.toString()) })
     }
     return hostDispatch(method, args)
 }

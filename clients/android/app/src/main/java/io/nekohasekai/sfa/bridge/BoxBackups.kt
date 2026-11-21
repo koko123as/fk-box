@@ -1,6 +1,6 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileContent
@@ -31,7 +31,7 @@ internal class BoxBackups(
         check(preferences.edit().putString("backupOrigin", it).commit()) { "Unable to save backup identity" }
     }
     // The file name when it is a UUID, else a name UUID of origin and ID (libbox core_backup.go).
-    private fun profileKey(profile: Profile, origin: String): String = Libbox.uiBackupProfileKey(profile.typed.path, origin, profile.id)
+    private fun profileKey(profile: Profile, origin: String): String = FkLib.uiBackupProfileKey(profile.typed.path, origin, profile.id)
     private fun readPreferences() = BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
     private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }
 
@@ -91,7 +91,7 @@ internal class BoxBackups(
     @Suppress("UNCHECKED_CAST")
     private suspend fun validate(backup: Map<String, Any?>, scope: String): List<Map<String, Any?>> {
         require(scope in setOf("all", "profiles")) { "Invalid restore scope" }
-        val document = Libbox.newUIBackupCheck(JSONObject(backup).toString().toByteArray())
+        val document = FkLib.newUIBackupCheck(JSONObject(backup).toString().toByteArray())
         val entries = rows(backup["profiles"])
         check(entries.size == document.entryCount()) { "Backup changed while it was checked" }
         entries.forEachIndexed { index, entry ->

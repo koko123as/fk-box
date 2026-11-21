@@ -9,10 +9,10 @@
 //	core -> client  {"call": 7, "method": "captureSign", "args": {...}}
 //	client -> core  {"reply": 7, "result": ...} or {"reply": 7, "error": "text"}
 //
-// A request may carry one file descriptor (the VPN's TUN): the client sends
-// the line with "fd": true in a single write that has the descriptor attached
-// (SCM_RIGHTS; Android: LocalSocket.setFileDescriptorsForSend). The method
-// receives it as Request.File.
+// A request or a reply may carry one file descriptor (the VPN's TUN): the
+// client sends the line with "fd": true in a single write that has the
+// descriptor attached (SCM_RIGHTS; Android: LocalSocket.setFileDescriptorsForSend).
+// A method receives it as Request.File, a reverse call from CallFile.
 //
 // The first request must be "hello"; anything before it is answered with
 // ErrHelloFirst. Requests run concurrently; responses carry their id.
@@ -82,6 +82,7 @@ type call struct {
 
 type callResult struct {
 	result json.RawMessage
+	file   *os.File
 	err    error
 }
 
@@ -125,13 +126,23 @@ func (s *Server) Emit(kind string, payload any) {
 // Call asks the client to run method (a host method of the protocol) and
 // waits for its reply or for ctx to end.
 func (s *Server) Call(ctx context.Context, method string, args any) (json.RawMessage, error) {
+	result, file, err := s.CallFile(ctx, method, args)
+	if file != nil {
+		_ = file.Close()
+	}
+	return result, err
+}
+
+// CallFile is Call for a reply that may carry a descriptor (the caller owns
+// the returned file, which is nil when the reply had none).
+func (s *Server) CallFile(ctx context.Context, method string, args any) (json.RawMessage, *os.File, error) {
 	if !s.Ready() {
-		return nil, ErrHelloFirst
+		return nil, nil, ErrHelloFirst
 	}
 	s.callAccess.Lock()
 	if s.closed {
 		s.callAccess.Unlock()
-		return nil, ErrClosed
+		return nil, nil, ErrClosed
 	}
 	s.nextCall++
 	id := s.nextCall
@@ -146,9 +157,10 @@ func (s *Server) Call(ctx context.Context, method string, args any) (json.RawMes
 	s.write(call{Call: id, Method: method, Args: encode(args)})
 	select {
 	case result := <-wait:
-		return result.result, result.err
+		return result.result, result.file, result.err
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		// A reply arriving later is dropped by deliver; its descriptor closed.
+		return nil, nil, ctx.Err()
 	}
 }
 
@@ -180,13 +192,13 @@ func (s *Server) Serve(ctx context.Context, conn io.Reader) error {
 			s.answer(nil, nil, errors.New("protocol: invalid request"))
 			continue
 		}
-		if len(frame.Reply) > 0 {
-			s.deliver(frame)
-			continue
-		}
 		var file *os.File
 		if frame.FD {
 			file = reader.take()
+		}
+		if len(frame.Reply) > 0 {
+			s.deliver(frame, file)
+			continue
 		}
 		if frame.Method == "" {
 			closeFile(file)
@@ -220,21 +232,25 @@ func (s *Server) Serve(ctx context.Context, conn io.Reader) error {
 	return scanner.Err()
 }
 
-func (s *Server) deliver(frame frameIn) {
+func (s *Server) deliver(frame frameIn, file *os.File) {
 	id, err := strconv.ParseInt(string(frame.Reply), 10, 64)
 	if err != nil {
+		closeFile(file)
 		return
 	}
 	s.callAccess.Lock()
 	wait := s.calls[id]
+	delete(s.calls, id)
 	s.callAccess.Unlock()
 	if wait == nil {
+		closeFile(file)
 		return
 	}
 	if frame.Error != nil {
+		closeFile(file)
 		wait <- callResult{err: errors.New(*frame.Error)}
 	} else {
-		wait <- callResult{result: frame.Result}
+		wait <- callResult{result: frame.Result, file: file}
 	}
 }
 

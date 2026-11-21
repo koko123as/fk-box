@@ -1,7 +1,7 @@
 package io.nekohasekai.sfa.backend.log
 
 import androidx.lifecycle.viewModelScope
-import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.libbox.LogEntry
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.bg.BoxService
@@ -29,7 +29,7 @@ class LogViewModel :
 
     init {
         // A new view model starts from an empty buffer, as before.
-        Libbox.uiLogStreamClear()
+        FkLib.uiLogStreamClear()
     }
 
     private val commandClient =
@@ -84,11 +84,11 @@ class LogViewModel :
     fun setVisible(visible: Boolean) { visibleFlow.value = visible }
 
     override fun setDefaultLogLevel(level: Int) {
-        Libbox.uiLogStreamSetDefaultLevel(level)
+        FkLib.uiLogStreamSetDefaultLevel(level)
         updateState { copy(defaultLogLevel = LogLevel.from(level)) }
     }
 
-    override fun clearLogs() = Libbox.uiLogStreamClear()
+    override fun clearLogs() = FkLib.uiLogStreamClear()
 
     fun requestClearLogs() {
         viewModelScope.launch {
@@ -110,8 +110,8 @@ class LogViewModel :
     // reader, and the stream's lock keeps a batch whole.
     @Synchronized
     override fun appendLogs(message: List<LogEntry>) {
-        for (entry in message) Libbox.uiLogStreamAppend(entry.level, entry.message)
-        Libbox.uiLogStreamCommit()
+        for (entry in message) FkLib.uiLogStreamAppend(entry.level, entry.message)
+        FkLib.uiLogStreamCommit()
     }
 
     override fun onCleared() {

@@ -162,5 +162,7 @@ jobs:
         run: python3 tools/verify_newui.py
       - name: UI protocol (protocol/methods.json against Go, Kotlin and Rust)
         run: python3 tools/protocol.py check
+      - name: fk-core's Kotlin facade is current and the app reaches fk-core only through it
+        run: python3 tools/fkapi.py check
       - name: Client isolation (no clients/<a> -> clients/<b> references)
         run: python3 tools/check_isolation.py

@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.bridge
 
 import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Status
@@ -44,14 +45,14 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         val core = ProfileContent.coreOf(profile, content)
         if (core != TypedProfile.CORE_SING_BOX) {
             // Xray JSON and Clash YAML are edited as text; sing-box-only stats do not apply.
-            val formatted = Libbox.formatCoreConfig(core, content).value
+            val formatted = FkLib.formatCoreConfig(core, content).value
             return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
                 "core" to core, "language" to if (core == TypedProfile.CORE_MIHOMO) "yaml" else "json",
-                "stats" to runCatching { JSONObject(Libbox.coreProfileStats(core, content)).let { stats ->
+                "stats" to runCatching { JSONObject(FkLib.coreProfileStats(core, content)).let { stats ->
                     mapOf("groups" to stats.optInt("groups"), "outbounds" to stats.optInt("outbounds"), "rules" to stats.optInt("rules"))
                 } }.getOrNull())
         }
-        val formatted = Libbox.formatCoreConfig(TypedProfile.CORE_SING_BOX, content).value
+        val formatted = FkLib.formatCoreConfig(TypedProfile.CORE_SING_BOX, content).value
         val root = JSONObject(formatted)
         val outbounds = root.optJSONArray("outbounds")
         var groupCount = 0
@@ -83,7 +84,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         val previous = File(get(id).typed.path).readText()
         require(revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
         require(ProfileContent.coreOf(get(id), previous) == TypedProfile.CORE_SING_BOX) { "LAN proxy switch is only available for sing-box profiles" }
-        val content = Libbox.setUILANProxyEnabled(previous, enabled, initialPort).value
+        val content = FkLib.setUILANProxyEnabled(previous, enabled, initialPort).value
         val saved = writeContentLocked(id, content, expectedRevision)
         if (previous == content && id == Settings.selectedProfile) applySelected(false)
         saved
@@ -301,7 +302,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     fun decode(data: ByteArray, name: String): Map<String, Any?> {
         val text = data.toString(Charsets.UTF_8)
         decodeArray(text, name.substringBeforeLast('.'))?.let { return it }
-        val detected = Libbox.detectCoreConfig(text)
+        val detected = FkLib.detectCoreConfig(text)
         if (text.trimStart().startsWith("{") || detected == Libbox.CoreMihomo || detected == Libbox.CoreLinks) {
             val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
             return mapOf("name" to name.substringBeforeLast('.'), "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,

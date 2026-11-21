@@ -1,6 +1,7 @@
 package io.nekohasekai.sfa.database
 
 import android.util.AtomicFile
+import io.nekohasekai.sfa.fkcore.FkLib
 import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.sync.Mutex
 import java.io.File
@@ -29,7 +30,7 @@ internal object ProfileContent {
      * (libbox PrepareCoreProfile, given the cores left on in Settings).
      */
     fun prepare(declaredCore: String, content: String): Prepared {
-        val prepared = Libbox.prepareCoreProfile(declaredCore, Settings.enabledCores(), content)
+        val prepared = FkLib.prepareCoreProfile(declaredCore, Settings.enabledCores(), content)
         return Prepared(prepared.core, prepared.content)
     }
 
@@ -38,8 +39,8 @@ internal object ProfileContent {
      * or null when [content] is not one. A single profile never stores an array.
      */
     fun splitArray(content: String): List<ProfileArray.Element>? {
-        if (Libbox.detectCoreConfig(content) != Libbox.CoreArray) return null
-        val split = Libbox.splitCoreConfigArray(content)
+        if (FkLib.detectCoreConfig(content) != Libbox.CoreArray) return null
+        val split = FkLib.splitCoreConfigArray(content)
         return (0 until split.len()).map { ProfileArray.Element(split.remarks(it), split.content(it), split.core(it)) }
     }
 
@@ -51,7 +52,7 @@ internal object ProfileContent {
      * (libbox PrepareCoreProfileArray, given the cores left on in Settings).
      */
     fun prepareArray(declaredCore: String, source: String, content: String): List<ProfileArray.Entry>? {
-        val prepared = Libbox.prepareCoreProfileArray(declaredCore, Settings.enabledCores(), source, content) ?: return null
+        val prepared = FkLib.prepareCoreProfileArray(declaredCore, Settings.enabledCores(), source, content) ?: return null
         return (0 until prepared.len()).map { ProfileArray.Entry(prepared.name(it), prepared.content(it), prepared.core(it)) }
     }
 
@@ -61,7 +62,7 @@ internal object ProfileContent {
      */
     fun followArray(profileName: String, previous: String?, content: String): String {
         val elements = splitArray(content) ?: return content
-        val savedRemarks = previous?.let { runCatching { Libbox.coreConfigRemarks(it) }.getOrNull() }.orEmpty()
+        val savedRemarks = previous?.let { runCatching { FkLib.coreConfigRemarks(it) }.getOrNull() }.orEmpty()
         val index = ProfileArray.select(elements.map { it.remarks }, savedRemarks, profileName)
             ?: throw IllegalArgumentException("The subscription returned ${elements.size} configurations and none matches this profile")
         return elements[index].content
@@ -69,14 +70,14 @@ internal object ProfileContent {
 
     fun validate(core: String, content: String) {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
-        Libbox.checkCoreConfig(core, content)
+        FkLib.checkCoreConfig(core, content)
     }
 
     /** sing-box-only callers (LAN proxy toggle, backups of sing-box profiles). */
-    fun validate(content: String) = validate(Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content), content)
+    fun validate(content: String) = validate(FkLib.resolveProfileCore(TypedProfile.CORE_AUTO, content), content)
 
     /** The core that runs [profile] with its saved [content]. */
-    fun coreOf(profile: Profile, content: String): String = Libbox.resolveProfileCore(profile.typed.core, content)
+    fun coreOf(profile: Profile, content: String): String = FkLib.resolveProfileCore(profile.typed.core, content)
 
     /** Caller holds [mutex] until the save, service application and any recovery finish. */
     suspend fun replaceLocked(
