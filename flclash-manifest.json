@@ -10,7 +10,7 @@
   },
   "changes": "No Clash core included.",
   "adaptedNativeFiles": {
-    "legacy/core/ui_egress.go": {
+    "core/fk/ui_egress.go": {
       "sources": [
         {
           "source": "core/outbound_ip.go",
@@ -67,7 +67,7 @@
         }
       ]
     },
-    "legacy/core/ui_service_check.go": {
+    "core/fk/ui_service_check.go": {
       "sources": [
         {
           "source": "core/service_check.go",
@@ -260,7 +260,7 @@
           "sourceSHA256": "84c3e49046785166334f5a3c99e3abdb22badd262f6a50268e5f815edc8a36f4",
           "usage": "design",
           "localPaths": [
-            "legacy/core/core_geo.go",
+            "core/fk/core_geo.go",
             "clients/android/app/geo-assets.properties"
           ],
           "changes": "defaultGeoXUrl (MetaCubeX/meta-rules-dat latest) kept as the default URLs; geo-auto-update off and geo-update-interval 24 hours kept as defaults. The bundled copy is pinned to a meta-rules-dat release-branch commit and verified by SHA-256 at build time instead of being committed."
@@ -270,7 +270,7 @@
           "sourceSHA256": "abbc7ee2b7dc9df49a780dc8aa1fcbc25fdd43c3f17c115a72ba55547116acfb",
           "usage": "design",
           "localPaths": [
-            "legacy/core/core_geo.go"
+            "core/fk/core_geo.go"
           ],
           "changes": "Same four resources and parser checks as mihomo's updater (protobuf GeoIP/GeoSite, MaxMind DB); the file is written beside the target and renamed so a failed download keeps the old file."
         }

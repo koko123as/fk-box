@@ -3,7 +3,7 @@ name: Bump a core (draft PR)
 # Prepares one kernel upgrade for review: bumps version.properties with
 # tools/bump_core.py on a new branch bump/<kernel>-<version>, writes the drift
 # report (what changed upstream in the files fk-box depends on) and, for
-# sing-box, the result of every patch script's --check against the new
+# sing-box, the check of the StartedService API fk-core serves against the new
 # version, and opens a DRAFT pull request with both. It never merges, tags or
 # releases anything; the build, tests and device checks follow the checklist
 # in libbox.md ("升级内核").
@@ -93,7 +93,7 @@ jobs:
           go-version: ${{ steps.go.outputs.version }}
           cache: false
 
-      - name: Check every sing-box patch against the new version (--check)
+      - name: Check the StartedService API fk-core serves against the new version
         if: inputs.kernel == 'sing-box'
         env:
           GOTOOLCHAIN: local
@@ -101,9 +101,9 @@ jobs:
         run: |
           report="$RUNNER_TEMP/patches.md"
           {
-            echo "## sing-box patch check"
+            echo "## sing-box API check"
             echo
-            echo "Each script ran with \`--check\` against sing-box v$VERSION; nothing was applied."
+            echo "Checked against sing-box v$VERSION."
             echo
             echo "| check | result |"
             echo "| --- | --- |"
@@ -123,16 +123,12 @@ jobs:
               echo "| \`$name\` | ❌ ${cell:-exit $status, see the workflow log} |" >> "$report"
             fi
           }
-          run_check "patch_sing_tun.py --check" python3 tools/patch_sing_tun.py .core --check
-          run_check "patch_httpdebug.py --check" python3 tools/patch_httpdebug.py .core --check
-          run_check "patch_dns_count.py --check" python3 tools/patch_dns_count.py .core --check
-          run_check "patch_entry.py --check" python3 tools/patch_entry.py .core --check
           run_check "verify_multicore.py" python3 tools/verify_multicore.py
           echo >> "$report"
           if [ "$failed" -eq 0 ]; then
-            echo "All patch checks passed." >> "$report"
+            echo "All checks passed." >> "$report"
           else
-            echo "**Some patch checks failed: rebase the named patch or script before building.**" >> "$report"
+            echo "**A check failed: update fk-core before building.**" >> "$report"
           fi
           cat "$report" >> "$GITHUB_STEP_SUMMARY"
 

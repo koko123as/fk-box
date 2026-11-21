@@ -25,12 +25,9 @@ jobs:
         with:
           persist-credentials: false
 
-      - id: core
-        uses: ./.github/actions/build-libbox
-        with:
-          platform: android/arm64
       # The official kernels and fk-core (docs/kernel-isolation.md).
-      - uses: ./.github/actions/build-kernels
+      - id: kernels
+        uses: ./.github/actions/build-kernels
 
       - name: Set up Java for Gradle
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -103,7 +100,7 @@ jobs:
       - name: Upload Debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
-          name: fk-box-${{ steps.core.outputs.version }}-${{ github.sha }}-arm64-v8a-debug
+          name: fk-box-${{ steps.kernels.outputs.version }}-${{ github.sha }}-arm64-v8a-debug
           path: clients/android/app/build/outputs/apk/other/debug/*.apk
           if-no-files-found: error
           compression-level: 0

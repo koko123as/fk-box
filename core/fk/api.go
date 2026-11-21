@@ -1,5 +1,5 @@
 // Package fk is the kernel-independent part of fk-box's Go code, ported from
-// the libbox overlay (legacy/core, package libbox) into fk-core
+// the former libbox overlay (package libbox) into fk-core
 // (docs/kernel-isolation.md, phase P2). fk-core answers it over its protocol
 // by name; the names are the ones gomobile gave Kotlin (the Go name with its
 // first letter lowercased), so the app's Libbox.* calls switch to fk-core

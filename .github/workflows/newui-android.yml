@@ -16,11 +16,9 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: ./.github/actions/build-libbox
-        with:
-          platform: android/arm64
       # The official kernels and fk-core (docs/kernel-isolation.md).
-      - uses: ./.github/actions/build-kernels
+      - id: kernels
+        uses: ./.github/actions/build-kernels
       - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
         with:
           distribution: temurin

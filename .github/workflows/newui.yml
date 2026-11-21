@@ -6,7 +6,6 @@ on:
     paths:
       # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
       - 'core/**'
-      - 'legacy/**'
       - 'protocol/**'
       - 'ui/**'
       - 'tools/**'
@@ -23,7 +22,6 @@ on:
     paths:
       # shared: everything the clients build on (keep in sync across build-*.yml / newui.yml)
       - 'core/**'
-      - 'legacy/**'
       - 'protocol/**'
       - 'ui/**'
       - 'tools/**'
@@ -47,57 +45,25 @@ concurrency:
 
 jobs:
   core:
+    # The sing-box API fk-core serves for Xray and mihomo, checked against the
+    # pinned sing-box tag.
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
-      - uses: ./.github/actions/setup-core
-      - name: Command service coverage (every StartedService method implemented by fk-box)
+      - id: versions
+        run: |
+          version=$(sed -n 's/^VERSION_NAME=//p' version.properties | tr -d '\r')
+          core_version=$(sed -n 's/^CORE_VERSION=//p' version.properties | tr -d '\r')
+          echo "core_version=${core_version:-$version}" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: SagerNet/sing-box
+          ref: v${{ steps.versions.outputs.core_version }}
+          path: .core
+          persist-credentials: false
+      - name: Command service coverage and app libbox calls
         run: python3 tools/verify_multicore.py
-      - name: sing-box touchpoints (every sing-box/libbox symbol core/ uses is listed in core_touch_singbox.go)
-        run: python3 tools/verify_touchpoints.py --core .core
-      - name: fk-box entry package (experimental/fkbox, bound into libbox.aar) builds
-        working-directory: .core
-        run: |
-          go build -ldflags=-checklinkname=0 ./experimental/fkbox
-          # fk-box's Android build command (cmd/fk-bind, run by build-libbox).
-          go vet ./cmd/fk-bind
-      - name: fk-box host services (experimental/fkhost) tests
-        working-directory: .core
-        run: |
-          go test ./experimental/fkhost -count=1
-          # Platform files by build tag: every system's fkhost compiles.
-          for os in windows darwin; do GOOS=$os GOARCH=amd64 CGO_ENABLED=0 go vet ./experimental/fkhost; done
-      - name: Desktop core (fk-core, linux) builds and answers hello over stdio
-        working-directory: .core
-        run: |
-          go build -trimpath -ldflags=-checklinkname=0 -o "$RUNNER_TEMP/fk-core" ./cmd/fk-core
-          "$RUNNER_TEMP/fk-core" -version
-          printf '%s\n' \
-            '{"id":1,"method":"checkConfig","args":{"content":"{}"}}' \
-            '{"id":2,"method":"hello","args":{"protocolVersion":1,"client":"ci","clientVersion":"0","capabilities":[]}}' \
-            '{"id":3,"method":"formatConfig","args":{"content":"{\"log\":{}}"}}' \
-            '{"id":4,"method":"listApps","args":{}}' \
-            | "$RUNNER_TEMP/fk-core" -dir "$RUNNER_TEMP/fk-core-dir" | tee "$RUNNER_TEMP/fk-core.out"
-          grep -q '"id":1,"error":"protocol: send hello first"' "$RUNNER_TEMP/fk-core.out"
-          grep -q '"id":2,"result":{"protocolVersion":1' "$RUNNER_TEMP/fk-core.out"
-          grep -q '"id":3,' "$RUNNER_TEMP/fk-core.out"
-          grep -q '"id":4,"error":"listApps: answered by the client' "$RUNNER_TEMP/fk-core.out"
-      - name: Android ingress-discard map compatibility tests
-        working-directory: .core
-        run: go test -ldflags=-checklinkname=0 github.com/sagernet/sing-tun -run '^TestAndroidIngressDiscard' -count=1
-      - name: HTTP, routed IP and LAN tests against the matching core
-        working-directory: .core
-        run: go test -ldflags=-checklinkname=0 ./experimental/libbox -run '^TestUI' -count=1
-      - name: Multi-core profile detection, conversion and validation tests
-        working-directory: .core
-        # with_quic: converted sing-box profiles carry Hysteria2 nodes.
-        run: go test -tags with_quic,with_utls -ldflags=-checklinkname=0 ./experimental/libbox -run '^Test(DetectCoreConfig|Convert|CheckMihomo|CheckXray|ResolveProfileCore|SubscriptionURL|DropUnbuiltTunStack|ConvertCoreShareLinksEnabled|CoreProfileStats|CoreInternals|CoreConfigArray|CoreDefaultLogLevel|CoreGeo|CoreMemory|CoreRouting)' -count=1 -v
-      - name: HTTP/MITM, profile rewrite, JavaScript, storage and route tests
-        working-directory: .core
-        run: |
-          go test -race ./experimental/httpdebug -count=1 -timeout=5m
-          go test -ldflags=-checklinkname=0 ./route -run '^TestBboxHTTPDebug' -count=1 -timeout=5m
   kernels:
     # fk-box's own module core/ (fk-core) and the official kernels built from
     # unmodified upstream tags (docs/kernel-isolation.md).

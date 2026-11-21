@@ -150,7 +150,7 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 ### 状态卡片与出口查询
 
-查询来源、字段解析及质量判定参考上述固定版本。IP 竞速由 [ui_egress.go](legacy/core/ui_egress.go) 负责：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
+查询来源、字段解析及质量判定参考上述固定版本。IP 竞速由 [ui_egress.go](core/fk/ui_egress.go) 负责：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
 
 质量查询在 `ui/src/pages/egress.rs` 中依次分批使用 ident.me/ip-api.com/IPQuery、IPLocate、ipapi.is、proxycheck.io；等待一秒或当前请求全部失败后进入后续批次，单请求最多八秒。保留参考版组织/ASN 解析、显式类型优先、住宅类型推断及 Tor/abuser 质量规则。
 
