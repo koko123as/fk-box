@@ -28,7 +28,11 @@
 //   - Log stream: uiLogStreamAppend, uiLogStreamCommit, uiLogStreamClear,
 //     uiLogStreamSetDefaultLevel, uiLogStreamSetVisible
 //   - LAN proxy: readUILANProxyListeners, setUILANProxyEnabled
-//   - Egress probe: newUIDirectEgressProbe (object UIEgressProbe)
+//   - Egress probe: newUIDirectEgressProbe, newUIServiceEgressProbe
+//     (object UIEgressProbe)
+//   - Service: serviceStart, serviceStop, serviceRunning,
+//     serviceDefaultNetworkChanged, serviceMemory, serviceLocalProxy,
+//     closeCommandServer
 //   - Versions: xrayVersion, mihomoVersion
 //
 // and the methods of the objects GeoUpdate (Fetch, FetchExpected, Cancel),
@@ -125,7 +129,17 @@ func Register(r *rpc.Registry) {
 
 	// Direct egress probe and service check (ui_egress.go, ui_service_check.go).
 	r.Func("newUIDirectEgressProbe", NewUIDirectEgressProbe)
+	r.Func("newUIServiceEgressProbe", NewUIServiceEgressProbe)
 	r.Object("UIEgressProbe", (*UIEgressProbe)(nil))
+
+	// Xray and mihomo as child processes (core_service.go).
+	r.Func("serviceStart", ServiceStart)
+	r.Func("serviceStop", ServiceStop)
+	r.Func("serviceRunning", ServiceRunning)
+	r.Func("serviceDefaultNetworkChanged", ServiceDefaultNetworkChanged)
+	r.Func("serviceMemory", ServiceMemory)
+	r.Func("serviceLocalProxy", ServiceLocalProxy)
+	r.Func("closeCommandServer", CloseCommandServer)
 
 	// Kernel versions (core_kernel_exec.go).
 	r.Func("xrayVersion", XrayVersion)

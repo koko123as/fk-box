@@ -79,6 +79,20 @@ object FkLib {
     fun readUILANProxyListeners(configContent: String, interfaceAddresses: String): StringBox = StringBox.decode(FkCodec.obj(CallResult(FkCoreClient.call("readUILANProxyListeners", configContent, interfaceAddresses))) ?: org.json.JSONObject())
     fun setUILANProxyEnabled(configContent: String, enabled: Boolean, initialPort: Int): StringBox = StringBox.decode(FkCodec.obj(CallResult(FkCoreClient.call("setUILANProxyEnabled", configContent, enabled, initialPort))) ?: org.json.JSONObject())
     fun newUIDirectEgressProbe(): UIEgressProbe = UIEgressProbe(FkCodec.handle(CallResult(FkCoreClient.call("newUIDirectEgressProbe"))) ?: throw FkCoreException("fk-core returned no UIEgressProbe"))
+    fun newUIServiceEgressProbe(): UIEgressProbe = UIEgressProbe(FkCodec.handle(CallResult(FkCoreClient.call("newUIServiceEgressProbe"))) ?: throw FkCoreException("fk-core returned no UIEgressProbe"))
+    fun serviceStart(core: String, content: String, rules: String, options: String): CoreRoutingResult = CoreRoutingResult.decode(FkCodec.obj(CallResult(FkCoreClient.call("serviceStart", core, content, rules, options))) ?: org.json.JSONObject())
+    fun serviceStop() {
+        FkCoreClient.call("serviceStop")
+    }
+    fun serviceRunning(): String = FkCodec.string(CallResult(FkCoreClient.call("serviceRunning")))
+    fun serviceDefaultNetworkChanged(dns: String) {
+        FkCoreClient.call("serviceDefaultNetworkChanged", dns)
+    }
+    fun serviceMemory(): Long = FkCodec.long(CallResult(FkCoreClient.call("serviceMemory")))
+    fun serviceLocalProxy(): String = FkCodec.string(CallResult(FkCoreClient.call("serviceLocalProxy")))
+    fun closeCommandServer() {
+        FkCoreClient.call("closeCommandServer")
+    }
     fun xrayVersion(): String = FkCodec.string(CallResult(FkCoreClient.call("xrayVersion")))
     fun mihomoVersion(): String = FkCodec.string(CallResult(FkCoreClient.call("mihomoVersion")))
 }

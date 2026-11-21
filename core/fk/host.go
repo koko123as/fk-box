@@ -281,6 +281,10 @@ func newHTTPClient() *httpClient {
 	c.Transport.TLSHandshakeTimeout = httpTLSHandshakeTimeout
 	c.Transport.TLSClientConfig = &c.tls
 	c.Transport.DisableKeepAlives = true
+	// fk-core is outside the VPN (decision D1): while a kernel runs, its
+	// requests go through the kernel's local inbound and follow the
+	// profile's rules, as they did inside the VPN.
+	c.Transport.Proxy = serviceProxy
 	c.tls.MinVersion = tls.VersionTLS12
 	for _, suite := range tls.CipherSuites() {
 		c.tls.CipherSuites = append(c.tls.CipherSuites, suite.ID)
@@ -291,4 +295,10 @@ func newHTTPClient() *httpClient {
 // Close releases idle connections.
 func (c *httpClient) Close() {
 	c.Transport.CloseIdleConnections()
+}
+
+// FileHost is a Host whose reverse calls may answer with a descriptor
+// (the TUN, vpn.openTun).
+type FileHost interface {
+	CallFile(method string, args ...any) (json.RawMessage, *os.File, error)
 }

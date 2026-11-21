@@ -78,6 +78,20 @@ func (serverHost) Call(method string, args ...any) (json.RawMessage, error) {
 	return server.Call(ctx, method, args)
 }
 
+// CallFile is Call for a reply that may carry a descriptor (vpn.openTun).
+func (serverHost) CallFile(method string, args ...any) (json.RawMessage, *os.File, error) {
+	server := activeServer.Load()
+	if server == nil {
+		return nil, nil, protocol.ErrClosed
+	}
+	if args == nil {
+		args = []any{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), hostCallTimeout)
+	defer cancel()
+	return server.CallFile(ctx, method, args)
+}
+
 func (serverHost) Emit(kind string, payload string) {
 	if server := activeServer.Load(); server != nil {
 		server.Emit(kind, payload)

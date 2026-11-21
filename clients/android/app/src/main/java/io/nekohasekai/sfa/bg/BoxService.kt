@@ -97,6 +97,18 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         @Volatile internal var runningCore: String? = null
             private set
 
+        /**
+         * Whether [runningCore] runs as a child process of fk-core (Xray,
+         * mihomo; docs/kernel-isolation.md) rather than in libbox (sing-box).
+         * fk-core then serves command.sock, and libbox's command server is closed.
+         */
+        internal val coreInFkCore: Boolean
+            get() = runningCore.let { it != null && it != TypedProfile.CORE_SING_BOX }
+
+        /** The running service, for fk-core's reverse calls (FkCoreHost). */
+        @Volatile internal var current: BoxService? = null
+            private set
+
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
             Settings.dataStore.initialize()
@@ -196,7 +208,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             dashboardServer = commandServer
             _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
-            if (commandServer.needWIFIStateCore()) {
+            if (!coreInFkCore && commandServer.needWIFIStateCore()) {
                 val wifiPermission =
                     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                         android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -287,7 +299,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         dashboardServer = commandServer
         _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
         _reloadGeneration.update { it + 1 }
-        if (commandServer.needWIFIStateCore()) {
+        if (!coreInFkCore && commandServer.needWIFIStateCore()) {
             val wifiPermission =
                 if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
                     android.Manifest.permission.ACCESS_FINE_LOCATION
@@ -351,22 +363,49 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 rewriteSigner = material.second
             }
         }
-        // The libbox lifecycle prepares the rules/CA, starts the core, then
-        // activates profile processing before reporting startup success.
-        // Xray and mihomo get the VpnService TUN fd directly (CommandServer.startOrReloadCoreService).
-        if (core != TypedProfile.CORE_SING_BOX) {
-            DefaultNetworkMonitor.pushSystemDNS()
-        }
-        // The rules never keep the profile from running: libbox starts it
-        // without them and reports why (CoreRoutingResult.error).
+        // The rules never keep the profile from running: the profile starts
+        // without them and the result says why (CoreRoutingResult.error).
         // The running core is stopped before the next one starts: until this
         // start returns, none runs (a failed start leaves none).
+        val wasInFkCore = coreInFkCore
         runningCore = null
-        val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
-        runningCore = core
-        publishRoutingStatus(core, result, unreadable)
+        if (core != TypedProfile.CORE_SING_BOX) {
+            // Xray and mihomo run as child processes of fk-core, which opens
+            // the TUN through vpn.openTun (FkCoreHost) and serves command.sock.
+            if (!wasInFkCore) {
+                runCatching { commandServer.closeCoreService() }
+                commandServer.closeCoreCommandServer()
+            }
+            val result = FkLib.serviceStart(core, content, rules, fkCoreServiceOptions())
+            runningCore = core
+            publishRoutingStatus(core, result.applied, result.active, result.fallback, unreadable ?: "", result.error, result.warnings)
+        } else {
+            if (wasInFkCore) {
+                // sing-box runs in libbox: fk-core stops its kernel and hands
+                // command.sock back to a new libbox command server.
+                runCatching { FkLib.serviceStop() }.onFailure { Log.w(TAG, "stop fk-core kernel", it) }
+                runCatching { FkLib.closeCommandServer() }
+                startCommandServer()
+            }
+            // The libbox lifecycle prepares the rules/CA, starts the core, then
+            // activates profile processing before reporting startup success.
+            val result = commandServer.startOrReloadCoreServiceWithRouting(core, content, rules, overrides)
+            runningCore = core
+            publishRoutingStatus(core, result?.applied ?: 0, result?.active == true, result?.fallback == true, unreadable ?: "", result?.error.orEmpty(), result?.warnings.orEmpty())
+        }
         rules
     }
+
+    /** fk-core's reverse call vpn.openTun: the VPN TUN for its kernel. */
+    internal fun openTunForFkCore(spec: org.json.JSONObject): ParcelFileDescriptor {
+        val vpn = service as? VPNService ?: error("Xray and mihomo need the VPN service mode")
+        return vpn.openTunForCore(spec)
+    }
+
+    /** fk-core's ServiceOptions: the underlying network's DNS servers. */
+    private fun fkCoreServiceOptions(): String = org.json.JSONObject()
+        .put("dns", org.json.JSONArray(DefaultNetworkMonitor.systemDNS()))
+        .toString()
 
     private fun geoMissingText(detail: String): String {
         val zh = java.util.Locale.getDefault().language == "zh"
@@ -387,16 +426,16 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    private fun publishRoutingStatus(core: String, result: io.nekohasekai.libbox.CoreRoutingResult?, unreadable: String?) {
-        val error = unreadable?.let { "Routing rules unreadable: $it" } ?: result?.error.orEmpty()
+    private fun publishRoutingStatus(core: String, applied: Int, active: Boolean, fallback: Boolean, unreadable: String, resultError: String, warnings: String) {
+        val error = unreadable.takeIf { it.isNotEmpty() }?.let { "Routing rules unreadable: $it" } ?: resultError
         val previous = routingStatus.value
         val status = RoutingStatus(
             core = core,
-            applied = result?.applied ?: 0,
-            active = result?.active == true,
-            fallback = result?.fallback == true,
+            applied = applied,
+            active = active,
+            fallback = fallback,
             error = error,
-            warnings = result?.warnings.orEmpty().lines().filter { it.isNotBlank() },
+            warnings = warnings.lines().filter { it.isNotBlank() },
             time = System.currentTimeMillis(),
         )
         _routingStatus.value = status
@@ -464,14 +503,27 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     private fun closeService() {
+        val inFkCore = coreInFkCore
         runningCore = null
         if (dashboardConfig.value?.server === commandServer) _dashboardConfig.value = null
         if (dashboardServer === commandServer) dashboardServer = null
+        if (inFkCore) {
+            runCatching { FkLib.serviceStop() }.onFailure { Log.w(TAG, "stop fk-core kernel", it) }
+            runCatching { FkLib.closeCommandServer() }
+            return
+        }
         runCatching {
             commandServer.closeCoreService()
         }.onFailure {
             commandServer.setCoreError("android: close service: ${it.message}")
         }
+    }
+
+    /** fk-core gave up on its kernel (it kept exiting): stop with the reason. */
+    @OptIn(DelicateCoroutinesApi::class)
+    internal fun fkCoreFatal(message: String) {
+        if (!coreInFkCore) return
+        GlobalScope.launch(Dispatchers.IO) { stopAndAlert(Alert.StartService, message) }
     }
 
     private suspend fun stopAndAlert(type: Alert, message: String? = null) {
@@ -526,6 +578,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             }
         }
         stopRequested = false
+        current = this
         status.value = Status.Starting
         notification.show(lastProfileName, R.string.status_starting)
 
@@ -558,6 +611,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     internal fun onBind(): IBinder = binder
 
     internal fun onDestroy() {
+        if (current === this) current = null
         if (::commandServer.isInitialized && dashboardConfig.value?.server === commandServer) _dashboardConfig.value = null
         if (::commandServer.isInitialized && dashboardServer === commandServer) dashboardServer = null
         binder.close()

@@ -126,6 +126,21 @@ jobs:
           go vet ./...
           GOOS=android GOARCH=arm64 go vet ./...
           go test -race -count=1 ./...
+      - name: fk-core runs the official mihomo and checks Xray configurations (upstream linux builds)
+        working-directory: core
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -euo pipefail
+          xray=$(sed -n 's/^XRAY_VERSION=//p' ../version.properties | tr -d '\r')
+          mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
+          dir="$RUNNER_TEMP/kernels-linux"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/xray.zip" "https://github.com/XTLS/Xray-core/releases/download/v$xray/Xray-linux-64.zip"
+          unzip -oq "$dir/xray.zip" xray -d "$dir" && mv "$dir/xray" "$dir/libxray.so"
+          curl -fsSL "https://github.com/MetaCubeX/mihomo/releases/download/v$mihomo/mihomo-linux-amd64-v$mihomo.gz" | gunzip > "$dir/libmihomo.so"
+          chmod +x "$dir/libxray.so" "$dir/libmihomo.so"
+          FKBOX_KERNEL_DIR="$dir" go test -count=1 -run 'TestService|TestXrayConfigChecksWithKernel' -v ./fk/
       - name: fk-core answers hello over stdio
         working-directory: core
         env:
