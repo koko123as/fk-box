@@ -148,6 +148,56 @@ pub fn migrate(store: &Store, sources: &Sources) -> Result<Outcome> {
     Ok(Outcome::Done(summary))
 }
 
+/// The meta key recording the import of the WebDAV account.
+pub const WEBDAV_MIGRATION_KEY: &str = "legacy_webdav_import";
+
+/// Imports the WebDAV account from SharedPreferences `bbox_webdav` (its
+/// `value` JSON, password plain or encrypted as the app left it) once: the
+/// file (`.bak` first, as Android reads it) is copied to `scratch_dir` and
+/// read from the copy, the original is never written. Runs whether or not
+/// the store holds other data (the account came later than the first
+/// import), but never replaces an account the store already has. Returns
+/// the result recorded under [`WEBDAV_MIGRATION_KEY`].
+pub fn migrate_webdav(store: &Store, xml: &Path, scratch_dir: &Path) -> Result<String> {
+    if let Some(done) = store.meta(WEBDAV_MIGRATION_KEY)? {
+        return Ok(done);
+    }
+    let mut backup = xml.as_os_str().to_owned();
+    backup.push(".bak");
+    let backup = PathBuf::from(backup);
+    let source = if backup.is_file() { backup } else { xml.to_path_buf() };
+    let value = if source.is_file() {
+        let scratch = scratch_dir.join(format!("legacy-webdav-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&scratch);
+        std::fs::create_dir_all(&scratch).map_err(|e| Error(format!("legacy import: {e}")))?;
+        let copy = scratch.join("bbox_webdav.xml");
+        let read = std::fs::copy(&source, &copy).and_then(|_| std::fs::read_to_string(&copy));
+        let _ = std::fs::remove_dir_all(&scratch);
+        let text = read.map_err(|e| Error(format!("legacy import: read {}: {e}", source.display())))?;
+        shared_preference_strings(&text).into_iter().find(|(k, _)| k == "value").map(|(_, v)| v)
+    } else {
+        None
+    };
+    let status = match &value {
+        None => "none",
+        Some(text) if !matches!(serde_json::from_str::<Value>(text), Ok(Value::Object(_))) => "skipped: not a JSON object",
+        Some(_) if store.preference(crate::webdav::PREF_KEY)?.is_some() => "skipped: the store has an account",
+        Some(_) => "imported",
+    };
+    let summary = serde_json::json!({ "status": status }).to_string();
+    store.transaction(|tx| {
+        if status == "imported" {
+            tx.execute(
+                "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
+                rusqlite::params![crate::webdav::PREF_KEY, value.as_deref().unwrap_or_default()],
+            )?;
+        }
+        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", rusqlite::params![WEBDAV_MIGRATION_KEY, summary])?;
+        Ok(())
+    })?;
+    Ok(summary)
+}
+
 #[derive(Default)]
 struct Legacy {
     profiles: Vec<Profile>,
@@ -784,6 +834,30 @@ pub(crate) mod tests {
         let store = Store::open_in_memory().unwrap();
         migrate(&store, &fixture.sources).unwrap();
         assert_eq!(Value::Object(store.ui_preferences().unwrap()), json!({"theme": "light"}));
+    }
+
+    #[test]
+    fn webdav_account_is_imported_once_from_a_copy() {
+        let dir = scratch("webdav");
+        let xml = dir.join("bbox_webdav.xml");
+        let value = r#"{"uri":"https://d.example/","user":"u","password":"enc1:x","fileName":"b.json"}"#;
+        let text = format!(
+            "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>\n<map>\n    <string name=\"value\">{}</string>\n</map>\n",
+            value.replace('"', "&quot;")
+        );
+        std::fs::write(&xml, &text).unwrap();
+        let store = Store::open_in_memory().unwrap();
+        store.put_setting("selected_profile", &SettingValue::Long(1)).unwrap();
+        assert_eq!(migrate_webdav(&store, &xml, &dir).unwrap(), r#"{"status":"imported"}"#);
+        assert_eq!(store.preference(crate::webdav::PREF_KEY).unwrap().as_deref(), Some(value));
+        assert_eq!(std::fs::read_to_string(&xml).unwrap(), text, "the original is untouched");
+        // Recorded: a later change is not imported again.
+        store.set_preference(crate::webdav::PREF_KEY, "{}").unwrap();
+        migrate_webdav(&store, &xml, &dir).unwrap();
+        assert_eq!(store.preference(crate::webdav::PREF_KEY).unwrap().as_deref(), Some("{}"));
+        let fresh = Store::open_in_memory().unwrap();
+        assert_eq!(migrate_webdav(&fresh, &dir.join("missing.xml"), &dir).unwrap(), r#"{"status":"none"}"#);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

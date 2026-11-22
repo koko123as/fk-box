@@ -149,6 +149,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "importTerminalFont" -> importTerminalFont()
     "deleteTerminalFont" -> deleteTerminalFont(args.str("path"))
     "terminalSettings" -> terminalSettings()
+    "terminalSettingsWritten" -> terminalSettingsWritten(args.list("written"))
     "terminalThemes" -> terminalThemes(args.optBoolean("dark"))
     "terminalFonts" -> terminalFonts()
     // Capture

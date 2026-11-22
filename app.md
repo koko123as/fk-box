@@ -77,11 +77,11 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 - [DashboardConfigCache.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/DashboardConfigCache.kt) 仅缓存选中配置和已启动配置的内容、修订及最近一组接口地址的 LAN 解析结果，相同内容共用缓存。前台两秒轮询保留网络/热点检测，以配置 ID、路径、文件时间/大小及写入代次检查保存配置；未变化时不重读内容、计算哈希或调用 LAN 解析。地址变化复用内容和修订，重新调用 LAN 解析；运行配置按成功启动快照更新。普通写入及备份恢复/回滚共用 `ProfileContent.write` 推进代次，避免同大小、同时间戳的修改漏刷。解析错误也缓存，配置/地址变化或手动刷新时重试，取消不缓存。缓存条目同时保存 `Libbox.detectCoreConfig` 的结果（每份内容只识别一次），判断 LAN 开关是否可用时不再每次轮询解析整份配置。启动快照 `ready()` 并行读取配置列表与设置，不再扫描 LAN；内网 IP 卡片的可见轮询负责加载。
 - 二进制 `.bpf` 导入保留订阅 URL、更新间隔、自动更新及时间戳。动态 QRS 通过 [BoxQrScanner.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxQrScanner.kt) 按相机会话收集有界帧、校验 CRC，并支持原压缩文件封装。
 
-[BoxBackups.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用客户端存储事务（事务期间界面自身的偏好/排序写入会被拒绝并提示稍后重试）；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
+`bbox-1` 格式的打包、校验与恢复在 client-core [backup.rs](crates/client-core/src/backup.rs)（Android 侧步骤在 [BoxBackups.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt)），配置条目携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无，官网只保留 http/https 绝对地址），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用客户端存储事务（事务期间界面自身的偏好/排序写入会被拒绝并提示稍后重试）；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
 
 界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受仪表盘的全部卡片键（含 `VPN`、`Service status`、`Connection stats`、`System HTTP proxy` 及已退役仍被接受的 `Connections`）；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）；新的页面切换偏好为 `tabMotion`（`slide`/`fade`），与退役的 `tabAnimation` 无关。`BoxActivity` 读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，在 `locale` 回复中以 `animatorScale` 提供，回到前台或重新连接界面时若有变化再发 `motion` 事件（`{"scale": …}`），界面按其缩放全部动效（见 [flclash.md](flclash.md#动效)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
 
-备份读取/传输上限为 64 MiB，WebDAV 使用 [BoxWebDAV.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxWebDAV.kt) 与核心扩展；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
+备份读取/传输上限为 64 MiB，WebDAV 账号与流程在 client-core [webdav.rs](crates/client-core/src/webdav.rs)（请求经核心扩展，密码由 Keystore 加密）；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
 
 原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接，内核在每次订阅时重放已保存的行，缓冲（去 ANSI、环形追加、快照）在后台单线程执行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
 
@@ -147,7 +147,7 @@ CA 管理与服务启动共用 `MitmCertificate.accessLock`，防止加载签名
 - **旧任务兼容：** 启动时取消 WorkManager 的 `AutoUpdate`。原 `UpdateWorker` 占位类已删除：残留任务若在取消前被调度，WorkManager 找不到该类，只会把它记为失败，不会崩溃，也不会下载或安装。配置订阅的 `UpdateProfileWork` 仍正常工作。
 - **Binder/设置兼容：** Root/Shizuku 已退役的安装事务编号 2 不复用；Root 的模块专用编号 3 与采集器编号 10 也保持空缺，其余编号不重排。删除功能的历史设置不再读取，不清空无关设置和数据库。
 
-关于页仍提供独立 [BoxUpdates.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxUpdates.kt) 检查：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `fk-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `fk-box-<版本>-<ABI>.apk`。改名前的 Release 使用 `FK-box-version-metadata.json` 与 `FK-box-<版本>-<ABI>.apk`，两种前缀都接受（新前缀优先）：REST 列表按 Release 实际列出的资产选 APK，`latest/download` 在新名称返回 404 时再取旧名称的元数据，并按其前缀拼 APK 名。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
+关于页仍提供独立检查（client-core [updates.rs](crates/client-core/src/updates.rs)，请求经核心扩展 `UIHTTPGet`）：读取 [koko123as/fk-box](https://github.com/koko123as/fk-box/releases) Releases（含预发布），以 `fk-box-version-metadata.json` 的 `application_id`、`version_code`、`version_name` 核对安装身份和版本，再匹配设备 ABI 的 `fk-box-<版本>-<ABI>.apk`。改名前的 Release 使用 `FK-box-version-metadata.json` 与 `FK-box-<版本>-<ABI>.apk`，两种前缀都接受（新前缀优先）：REST 列表按 Release 实际列出的资产选 APK，`latest/download` 在新名称返回 404 时再取旧名称的元数据，并按其前缀拼 APK 名。没有匹配 APK 时不提供下载资产。它不恢复原更新器的后台下载/静默安装链路。
 
 ## 地理数据资源
 

@@ -8,4 +8,5 @@ object Path {
     const val SETTINGS_DATABASE_PATH = "settings.db"
     const val PROFILES_DATABASE_PATH = "profiles.db"
     const val UI_PREFERENCES_NAME = "flclash_ui"
+    const val WEBDAV_PREFERENCES_NAME = "bbox_webdav"
 }

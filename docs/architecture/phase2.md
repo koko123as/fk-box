@@ -29,10 +29,10 @@
 | 配置保存流程（修订号检查、原子写入、失败回滚，`ProfileChange`/`ProfileContent`/`BoxProfiles`） | 内容替换（编辑保存、手动/自动订阅更新）已迁 client-core `content.rs`；服务应用与恢复（`ProfileChange`、`replaceLocked` 外壳）留 Kotlin；新建/编辑表单保存 `BoxProfiles.saveLocked`、`saveAll`、删除仍在 Kotlin | 流程与文件写入 → Rust；内核校验/格式化调用 Go | **2b**（替换）/2e（表单保存） |
 | 路由规则数据模型、校验、序列化（`CoreRouting`） | 已迁：client-core `routing.rs`（界面路由页的重复副本一并改用它）；`bridge/CoreRouting.kt` 已删 | Rust；按内核编译仍在 Go `core_routing*.go` | **2c** |
 | Geo 资源 URL 策略与更新间隔 | 已迁：client-core `geo.rs`（`needed`、`should_extract`、`due`/`schedule`、地址读写与校验）；`bg/GeoResources.kt` 的 `GeoPolicy` 只剩清单与记录文件的数据类和对 Rust 的调用，`UpdateGeoWork.kt` 只剩 WorkManager 入口 | 策略 → Rust；下载与文件放置仍经 Go `core_geo.go` | **2c** |
-| 备份打包/校验/恢复（`bbox-1`） | `bridge/BoxBackups.kt` | Rust | 2d |
-| WebDAV 账号与上传/下载 | `bridge/BoxWebDAV.kt`（SharedPreferences `bbox_webdav`）；Go `ui_http.go`（请求） | 账号与流程 → Rust；密码加密留 Kotlin（`utils/SecretBox.kt`，Android Keystore） | 2d |
-| 更新检查（GitHub Release 元数据、版本比较） | `bridge/BoxUpdates.kt` | Rust | 2d |
-| 终端（Ghostty）设置、字体导入 | `bridge/BoxTerminalSettings.kt` | 设置值 → Rust；字体文件选择留 Kotlin | 2d |
+| 备份打包/校验/恢复（`bbox-1`） | 已迁：client-core `backup.rs`（打包、校验、单事务恢复、文件原件副本与回滚、`ProfileWireFields` 的恢复与网站地址校验）；`bridge/BoxBackups.kt` 只剩 Android 步骤（服务设置副作用、设置缓存、应用到服务与失败恢复） | Rust | **2d** |
+| WebDAV 账号与上传/下载 | 已迁：client-core `webdav.rs`（账号存 `preferences` 表 `webdav` 键，校验、地址解析、上传/下载流程）；`bridge/BoxWebDAV.kt` 已删；请求仍经 Go `ui_http.go`，密码加密仍是 Kotlin `utils/SecretBox.kt`（Keystore），二者都经 `CoreKernel` 回调 | 账号与流程 → Rust；密码加密留 Kotlin（`utils/SecretBox.kt`，Android Keystore） | **2d** |
+| 更新检查（GitHub Release 元数据、版本比较） | 已迁：client-core `updates.rs`；`bridge/BoxUpdates.kt` 已删；请求经 Go `UIHTTPGet` | Rust | **2d** |
+| 终端（Ghostty）设置、字体导入 | 已迁：client-core `terminal.rs`（取值、校验、写入、备份部分）；`bridge/BoxTerminalSettings.kt` 只剩主题目录/预览、字体文件选择导入与删除 | 设置值 → Rust；字体文件选择留 Kotlin | **2d** |
 | 抓包设置 | `bridge/CaptureSettings.kt`、`BoxCapture.kt` | 设置模型 → Rust；证书生成留 Kotlin（Keystore）+ Go | 2e |
 | 界面状态与命令分发（仪表盘/代理组/连接/日志的状态模型、命令总线） | `backend/*ViewModel.kt`、`bridge/BoxBridge.kt`、`SlintHost.kt`、`LogStream.kt`、`ConnectionWire`、`DashboardConfigCache.kt`、`VisiblePolling.kt` | Rust client-core 控制器；数据源仍为 libbox 命令客户端 | 2e |
 | 仪表盘 IP 质量缓存 | SharedPreferences `dashboard_ip_quality` | Rust client-core `storage` | 2e |
@@ -47,17 +47,17 @@
 | --- | --- | --- | --- |
 | 订阅请求（带响应头）、订阅 UA | `ui_subscription.go`、`core_profile.go`（`CoreSubscriptionUserAgent`） | 留 Go（复用 libbox 的 TLS/证书库与 UA 规则）；原始响应头交 Rust 解析（Go 接口未改） | 2b |
 | 订阅内容中 `http_rewrite` 的处理 | `ui_subscription_rewrite.go` | 留 Go（sing-box 专属） | — |
-| WebDAV/HTTP 请求 | `ui_http.go` | 留 Go（证书库）；流程迁 Rust | 2d（接口调整） |
+| WebDAV/HTTP 请求 | `ui_http.go` | 留 Go（证书库）；流程迁 Rust（Go 接口未改，Rust 经 `CoreKernel` 的 `webdav.request`/`http.get` 调用） | 2d |
 | Geo 资源下载与默认 URL | `core_geo.go` | 留 Go（第三阶段再评估） | — |
 | JSON 数组拆分、Xray 数组合并、格式化、校验、分享链接转换、路由编译、日志级别、DNS、出口探测、服务状态检测、LAN 代理、抓包 | `core_*.go`、`ui_*.go` | 留 Go（内核专属） | — |
-| 更新检查 | 无（在 Kotlin） | — | — |
+| 更新检查 | 无（2d 起在 Rust，请求经 `UIHTTPGet`） | — | — |
 
 ## 切片顺序
 
 1. **2a 存储层**（本 PR）：`client-core` 的 SQLite 存储（设置键值、配置元数据、远程服务器、界面偏好），首次启动从 Room `profiles.db`/`settings.db` 与 SharedPreferences `flclash_ui` 一次性迁移；Kotlin 的 `Settings`/`ProfileManager`/`RemoteServerManager` 改为经 JNI 读写同一存储，Room 依赖移除；Rust 界面直接从 `client-core` 读配置列表与界面偏好、写偏好与排序。
 2. **2b 订阅**（`arch/cor-core-p2b`）：头解析、元数据计算、数组拆分命名、自动更新策略迁 Rust；保存/更新流程（修订号、原子写入、回滚）迁 Rust，内核校验仍调 Go。
 3. **2c 路由规则模型、Geo 策略与服务设置**（`arch/cor-core-p2c`）：`CoreRouting` 模型与校验、Geo 策略迁 Rust；服务设置快照、校验与写入迁 Rust（2a 收尾），界面直接从 client-core 读服务设置和路由规则，不需要 Android 先动手的设置直接写入。
-4. **2d 备份/WebDAV、更新检查、终端设置**。
+4. **2d 备份/WebDAV、更新检查、终端设置**（`arch/cor-core-p2d`）：`bbox-1` 备份的打包、校验与恢复（含回滚）、WebDAV 账号与流程（一次性从 `bbox_webdav` 导入）、更新检查、终端设置值迁 Rust；HTTP 请求、Keystore 加密、Ghostty 主题与字体检查经内核桥回调平台。
 5. **2e 界面控制器**：命令分发、状态模型迁 Rust，Kotlin `BoxBridge` 收缩为平台能力的薄层。
 
 2a 之后界面的“服务设置”快照仍由 Kotlin `BoxBridge.settings()` 组装；2c 起改由 client-core 组装（见下文 2c 设计要点），Kotlin 只附加电池优化豁免并执行副作用。
@@ -92,3 +92,17 @@
 - **删除**：`bridge/CoreRouting.kt`、`bridge/BoxSettings.kt` 及其 JVM 测试（`CoreRoutingTest`、`BoxSettingsTest` 中设置相关部分；偏好校验测试改名为 `BoxPreferencesTest`），`Settings.routingRules/geoAutoUpdate/geoUpdateInterval/geoUrls` 缓存属性。`GeoPolicyTest` 只剩记录文件与清单解析。
 - **推迟**：geo 地址编辑仍经宿主 `geoSetUrl`（需要 libbox 的默认地址，写入本身已在 Rust）；路由预览与可选节点仍经宿主（需要 libbox 编译与读取配置）；`saveRouting` 仍经宿主（运行中需重载服务）。命令分发与状态模型留 2e。
 - **已知差异**：多个设置一次写入现在是原子的（旧 Kotlin 逐个写，中途失败会留下部分写入）；“至少保留一个内核”在切换查询方式/扫描之前就检查。界面直接写入与 Kotlin 收进缓存之间有一次桥调用的间隔，期间服务进程读到的仍是旧值（与旧版异步写入的窗口相当）。
+
+## 2d 设计要点
+
+- **模块**：`client-core::backup`（`create`、`validate`、`read` 暂存、`restore`/`finish`/`rollback`、`restore_wire_fields`、`remote_server_url`、`profile_key`）、`webdav`（账号读写、`validate`、`resolve`、`check`/`upload`/`download`）、`updates`（两个来源、候选与 APK 选择、`check`）、`terminal`（快照、`set`、备份部分的校验与字体写回）、`codec`（Base64、Java `nameUUIDFromBytes` 的 MD5 UUID、随机 UUID）。新增依赖 `md-5`。
+- **内核桥新增方法**（`database/CoreKernel.kt`，Rust 在同一线程回调）：`validate`（按声明内核解析并用该内核校验内容，返回内核）、`http.get`（Go `UIHTTPGet`）、`webdav.request`（Go `UIWebDAVRequest`）、`secret.encrypt`/`secret.decrypt`（`SecretBox`，Keystore AES-GCM，`enc1:` 前缀）、`terminal.themes`/`terminal.fonts`/`terminal.fontValid`（Ghostty 主题目录、已导入字体、字体能否加载）。Go 接口没有改动。
+- **存储**：表结构不变，`user_version` 仍为 1，无迁移；可直接降级到 2c/2b/2a。WebDAV 账号存 `preferences` 表的 `webdav` 键（JSON，密码为 `enc1:` 密文；从旧版导入的明文密码在首次读取时加密）。终端设置仍是 `settings` 表原来的 `tailscale_ssh_*` 键和类型码，默认值同 `Settings.kt`。
+- **WebDAV 一次性导入**：`legacy::migrate_webdav`，以 `meta.legacy_webdav_import` 为标记，与 2a 的导入相互独立（已升级到 2a–2c 的用户库非空，也会导入账号）；先把 `shared_prefs/bbox_webdav.xml`（有 `.bak` 时取 `.bak`）复制到缓存目录再读，原文件不动；库里已有账号时不覆盖；导入和标记在一个事务里。`CoreStore.nativeOpen` 多了这个文件路径参数。
+- **备份恢复流程**：Kotlin 在 `ProfileContent.mutex` 内先刷出设置缓存，调 `backup.restore`（Rust 在一个存储事务里写配置文件与行、远程服务器、已选配置、终端设置与字体、WebDAV 账号、界面偏好；被替换的文件先复制到 `cacheDir/restore-*`；中途失败则回滚事务并放回文件），然后 Kotlin 把 `written` 收进设置缓存、经 `patchSettings` 应用备份里的服务设置（查询方式、扫描等副作用）、应用已选配置到服务；成功后 `backup.finish`（删除 Override 移除的配置文件和副本），失败则 `backup.rollback`（再开一个事务放回所有行、偏好、账号与设置，放回文件，删除新字体）、重新应用旧服务设置、恢复运行中的服务。修订冲突检查（内容替换的修订号）不受影响，配置文件写入一律经 `content::write_atomic`。
+- **恢复期间拒绝界面写入**（已知风险，保留）：恢复事务期间 `Store::in_transaction()` 为真，界面直接写入（偏好、排序、服务设置、终端设置）和 `webdav.save` 都返回“Wait for the restore to finish”。事务只覆盖 Rust 写存储的那一步，服务设置与应用到服务在事务之后。
+- **更新检查**：Kotlin 只传 `applicationId`、`versionCode`、`Build.SUPPORTED_ABIS`；两个来源、重试（断连一次、5xx 一次）、新旧资源前缀、REST 列表在版本码相同时优先，都与原 `BoxUpdates` 相同（`updates::tests`）。`BoxUpdatesTest` 改为 Rust 测试。
+- **界面直接调用**：终端设置中只存于存储的键（`lightConfig`、`darkConfig`、`fontFollowTheme`、`fontSize`、`fontFamily`）由界面直接调 `client-core::terminal::set` 写入，再调宿主 `terminalSettingsWritten {written}` 让 Kotlin 收进缓存；主题和已导入字体（要查 Ghostty 主题目录、字体文件）仍经宿主。备份、WebDAV、更新检查需要文件选择器、HTTP 或 Keystore，界面仍调宿主，宿主只做一次 Rust 调用。
+- **删除**：`bridge/BoxWebDAV.kt`、`bridge/BoxUpdates.kt`、`BoxUpdatesTest`；`ProfileWireFields` 只剩导出（`validate`/`declaredCore`/`restore`/网站地址校验迁入 `backup.rs`，`ProfileWireFieldsTest` 只测导出）；`BoxTerminalSettings` 的备份与设置写入部分。
+- **已知差异**：备份文本由 serde 输出，`/` 不再转义为 `\/`（两者互相可读）。Override 恢复对已有配置写入备份里的顺序（与 2a 前一致；2a–2c 的 Kotlin 写法实际也会写，因为顺序有变化）。`remote_server_url` 与 `geo::valid_url` 按 `java.net.URI` 的规则重写，个别边界（如 `ftp://` 被读成主机 `ftp`）与 Kotlin 一致。备份恢复不再在 Kotlin 侧把旧界面偏好“校验后写回”，而是原样放回旧的存储文本。暂存的备份最多保留两份（旧版只保留最后一份），未完成的恢复最多保留四个。
+- **推迟**：命令分发与状态模型（2e）；备份导出/导入的文件选择器和 WebDAV 页面仍走宿主（2e 评估是否改为界面直接调用 + 平台能力回调）。

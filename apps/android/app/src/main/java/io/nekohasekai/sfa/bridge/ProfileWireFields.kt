@@ -2,14 +2,12 @@ package io.nekohasekai.sfa.bridge
 
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.subscriptionInfo
-import java.net.URI
-import java.util.Date
-import java.util.Locale
 
 /**
- * The profile metadata the UI reads and a `bbox-1` backup carries, kept in one
- * place so a backup restores every field it saved (core included). Entries from
- * older backups lack core and subscription keys and restore as auto / none.
+ * The profile metadata the UI reads and a `bbox-1` backup carries. Backups are
+ * packed, checked and restored by client-core (crates/client-core/src/backup.rs,
+ * `restore_wire_fields`, which also keeps a restored website only as an
+ * absolute http/https address).
  */
 internal object ProfileWireFields {
     fun export(typed: TypedProfile): Map<String, Any> = buildMap {
@@ -28,52 +26,5 @@ internal object ProfileWireFields {
         }
         if (typed.webPageUrl.isNotEmpty()) put("webPageUrl", typed.webPageUrl)
         put("intervalUserSet", typed.intervalUserSet)
-    }
-
-    /** Rejects malformed values; every key is optional. */
-    fun validate(entry: Map<String, Any?>) {
-        entry["core"]?.let { require(it is String && it in TypedProfile.CORES) { "Invalid profile core" } }
-        for (key in listOf("upload", "download", "total", "expire")) {
-            entry[key]?.let { require(it is Number && it.toDouble().isFinite() && it.toDouble() >= 0) { "Invalid subscription $key" } }
-        }
-        entry["webPageUrl"]?.let { require(it is String) { "Invalid subscription website" } }
-        entry["intervalUserSet"]?.let { require(it is Boolean) { "Invalid update interval option" } }
-    }
-
-    fun declaredCore(entry: Map<String, Any?>): String =
-        (entry["core"] as? String)?.takeIf { it in TypedProfile.CORES } ?: TypedProfile.CORE_AUTO
-
-    /** Writes [entry]'s metadata onto [typed]; path, name and order are the caller's. */
-    fun restore(typed: TypedProfile, entry: Map<String, Any?>) {
-        typed.remoteURL = entry["url"] as? String ?: ""
-        val remote = typed.remoteURL.isNotEmpty()
-        typed.type = if (remote) TypedProfile.Type.Remote else TypedProfile.Type.Local
-        typed.autoUpdate = remote && entry["autoUpdate"] == true
-        typed.autoUpdateInterval = (entry["interval"] as? Number)?.toInt() ?: TypedProfile.DEFAULT_INTERVAL
-        typed.lastUpdated = Date((entry["updatedAt"] as? Number)?.toLong() ?: 0L)
-        typed.core = declaredCore(entry)
-        typed.intervalUserSet = entry["intervalUserSet"] as? Boolean ?: (typed.autoUpdateInterval != TypedProfile.DEFAULT_INTERVAL)
-        fun count(key: String): Long = if (remote) (entry[key] as? Number)?.toDouble()?.takeIf { it.isFinite() && it >= 0 }
-            ?.let { if (it >= Long.MAX_VALUE.toDouble()) Long.MAX_VALUE else it.toLong() } ?: 0L else 0L
-        typed.upload = count("upload")
-        typed.download = count("download")
-        typed.total = count("total")
-        typed.expire = count("expire")
-        typed.webPageUrl = if (remote) webPageUrl(entry["webPageUrl"] as? String) else ""
-    }
-
-    /**
-     * A backup's website, kept only as an absolute http/https address. Fetched
-     * headers are checked in client-core (`subscription::parse_web_page_url`);
-     * this guard for restored backups moves there with the backups (slice 2d).
-     */
-    private fun webPageUrl(value: String?): String {
-        val trimmed = value?.trim().orEmpty()
-        if (trimmed.isEmpty() || trimmed.length > 4096) return ""
-        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return ""
-        val scheme = uri.scheme?.lowercase(Locale.ROOT)
-        if (scheme != "http" && scheme != "https") return ""
-        if (uri.host.isNullOrBlank()) return ""
-        return trimmed
     }
 }

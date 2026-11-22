@@ -118,6 +118,11 @@ pub fn read(path: &Path) -> Result<Option<String>, String> {
 /// Replaces `path` with `content` atomically: written and synced beside it,
 /// then renamed over it, so a crash leaves either the old or the new file.
 pub fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
+    write_atomic_bytes(path, content.as_bytes())
+}
+
+/// [`write_atomic`] for any bytes (a file put back as it was).
+pub fn write_atomic_bytes(path: &Path, content: &[u8]) -> Result<(), String> {
     let fail = |e: std::io::Error| format!("Unable to write {}: {e}", path.display());
     let parent = path.parent().filter(|p| !p.as_os_str().is_empty()).unwrap_or(Path::new("."));
     fs::create_dir_all(parent).map_err(fail)?;
@@ -126,7 +131,7 @@ pub fn write_atomic(path: &Path, content: &str) -> Result<(), String> {
     let temporary = parent.join(name);
     let result = (|| {
         let mut file = fs::File::create(&temporary)?;
-        file.write_all(content.as_bytes())?;
+        file.write_all(content)?;
         file.sync_all()?;
         drop(file);
         fs::rename(&temporary, path)?;

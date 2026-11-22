@@ -22,13 +22,21 @@
 //!   copy versus installed file, automatic update schedule, user addresses).
 //! - [`service_settings`]: the service settings snapshot the pages show,
 //!   its validation and the write, with what the platform does around it.
+//! - [`backup`]: `bbox-1` backups (packing, validation, restore with
+//!   rollback).
+//! - [`webdav`]: the WebDAV backup account and its upload/download flow
+//!   (requests and password encryption by the platform).
+//! - [`updates`]: the update check (GitHub release metadata, version codes).
+//! - [`terminal`]: the terminal (Ghostty) settings.
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
-//! Backups, WebDAV and update checks follow in later phase-2 slices
+//! The interface controllers follow in a later phase-2 slice
 //! (docs/architecture/phase2.md).
 
 pub mod api;
+pub mod backup;
+mod codec;
 pub mod content;
 pub mod geo;
 pub mod legacy;
@@ -39,6 +47,9 @@ pub mod routing;
 pub mod service_settings;
 pub mod storage;
 pub mod subscription;
+pub mod terminal;
+pub mod updates;
+pub mod webdav;
 
 /// What the UI needs from the platform: one asynchronous call into the host
 /// app. The UI sends `method` with JSON `args` under the request `id`; the

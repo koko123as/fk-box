@@ -2,6 +2,7 @@ package io.nekohasekai.sfa.bridge
 
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
@@ -19,6 +20,7 @@ import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.RemoteServer
@@ -43,6 +45,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.Closeable
@@ -97,9 +103,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private val profiles = BoxProfiles { recover -> withContext(Dispatchers.Main) { activity.applyProfile(recover = recover) } }
     internal val capture = BoxCapture(activity)
     private val qrScanner = BoxQrScanner(profiles::decode)
-    private val webdav = BoxWebDAV(activity)
     private val backups = BoxBackups(activity, ::patchSettings,
-        { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit, webdav)
+        { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit)
     private val rates = object : CommandClient.Handler {
         override fun updateStatus(status: StatusMessage) {
             if (::dashboardDetails.isInitialized) dashboardDetails.remoteMemory = status.memory
@@ -237,7 +242,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     // "Missing argument" message.
     // -----------------------------------------------------------------------
 
-    suspend fun checkUpdates() = withContext(Dispatchers.IO) { BoxUpdates.check() }
+    /** fk-box's own release check (client-core updates.rs; requests through libbox). */
+    suspend fun checkUpdates() = withContext(Dispatchers.IO) {
+        ServiceSettings.plain(CoreStore.callKernel("updates.check") {
+            put("build", buildJsonObject {
+                put("applicationId", BuildConfig.APPLICATION_ID)
+                put("versionCode", BuildConfig.VERSION_CODE.toLong())
+                put("abis", JsonArray(Build.SUPPORTED_ABIS.map { JsonPrimitive(it) }))
+            })
+        })
+    }
 
     suspend fun geoList() = GeoResources.list(activity)
 
@@ -678,7 +692,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * False when the user dismissed the file picker.
      */
     suspend fun exportBackup(name: String?): Boolean {
-        val bytes = operations.withLock { withContext(Dispatchers.IO) { backups.encode(backups.create()) } }
+        val bytes = operations.withLock { withContext(Dispatchers.IO) { backups.create().toByteArray(Charsets.UTF_8) } }
         val uri = activity.pickDocument(required(name, "name")) ?: return false
         withContext(Dispatchers.IO) {
             activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Unable to write document")
@@ -693,40 +707,29 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      */
     suspend fun readBackup(scope: String?): Any? {
         val uri = activity.pickDocument() ?: return null
-        val backup = withContext(Dispatchers.IO) {
-            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second, scope ?: "all")
+        return withContext(Dispatchers.IO) {
+            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second.toString(Charsets.UTF_8), scope ?: "all")
         }
-        return backups.stage(backup)
     }
 
     suspend fun restoreBackup(token: String?, scope: String?, strategy: String?) = localProfiles {
-        val backup = backups.staged(required(token, "token")) ?: error("The backup is no longer available; open it again")
-        backups.restore(backup, scope ?: "all", strategy ?: "Compatible")
+        backups.restore(required(token, "token"), scope ?: "all", strategy ?: "Compatible")
     }
 
-    fun webdavAccount() = webdav.snapshot()
+    suspend fun webdavAccount() = withContext(Dispatchers.IO) { backups.webdavAccount() }
 
     /** Saves the WebDAV account, or removes it when [value] is null. */
     suspend fun setWebdavAccount(value: Map<String, Any?>?) = operations.withLock {
-        withContext(Dispatchers.IO) {
-            webdav.save(value)
-            webdav.snapshot()
-        }
+        withContext(Dispatchers.IO) { backups.setWebdavAccount(value) }
     }
 
-    suspend fun checkWebdav() = withContext(Dispatchers.IO) { webdav.check() }
+    suspend fun checkWebdav() = withContext(Dispatchers.IO) { backups.checkWebdav() }
 
     suspend fun uploadWebdavBackup(): Boolean = operations.withLock {
-        withContext(Dispatchers.IO) {
-            webdav.upload(backups.encode(backups.create()))
-            true
-        }
+        withContext(Dispatchers.IO) { backups.uploadWebdav() }
     }
 
-    suspend fun readWebdavBackup(scope: String?): Any? {
-        val backup = withContext(Dispatchers.IO) { backups.read(webdav.download(), scope ?: "all") }
-        return backups.stage(backup)
-    }
+    suspend fun readWebdavBackup(scope: String?): Any? = withContext(Dispatchers.IO) { backups.readWebdav(scope ?: "all") }
 
     // Terminal settings that change files or several settings at once run
     // under the same lock as the other setting writes.
@@ -734,9 +737,18 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun importTerminalFont() = operations.withLock { toolBridge.terminalSettings.importFont() }
 
+    /** Terminal settings the UI wrote to the client store itself: into the settings cache. */
+    fun terminalSettingsWritten(written: List<Any?>): Boolean {
+        ServiceSettings.adopt(ServiceSettings.element(written))
+        return true
+    }
+
     suspend fun deleteTerminalFont(path: String?) = operations.withLock { toolBridge.terminalSettings.deleteFont(path) }
 
-    fun terminalSettings() = toolBridge.terminalSettings.snapshot()
+    suspend fun terminalSettings() = withContext(Dispatchers.IO) {
+        Settings.dataStore.flush()
+        toolBridge.terminalSettings.snapshot()
+    }
 
     suspend fun terminalThemes(dark: Boolean) = toolBridge.terminalSettings.themes(dark)
 

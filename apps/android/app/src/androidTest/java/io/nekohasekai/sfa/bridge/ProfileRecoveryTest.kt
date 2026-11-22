@@ -26,8 +26,15 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.Assert.*
 import org.junit.Test
@@ -694,14 +701,18 @@ class ProfileRecoveryTest {
                         assertEquals(0, failure!!.suppressed.size)
 
                         val backups = BoxBackups(activity, {},
-                            { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, {}, { _, _ -> }, BoxWebDAV(activity))
-                        val backup = backups.create()
-                        @Suppress("UNCHECKED_CAST")
-                        val entries = (backup["profiles"] as List<Map<String, Any?>>).map {
-                            if ((it["id"] as Number).toLong() == id) it + mapOf("name" to "Broken restored profile", "content" to invalidAtRuntime) else it
+                            { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, {}, { _, _ -> })
+                        val backup = Json.parseToJsonElement(backups.create()).jsonObject
+                        val entries = backup.getValue("profiles").jsonArray.map { element ->
+                            val entry = element.jsonObject
+                            if (entry.getValue("id").jsonPrimitive.long == id) {
+                                JsonObject(entry + mapOf("name" to JsonPrimitive("Broken restored profile"), "content" to JsonPrimitive(invalidAtRuntime)))
+                            } else entry
                         }
+                        val changed = JsonObject(backup + mapOf("profiles" to JsonArray(entries), "preferences" to buildJsonObject { put("theme", "dark") }))
+                        val staged = backups.read(changed.toString(), "all")
                         val restoreFailure = runCatching {
-                            backups.restore(backup + mapOf("profiles" to entries, "preferences" to mapOf("theme" to "dark")), "all", "Override")
+                            backups.restore(staged["token"] as String, "all", "Override")
                         }.exceptionOrNull()
                         assertNotNull("A failed restored service must fail the restore", restoreFailure)
                         assertEquals("Recovery fixture", profiles.get(id).name)

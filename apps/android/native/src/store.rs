@@ -32,8 +32,11 @@ pub fn store() -> Option<Arc<Store>> {
 }
 
 /// Opens the store at `path` (once per process; later calls return the
-/// summary of an import already recorded) and imports the earlier storage.
-pub fn open(path: PathBuf, sources: Sources) -> Result<String, String> {
+/// summary of an import already recorded) and imports the earlier storage:
+/// the Room databases and interface preferences (`sources`), and the WebDAV
+/// account from SharedPreferences `bbox_webdav` (`webdav`, its own one-time
+/// import, phase 2d).
+pub fn open(path: PathBuf, sources: Sources, webdav: PathBuf) -> Result<String, String> {
     let mut slot = STORE.lock().unwrap_or_else(|e| e.into_inner());
     let store = match slot.as_ref() {
         Some(store) => store.clone(),
@@ -46,11 +49,16 @@ pub fn open(path: PathBuf, sources: Sources) -> Result<String, String> {
     drop(slot);
     // An import failure is reported, not fatal: the store stays empty and
     // unmarked, and the next start tries again.
-    Ok(match legacy::migrate(&store, &sources) {
+    let summary = match legacy::migrate(&store, &sources) {
         Ok(Outcome::AlreadyDone(summary)) => summary,
         Ok(Outcome::Done(summary)) => serde_json::to_string(&summary).unwrap_or_default(),
         Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
-    })
+    };
+    let webdav = match legacy::migrate_webdav(&store, &webdav, &sources.scratch_dir) {
+        Ok(summary) => summary,
+        Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
+    };
+    Ok(format!("{summary}; webdav: {webdav}"))
 }
 
 fn call(method: &str, args: &str) -> Result<String, String> {
@@ -129,6 +137,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'lo
     profiles_db: JString<'local>,
     settings_db: JString<'local>,
     ui_preferences: JString<'local>,
+    webdav_preferences: JString<'local>,
     scratch_dir: JString<'local>,
 ) -> JObject<'local> {
     jni_string(&mut env, |env| {
@@ -139,7 +148,8 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'lo
             ui_preferences: ui_preferences.try_to_string(env)?.into(),
             scratch_dir: scratch_dir.try_to_string(env)?.into(),
         };
-        Ok(open(path, sources))
+        let webdav = PathBuf::from(webdav_preferences.try_to_string(env)?);
+        Ok(open(path, sources, webdav))
     })
 }
 

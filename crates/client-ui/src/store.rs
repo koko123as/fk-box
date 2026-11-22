@@ -1,8 +1,8 @@
 //! The client store ([`fkbox_client_core::storage::Store`]) as the UI uses it:
 //! the profile list, the interface preferences, the service settings and the
-//! routing rules are read here, and preferences, the profile order and the
-//! service settings that need nothing from the platform first are written
-//! here, instead of asking the host. Changes that involve a profile's configuration or the running
+//! routing rules are read here, and preferences, the profile order, the
+//! service settings and terminal settings that need nothing from the
+//! platform first are written here, instead of asking the host. Changes that involve a profile's configuration or the running
 //! service still go through the host, which writes the same store and then
 //! sends a `profiles` event without a payload (src/app.rs re-reads).
 //!
@@ -14,6 +14,7 @@
 use std::sync::{Arc, OnceLock};
 
 use fkbox_client_core::service_settings::{self, Plan, Written};
+use fkbox_client_core::terminal;
 use fkbox_client_core::storage::Store;
 use serde_json::{Map, Value};
 
@@ -81,6 +82,22 @@ pub fn patch_service_settings(store: &Store, values: &Map<String, Value>) -> Res
     service_settings::patch(store, values)
 }
 
+/// A terminal setting the client store holds alone (no theme list or font
+/// file to check on the platform).
+pub fn terminal_store_only(key: &str) -> bool {
+    terminal::STORE_ONLY_KEYS.contains(&key)
+}
+
+/// Writes such a terminal setting; returns what was written (for the
+/// platform's settings cache) and the terminal settings after.
+pub fn set_terminal_setting(store: &Store, key: &str, value: &Value) -> Result<(Vec<Written>, Map<String, Value>), String> {
+    if !terminal_store_only(key) {
+        return Err("This setting is saved by the app".into());
+    }
+    let written = terminal::set(store, key, value, None)?;
+    Ok((written, terminal::snapshot(store)?))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -122,6 +139,17 @@ mod tests {
         assert!(patch_service_settings(&store, json!({"oomMemoryLimitMB": 1}).as_object().unwrap()).is_err());
         store.begin().unwrap();
         assert!(patch_service_settings(&store, json!({"allowBypass": true}).as_object().unwrap()).is_err());
+        store.rollback().unwrap();
+    }
+
+    #[test]
+    fn terminal_settings_without_platform_checks_are_written_here() {
+        let store = Store::open_in_memory().unwrap();
+        let (written, snapshot) = set_terminal_setting(&store, "fontSize", &json!(18)).unwrap();
+        assert_eq!((written.len(), snapshot["fontSize"].clone()), (1, json!(18)));
+        assert!(set_terminal_setting(&store, "darkTheme", &json!("x")).is_err());
+        store.begin().unwrap();
+        assert!(set_terminal_setting(&store, "fontSize", &json!(12)).is_err());
         store.rollback().unwrap();
     }
 }

@@ -363,13 +363,50 @@ fn load_settings(st: &Loaded) {
     });
 }
 
+/// Writes one terminal setting: one the client store holds alone straight
+/// to it (the host then takes the written values into its settings cache),
+/// the rest (themes, imported fonts) through the host. `then` gets the
+/// settings after the write: the host's, or the store's over `current`.
+fn write_setting(key: &str, value: Value, current: Option<Value>, then: impl FnOnce(Result<Value, String>) + 'static) {
+    if let Some(store) = crate::store::get().filter(|_| crate::store::terminal_store_only(key)) {
+        match crate::store::set_terminal_setting(&store, key, &value) {
+            Ok((written, snapshot)) => {
+                app::call("terminalSettingsWritten", json!({ "written": written }), |r| {
+                    if let Err(e) = r {
+                        app::report(&e)
+                    }
+                });
+                let mut merged = current.and_then(|c| c.as_object().cloned()).unwrap_or_default();
+                merged.extend(snapshot);
+                then(Ok(Value::Object(merged)))
+            }
+            Err(e) => then(Err(e)),
+        }
+        return;
+    }
+    app::call("setTerminalSetting", json!({ "key": key, "value": value }), then);
+}
+
+/// [`write_setting`] for a caller that only needs to know it worked (an
+/// error is reported).
+fn write_setting_then(key: &str, value: Value, then: impl FnOnce(bool) + 'static) {
+    write_setting(key, value, None, move |r| match r {
+        Ok(_) => then(true),
+        Err(e) => {
+            app::report(&e);
+            then(false)
+        }
+    });
+}
+
 fn set_setting(st: &Loaded, key: &str, value: Value) {
     if std::mem::replace(&mut st.borrow_mut().2, true) {
         return;
     }
     mark(Mark::ROWS);
     let a = st.clone();
-    app::call("setTerminalSetting", json!({ "key": key, "value": value }), move |r| {
+    let current = st.borrow().0.clone();
+    write_setting(key, value, current, move |r| {
         match r {
             Ok(v) => a.borrow_mut().0 = Some(v),
             Err(e) => app::report(&e),
@@ -596,7 +633,7 @@ fn open_fonts(on_closed: Rc<dyn Fn()>) {
         let select = |key: &'static str, value: String, l: Rc<dyn Fn()>| {
             move |_: String| {
                 let l = l.clone();
-                app::act_then("setTerminalSetting", json!({ "key": key, "value": value }), move |ok| {
+                write_setting_then(key, json!(value), move |ok| {
                     if ok {
                         l()
                     }
@@ -664,9 +701,9 @@ fn open_config(dark: bool, initial: String, on_closed: Rc<dyn Fn()>) {
                     };
                     mark(Mark::ROWS);
                     let d = c.clone();
-                    app::act_then(
-                        "setTerminalSetting",
-                        json!({ "key": if dark { "darkConfig" } else { "lightConfig" }, "value": value.clone() }),
+                    write_setting_then(
+                        if dark { "darkConfig" } else { "lightConfig" },
+                        json!(value.clone()),
                         move |ok| {
                             let mut x = d.borrow_mut();
                             x.2 = false;

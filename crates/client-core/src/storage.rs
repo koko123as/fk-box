@@ -625,6 +625,11 @@ impl Store {
         Ok(())
     }
 
+    pub fn remove_preference(&self, key: &str) -> Result<()> {
+        self.conn().execute("DELETE FROM preferences WHERE key = ?1", [key])?;
+        Ok(())
+    }
+
     /// The interface preferences as stored (unvalidated; an unreadable value
     /// reads as empty).
     pub fn ui_preferences_raw(&self) -> Result<Map<String, Value>> {

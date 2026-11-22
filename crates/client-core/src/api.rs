@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
 use crate::service_settings::{self, Written};
-use crate::{geo, routing};
+use crate::{backup, geo, routing, terminal, updates, webdav};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -53,6 +53,10 @@ fn strings(args: &Value, key: &str) -> Result<Vec<String>, String> {
         .collect()
 }
 
+fn text_or<'a>(args: &'a Value, key: &str, default: &'a str) -> &'a str {
+    args.get(key).and_then(Value::as_str).unwrap_or(default)
+}
+
 fn to_json<T: serde::Serialize>(value: &T) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
@@ -72,6 +76,7 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
     let args: Value =
         if args.trim().is_empty() { Value::Null } else { serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))? };
     let e = |error: crate::storage::Error| error.0;
+    let has_kernel = kernel.is_some();
     let kernel = move || kernel.ok_or_else(|| format!("{method} needs the kernel bridge"));
     let value = match method {
         // -- subscriptions -------------------------------------------------
@@ -157,6 +162,57 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
             let written: Vec<Written> = stored.iter().map(|v| Written::of(geo::URLS_KEY, v)).collect();
             json!({ "written": to_json(&written)? })
         }
+        // -- backups ---------------------------------------------------------
+        "backup.create" => backup::encode(&backup::create(store, kernel()?, text(&args, "generated")?)?)?.into(),
+        "backup.read" => backup::read(text(&args, "text")?, text(&args, "scope")?, kernel()?)?,
+        "backup.restore" => {
+            let dirs = backup::Dirs { files: text(&args, "filesDir")?.into(), cache: text(&args, "cacheDir")?.into() };
+            let done = backup::restore_staged(store, kernel()?, text(&args, "token")?, text(&args, "scope")?, text(&args, "strategy")?, &dirs)?;
+            to_json(&done)?
+        }
+        "backup.finish" => {
+            backup::finish(id(&args, "token")? as u64);
+            Value::Null
+        }
+        "backup.rollback" => json!({ "written": to_json(&backup::rollback(store, id(&args, "token")? as u64)?)? }),
+        // -- WebDAV ----------------------------------------------------------
+        "webdav.account" => webdav::account(store, kernel()?)?.map(Value::Object).unwrap_or(Value::Null),
+        "webdav.save" => {
+            let value = args.get("value").and_then(Value::as_object);
+            if store.in_transaction() {
+                return Err("Wait for the restore to finish".into());
+            }
+            let kernel = kernel()?;
+            webdav::save(store, kernel, value)?;
+            webdav::account(store, kernel)?.map(Value::Object).unwrap_or(Value::Null)
+        }
+        "webdav.check" => {
+            webdav::check(store, kernel()?)?;
+            true.into()
+        }
+        "webdav.upload" => {
+            let kernel = kernel()?;
+            let text = backup::encode(&backup::create(store, kernel, text(&args, "generated")?)?)?;
+            webdav::upload(store, kernel, &text)?;
+            true.into()
+        }
+        "webdav.read" => {
+            let kernel = kernel()?;
+            let text = webdav::download(store, kernel)?;
+            backup::read(&text, text_or(&args, "scope", "all"), kernel)?
+        }
+        // -- update check ----------------------------------------------------
+        "updates.check" => updates::check(kernel()?, &parsed(&args, "build")?)?,
+        // -- terminal settings -----------------------------------------------
+        "terminal.snapshot" => Value::Object(terminal::snapshot(store)?),
+        "terminal.set" => {
+            let key = text(&args, "key")?;
+            let value = args.get("value").cloned().unwrap_or(Value::Null);
+            let written = terminal::set(store, key, &value, if has_kernel { Some(kernel()?) } else { None })?;
+            json!({ "written": to_json(&written)?, "snapshot": Value::Object(terminal::snapshot(store)?) })
+        }
+        "terminal.useFont" => json!({ "written": to_json(&terminal::use_imported_font(store, text(&args, "path")?)?)? }),
+        "terminal.fontDeleted" => json!({ "written": to_json(&terminal::font_deleted(store, text(&args, "path")?)?)? }),
         // -- store ---------------------------------------------------------
         "settings.all" => {
             let mut out = Map::new();
@@ -373,6 +429,29 @@ mod tests {
         assert_eq!(run(&store, "geo.url", json!({"name": "asn", "defaultUrl": "https://d.example/asn"})), json!("https://m.example/asn"));
         assert_eq!(run(&store, "geo.custom", Value::Null), json!({"asn": "https://m.example/asn"}));
         assert_eq!(run(&store, "geo.validUrl", json!({"url": "https://"})), json!(false));
+    }
+
+    #[test]
+    fn terminal_webdav_and_backup_calls() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(run(&store, "terminal.snapshot", Value::Null)["fontSize"], json!(14));
+        let set = run(&store, "terminal.set", json!({"key": "fontSize", "value": 20}));
+        assert_eq!((set["written"][0]["key"].clone(), set["snapshot"]["fontSize"].clone()), (json!("tailscale_ssh_font_size"), json!(20)));
+        assert_eq!(call(&store, "terminal.set", &json!({"key": "darkTheme", "value": "x"}).to_string()).unwrap_err(), "Setting darkTheme needs the platform");
+        assert_eq!(run(&store, "terminal.useFont", json!({"path": "/f.ttf"}))["written"].as_array().unwrap().len(), 3);
+        assert_eq!(run(&store, "terminal.fontDeleted", json!({"path": "/f.ttf"}))["written"][0]["v"], json!(""));
+        for method in ["webdav.account", "webdav.check", "updates.check", "backup.create"] {
+            assert_eq!(call(&store, method, "{}").unwrap_err(), format!("{method} needs the kernel bridge"));
+        }
+        let mut dav = crate::webdav::tests::Dav::default();
+        let saved: Value = serde_json::from_str(
+            &call_with_kernel(&store, &mut dav, "webdav.save", &json!({"value": crate::webdav::tests::account_value()}).to_string()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(saved["password"], json!("pw"));
+        assert_eq!(call_with_kernel(&store, &mut dav, "webdav.save", "{}").unwrap(), "null");
+        assert!(call(&store, "backup.rollback", &json!({"token": 12345}).to_string()).is_err());
+        run(&store, "backup.finish", json!({"token": 12345}));
     }
 
     #[test]

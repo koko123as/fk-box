@@ -4,7 +4,7 @@ version = "0.2.0"
 edition = "2021"
 publish = false
 license = "GPL-3.0-or-later"
-description = "FK-box platform-neutral client layer: the Host contract between the UI and a platform shell, the client store (settings, profile metadata, remote servers, interface preferences) with its one-time import from the Android app's Room databases, subscriptions (provider headers, update policy, the profile save flow), the routing rule model, the geo resource policy and the service settings."
+description = "FK-box platform-neutral client layer: the Host contract between the UI and a platform shell, the client store (settings, profile metadata, remote servers, interface preferences) with its one-time import from the Android app's Room databases, subscriptions (provider headers, update policy, the profile save flow), the routing rule model, the geo resource policy, the service settings, backups, the WebDAV account, the update check and the terminal settings."
 
 [lib]
 path = "src/lib.rs"
@@ -17,3 +17,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 # Profile revisions (SHA-256 of the content, as the edit forms carry them).
 sha2 = "0.10"
+# Backup identities of profiles not named by a UUID (Java's
+# UUID.nameUUIDFromBytes, MD5).
+md5 = { package = "md-5", version = "0.10" }
