@@ -12,24 +12,24 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("core", type=Path)
     core = parser.parse_args().core.resolve()
-    patch = ROOT / "libbox/httpdebug.patch"
+    patch = ROOT / "apps/android/core/httpdebug.patch"
     targets = [core / "experimental/httpdebug", core / "route/b_box_httpdebug.go",
                core / "experimental/libbox/ui_capture.go"]
     if any(path.exists() for path in targets):
         raise SystemExit("Capture overlay already exists; use a clean matching core checkout")
     subprocess.run(["git", "apply", "--check", str(patch)], cwd=core, check=True)
     subprocess.run(["git", "apply", str(patch)], cwd=core, check=True)
-    rewrite_patch = ROOT / "libbox/http_rewrite.patch"
+    rewrite_patch = ROOT / "apps/android/core/http_rewrite.patch"
     subprocess.run(["git", "apply", "--check", str(rewrite_patch)], cwd=core, check=True)
     subprocess.run(["git", "apply", str(rewrite_patch)], cwd=core, check=True)
-    shutil.copytree(ROOT / "libbox/httpdebug", targets[0])
-    for source in (ROOT / "libbox/route").glob("*.go"):
+    shutil.copytree(ROOT / "apps/android/core/httpdebug", targets[0])
+    for source in (ROOT / "apps/android/core/route").glob("*.go"):
         shutil.copyfile(source, core / "route" / ("b_box_" + source.name))
-    for source in (ROOT / "libbox").glob("ui_capture*.go"):
+    for source in (ROOT / "apps/android/core").glob("ui_capture*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
-    for source in (ROOT / "libbox").glob("ui_http_rewrite*.go"):
+    for source in (ROOT / "apps/android/core").glob("ui_http_rewrite*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
-    for source in (ROOT / "libbox/option").glob("*.go"):
+    for source in (ROOT / "apps/android/core/option").glob("*.go"):
         shutil.copyfile(source, core / "option" / source.name)
     print("Installed HTTP/MITM capture, profile rewriting, route hooks and libbox bindings")
 

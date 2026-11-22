@@ -70,13 +70,13 @@ runs:
     - name: Apply patches and install bindings
       shell: bash
       run: |
-        git -C .core apply --check ../libbox/libbox-no-legacy.patch
-        git -C .core apply ../libbox/libbox-no-legacy.patch
+        git -C .core apply --check ../apps/android/core/libbox-no-legacy.patch
+        git -C .core apply ../apps/android/core/libbox-no-legacy.patch
         python3 tools/patch_sing_tun.py .core
         python3 tools/patch_httpdebug.py .core
         python3 tools/patch_multicore.py .core
         python3 tools/patch_dns_count.py .core
-        cp libbox/ui_*.go .core/experimental/libbox/
+        cp apps/android/core/ui_*.go .core/experimental/libbox/
     - name: Resolve the pinned HTTP rewrite runtime
       shell: bash
       working-directory: .core
@@ -95,7 +95,7 @@ runs:
       env:
         GOTOOLCHAIN: local
       run: |
-        cp ../libbox/core_*.go experimental/libbox/
+        cp ../apps/android/core/core_*.go experimental/libbox/
         # mihomo is embedded the way ClashMetaForAndroid embeds it (cmfa tag):
         # the app supplies system DNS, and no package-list reader needs root.
         grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go

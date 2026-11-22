@@ -2,6 +2,8 @@
 .gradle
 .kotlin/
 /local.properties
+# Cargo workspace output (root Cargo.toml)
+/target/
 /.idea/
 .DS_Store
 build/
@@ -9,7 +11,9 @@ build/
 .externalNativeBuild
 .cxx
 local.properties
-/app/libs/
+# Cargo workspace output (root Cargo.toml)
+/target/
+/apps/android/app/libs/
 /.core/
 /service-account-credentials.json
 /CLAUDE.md
@@ -20,8 +24,8 @@ local.properties
 *.jks
 *.p12
 *.keystore
-# Public CI debug key (see app/build.gradle.kts ciDebug)
-!/app/debug-ci.p12
+# Public CI debug key (see apps/android/app/build.gradle.kts ciDebug)
+!/apps/android/app/debug-ci.p12
 
 # Retired capture helper; keep stale local binaries out of version control
-/app/src/main/jniLibs/**/libbbox_capture.so
+/apps/android/app/src/main/jniLibs/**/libbbox_capture.so

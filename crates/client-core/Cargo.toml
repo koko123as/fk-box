@@ -1,0 +1,10 @@
+[package]
+name = "fkbox-client-core"
+version = "0.1.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+description = "FK-box platform-neutral client layer: the Host contract between the UI and a platform shell (more business logic moves here in phase 2)."
+
+[lib]
+path = "src/lib.rs"

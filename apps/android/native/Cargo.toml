@@ -1,0 +1,24 @@
+[package]
+name = "fkbox-android"
+version = "0.2.0"
+edition = "2021"
+publish = false
+license = "GPL-3.0-or-later"
+description = "FK-box Android shell: android_main, the JNI link to the Kotlin host and logcat setup, around the Slint UI (fkbox-client-ui)."
+
+# libfkui.so, the library BoxActivity loads (android.app.lib_name = fkui).
+[lib]
+name = "fkui"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+fkbox-client-core = { path = "../../../crates/client-core" }
+fkbox-client-ui = { path = "../../../crates/client-ui" }
+slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+i-slint-backend-android-activity = { version = "=1.19.0", features = ["aa-06", "game-activity"] }
+jni = "0.22"
+log = "0.4"
+android_logger = "0.15"

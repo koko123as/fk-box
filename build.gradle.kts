@@ -14,7 +14,7 @@ detekt {
     allRules = false
     config.setFrom("${projectDir}/config/detekt/detekt.yml")
     baseline = file("${projectDir}/config/detekt/baseline.xml")
-    source.setFrom("app/src/main/java", "app/src/main/kotlin")
+    source.setFrom("apps/android/app/src/main/java", "apps/android/app/src/main/kotlin")
 }
 
 dependencies {

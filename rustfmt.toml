@@ -1,0 +1,4 @@
+# The Rust sources keep long lines (Slint models, tables of strings); the vendored
+# Slint crates under vendor/ are not workspace members and are never formatted.
+max_width = 140
+use_small_heuristics = "Max"

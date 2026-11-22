@@ -35,14 +35,14 @@ def main():
     for path in [target, *target.rglob("*")]:
         path.chmod(path.stat().st_mode | stat.S_IWUSR)
 
-    patch = ROOT / "libbox/sing-tun-android-ingress.patch"
+    patch = ROOT / "apps/android/core/sing-tun-android-ingress.patch"
     for arguments in (["--check"], []):
         subprocess.run(
             ["git", "apply", "--directory=.b-box/sing-tun", *arguments, str(patch)],
             cwd=core, check=True,
         )
     shutil.copyfile(
-        ROOT / "libbox/sing-tun/redirect_ingress_discard_linux_test.go",
+        ROOT / "apps/android/core/sing-tun/redirect_ingress_discard_linux_test.go",
         target / "redirect_ingress_discard_value_linux_test.go",
     )
     subprocess.run(
