@@ -693,7 +693,7 @@ class ProfileRecoveryTest {
                         assertEquals(Status.Started, activity.serviceStatus.value)
                         assertEquals(0, failure!!.suppressed.size)
 
-                        val backups = BoxBackups(activity, { emptyMap() }, {},
+                        val backups = BoxBackups(activity, {},
                             { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, {}, { _, _ -> }, BoxWebDAV(activity))
                         val backup = backups.create()
                         @Suppress("UNCHECKED_CAST")
