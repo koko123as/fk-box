@@ -81,11 +81,6 @@ pub fn patch_service_settings(store: &Store, values: &Map<String, Value>) -> Res
     service_settings::patch(store, values)
 }
 
-/// The saved routing rules in their wire form (unreadable ones read as none).
-pub fn routing_rules(store: &Store) -> Value {
-    fkbox_client_core::routing::to_wire(&fkbox_client_core::routing::load(store))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -128,6 +123,5 @@ mod tests {
         store.begin().unwrap();
         assert!(patch_service_settings(&store, json!({"allowBypass": true}).as_object().unwrap()).is_err());
         store.rollback().unwrap();
-        assert_eq!(routing_rules(&store), json!({"version": 1, "cores": {}}));
     }
 }
