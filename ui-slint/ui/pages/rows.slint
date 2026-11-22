@@ -546,8 +546,6 @@ export component RowsBody inherits Rectangle {
     in property <length> bottom: Nav.inset-bottom;
     // Content is scrolled up from its start (the top app bar takes the surface-container role).
     out property <bool> scrolled: flick.content-y < 0;
-    // A home destination's rows report their scrolling (the floating bar slides away).
-    in property <string> home;
     rows-motion := ListMotion { count: root.d.rows.length; }
     flick := Flickable {
         content-height: body.preferred-height;
@@ -581,8 +579,6 @@ export component RowsPage inherits Rectangle {
     in property <PageData> d;
     in property <int> leading: 1;
     in property <length> bottom: Nav.inset-bottom;
-    // The home destination this page is ("" for a pushed page).
-    in property <string> home;
     background: Theme.s.surface;
     property <bool> scrolled;
     if root.d.rows.length == 0 && root.d.empty-title != "": Appear { y: bar.height; height: parent.height - bar.height; EmptyState {
@@ -597,7 +593,6 @@ export component RowsPage inherits Rectangle {
         y: 0;
         height: parent.height;
         d: root.d;
-        home: root.home;
         top-pad: bar.height + 8px;
         bottom: root.bottom;
         changed scrolled => { root.scrolled = self.scrolled; }

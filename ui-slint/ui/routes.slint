@@ -37,7 +37,7 @@ component RoutePage inherits Rectangle {
     if k == "proxies": ProxiesPage { form: true; }
     if k == "node-details": NodeDetailsPage { leading: root.leading; }
     appearance := AppearanceRoutes { kind: root.k; leading: root.leading; }
-    profiles := ProfileRoutes { kind: root.k; arg: root.route.arg; leading: root.leading; }
+    profiles := ProfileRoutes { kind: root.k; leading: root.leading; }
     if !root.known: ScrollPage {
         title: root.k;
         leading: root.leading;
