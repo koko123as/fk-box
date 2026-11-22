@@ -16,15 +16,18 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 class LogViewModel :
     BaseViewModel<LogUiState>(),
     CommandClient.Handler {
-    private val buffer = LogBuffer()
+    // Lines wait here until the bridge drains them to the UI, which keeps the
+    // records (client-core logs.rs strips ANSI codes and bounds the ring).
+    // One lane keeps clear/append in arrival order.
+    private val buffer = LogEventBuffer()
+    private val version = AtomicLong(0)
     override fun createInitialState() = LogUiState()
 
-    // Buffer work (ANSI strip, ring append, snapshot) runs off the main
-    // thread. One lane keeps clear/append in arrival order.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val bufferLane = Dispatchers.Default.limitedParallelism(1)
 
@@ -80,15 +83,27 @@ class LogViewModel :
     fun setVisible(visible: Boolean) { visibleFlow.value = visible }
 
     override fun setDefaultLogLevel(level: Int) {
-        updateState { copy(defaultLogLevel = LogLevel.from(level)) }
+        viewModelScope.launch(bufferLane) {
+            buffer.setLevel(level)
+            val next = version.incrementAndGet()
+            updateState { copy(version = next, defaultLogLevel = LogLevel.from(level)) }
+        }
     }
 
     override fun clearLogs() {
         viewModelScope.launch(bufferLane) {
-            buffer.clear()
-            updateState { copy(logs = emptyList()) }
+            buffer.reset()
+            published()
         }
     }
+
+    private fun published() {
+        val next = version.incrementAndGet()
+        updateState { copy(version = next) }
+    }
+
+    /** What arrived since the last call (`reset`, `defaultLogLevel`, `entries`); null when nothing did, unless [force]. */
+    fun drain(force: Boolean = false): Map<String, Any?>? = buffer.drain(force)
 
     fun requestClearLogs() {
         viewModelScope.launch {
@@ -107,10 +122,10 @@ class LogViewModel :
     }
 
     override fun appendLogs(message: List<LogEntry>) {
-        val entries = message.map { LogEntryData(LogLevel.from(it.level), it.message) }
+        val entries = message.map { mapOf("level" to it.level, "message" to it.message) }
         viewModelScope.launch(bufferLane) {
-            buffer.append(entries)
-            updateState { copy(logs = buffer.snapshot()) }
+            buffer.add(entries)
+            published()
         }
     }
 

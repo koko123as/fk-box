@@ -34,7 +34,7 @@
 | 更新检查（GitHub Release 元数据、版本比较） | 已迁：client-core `updates.rs`；`bridge/BoxUpdates.kt` 已删；请求经 Go `UIHTTPGet` | Rust | **2d** |
 | 终端（Ghostty）设置、字体导入 | 已迁：client-core `terminal.rs`（取值、校验、写入、备份部分）；`bridge/BoxTerminalSettings.kt` 只剩主题目录/预览、字体文件选择导入与删除 | 设置值 → Rust；字体文件选择留 Kotlin | **2d** |
 | 抓包设置 | 已迁：client-core `capture.rs`（读取、一次性升级、修订检查、原子写入，校验经内核方法 `capture.validate`）；`bridge/CaptureSettings.kt` 只剩退役 Keystore 密钥清理与调用封装 | 设置模型 → Rust；证书生成留 Kotlin（Keystore）+ Go | **2e-1** |
-| 界面状态与命令分发（仪表盘/代理组/连接/日志的状态模型、命令总线） | 连接列表已迁：client-core `connections.rs`（事件批次 → 行与计数，界面持有），`ConnectionsViewModel` 只转发增量，`ConnectionStore`/`ConnectionWire`/`backend/model/Connection.kt` 已删；其余仍在 `backend/*ViewModel.kt`、`bridge/BoxBridge.kt`、`SlintHost.kt`、`LogStream.kt`、`ConnectionWire`、`DashboardConfigCache.kt`、`VisiblePolling.kt` | Rust client-core 控制器；数据源仍为 libbox 命令客户端 | 2e |
+| 界面状态与命令分发（仪表盘/代理组/连接/日志的状态模型、命令总线） | 已迁：连接列表 client-core `connections.rs`（2e-2）；日志记录 `logs.rs`、仪表盘显示推导 `dashboard.rs`、分组/节点/模式检查 `groups.rs`（2e-3），`LogStream.kt`、`LogBuffer`、`backend/model/Groups.kt` 已删。命令客户端连接调度（`CommandClient`、可见性与前后台）仍在 `backend/*ViewModel.kt`、`bridge/BoxBridge.kt`、`SlintHost.kt`、`DashboardConfigCache.kt`、`VisiblePolling.kt` | Rust client-core；数据源仍为 libbox 命令客户端，调度留 Kotlin 到第三阶段 | **2e-2**/**2e-3** |
 | 仪表盘 IP 质量缓存 | 已迁：client-core `ip_quality.rs`（`preferences` 键 `ip_quality`，一次性导入旧 `dashboard_ip_quality.xml`）；界面直接读写，宿主方法已删 | Rust client-core `storage` | **2e-1** |
 | 应用列表缓存（`AppListCache`）、应用标签 | `bridge/AppListCache.kt` | 留 Kotlin（PackageManager） | — |
 | VpnService、前台服务、通知、磁贴、开机启动、网络监听、Root/Shizuku、USB/IP、Taildrop 发送 | `bg/*`、`vendor/*`、`usbip/*` | 留 Kotlin | — |
@@ -121,3 +121,12 @@
 - **远程控制服务器**：地址规范化、校验、连接地址、显示名迁 client-core `remote_servers.rs`（原 `backup.rs` 里的校验移入）；界面直接从存储读列表并保存表单（恢复事务中拒绝），宿主的 `remoteServers`/`saveRemoteServer` 已删。Kotlin `RemoteServer.connectURL`/`displayName` 调 Rust。删除与连接仍经宿主（要先看当前远程会话）。
 - **schema**：未改，`user_version` 不变。
 - **推迟（2e-3）**：日志流（`LogStream`/`LogViewModel`）、代理组与仪表盘状态模型；命令客户端连接调度（`CommandClient`、可见性与前后台）留 Kotlin——它们依赖 libbox 命令客户端与 Android 生命周期，迁 Rust 要先让 Rust 直接连 libbox 命令服务（第三阶段评估）。
+
+## 2e-3 设计要点
+
+- **日志**：client-core `logs.rs` 持有日志记录（去 ANSI、递增 ID、3000 条环形、默认等级标签）。Kotlin `LogViewModel` 只在单线程通道里暂存新行、清空与等级变化（`LogEventBuffer`，同样以 3000 行为上限）；`BoxBridge.flushLogs` 在日志页可见时最多每秒发一次 `logEvents`（`reset`、`defaultLogLevel`、`entries`）。原来每次恢复可见要重新编码整份快照，现在界面自己保留记录，只发新增。`LogStream.kt`、`LogBuffer` 及其 JVM 测试已删，用例改为 Rust 测试；`LogLevel` 枚举保留给仪器测试比较默认等级。
+- **仪表盘**：client-core `dashboard.rs` 从 Kotlin 上报的原值推导显示（`trafficAvailable`、仅可切换时的 `modes`、仅本地服务的 `systemProxyAvailable`、远程会话优先的 `startedAt`）；已是显示形态的值（截图工具）原样通过。
+- **代理组**：`backend/model/Groups.kt` 已删，`GroupsViewModel` 直接把 libbox `OutboundGroup` 转为界面读取的映射。选择节点、测速、切换模式的检查移到 client-core `groups.rs`，界面在调用宿主前检查（选择失败仍静默忽略，测速与模式报错）；`BoxBridge.selectOutbound`/`urlTest`/`setMode` 不再重复检查。
+- **schema**：未改，`user_version` 不变。
+- **第二阶段到此结束。留到第三阶段**：命令客户端连接调度（`CommandClient`、页面可见性、前后台、远程会话切换）——需要 Rust 直接连 libbox 命令服务后再迁。
+

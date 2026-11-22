@@ -1,37 +1,69 @@
 package io.nekohasekai.sfa.backend.log
 
-data class LogEntryData(val level: LogLevel, val message: String)
-data class ProcessedLogEntry(val id: Long, val entry: LogEntryData, val receivedAt: Long)
+/**
+ * [version] changes whenever lines or a clear wait in the buffer
+ * ([LogViewModel.drain]). The log records themselves live in the UI
+ * (client-core `logs.rs`), which applies the batches the bridge forwards.
+ */
 data class LogUiState(
-    val logs: List<ProcessedLogEntry> = emptyList(),
+    val version: Long = 0,
     val defaultLogLevel: LogLevel? = null,
 )
 
-enum class LogLevel(val label: String, val priority: Int) {
-    Default("Default", 7), PANIC("Panic", 0), FATAL("Fatal", 1), ERROR("Error", 2),
-    WARNING("Warn", 3), INFO("Info", 4), DEBUG("Debug", 5), TRACE("Trace", 6);
+enum class LogLevel(val priority: Int) {
+    Default(7), PANIC(0), FATAL(1), ERROR(2), WARNING(3), INFO(4), DEBUG(5), TRACE(6);
 
     companion object {
         fun from(priority: Int) = entries.firstOrNull { it.priority == priority } ?: Default
     }
 }
 
-/** Bounded, unfiltered records. Filtering and pause snapshots belong to the UI. */
-internal class LogBuffer(private val limit: Int = 3000, private val now: () -> Long = System::currentTimeMillis) {
-    private val records = ArrayDeque<ProcessedLogEntry>()
-    private var nextId = 0L
-    private val ansi = Regex("\u001B\\[[;\\d]*m")
+/**
+ * The core's log lines since the bridge last drained them, at most [limit]
+ * (the UI keeps no more). A clear drops what waits and makes the next batch a
+ * reset; the default level is sent once after it changes.
+ */
+internal class LogEventBuffer(private val limit: Int = 3000) {
+    private var reset = false
+    private var level: Int? = null
+    private var levelChanged = false
+    private val entries = ArrayDeque<Map<String, Any?>>()
 
     init { require(limit > 0) }
 
-    fun append(entries: List<LogEntryData>) {
-        for (entry in entries.takeLast(limit)) {
-            if (records.size == limit) records.removeFirst()
-            val clean = if (entry.message.indexOf('\u001B') >= 0) entry.copy(message = entry.message.replace(ansi, "")) else entry
-            records.addLast(ProcessedLogEntry(++nextId, clean, now()))
+    @Synchronized
+    fun reset() {
+        reset = true
+        entries.clear()
+    }
+
+    @Synchronized
+    fun setLevel(priority: Int) {
+        if (level == priority && !levelChanged) return
+        level = priority
+        levelChanged = true
+    }
+
+    @Synchronized
+    fun add(batch: List<Map<String, Any?>>) {
+        for (entry in batch.takeLast(limit)) {
+            if (entries.size == limit) entries.removeFirst()
+            entries.addLast(entry)
         }
     }
 
-    fun clear() = records.clear()
-    fun snapshot(): List<ProcessedLogEntry> = records.toList()
+    /** One batch for client-core `Logs::apply_batch`; null when nothing waits, unless [force]. */
+    @Synchronized
+    fun drain(force: Boolean): Map<String, Any?>? {
+        if (!force && !reset && !levelChanged && entries.isEmpty()) return null
+        val batch = buildMap<String, Any?> {
+            put("reset", reset)
+            if (levelChanged) put("defaultLogLevel", level)
+            put("entries", entries.toList())
+        }
+        reset = false
+        levelChanged = false
+        entries.clear()
+        return batch
+    }
 }

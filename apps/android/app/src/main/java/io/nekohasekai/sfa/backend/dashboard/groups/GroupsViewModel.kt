@@ -3,7 +3,7 @@ package io.nekohasekai.sfa.backend.dashboard.groups
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.sfa.backend.base.BaseViewModel
-import io.nekohasekai.sfa.backend.model.Group
+import io.nekohasekai.sfa.bridge.toWire
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
@@ -16,7 +16,8 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class GroupsUiState(val groups: List<Group> = emptyList())
+/** The groups as the UI reads them (client-core `groups.rs`), newest first converted. */
+data class GroupsUiState(val groups: List<Map<String, Any?>> = emptyList())
 
 class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val commandClient = CommandClient(viewModelScope, CommandClient.ConnectionType.Groups, this)
@@ -103,13 +104,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
         // finish first. Only the newest update may be applied.
         val sequence = updateSequence.incrementAndGet()
         viewModelScope.launch(Dispatchers.Default) {
-            val currentGroups = uiState.value.groups
-            val currentByTag = currentGroups.associateBy { it.tag }
-            val mergedGroups = newGroups.map { goGroup ->
-                val converted = Group(goGroup)
-                val existing = currentByTag[converted.tag]
-                if (existing == converted) existing else converted
-            }
+            val mergedGroups = newGroups.map { it.toWire() }
 
             withContext(Dispatchers.Main) {
                 if (sequence != updateSequence.get()) return@withContext

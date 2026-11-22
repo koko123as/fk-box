@@ -2,32 +2,47 @@ package io.nekohasekai.sfa.bridge
 
 import io.nekohasekai.libbox.Connection as LibboxConnection
 import io.nekohasekai.sfa.ktx.toList
-import io.nekohasekai.sfa.backend.model.Group
+import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.OutboundGroup
 import io.nekohasekai.sfa.backend.dashboard.DashboardUiState
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.RemoteControlManager
 
+/**
+ * What the dashboard knows about the service and the remote session, as
+ * reported; client-core `dashboard.rs` derives what the header shows (modes
+ * only while switchable, system proxy only locally, the remote start time).
+ */
 internal fun DashboardUiState.toWire(): Map<String, Any?> = mapOf(
     "status" to serviceStatus.name,
     "selectedProfileId" to Settings.selectedProfile,
-    "startedAt" to (RemoteControlManager.startedAt.value ?: serviceStartTime),
-    "trafficAvailable" to trafficVisible,
-    "modes" to if (clashModeVisible) clashModes else emptyList<String>(),
+    "startedAt" to serviceStartTime,
+    "remoteStartedAt" to RemoteControlManager.startedAt.value,
+    "trafficVisible" to trafficVisible,
+    "clashModeVisible" to clashModeVisible,
+    "modes" to clashModes,
     "mode" to selectedClashMode,
-    "systemProxyAvailable" to (systemProxyVisible && RemoteControlManager.remoteServer.value == null),
+    "systemProxyVisible" to systemProxyVisible,
     "systemProxy" to systemProxyEnabled,
     "remote" to RemoteControlManager.remoteServer.value?.displayName,
     "remoteConnected" to RemoteControlManager.isConnected.value,
     "deprecated" to deprecatedNotes.map { mapOf("message" to it.message, "url" to it.migrationLink) },
 )
 
-internal fun Group.toWire(): Map<String, Any?> = mapOf(
+/** A libbox proxy group as client-core `groups.rs` reads it. */
+internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(
     "tag" to tag,
-    "type" to displayType,
+    "type" to Libbox.proxyDisplayType(type),
     "selectable" to selectable,
     "selected" to selected,
     "expanded" to isExpand,
-    "items" to items.map { mapOf("tag" to it.tag, "type" to it.displayType, "delay" to it.urlTestDelay, "testedAt" to it.urlTestTime) },
+    "items" to buildList {
+        val iterator = items
+        while (iterator.hasNext()) {
+            val item = iterator.next()
+            add(mapOf("tag" to item.tag, "type" to Libbox.proxyDisplayType(item.type), "delay" to item.urlTestDelay, "testedAt" to item.urlTestTime))
+        }
+    },
 )
 
 /**

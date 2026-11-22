@@ -47,6 +47,9 @@ pub struct Data {
     // "connectionEvents" batches.
     pub connection_events: fkbox_client_core::connections::Connections,
     pub logs: Vec<Value>,
+    // The records behind [`Data::logs`], built from the host's "logEvents"
+    // batches.
+    pub log_records: fkbox_client_core::logs::Logs,
     pub default_log_level: Option<String>,
     pub upload_history: VecDeque<f64>,
     pub download_history: VecDeque<f64>,
@@ -686,7 +689,7 @@ pub fn on_event(payload: &str) {
             Mark::TOOLS
         }
         "dashboard" => {
-            d.dashboard = obj(&value);
+            d.dashboard = obj(&fkbox_client_core::dashboard::view(&value));
             Mark::ALL
         }
         // The host changed profiles in the client store (no payload: re-read
@@ -718,20 +721,13 @@ pub fn on_event(payload: &str) {
             d.connection_stats = obj(&value);
             Mark::RATES
         }
-        "logs" => {
-            let entries = rows(&value["entries"]);
-            if value["reset"] == Value::Bool(false) {
-                let first = long(&value["firstId"]);
-                let last = d.logs.last().and_then(|l| long(&l["id"])).unwrap_or(-1);
-                match first {
-                    Some(first) => d.logs.retain(|l| long(&l["id"]).unwrap_or(0) >= first),
-                    None => d.logs.clear(),
-                }
-                d.logs.extend(entries.into_iter().filter(|e| long(&e["id"]).unwrap_or(0) > last));
-            } else {
-                d.logs = entries;
-            }
-            d.default_log_level = value["defaultLogLevel"].as_str().map(str::to_string);
+        // The core's log lines since the last batch (BoxBridge logs
+        // stream), after a clear when "reset" is set.
+        "logEvents" => {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+            d.log_records.apply_batch(&value, now);
+            d.logs = d.log_records.rows();
+            d.default_log_level = d.log_records.default_level().map(str::to_string);
             Mark::RECORDS
         }
         "settings" => {
@@ -857,7 +853,7 @@ fn initialize() {
                 d.xray_version = text(&result["xrayVersion"]);
                 d.mihomo_version = text(&result["mihomoVersion"]);
                 d.system_accent = long(&result["systemAccentColor"]).map(|v| v as u32).unwrap_or(0xff007aff);
-                d.dashboard = obj(&result["dashboard"]);
+                d.dashboard = obj(&fkbox_client_core::dashboard::view(&result["dashboard"]));
                 // The host opened the client store before answering.
                 d.profiles = stored_profiles().unwrap_or_else(|| rows(&result["profiles"]));
                 d.settings = service_settings(&d.settings, &result["settings"]);

@@ -172,7 +172,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                     if (!foreground) return@collectLatest
                     coroutineScope {
                         launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
-                        launch { groups.uiState.collect { emit("groups", it.groups.map { group -> group.toWire() }) } }
+                        launch { groups.uiState.collect { emit("groups", it.groups) } }
                         // The streamed lists reach the UI about once a second:
                         // after a send the collector waits, and the StateFlow
                         // keeps only the newest state meanwhile. Showing a
@@ -182,16 +182,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                             if (flushConnections()) delay(UI_UPDATE_INTERVAL_MILLIS)
                         } }
                         launch {
-                            val stream = LogStream()
                             logsVisible.collectLatest { visible ->
-                                stream.reset()
                                 if (!visible) return@collectLatest
-                                logs.uiState.collect { state ->
-                                    val update = withContext(Dispatchers.Default) { stream.update(state) }
-                                    if (update != null) {
-                                        emit("logs", update)
-                                        delay(UI_UPDATE_INTERVAL_MILLIS)
-                                    }
+                                logs.uiState.collect {
+                                    if (flushLogs()) delay(UI_UPDATE_INTERVAL_MILLIS)
                                 }
                             }
                         }
@@ -436,23 +430,19 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun selectOutbound(groupTag: String?, tag: String?) {
         operations.withLock {
-            val group = groups.uiState.value.groups.firstOrNull { it.tag == required(groupTag, "group") } ?: error("Group no longer exists")
-            require(group.selectable) { "This group is selected automatically by sing-box" }
-            require(group.items.any { it.tag == required(tag, "tag") }) { "Node no longer exists" }
-            withContext(Dispatchers.IO) { CommandTarget.standaloneClient().selectOutbound(group.tag, required(tag, "tag")) }
+            // The UI checks the group and node against its list first
+            // (client-core groups.rs); the core rejects what has gone since.
+            withContext(Dispatchers.IO) { CommandTarget.standaloneClient().selectOutbound(required(groupTag, "group"), required(tag, "tag")) }
         }
     }
 
     suspend fun urlTest(tagArgument: String?) {
         withContext(Dispatchers.IO) {
-            val tag = required(tagArgument, "tag")
-            require(groups.uiState.value.groups.any { it.tag == tag || it.items.any { item -> item.tag == tag } }) { "Node no longer exists" }
-            CommandTarget.standaloneClient().urlTest(tag)
+            CommandTarget.standaloneClient().urlTest(required(tagArgument, "tag"))
         }
     }
 
     suspend fun setMode(mode: String) {
-        require(dashboard.uiState.value.clashModes.contains(mode)) { "This routing mode is not provided by the configuration" }
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setClashMode(mode) }
     }
 
@@ -503,6 +493,17 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     }
 
     fun clearLogs() { logs.requestClearLogs() }
+
+    /**
+     * Sends the log lines that arrived since the last send ("logEvents"; the
+     * UI keeps the records in client-core `logs.rs`). False when nothing was
+     * sent.
+     */
+    private fun flushLogs(): Boolean {
+        val batch = logs.drain() ?: return false
+        emit("logEvents", batch)
+        return true
+    }
 
     fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
 

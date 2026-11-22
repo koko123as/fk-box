@@ -181,6 +181,10 @@ fn test(tag: String) {
     if !data(|d| d.running()) || local(|l| l.testing.contains(&tag)) {
         return;
     }
+    if let Err(e) = data(|d| fkbox_client_core::groups::check_url_test(&d.groups, &tag)) {
+        app::report(&tr(e));
+        return;
+    }
     local(|l| l.testing.insert(tag.clone()));
     mark(Mark::PROXIES | Mark::DASH);
     app::act_then("urlTest", json!({ "tag": tag }), move |_| {
@@ -190,10 +194,14 @@ fn test(tag: String) {
 }
 
 fn select(group: &str, node: &str) {
-    let ok = data(|d| {
-        d.running() && d.groups.iter().any(|g| text(&g["tag"]) == group && truthy(&g["selectable"]) && text(&g["selected"]) != node)
-    });
-    if !ok {
+    // Already selected, or the service went away: nothing to do.
+    let (running, current) = data(|d| (d.running(), fkbox_client_core::groups::find(&d.groups, group).map(|g| text(&g["selected"]))));
+    if !running || current.as_deref() == Some(node) {
+        return;
+    }
+    // An automatic group, or a group or node gone from the latest list,
+    // is not selectable: ignored as before.
+    if data(|d| fkbox_client_core::groups::check_select(&d.groups, group, node)).is_err() {
         return;
     }
     app::act_then("selectOutbound", json!({ "group": group, "tag": node }), |ok| {

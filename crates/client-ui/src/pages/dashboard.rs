@@ -867,7 +867,10 @@ pub fn act(id: &str, arg: &str) -> bool {
                 app::message("Copied");
             }
         }
-        "set-mode" => app::act("setMode", json!({ "mode": arg })),
+        "set-mode" => match data(|d| fkbox_client_core::groups::check_mode(&Value::Object(d.dashboard.clone()), arg)) {
+            Ok(()) => app::act("setMode", json!({ "mode": arg })),
+            Err(e) => app::report(&tr(e)),
+        },
         "profile-panel" => {
             let (remote, profile) = data(|d| (d.remote(), d.selected_profile()));
             if remote {
