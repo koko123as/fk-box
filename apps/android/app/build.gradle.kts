@@ -97,7 +97,7 @@ android {
     signingConfigs {
         create("release") {
             // CI decodes the key outside the checkout and names it in KEYSTORE_FILE;
-            // a local build may keep its own untracked app/release.keystore.
+            // a local build may keep its own untracked apps/android/app/release.keystore.
             storeFile = getProps("KEYSTORE_FILE").takeIf { it.isNotEmpty() }?.let { file(it) } ?: file("release.keystore")
             storePassword = getProps("KEYSTORE_PASS")
             keyAlias = getProps("ALIAS_NAME")
@@ -190,7 +190,7 @@ android {
         }
     }
 
-    // libfkui.so: the Rust + Slint UI built from ui-slint/ by cargo-ndk.
+    // libfkui.so: the Rust + Slint UI built from apps/android/native (and crates/) by cargo-ndk.
     sourceSets["main"].jniLibs.srcDir(layout.buildDirectory.dir("rustJniLibs").get().asFile)
 
     lint {
@@ -422,20 +422,22 @@ spotless {
     }
 }
 
-// Builds the Slint UI library for every split ABI with cargo-ndk (Rust stable with
+// Builds the Slint UI library (libfkui.so, the apps/android/native crate of the
+// Cargo workspace at the repository root) for every split ABI with cargo-ndk (Rust stable with
 // the matching *-linux-android targets, cargo-ndk, ANDROID_NDK_HOME). Skip with
 // -PskipRustUi=true when the library is already staged.
 val rustUiOut = layout.buildDirectory.dir("rustJniLibs")
 val buildRustUi = tasks.register<Exec>("buildRustUi") {
-    val crate = rootProject.file("ui-slint")
+    val crate = rootProject.file("apps/android/native")
     workingDir = crate
-    // Everything the library is compiled from: sources, Slint markup, the
-    // translations bundled by build.rs, the vendored backend and renderer.
+    // Everything the library is compiled from: the Android shell, the shared
+    // crates (Slint markup, the translations bundled by build.rs), the vendored
+    // backend and renderer, and the workspace manifest and lock file.
     inputs.dir(crate.resolve("src"))
-    inputs.dir(crate.resolve("ui"))
-    inputs.dir(crate.resolve("i18n"))
-    inputs.dir(crate.resolve("vendor"))
-    inputs.files(crate.resolve("Cargo.toml"), crate.resolve("Cargo.lock"), crate.resolve("build.rs"))
+    inputs.file(crate.resolve("Cargo.toml"))
+    inputs.dir(rootProject.file("crates"))
+    inputs.dir(rootProject.file("vendor"))
+    inputs.files(rootProject.file("Cargo.toml"), rootProject.file("Cargo.lock"))
     inputs.property("abis", apkAbis)
     outputs.dir(rustUiOut)
     val targets = apkAbis.flatMap { listOf("-t", it) }

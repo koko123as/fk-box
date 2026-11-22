@@ -17,11 +17,11 @@ internal object BoxPreferences {
         "restoreStrategy" to setOf("Compatible", "Override"),
         // The requests page's feed: recent and live connections, or captured HTTP.
         "requestFeed" to setOf("recent", "live", "captured"),
-        // How the phone's home destinations change (ui-slint home.slint Pages).
+        // How the phone's home destinations change (crates/client-ui home.slint Pages).
         "tabMotion" to setOf("slide", "fade"),
     )
 
-    // Service status targets (libbox/ui_service_check.go, FlClash ServiceTarget ids).
+    // Service status targets (apps/android/core/ui_service_check.go, FlClash ServiceTarget ids).
     private val services = setOf(
         "google", "github", "youtube", "chatgpt", "claude", "gemini", "netflix", "disney-plus", "prime-video",
         "spotify", "tiktok", "discord", "bilibili",

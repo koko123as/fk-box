@@ -1,14 +1,14 @@
 # Slint UI manifest
 
-Map of the 47 Jetpack Compose files under `app/src/main/java/io/nekohasekai/sfa/compose` on `main`
-to their Rust + Slint replacements on `slint-ui` (`ui-slint/`). Native Android pieces that the
+Map of the 47 Jetpack Compose files under `apps/android/app/src/main/java/io/nekohasekai/sfa/compose` on `main`
+to their Rust + Slint replacements on `slint-ui` (`crates/client-ui/`). Native Android pieces that the
 Compose UI hosted (QR camera, Ghostty terminal surface, OpenConnect WebView) are now Kotlin
-Activities in `app/src/main/java/io/nekohasekai/sfa/bridge/NativePages.kt`, opened from Rust
+Activities in `apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/NativePages.kt`, opened from Rust
 through `BoxActivity.slintCall`.
 
 The Compose sources themselves were deleted from `slint-ui` on 2026-11-13 (they remain on `main`);
 `compose/` keeps only `MainActivity`, `ShareActivity` and `qr/`. The Simplified Chinese table
-`ui-slint/i18n/zh/LC_MESSAGES/fkui.po` is now edited by hand (it was generated from `BoxStrings.kt`).
+`crates/client-ui/i18n/zh/LC_MESSAGES/fkbox-client-ui.po` is now edited by hand (it was generated from `BoxStrings.kt`).
 
 Status: **done** = ported feature-for-feature (not yet verified on device);
 **partial** = ported, with the listed differences from the Compose original;
@@ -18,7 +18,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 | # | Compose file (main) | Rust / Slint replacement | Status | Notes |
 |---|---|---|---|---|
 | 1 | BoxApp.kt | `ui/app.slint`, `ui/globals.slint`, `src/nav.rs`, `src/theme_apply.rs` | done | Frame, bottom bar / rail, routes, back handling, snackbar |
-| 2 | BoxController.kt | `src/app.rs`, `src/host.rs`, `src/format.rs`, `ui/data.slint`; Kotlin `bridge/SlintHost.kt` | done | State projection + JNI dispatch (`slintCall` / `nativeReply`) |
+| 2 | BoxController.kt | `src/app.rs`, `src/host.rs` (JNI side: `apps/android/native/src/host.rs`), `src/format.rs`, `ui/data.slint`; Kotlin `bridge/SlintHost.kt` | done | State projection + JNI dispatch (`slintCall` / `nativeReply`) |
 | 3 | BoxStrings.kt | `src/i18n.rs` | done | 711 zh strings |
 | 4 | MainActivity.kt | Kotlin `bridge/BoxActivity.kt` (GameActivity, `lib_name=fkui`) | kept | Entry Activity stays Kotlin |
 | 5 | ShareActivity.kt | Kotlin `ShareActivity : BoxActivity` + `src/pages/tools.rs::open_share` (opened from `profiles.rs` intent handling) | done | ACTION_SEND / SEND_MULTIPLE → Taildrop share page |
@@ -102,16 +102,16 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   stack (TextRunShaper, API 31+) which files it draws sans-serif, Chinese and monospace with and
   writes `files/fkui-fonts.json`; `src/fonts.rs` registers them memory-mapped as Slint's
   sans-serif / system-ui / monospace families. Below API 31 fontique's /system/fonts defaults apply.
-- JetBrains Mono is no longer bundled (neither in `ui-slint/ui/fonts` nor `res/font`); code and
+- JetBrains Mono is no longer bundled (neither in `crates/client-ui/ui/fonts` nor `res/font`); code and
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
 - Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).
   The UI does not use 1.19's `backdrop-blur` (tools/verify_newui.py forbids it). Edition /
   project-file support is not adopted (the crate keeps the default edition).
-- `ui-slint/vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
+- `vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
   the purge hook. The font-data patch of the 1.18.1 copy is retired: upstream 1.19 builds typefaces
   from the font blob without copying it (`Data::new_with_owner`).
-- `ui-slint/vendor/i-slint-backend-android-activity` (1.19.0 + FKBOX-PATCH.md, rebased by a
+- `vendor/i-slint-backend-android-activity` (1.19.0 + FKBOX-PATCH.md, rebased by a
   three-way merge; the Java helper hunk re-applied by hand to 1.19's rewritten helper): text is edited
   in the app's own EditText (`src/native_ime.rs`, `bridge/NativeEditor.kt`), so the GameActivity
   `input_method_request` is empty; text that GameActivity's own input connection still reports is
@@ -120,7 +120,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   `show_keyboard` asks for it; plus the touch observer and the Back release (table below).
   `BoxActivity.dispatchKeyEvent` orders the editable's selection and drops a key that still throws
   IndexOutOfBoundsException.
-- `ui-slint/vendor/i-slint-core` (1.19.0 + FKBOX-PATCH.md): `SwipeGestureHandler` forwards the press
+- `vendor/i-slint-core` (1.19.0 + FKBOX-PATCH.md): `SwipeGestureHandler` forwards the press
   at once instead of delaying it, so a fast flick reaches the home pages' `Flickable` and scrolls (upstream the
   held press was dropped when the pager locked out, and the list stayed still).
 - Host screenshot harness: `cargo build --features shot --example shot` (software renderer,
@@ -154,7 +154,7 @@ release, so no newer release could replace a patch yet. Kinds:
 
 Next upgrade: master changed the Android backend after 1.19.0 (NativeActivity IME client tracking,
 wgpu fallback, a much larger Java helper diff), so A1-A6 need a fresh three-way merge. None of those
-changes fixes an FK-box hunk. `ui-slint/Cargo.toml`'s `[patch.crates-io]` comment still describes
+changes fixes an FK-box hunk. `crates/client-ui/Cargo.toml`'s `[patch.crates-io]` comment still describes
 retired patches (font data, UTF-16 state exchange, echo suppression, explicit keyboard requests).
 
 ## Layout checks (screenshot harness, 2026-11-13)

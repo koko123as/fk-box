@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Count the DNS messages sing-box's DNS router answers (libbox/dns/), so the
+"""Count the DNS messages sing-box's DNS router answers (apps/android/core/dns/), so the
 dashboard can show DNS queries that the core resolves itself (hijack-dns)
 instead of only those that became connections."""
 import shutil
@@ -11,7 +11,7 @@ core = Path(sys.argv[1])
 target = core / "dns/ui_query_count.go"
 if target.exists():
     sys.exit("patch_dns_count: overlay already exists; use a clean matching core checkout")
-shutil.copyfile(ROOT / "libbox/dns/ui_query_count.go", target)
+shutil.copyfile(ROOT / "apps/android/core/dns/ui_query_count.go", target)
 
 path = core / "dns/router.go"
 text = path.read_text()

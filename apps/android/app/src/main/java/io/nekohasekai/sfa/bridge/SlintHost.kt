@@ -4,7 +4,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * JNI entry points of the Rust + Slint UI (ui-slint, libfkui.so). Rust calls
+ * JNI entry points of the Rust + Slint UI (apps/android/native, libfkui.so). Rust calls
  * [BoxActivity.slintCall]; results and BoxBridge events come back here as
  * `{"v": value}` JSON.
  */

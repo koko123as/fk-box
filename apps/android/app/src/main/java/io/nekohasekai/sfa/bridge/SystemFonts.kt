@@ -13,7 +13,7 @@ import java.util.Locale
 
 /**
  * The font files Android itself draws the UI text with, for the Slint UI
- * (ui-slint/src/fonts.rs): the default sans-serif face (a vendor system font
+ * (crates/client-ui/src/fonts.rs): the default sans-serif face (a vendor system font
  * such as Flyme's included), the face Chinese text falls back to, and the
  * monospace face. Shaping a sample with each typeface reports the exact file
  * and collection index of every glyph (TextRunShaper, API 31+). Written to

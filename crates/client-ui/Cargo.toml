@@ -1,16 +1,18 @@
 [package]
-name = "fkui"
+# The gettext domain of the bundled translations is the package name
+# (i18n/zh/LC_MESSAGES/fkbox-client-ui.po).
+name = "fkbox-client-ui"
 version = "0.2.0"
 edition = "2021"
 publish = false
 license = "GPL-3.0-or-later"
-description = "FK-box user interface in Rust + Slint (slint-ui branch); the Go cores and the Kotlin service layer are reused through JNI."
+description = "FK-box user interface in Rust + Slint: pages, i18n and theme, shared by the platform shells (apps/android/native builds libfkui.so from it)."
 
 [lib]
-crate-type = ["cdylib", "rlib"]
 path = "src/lib.rs"
 
 [dependencies]
+fkbox-client-core = { path = "../client-core" }
 # No default backends: on Android the platform is the GameActivity backend below.
 slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
 serde_json = { version = "1", features = ["preserve_order"] }
@@ -38,11 +40,9 @@ shot-skia = ["shot", "dep:i-slint-renderer-skia"]
 name = "shot"
 required-features = ["shot"]
 
+# The Android backend, JNI and logcat setup live in apps/android/native.
 [target.'cfg(target_os = "android")'.dependencies]
-i-slint-backend-android-activity = { version = "=1.19.0", features = ["aa-06", "game-activity"] }
-jni = "0.22"
 log = "0.4"
-android_logger = "0.15"
 # The Skia renderer the backend draws with (vendored, see [patch.crates-io]):
 # its FK-box purge hook releases caches when an image-heavy page closes.
 i-slint-renderer-skia = { version = "=1.19.0", default-features = false }
@@ -56,27 +56,3 @@ i-slint-renderer-skia = { version = "=1.19.0", default-features = false, optiona
 
 [build-dependencies]
 slint-build = "=1.19.0"
-
-[profile.release]
-opt-level = "s"
-lto = true
-codegen-units = 1
-strip = true
-panic = "unwind"
-
-# FK-box patches to Slint's Skia renderer (the Android renderer), see
-# vendor/i-slint-renderer-skia/FKBOX-PATCH.md: font data shared and mapped
-# instead of copied per face and weight, and a 32 MB GPU resource budget.
-# The Android backend is vendored too (vendor/i-slint-backend-android-activity/
-# FKBOX-PATCH.md): GameTextInput text state in UTF-16 with an ordered
-# selection, no IME restart on echoes, explicit keyboard requests, the touch
-# observer and the Back release. i-slint-core is vendored for one change
-# (vendor/i-slint-core/FKBOX-PATCH.md): SwipeGestureHandler forwards a press
-# at once, so a fast flick reaches the page's Flickable and scrolls.
-[workspace]
-exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity", "vendor/i-slint-core"]
-
-[patch.crates-io]
-i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
-i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
-i-slint-core = { path = "vendor/i-slint-core" }

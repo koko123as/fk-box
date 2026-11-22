@@ -5,7 +5,7 @@ use std::cell::Cell;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 
-const ZH_PO: &str = include_str!("../i18n/zh/LC_MESSAGES/fkui.po");
+const ZH_PO: &str = include_str!("../i18n/zh/LC_MESSAGES/fkbox-client-ui.po");
 
 thread_local! {
     static CHINESE: Cell<bool> = const { Cell::new(false) };
@@ -35,7 +35,7 @@ fn unquote(line: &str) -> String {
     out
 }
 
-/// Single-line msgid/msgstr pairs, as i18n/zh/LC_MESSAGES/fkui.po keeps them.
+/// Single-line msgid/msgstr pairs, as i18n/zh/LC_MESSAGES/fkbox-client-ui.po keeps them.
 pub fn parse_po(text: &str) -> HashMap<String, String> {
     let mut map = HashMap::new();
     let mut id: Option<String> = None;

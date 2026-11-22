@@ -81,7 +81,7 @@ def main():
         for line in Path('version.properties').read_text().splitlines()
         if line.strip() and not line.lstrip().startswith('#') and '=' in line
     )
-    apks = list(Path('app/build/outputs/apk/other/release').glob('*.apk'))
+    apks = list(Path('apps/android/app/build/outputs/apk/other/release').glob('*.apk'))
     expected_name = f"fk-box-{properties['VERSION_NAME']}-arm64-v8a.apk"
     if len(apks) != 1 or apks[0].name != expected_name:
         raise SystemExit(f'Expected exactly one {expected_name}, found: {apks}')
@@ -91,15 +91,15 @@ def main():
                 if name.startswith('lib/') and name.endswith('.so')}
         if any(name.endswith('/libbbox_capture.so') for name in names):
             raise SystemExit('Retired capture collector was packaged')
-        for source in Path('app/src/main/assets/mitm-ca').rglob('*'):
+        for source in Path('apps/android/app/src/main/assets/mitm-ca').rglob('*'):
             if not source.is_file():
                 continue
-            packaged = 'assets/' + source.relative_to('app/src/main/assets').as_posix()
+            packaged = 'assets/' + source.relative_to('apps/android/app/src/main/assets').as_posix()
             if packaged not in names or apk.read(packaged) != source.read_bytes():
                 raise SystemExit(f'Missing or changed MITM module asset: {packaged}')
         pins = dict(
             line.strip().split('=', 1)
-            for line in Path('app/geo-assets.properties').read_text().splitlines()
+            for line in Path('apps/android/app/geo-assets.properties').read_text().splitlines()
             if line.strip() and not line.lstrip().startswith('#') and '=' in line
         )
         manifest = json.loads(apk.read('assets/geo/manifest.json')) if 'assets/geo/manifest.json' in names else {}

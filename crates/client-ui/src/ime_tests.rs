@@ -3,7 +3,7 @@
 //! byte offsets against Java's UTF-16 indices with Chinese text and emoji,
 //! compositions, backspace and reversed selections.
 
-#[path = "../vendor/i-slint-backend-android-activity/fkbox_ime.rs"]
+#[path = "../../../vendor/i-slint-backend-android-activity/fkbox_ime.rs"]
 mod fkbox_ime;
 
 use fkbox_ime::*;

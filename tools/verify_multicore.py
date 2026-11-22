@@ -3,7 +3,7 @@
 
 Every method of sing-box's StartedService gRPC server must either be handled
 by libbox's coreStartedService (so it answers sensibly while Xray or mihomo
-runs) or be listed in libbox/core_grpc_passthrough.txt as reviewed: a
+runs) or be listed in apps/android/core/core_grpc_passthrough.txt as reviewed: a
 sing-box-only action the UI does not offer under the other cores. A sing-box
 upgrade that adds a method fails here until someone decides which it is.
 """
@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 GRPC = ROOT / ".core/daemon/started_service_grpc.pb.go"
-ALLOW = ROOT / "libbox/core_grpc_passthrough.txt"
+ALLOW = ROOT / "apps/android/core/core_grpc_passthrough.txt"
 
 source = GRPC.read_text()
 block = re.search(r"type StartedServiceServer interface \{(.*?)\n\}", source, re.S)

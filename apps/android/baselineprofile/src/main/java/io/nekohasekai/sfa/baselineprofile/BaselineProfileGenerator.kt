@@ -13,17 +13,17 @@ import org.junit.runner.RunWith
  * Collects the app's Baseline Profile: cold start, then Dashboard → Proxies →
  * Profiles → Tools → Dashboard, the path most sessions take. Run on an ARM64
  * device or emulator image (libbox is arm64-only) with API 33+, then copy the
- * result into app/src/main/baseline-prof.txt:
+ * result into apps/android/app/src/main/baseline-prof.txt:
  *
  *   ./gradlew -PbaselineProfile=true -Parm64Only=true \
  *     :baselineprofile:connectedOtherBenchmarkAndroidTest
- *   # baselineprofile/build/outputs/connected_android_test_additional_output/
+ *   # apps/android/baselineprofile/build/outputs/connected_android_test_additional_output/
  *   #   …/BaselineProfileGenerator_generate-baseline-prof.txt
  *
  * The Rust + Slint UI draws its own widgets and has no accessibility tree, so
  * UIAutomator cannot find "Dashboard" or "Tools" by text. The destinations are
  * tapped by position instead: on a phone (narrower than 600 dp) the floating
- * navigation bar (ui-slint/ui/globals.slint: 64 dp high, 12 dp margin, above the
+ * navigation bar (crates/client-ui/ui/globals.slint: 64 dp high, 12 dp margin, above the
  * system navigation bar) holds four evenly spaced destinations; on wider
  * windows the rail (88 dp wide) lists them from the top.
  */

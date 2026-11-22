@@ -1,6 +1,6 @@
 # fk-box 项目约束
 
-本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Rust + Slint 的 Material Design 3 界面（`ui-slint/`，按 [Material Design 3 UI skill](https://github.com/skydashnet/material-design-3-ui-skill) 重写，页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
+本文件适用于整个仓库（[koko123as/fk-box](https://github.com/koko123as/fk-box)），记录开发和维护约束。项目以 sing-box-for-android 为 Android 后端，以 Rust + Slint 的 Material Design 3 界面（`crates/client-ui/`，按 [Material Design 3 UI skill](https://github.com/skydashnet/material-design-3-ui-skill) 重写，页面布局参考 FlClash）构建界面；三个上游边界分别维护，不能将界面参考版本当作核心或应用的比较基线。
 
 ## 文档职责
 
@@ -24,9 +24,27 @@
 - 接口、构建方式和兼容性判断应有当前源码或对应版本的官方文档依据，不凭空增加接口，不将旧验证结果当作当前版本结果。
 - 不提交密钥、密码、`local.properties`、`.local-signing/`、`.core/`、SDK、AAR 或生成的 APK。发布沿用既有签名密钥，不重新生成替代密钥。
 
+## 目录结构
+
+目录按 [Clash-of-Rust](https://github.com/Fu021/Clash-of-Rust) 的分层组织（仅参考结构，不复制其代码）：`crates/` 放平台无关的 Rust crate，`apps/<平台>/` 放各平台外壳。
+
+| 路径 | 内容 |
+| --- | --- |
+| `Cargo.toml`、`Cargo.lock` | Rust workspace（成员见下），`[profile.release]` 与 `[patch.crates-io]` 在此 |
+| `crates/client-ui/` | `fkbox-client-ui`：Slint 页面、`ui/*.slint`、`i18n/`、主题与页面逻辑（平台无关部分） |
+| `crates/client-core/` | `fkbox-client-core`：平台无关业务层；第一阶段仅含界面所需的 `Host` trait |
+| `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、JNI（`host.rs`）与 logcat 初始化 |
+| `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
+| `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |
+| `apps/android/core/` | libbox 的 Go 多内核适配与补丁（由 `.github/actions/setup-core` 和 `tools/patch_*.py` 叠加到 sing-box 源码） |
+| `vendor/` | 带 fk-box 补丁的 Slint crate（`FKBOX-PATCH.md`），经根 `Cargo.toml` 的 `[patch.crates-io]` 使用 |
+| `tools/`、`config/`、`examples/`、`licenses/` | 脚本、detekt 配置、示例与许可 |
+
+Gradle 根（`settings.gradle.kts`、`build.gradle.kts`、`gradle/`、`gradlew`、`gradle.properties`）保留在仓库根目录，模块目录通过 `projectDir` 指向 `apps/android/`，因此 CI 仍在根目录运行 `./gradlew :app:...`，任务名不变。
+
 ## 架构与兼容性约束
 
-1. 界面由 Rust + Slint 提供，位于 `ui-slint/`（`ui/*.slint` 布局、`src/` 状态与页面逻辑，编为 `libfkui.so`），页面布局按 FlClash 翻译，风格为 Material Design 3（语义颜色角色、M3 字阶、形状与间距令牌、状态层、48 dp 触控目标、标准 M3 组件）与 Material 图标；手机端为悬浮的不透明导航栏（surface-container 加阴影，内容从其下滚过），较宽窗口为 M3 导航侧栏；浮在滚动内容之上的表面（悬浮导航栏、滚动后的顶部应用栏、菜单、对话框、行页面底部提示条）一律是 `ui/kit.slint` 的不透明 `Surface`（M3 surface-container 色调角色，需要时加 `Theme.shadow-*` 阴影），禁止 `backdrop-blur`、半透明“玻璃”表面、液态玻璃着色器、其他模糊滤镜或装饰形状——模糊会在每帧滚动时重读并过滤下方内容；阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条）（约定见 [flclash.md](flclash.md#material-design-3-界面约定)，由 `tools/verify_newui.py` 检查）。动效参考 FlClash 的动效与交互手感用 Slint 实现（状态过渡、可点按表面的水波纹、淡入切换/滑动分页、代理组展开、列表项增删、底部表单拖动关闭、数值补间、仪表盘编辑晃动与拖动让位、容器变换），时长与曲线一律取 `ui/theme.slint` 的 motion 令牌，所有时长乘以宿主传入的系统动画时长缩放（`ANIMATOR_DURATION_SCALE`，为 0 时关闭动画）（见 [flclash.md](flclash.md#动效)）。Slint 为 1.19，Skia 渲染器与 Android 后端以带 fk-box 补丁的 vendored 副本使用（[slint-manifest.md](slint-manifest.md#fonts-and-rendering-slint-ui-only)）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
+1. 界面由 Rust + Slint 提供，位于 `crates/client-ui/`（`ui/*.slint` 布局、`src/` 状态与页面逻辑），由 `apps/android/native` 编为 `libfkui.so`，页面布局按 FlClash 翻译，风格为 Material Design 3（语义颜色角色、M3 字阶、形状与间距令牌、状态层、48 dp 触控目标、标准 M3 组件）与 Material 图标；手机端为悬浮的不透明导航栏（surface-container 加阴影，内容从其下滚过），较宽窗口为 M3 导航侧栏；浮在滚动内容之上的表面（悬浮导航栏、滚动后的顶部应用栏、菜单、对话框、行页面底部提示条）一律是 `ui/kit.slint` 的不透明 `Surface`（M3 surface-container 色调角色，需要时加 `Theme.shadow-*` 阴影），禁止 `backdrop-blur`、半透明“玻璃”表面、液态玻璃着色器、其他模糊滤镜或装饰形状——模糊会在每帧滚动时重读并过滤下方内容；阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条）（约定见 [flclash.md](flclash.md#material-design-3-界面约定)，由 `tools/verify_newui.py` 检查）。动效参考 FlClash 的动效与交互手感用 Slint 实现（状态过渡、可点按表面的水波纹、淡入切换/滑动分页、代理组展开、列表项增删、底部表单拖动关闭、数值补间、仪表盘编辑晃动与拖动让位、容器变换），时长与曲线一律取 `ui/theme.slint` 的 motion 令牌，所有时长乘以宿主传入的系统动画时长缩放（`ANIMATOR_DURATION_SCALE`，为 0 时关闭动画）（见 [flclash.md](flclash.md#动效)）。Slint 为 1.19，Skia 渲染器与 Android 后端以带 fk-box 补丁的 vendored 副本使用（[slint-manifest.md](slint-manifest.md#fonts-and-rendering-slint-ui-only)）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
 2. Room 与 libbox 是配置、服务和会话数据的来源。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
@@ -37,7 +55,7 @@
 ## 上游同步与验证
 
 - Android 上游比较基线维护在 [app.md](app.md)，核心标签由 [version.properties](version.properties) 决定，FlClash 布局参考提交维护在 [flclash.md](flclash.md) 和来源清单。更新其中一个上游时，不自动改变另两个基线。
-- 更新核心时核对 legacy 补丁、所有 `libbox/ui_*.go` 扩展及生成的绑定，并同步检查 Release、源码验证和 Android smoke 工作流。官方原版 AAR 缺少 fk-box（继承自 B-box）新增绑定，不能仅凭版本相同直接替换。
+- 更新核心时核对 legacy 补丁、所有 `apps/android/core/ui_*.go` 扩展及生成的绑定，并同步检查 Release、源码验证和 Android smoke 工作流。官方原版 AAR 缺少 fk-box（继承自 B-box）新增绑定，不能仅凭版本相同直接替换。
 - 更新 FlClash 布局参考时核对页面布局、信息组织及动效时序（[flclash.md](flclash.md#动效)），不迁入其控件、字形或特效；同步更新来源清单与许可。
 - 按受影响范围验证。本机可运行 `git diff --check` 和 `python3 tools/verify_newui.py`；文档变更还应检查链接和旧引用。后者仅检查源码约束，不证明运行行为。
 - [.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及 Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。

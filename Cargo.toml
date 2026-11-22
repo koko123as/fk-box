@@ -1,0 +1,32 @@
+# FK-box Rust workspace. Layout follows crates/ (platform-neutral) and
+# apps/<platform>/ (platform shells):
+#   crates/client-ui      Slint pages, i18n and theme (fkbox-client-ui)
+#   crates/client-core    platform-neutral business layer (fkbox-client-core)
+#   apps/android/native   Android cdylib, libfkui.so (fkbox-android)
+[workspace]
+members = ["crates/client-core", "crates/client-ui", "apps/android/native"]
+# The vendored Slint crates are patched in below, not built as members.
+exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity", "vendor/i-slint-core"]
+# Same feature resolver the single edition-2021 crate used before.
+resolver = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"
+
+# FK-box patches to Slint's Skia renderer (the Android renderer), see
+# vendor/i-slint-renderer-skia/FKBOX-PATCH.md: font data shared and mapped
+# instead of copied per face and weight, and a 32 MB GPU resource budget.
+# The Android backend is vendored too (vendor/i-slint-backend-android-activity/
+# FKBOX-PATCH.md): GameTextInput text state in UTF-16 with an ordered
+# selection, no IME restart on echoes, explicit keyboard requests, the touch
+# observer and the Back release. i-slint-core is vendored for one change
+# (vendor/i-slint-core/FKBOX-PATCH.md): SwipeGestureHandler forwards a press
+# at once, so a fast flick reaches the page's Flickable and scrolls.
+[patch.crates-io]
+i-slint-renderer-skia = { path = "vendor/i-slint-renderer-skia" }
+i-slint-backend-android-activity = { path = "vendor/i-slint-backend-android-activity" }
+i-slint-core = { path = "vendor/i-slint-core" }

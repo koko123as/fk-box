@@ -308,7 +308,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     /**
      * The system's animator duration scale (developer options, or 0 with
      * accessibility's Remove animations). The UI multiplies all of its motion
-     * by it (ui-slint theme.slint `motion-scale`); Slint's own reduced-motion
+     * by it (crates/client-ui theme.slint `motion-scale`); Slint's own reduced-motion
      * query is not used.
      */
     private fun animatorScale(): Float = try {
@@ -733,5 +733,5 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 }
 
-/** Bridge calls NativeUi answers (ui-slint/src/nav.rs). */
+/** Bridge calls NativeUi answers (crates/client-ui/src/nav.rs). */
 private val NATIVE_UI = setOf("menuShow", "menuHide", "dialogShow", "dialogHide", "dialogError", "toast", "textViewer")

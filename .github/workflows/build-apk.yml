@@ -1,6 +1,6 @@
 name: Build APK on push (arm64-v8a)
 
-# Builds every push to main: the Rust + Slint UI (ui-slint/, libfkui.so) over
+# Builds every push to main: the Rust + Slint UI (crates/client-ui/, libfkui.so) over
 # the Kotlin service layer and the patched core, signed with the release key
 # and uploaded as a workflow artifact only. This workflow never creates tags or
 # GitHub Releases.
@@ -50,30 +50,31 @@ jobs:
           # Write the Gradle cache from main and the ui/* branches (setup-gradle
           # only writes from the default branch otherwise); others only read.
           cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/ui/') }}
-      # app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
+      # apps/android/app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
       - name: Cache bundled geo data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
           path: .gradle/geo-assets
-          key: geo-assets-${{ hashFiles('app/geo-assets.properties') }}
-      # The UI is Rust + Slint (ui-slint/), built into libfkui.so by cargo-ndk.
+          key: geo-assets-${{ hashFiles('apps/android/app/geo-assets.properties') }}
+      # The UI is Rust + Slint (crates/client-ui/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
         run: |
           rustup toolchain install stable --profile minimal --target aarch64-linux-android
           rustup default stable
 
       # Restored before cargo-ndk is installed, so ~/.cargo/bin (cargo-ndk),
-      # the registry/git sources and ui-slint/target come back together.
+      # the registry/git sources and target/ come back together.
       # skia-bindings keeps the downloaded Skia prebuilt archive
       # (OUT_DIR/.cache) and its unpacked libraries in its OUT_DIR under
-      # ui-slint/target/<triple>/release/build/skia-bindings-*/, which this
+      # target/<triple>/release/build/skia-bindings-*/, which this
       # cache keeps (dependency build outputs survive its cleanup), so a hit
       # neither downloads nor rebuilds Skia. The key follows Cargo.lock (the
       # skia-bindings version) and the rustc version.
       - name: Cache Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
         with:
-          workspaces: ui-slint
+          # The Cargo workspace at the repository root (target/).
+          workspaces: .
 
       - name: Install cargo-ndk
         run: |
@@ -82,11 +83,12 @@ jobs:
           echo "ANDROID_JAR=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
           echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
 
+      # Every workspace crate's unit tests (crates/client-ui's are the UI tests;
+      # apps/android/native is Android-only and has none on the host).
       - name: Rust UI unit tests (host)
-        working-directory: ui-slint
         run: |
           sudo apt-get update -qq && sudo apt-get install -y -qq libfontconfig1-dev
-          cargo test --lib
+          cargo test --workspace --lib
 
       - name: Run JVM unit tests
         run: |
@@ -102,8 +104,8 @@ jobs:
         with:
           name: ui-unit-tests
           path: |
-            app/build/reports/tests/testOtherDebugUnitTest/
-            app/build/test-results/testOtherDebugUnitTest/*.xml
+            apps/android/app/build/reports/tests/testOtherDebugUnitTest/
+            apps/android/app/build/test-results/testOtherDebugUnitTest/*.xml
           if-no-files-found: ignore
           retention-days: 14
 
@@ -143,13 +145,13 @@ jobs:
       - name: Verify APK identity, architecture and signature
         run: |
           python3 tools/verify_release.py
-          unzip -l app/build/outputs/apk/other/release/*-arm64-v8a.apk | grep -E 'lib/arm64-v8a/lib(fkui|box)\.so'
+          unzip -l apps/android/app/build/outputs/apk/other/release/*-arm64-v8a.apk | grep -E 'lib/arm64-v8a/lib(fkui|box)\.so'
 
       - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: fk-box-${{ steps.core.outputs.version }}-${{ github.sha }}-arm64-v8a-release
-          path: app/build/outputs/apk/other/release/*-arm64-v8a.apk
+          path: apps/android/app/build/outputs/apk/other/release/*-arm64-v8a.apk
           if-no-files-found: error
           compression-level: 0
           retention-days: 30

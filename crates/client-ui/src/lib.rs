@@ -1,6 +1,8 @@
 //! FK-box UI in Rust + Slint. The Go cores (libbox) and the Kotlin service and
 //! bridge layer are unchanged; this library draws the pages (a code-level port
 //! of the Jetpack Compose UI, compose/*) and drives them from BoxBridge events.
+//! A platform shell (apps/android/native, libfkui.so) runs it through
+//! [platform].
 
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
@@ -26,12 +28,24 @@ mod theme_apply;
 #[cfg(all(not(target_os = "android"), feature = "shot"))]
 pub mod shot;
 
+/// What a platform shell calls into the UI: register its host, start the
+/// event loop, and hand over host replies and events, touches and fonts.
+pub mod platform {
+    pub use crate::app::{on_event, on_reply, run};
+    #[cfg(target_os = "android")]
+    pub use crate::fonts::install as install_fonts;
+    pub use crate::gesture::{touch, Phase};
+    pub use crate::guarded;
+    pub use crate::host::set_host;
+    pub use crate::i18n::tr;
+}
+
 /// Runs one host event, reply or deferred callback. A panic in it is logged
 /// instead of unwinding into the event loop, where android-activity would
 /// close the activity. Only the handler is skipped: the page state it touches
 /// is held in RefCells that are released on unwind, and the next event or
 /// refresh rebuilds what the handler would have shown.
-pub(crate) fn guarded(kind: &str, handler: impl FnOnce()) {
+pub fn guarded(kind: &str, handler: impl FnOnce()) {
     if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(handler)) {
         let message = panic
             .downcast_ref::<&str>()
@@ -48,55 +62,4 @@ pub(crate) fn guarded(kind: &str, handler: impl FnOnce()) {
 /// Runs `handler` on the next event loop turn, under [`guarded`].
 pub(crate) fn defer(kind: &'static str, handler: impl FnOnce() + 'static) {
     slint::Timer::single_shot(std::time::Duration::ZERO, move || guarded(kind, handler));
-}
-
-#[cfg(target_os = "android")]
-#[no_mangle]
-fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
-    android_logger::init_once(android_logger::Config::default().with_tag("FKui").with_max_level(log::LevelFilter::Info));
-    let files_dir = android.internal_data_path();
-    install_panic_hook(files_dir.clone());
-    if let Err(error) = host::init(android.vm_as_ptr(), android.activity_as_ptr()) {
-        log::error!("host init failed: {error}");
-        return;
-    }
-    let platform = i_slint_backend_android_activity::AndroidPlatform::new(android);
-    if let Err(error) = slint::platform::set_platform(Box::new(platform)) {
-        log::error!("set_platform failed: {error}");
-        return;
-    }
-    // Decides each touch's axis before Slint's swipe handler sees it.
-    i_slint_backend_android_activity::fkbox_set_touch_observer(|phase, x, y| {
-        let phase = match phase {
-            0 => gesture::Phase::Down,
-            1 => gesture::Phase::Move,
-            2 => gesture::Phase::Up,
-            _ => gesture::Phase::Cancel,
-        };
-        gesture::touch(phase, x, y);
-    });
-    fonts::install(files_dir);
-    if let Err(error) = app::run() {
-        log::error!("UI stopped: {error}");
-    }
-    host::release();
-}
-
-/// Every UI panic goes to logcat (tag FKui) with its backtrace and to
-/// `files/fkui-panic.txt`, the latest one, which the crash report export adds
-/// as plain text (CrashReportManager.createZipArchive). Panics that a guard
-/// catches are written too, so the file may describe one the app survived.
-#[cfg(target_os = "android")]
-fn install_panic_hook(files_dir: Option<std::path::PathBuf>) {
-    let path = files_dir.map(|d| d.join("fkui-panic.txt"));
-    std::panic::set_hook(Box::new(move |info| {
-        let thread = std::thread::current().name().unwrap_or("unnamed").to_string();
-        let seconds = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-        let backtrace = std::backtrace::Backtrace::force_capture();
-        let text = format!("FKui panic (unix time {seconds}) on thread '{thread}':\n{info}\n\nbacktrace:\n{backtrace}\n");
-        log::error!("{text}");
-        if let Some(path) = &path {
-            let _ = std::fs::write(path, &text);
-        }
-    }));
 }
