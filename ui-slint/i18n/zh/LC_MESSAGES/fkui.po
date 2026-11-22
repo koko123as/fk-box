@@ -34,9 +34,6 @@ msgstr "添加"
 msgid "Add a rule, a preset, or copy the rules of another core from the menu."
 msgstr "添加规则或预设，或从菜单复制其他内核的规则。"
 
-msgid "Add at least one domain, IP or geo entry"
-msgstr "请至少添加一个域名、IP 或 geo 条目"
-
 msgid "Add captured HTTPS domains"
 msgstr "从记录添加 HTTPS 域名"
 
