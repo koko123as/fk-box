@@ -28,6 +28,9 @@
 //!   (requests and password encryption by the platform).
 //! - [`updates`]: the update check (GitHub release metadata, version codes).
 //! - [`terminal`]: the terminal (Ghostty) settings.
+//! - [`profiles`]: the profile form's save, the import of a split JSON
+//!   array as several profiles, and deleting a profile (targeted column
+//!   writes; applying to the service stays with the platform).
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
@@ -43,6 +46,7 @@ pub mod legacy;
 mod parcel;
 pub mod preferences;
 pub mod profile_array;
+pub mod profiles;
 pub mod routing;
 pub mod service_settings;
 pub mod storage;

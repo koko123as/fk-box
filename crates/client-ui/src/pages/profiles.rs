@@ -228,12 +228,22 @@ fn update(id: i64, then: impl FnOnce() + 'static) {
     });
 }
 
-/// updateAll: native profile writes share a mutex; updates run one by one.
+/// updateAll: the profiles client-core's `update_all` names, one by one
+/// (native profile writes share a mutex).
 fn update_all() {
     if local(|l| l.updating_all || !l.updating.is_empty()) {
         return;
     }
-    let ids: Vec<i64> = data(|d| d.profiles.iter().map(obj).filter(is_remote).map(|p| id_of(&p)).collect());
+    // The client store decides what "update all" covers; without one (the
+    // screenshot harness) the rows the host sent.
+    let ids: Vec<i64> = match crate::store::get().map(|store| crate::store::update_all(&store)) {
+        Some(Ok(ids)) => ids,
+        Some(Err(error)) => {
+            app::report(&error);
+            return;
+        }
+        None => data(|d| d.profiles.iter().map(obj).filter(is_remote).map(|p| id_of(&p)).collect()),
+    };
     local(|l| l.updating_all = true);
     mark(Mark::PROFILES);
     fn next(mut ids: Vec<i64>) {

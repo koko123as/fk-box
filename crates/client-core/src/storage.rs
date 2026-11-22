@@ -272,6 +272,24 @@ pub struct ContentState {
     pub metadata: Metadata,
 }
 
+/// The columns a profile form edits: name, core, type, subscription URL,
+/// automatic update switch and interval, and whether the user chose the
+/// interval; with `metadata`, also the subscription traffic, expiry and
+/// website (an edit that drops or changes the URL clears them). Never the
+/// order, so an edit cannot undo a reorder made meanwhile.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct FormColumns {
+    pub name: String,
+    pub core: String,
+    pub kind: i64,
+    pub remote_url: String,
+    pub auto_update: bool,
+    pub auto_update_interval: i32,
+    pub interval_user_set: bool,
+    /// The interval inside is ignored (`auto_update_interval` is written).
+    pub metadata: Option<Metadata>,
+}
+
 const PROFILE_COLUMNS: &str = "id, user_order, name, icon, path, kind, remote_url, last_updated, auto_update, auto_update_interval, core, \
      upload, download, total, expire, web_page_url, interval_user_set, resolved_core, resolved_stamp";
 
@@ -570,6 +588,75 @@ impl Store {
     /// the profile no longer exists.
     pub fn restore_content_state(&self, id: i64, state: &ContentState) -> Result<bool> {
         Ok(write_content_state(&self.conn(), id, state)? == 1)
+    }
+
+    /// The columns a profile form edits ([`FormColumns`]), None when the
+    /// profile does not exist.
+    pub fn form_columns(&self, id: i64) -> Result<Option<FormColumns>> {
+        let conn = self.conn();
+        Ok(conn
+            .query_row(
+                "SELECT name, core, kind, remote_url, auto_update, auto_update_interval, interval_user_set, \
+                 upload, download, total, expire, web_page_url FROM profiles WHERE id = ?1",
+                [id],
+                |r| {
+                    Ok(FormColumns {
+                        name: r.get(0)?,
+                        core: r.get(1)?,
+                        kind: r.get(2)?,
+                        remote_url: r.get(3)?,
+                        auto_update: r.get(4)?,
+                        auto_update_interval: r.get(5)?,
+                        interval_user_set: r.get(6)?,
+                        metadata: Some(Metadata {
+                            upload: r.get(7)?,
+                            download: r.get(8)?,
+                            total: r.get(9)?,
+                            expire: r.get(10)?,
+                            web_page_url: r.get(11)?,
+                            auto_update_interval: r.get(5)?,
+                        }),
+                    })
+                },
+            )
+            .optional()?)
+    }
+
+    /// Writes the columns a profile form edits, and nothing else: the order,
+    /// the file path, the update time and the resolved core stay as they
+    /// are. The subscription metadata is written only when `columns`
+    /// carries it. False when the profile no longer exists.
+    pub fn write_form_columns(&self, id: i64, columns: &FormColumns) -> Result<bool> {
+        if !CORES.contains(&columns.core.as_str()) {
+            return Err(Error(format!("Unknown core: {}", columns.core)));
+        }
+        if columns.kind != 0 && columns.kind != 1 {
+            return Err(Error(format!("Invalid profile type: {}", columns.kind)));
+        }
+        let conn = self.conn();
+        let changed = conn.execute(
+            "UPDATE profiles SET name = ?2, core = ?3, kind = ?4, remote_url = ?5, auto_update = ?6, \
+             auto_update_interval = ?7, interval_user_set = ?8 WHERE id = ?1",
+            params![
+                id,
+                columns.name,
+                columns.core,
+                columns.kind,
+                columns.remote_url,
+                columns.auto_update,
+                columns.auto_update_interval,
+                columns.interval_user_set
+            ],
+        )?;
+        if changed == 1 {
+            if let Some(m) = &columns.metadata {
+                conn.execute(
+                    "UPDATE profiles SET upload = ?2, download = ?3, total = ?4, expire = ?5, web_page_url = ?6 WHERE id = ?1",
+                    params![id, m.upload, m.download, m.total, m.expire, m.web_page_url],
+                )?;
+            }
+        }
+        Ok(changed == 1)
     }
 
     /// Records the core a profile's content resolved to for the file `stamp`.

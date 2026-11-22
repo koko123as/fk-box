@@ -36,6 +36,12 @@ pub fn profiles(store: &Store) -> Result<Vec<Value>, String> {
     Ok(store.profiles().map_err(|e| e.0)?.iter().map(|p| p.to_wire()).collect())
 }
 
+/// What "update all" updates (client-core `subscription::update_all`): every
+/// remote profile, in list order.
+pub fn update_all(store: &Store) -> Result<Vec<i64>, String> {
+    Ok(fkbox_client_core::subscription::update_all(&store.profiles().map_err(|e| e.0)?))
+}
+
 pub fn preferences(store: &Store) -> Result<Map<String, Value>, String> {
     store.ui_preferences().map_err(|e| e.0)
 }

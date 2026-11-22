@@ -29,15 +29,6 @@ data class SubscriptionInfo(
     }
 }
 
-/** What one subscription fetch returned: the body and its provider headers, already parsed (client-core `Fetch`). */
-@Serializable
-data class SubscriptionFetch(
-    val content: String = "",
-    val info: SubscriptionInfo? = null,
-    val updateIntervalMinutes: Int? = null,
-    val webPageUrl: String = "",
-)
-
 /** The subscription-derived metadata saved on a profile, restorable as one unit (client-core `Metadata`). */
 @Serializable
 data class SubscriptionMetadata(
@@ -59,15 +50,6 @@ data class SubscriptionSchedule(val intervalMinutes: Long, val initialDelaySecon
  * update policy. Only the scheduling itself (WorkManager) stays in Kotlin.
  */
 internal object CoreSubscriptions {
-    /** Fetches [url]; [core] picks the User-Agent so the provider answers in that core's format. Blocks. */
-    fun fetch(url: String, core: String): SubscriptionFetch = CoreStore.decode(
-        SubscriptionFetch.serializer(),
-        CoreStore.callKernel("subscription.fetch") {
-            put("url", url)
-            put("core", core)
-        },
-    )
-
     /** The periodic schedule for automatic updates, null when no profile updates automatically. */
     fun schedule(nowMillis: Long = System.currentTimeMillis()): SubscriptionSchedule? {
         val value = CoreStore.call("subscription.schedule") { put("now", nowMillis) }
@@ -99,20 +81,6 @@ fun TypedProfile.restoreSubscriptionMetadata(metadata: SubscriptionMetadata) {
     webPageUrl = metadata.webPageUrl
     autoUpdateInterval = metadata.autoUpdateInterval
 }
-
-/**
- * The metadata a successful [fetch] leaves on this profile (client-core
- * `Metadata::after`): a fetch without `subscription-userinfo` clears stale
- * traffic/expiry; the provider's interval applies only while the user has not chosen one.
- */
-fun TypedProfile.metadataAfter(fetch: SubscriptionFetch): SubscriptionMetadata = CoreStore.decode(
-    SubscriptionMetadata.serializer(),
-    CoreStore.call("subscription.metadataAfter") {
-        put("interval", autoUpdateInterval)
-        put("intervalUserSet", intervalUserSet)
-        put("fetch", CoreStore.encode(SubscriptionFetch.serializer(), fetch.copy(content = "")))
-    },
-)
 
 val TypedProfile.subscriptionInfo: SubscriptionInfo?
     get() = SubscriptionInfo(upload, download, total, expire).takeUnless { it.isEmpty }

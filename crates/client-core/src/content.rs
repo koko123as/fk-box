@@ -147,7 +147,7 @@ pub fn write_atomic_bytes(path: &Path, content: &[u8]) -> Result<(), String> {
     result.map_err(fail)
 }
 
-fn remove(path: &Path) -> Result<(), String> {
+pub(crate) fn remove(path: &Path) -> Result<(), String> {
     match fs::remove_file(path) {
         Ok(()) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -166,8 +166,19 @@ struct Change {
     state: Option<ContentState>,
 }
 
+/// A saved change the platform may still roll back.
+pub(crate) trait Undo: std::fmt::Debug + Send {
+    fn undo(self: Box<Self>, store: &Store) -> Result<(), String>;
+}
+
+impl Undo for Change {
+    fn undo(self: Box<Self>, store: &Store) -> Result<(), String> {
+        (*self).undo_now(store)
+    }
+}
+
 impl Change {
-    fn undo(self, store: &Store) -> Result<(), String> {
+    fn undo_now(self, store: &Store) -> Result<(), String> {
         let mut errors = Vec::new();
         match self.file {
             Some(Some(previous)) => write_atomic(&self.path, &previous).unwrap_or_else(|e| errors.push(e)),
@@ -194,13 +205,13 @@ impl Change {
 #[derive(Debug, Default)]
 pub struct Pending {
     next: AtomicU64,
-    changes: Mutex<BTreeMap<u64, Change>>,
+    changes: Mutex<BTreeMap<u64, Box<dyn Undo>>>,
 }
 
 const MAX_PENDING: usize = 16;
 
 impl Pending {
-    fn put(&self, change: Change) -> u64 {
+    pub(crate) fn put(&self, change: Box<dyn Undo>) -> u64 {
         let token = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let mut changes = self.changes.lock().unwrap_or_else(|e| e.into_inner());
         while changes.len() >= MAX_PENDING {
@@ -210,7 +221,7 @@ impl Pending {
         token
     }
 
-    fn take(&self, token: u64) -> Option<Change> {
+    pub(crate) fn take(&self, token: u64) -> Option<Box<dyn Undo>> {
         self.changes.lock().unwrap_or_else(|e| e.into_inner()).remove(&token)
     }
 }
@@ -297,14 +308,14 @@ pub fn replace(store: &Store, kernel: &mut dyn Kernel, request: Replace) -> Resu
                 }
             }
             Err(error) => {
-                return Err(match change.undo(store) {
+                return Err(match change.undo_now(store) {
                     Ok(()) => error,
                     Err(undo) => format!("{error} (restoring failed: {undo})"),
                 });
             }
         }
     }
-    let token = (change.file.is_some() || change.state.is_some()).then(|| store.pending.put(change));
+    let token = (change.file.is_some() || change.state.is_some()).then(|| store.pending.put(Box::new(change)));
     Ok(Replaced { changed, apply: changed && request.selected, interval_changed, token })
 }
 
@@ -575,9 +586,9 @@ pub(crate) mod tests {
     #[test]
     fn abandoned_changes_are_dropped_oldest_first() {
         let pending = Pending::default();
-        let first = pending.put(Change { id: 1, path: PathBuf::new(), file: None, state: None });
+        let first = pending.put(Box::new(Change { id: 1, path: PathBuf::new(), file: None, state: None }));
         for _ in 0..MAX_PENDING {
-            pending.put(Change { id: 2, path: PathBuf::new(), file: None, state: None });
+            pending.put(Box::new(Change { id: 2, path: PathBuf::new(), file: None, state: None }));
         }
         assert!(pending.take(first).is_none());
         assert_eq!(pending.changes.lock().unwrap().len(), MAX_PENDING);

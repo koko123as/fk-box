@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
 use crate::service_settings::{self, Written};
-use crate::{backup, geo, routing, terminal, updates, webdav};
+use crate::{backup, geo, profiles, routing, terminal, updates, webdav};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -55,6 +55,10 @@ fn strings(args: &Value, key: &str) -> Result<Vec<String>, String> {
 
 fn text_or<'a>(args: &'a Value, key: &str, default: &'a str) -> &'a str {
     args.get(key).and_then(Value::as_str).unwrap_or(default)
+}
+
+fn form_context(args: &Value) -> Result<profiles::Context, String> {
+    Ok(profiles::Context { configs_dir: text(args, "configsDir")?.into(), now: id(args, "now")? })
 }
 
 fn to_json<T: serde::Serialize>(value: &T) -> Result<Value, String> {
@@ -112,6 +116,21 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
             Value::Null
         }
         "content.revision" => content::revision(text(&args, "content")?).into(),
+        // -- profile form, import and delete (phase 2e) ----------------------
+        "profiles.save" => {
+            let form: profiles::Form = parsed(&args, "profile")?;
+            to_json(&profiles::save(store, kernel()?, form, &form_context(&args)?)?)?
+        }
+        "profiles.saveAll" => {
+            let entries: Vec<profiles::ImportEntry> = parsed(&args, "entries")?;
+            to_json(&profiles::save_all(store, kernel()?, entries, text_or(&args, "core", "auto"), &form_context(&args)?)?)?
+        }
+        "profiles.remove" => to_json(&profiles::delete(store, id(&args, "id")?)?)?,
+        "profiles.finish" => {
+            profiles::finish(store, id(&args, "token")? as u64);
+            Value::Null
+        }
+        "profiles.rollback" => json!({ "written": to_json(&profiles::rollback(store, id(&args, "token")? as u64)?)? }),
         // -- service settings ----------------------------------------------
         "serviceSettings.snapshot" => Value::Object(service_settings::snapshot(store)?),
         "serviceSettings.backup" => Value::Object(service_settings::backup(store)?),
