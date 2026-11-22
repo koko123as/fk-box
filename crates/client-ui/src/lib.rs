@@ -6,6 +6,9 @@
 //! [platform].
 
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
+// Page state is closures over shared cells (`Rc<RefCell<(..)>>`, `Rc<dyn Fn>`);
+// naming each one would not make the pages clearer.
+#![allow(clippy::type_complexity)]
 
 slint::include_modules!();
 

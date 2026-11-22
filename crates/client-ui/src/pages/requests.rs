@@ -624,10 +624,8 @@ fn captured_record(item: &Value, st: &Rc<RefCell<Captured>>) -> Row {
             match tap.as_str() {
                 "l1" if domain => c.filters.add(&CAPTURE_FACETS, "MITM", mitm.clone()),
                 "l2" if !domain => c.filters.add(&CAPTURE_FACETS, "MITM", mitm.clone()),
-                t if (t == "l3" && !domain) || (t == "l2" && domain) => {
-                    if !app_name.is_empty() {
-                        c.filters.add(&CAPTURE_FACETS, "App", app_name.clone());
-                    }
+                t if ((t == "l3" && !domain) || (t == "l2" && domain)) && !app_name.is_empty() => {
+                    c.filters.add(&CAPTURE_FACETS, "App", app_name.clone());
                 }
                 _ => {}
             }

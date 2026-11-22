@@ -137,6 +137,11 @@ pub fn apply() {
     theme.set_motion_scale(MOTION_SCALE.with(|s| s.get()));
 }
 
+/// Whether the dark scheme is showing (for the native pages opened over the UI).
+pub fn is_dark() -> bool {
+    crate::app::window().map(|w| w.global::<Theme>().get_dark()).unwrap_or(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::motion_scale;
@@ -150,9 +155,4 @@ mod tests {
         assert_eq!(motion_scale(100.0), 10.0);
         assert_eq!(motion_scale(f64::NAN), 1.0);
     }
-}
-
-/// Whether the dark scheme is showing (for the native pages opened over the UI).
-pub fn is_dark() -> bool {
-    crate::app::window().map(|w| w.global::<Theme>().get_dark()).unwrap_or(false)
 }

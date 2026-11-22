@@ -504,7 +504,7 @@ fn http_rewrite_page(store: &StoreRef) {
                 .subtitle(&count.to_string()),
             );
         }
-        out.push(Row::open(&tr("MITM certificate"), Some("key"), || crate::pages::tools::open_mitm_certificate()));
+        out.push(Row::open(&tr("MITM certificate"), Some("key"), crate::pages::tools::open_mitm_certificate));
         out.push(Row::gap());
         for (i, (title, key, initial)) in sections.into_iter().enumerate() {
             let a = st.clone();

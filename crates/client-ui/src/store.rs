@@ -14,8 +14,8 @@
 use std::sync::{Arc, OnceLock};
 
 use fkbox_client_core::service_settings::{self, Plan, Written};
-use fkbox_client_core::terminal;
 use fkbox_client_core::storage::Store;
+use fkbox_client_core::terminal;
 use serde_json::{Map, Value};
 
 type Provider = Box<dyn Fn() -> Option<Arc<Store>> + Send + Sync>;
@@ -115,6 +115,23 @@ pub fn write_ip_quality(store: &Store, ip: &str, record: &Value) -> Result<(), S
     fkbox_client_core::ip_quality::write(store, ip, record, crate::format::now_ms())
 }
 
+/// The remote control servers in list order, as the host's former
+/// `remoteServers` rows (id, name, url, secret).
+pub fn remote_servers(store: &Store) -> Result<Vec<Value>, String> {
+    Ok(store
+        .remote_servers()
+        .map_err(|e| e.0)?
+        .into_iter()
+        .map(|s| serde_json::json!({ "id": s.id, "name": s.name, "url": s.url, "secret": s.secret }))
+        .collect())
+}
+
+/// The server form's save (client-core `remote_servers::save`); `id` 0 adds.
+pub fn save_remote_server(store: &Store, id: i64, name: &str, url: &str, secret: &str) -> Result<i64, String> {
+    writable(store)?;
+    fkbox_client_core::remote_servers::save(store, id, name, url, secret)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -169,21 +186,4 @@ mod tests {
         assert!(set_terminal_setting(&store, "fontSize", &json!(12)).is_err());
         store.rollback().unwrap();
     }
-}
-
-/// The remote control servers in list order, as the host's former
-/// `remoteServers` rows (id, name, url, secret).
-pub fn remote_servers(store: &Store) -> Result<Vec<Value>, String> {
-    Ok(store
-        .remote_servers()
-        .map_err(|e| e.0)?
-        .into_iter()
-        .map(|s| serde_json::json!({ "id": s.id, "name": s.name, "url": s.url, "secret": s.secret }))
-        .collect())
-}
-
-/// The server form's save (client-core `remote_servers::save`); `id` 0 adds.
-pub fn save_remote_server(store: &Store, id: i64, name: &str, url: &str, secret: &str) -> Result<i64, String> {
-    writable(store)?;
-    fkbox_client_core::remote_servers::save(store, id, name, url, secret)
 }

@@ -32,7 +32,7 @@
 | --- | --- |
 | `Cargo.toml`、`Cargo.lock` | Rust workspace（成员见下），`[profile.release]` 与 `[patch.crates-io]` 在此 |
 | `crates/client-ui/` | `fkbox-client-ui`：Slint 页面、`ui/*.slint`、`i18n/`、主题与页面逻辑（平台无关部分） |
-| `crates/client-core/` | `fkbox-client-core`：平台无关业务层：界面所需的 `Host` trait、客户端存储（SQLite：服务设置、配置元数据、远程服务器、界面偏好）及其从 Room/SharedPreferences 的一次性导入、订阅（响应头解析、自动更新策略、数组配置命名与跟随、配置内容保存流程，内核相关部分经平台的 `content::Kernel` 调 libbox）；路由规则模型（校验、存储与线格式；按内核编译仍在 libbox）、Geo 资源策略、服务设置快照/校验/写入（Android 副作用留 Kotlin）、`bbox-1` 备份打包/校验/恢复、WebDAV 账号与流程、更新检查、终端设置（HTTP 请求、Keystore 加密与 Ghostty 检查经 `CoreKernel` 回调平台）；第二阶段计划见 [docs/architecture/phase2.md](docs/architecture/phase2.md) |
+| `crates/client-core/` | `fkbox-client-core`：平台无关业务层：界面所需的 `Host` trait、客户端存储（SQLite：服务设置、配置元数据、远程服务器、界面偏好）及其从 Room/SharedPreferences 的一次性导入、订阅（响应头解析、自动更新策略、数组配置命名与跟随、配置内容保存流程，内核相关部分经平台的 `content::Kernel` 调 libbox）；路由规则模型（校验、存储与线格式；按内核编译仍在 libbox）、Geo 资源策略、服务设置快照/校验/写入（Android 副作用留 Kotlin）、`bbox-1` 备份打包/校验/恢复、WebDAV 账号与流程、更新检查、终端设置（HTTP 请求、Keystore 加密与 Ghostty 检查经 `CoreKernel` 回调平台）；第二阶段计划见 [docs/architecture/phase2.md](docs/architecture/phase2.md)，第三阶段见 [docs/architecture/phase3.md](docs/architecture/phase3.md) |
 | `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、界面 JNI（`host.rs`）、客户端存储 JNI（`store.rs`，供 Kotlin `database/CoreStore.kt`，并回调 `database/CoreKernel.kt`）与 logcat 初始化 |
 | `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
 | `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |

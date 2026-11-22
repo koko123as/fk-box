@@ -736,7 +736,7 @@ fn dialog_action(index: i32, text: SharedString) {
         // The last action submits after validation; the first resets or cancels.
         let error = NAV.with(|n| {
             let mut n = n.borrow_mut();
-            let Some(d) = n.dialogs.last_mut() else { return None };
+            let d = n.dialogs.last_mut()?;
             if let DialogKind::Input { validator, touched, .. } = &mut d.kind {
                 *touched = true;
                 if index.checked_add(1) == Some(d.actions.len()) {

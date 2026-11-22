@@ -468,7 +468,7 @@ pub fn project(w: &AppWindow, m: Mark) {
             // Connection statistics: the live count from the connection list
             // while it streams, else the core's status count.
             let stats = &d.connection_stats;
-            let count = |v: Option<&Value>| v.and_then(long).map(|n| format::count(n)).unwrap_or_else(|| "0".into());
+            let count = |v: Option<&Value>| v.and_then(long).map(format::count).unwrap_or_else(|| "0".into());
             let live = if d.running() { stats.get("active").or_else(|| d.rates.get("connections")) } else { None };
             dash.set_conn_live(count(live).into());
             dash.set_conn_recent(count(stats.get("recent")).into());

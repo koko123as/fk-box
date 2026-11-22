@@ -701,20 +701,16 @@ fn open_config(dark: bool, initial: String, on_closed: Rc<dyn Fn()>) {
                     };
                     mark(Mark::ROWS);
                     let d = c.clone();
-                    write_setting_then(
-                        if dark { "darkConfig" } else { "lightConfig" },
-                        json!(value.clone()),
-                        move |ok| {
-                            let mut x = d.borrow_mut();
-                            x.2 = false;
-                            if ok {
-                                x.1 = value.clone();
-                                app::message("Done");
-                            }
-                            drop(x);
-                            mark(Mark::ROWS);
-                        },
-                    );
+                    write_setting_then(if dark { "darkConfig" } else { "lightConfig" }, json!(value.clone()), move |ok| {
+                        let mut x = d.borrow_mut();
+                        x.2 = false;
+                        if ok {
+                            x.1 = value.clone();
+                            app::message("Done");
+                        }
+                        drop(x);
+                        mark(Mark::ROWS);
+                    });
                 })
                 .when(!saving),
             )

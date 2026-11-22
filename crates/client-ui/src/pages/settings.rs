@@ -1023,7 +1023,7 @@ fn access_page(st: &AccessRef) -> Page {
     let mut page_empty = None;
     if let Some(e) = &s.error {
         page_empty = Some(e.clone());
-    } else if let Some(_) = &s.apps {
+    } else if s.apps.is_some() {
         if visible.is_empty() {
             rows.push(Row::empty(&tr("No results"), "", "apps-list"));
         }

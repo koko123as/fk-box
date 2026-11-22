@@ -508,11 +508,8 @@ fn routing_menu(st: &RoutingRef) -> Vec<MenuEntry> {
     }
     let a = st.clone();
     items.push(MenuEntry::act("Preview", "code", move || {
-        let (draft, core) = {
-            let r = a.borrow();
-            (r.draft.clone(), r.core.clone())
-        };
-        open_preview(draft, core);
+        let draft = a.borrow().draft.clone();
+        open_preview(draft);
     }));
     items
 }
@@ -850,7 +847,7 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
 // Preview and status
 // ---------------------------------------------------------------------------
 
-fn open_preview(draft: Value, tab_core: String) {
+fn open_preview(draft: Value) {
     let st: Rc<RefCell<Option<Result<Value, String>>>> = Rc::new(RefCell::new(None));
     let a = st.clone();
     app::call("routingPreview", json!({ "draft": draft }), move |r| {
@@ -868,7 +865,6 @@ fn open_preview(draft: Value, tab_core: String) {
                 rows.push(Row::item(&tr("Profile")).value(&text(&v["profile"])));
                 rows.push(Row::item(&tr("Core")).value(core_title(&core)));
                 rows.push(Row::item(&tr("Rules applied")).value(&text(&v["applied"])));
-                if core != tab_core {}
                 if !truthy(&v["active"]) {
                     rows.push(Row::footer(&tr("No routing changes: the profile starts as it is.")));
                 }
