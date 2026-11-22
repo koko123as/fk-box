@@ -3,9 +3,10 @@ package io.nekohasekai.sfa.database
 import android.os.Parcelable
 import kotlinx.parcelize.Parcelize
 import kotlinx.serialization.Serializable
-import java.net.URI
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
-/** A remote control server, kept in the client store ([RemoteServerManager]). */
+/** A remote control server, kept in the client store ([RemoteServerManager]); the form saves it through client-core directly. */
 @Serializable
 @Parcelize
 class RemoteServer(
@@ -15,58 +16,13 @@ class RemoteServer(
     var url: String = "",
     var secret: String = "",
 ) : Parcelable {
+    /** Its name, else its host and port (client-core `remote_servers::display_name`). */
     val displayName: String
-        get() = name.ifEmpty { hostPort(url) }
+        get() = CoreStore.call("servers.displayName") { put("name", name); put("url", url) }.jsonPrimitive.content
 
     companion object {
-        private val schemePrefix = Regex("^https?://", RegexOption.IGNORE_CASE)
-        private val httpPrefix = Regex("^http://", RegexOption.IGNORE_CASE)
-
-        // The stored form: scheme-less for http (default), keeping an explicit https.
-        fun normalizeURL(urlString: String): String = urlString.trim().trimEnd('/').replaceFirst(httpPrefix, "")
-
-        // The form passed to libbox: a scheme is required, defaulting to http.
-        fun connectURL(urlString: String): String {
-            val value = urlString.trim().trimEnd('/')
-            if (value.isEmpty()) {
-                return ""
-            }
-            if (value.contains(schemePrefix)) {
-                return value
-            }
-            return "http://$value"
-        }
-
-        fun validateURL(urlString: String): String? {
-            val connectURL = connectURL(urlString)
-            if (connectURL.isEmpty()) {
-                return null
-            }
-            val uri =
-                try {
-                    URI(connectURL)
-                } catch (_: Exception) {
-                    return null
-                }
-            val scheme = uri.scheme?.lowercase()
-            if (scheme != "http" && scheme != "https") {
-                return null
-            }
-            if (uri.host.isNullOrEmpty()) {
-                return null
-            }
-            return normalizeURL(urlString)
-        }
-
-        private fun hostPort(urlString: String): String {
-            val uri =
-                try {
-                    URI(connectURL(urlString))
-                } catch (_: Exception) {
-                    return urlString
-                }
-            val host = uri.host ?: return urlString
-            return if (uri.port != -1) "$host:${uri.port}" else host
-        }
+        /** The address passed to libbox, with a scheme (client-core `remote_servers::connect_url`). */
+        fun connectURL(urlString: String): String =
+            CoreStore.call("servers.connectUrl") { put("url", urlString) }.jsonPrimitive.content
     }
 }

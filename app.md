@@ -51,7 +51,7 @@
 
 ### 客户端存储与旧数据导入
 
-设置、配置列表元数据、远程控制服务器、界面偏好与备份身份存于 `crates/client-core` 的 SQLite 存储（`files/fkbox/client.db`，`PRAGMA user_version` 为结构版本）。`libfkui.so` 中只有一个存储实例：Kotlin `CoreStore` 首次访问时加载 `libfkui.so` 并打开（服务在没有界面时也能启动），Rust 界面使用同一实例，直接读配置列表与界面偏好、写偏好与排序；涉及配置内容或服务的修改仍经 Kotlin，之后发送不带载荷的 `profiles` 事件，界面重新读取。配置的“解析内核”由 Kotlin（libbox 检测）按文件大小与修改时间缓存到存储中。
+设置、配置列表元数据、远程控制服务器、界面偏好与备份身份存于 `crates/client-core` 的 SQLite 存储（`files/fkbox/client.db`，`PRAGMA user_version` 为结构版本）。`libfkui.so` 中只有一个存储实例：Kotlin `CoreStore` 首次访问时加载 `libfkui.so` 并打开（服务在没有界面时也能启动），Rust 界面使用同一实例，直接读配置列表与界面偏好、写偏好与排序，远程控制服务器的列表与表单保存也直接读写（地址校验在 client-core `remote_servers.rs`）；涉及配置内容或服务的修改仍经 Kotlin，之后发送不带载荷的 `profiles` 事件，界面重新读取。配置的“解析内核”由 Kotlin（libbox 检测）按文件大小与修改时间缓存到存储中。
 
 首次打开时，若存储为空，从旧 Room `profiles.db`（结构 1–3，`typed` 列为 `TypedProfile` Parcel）、`settings.db`（`KeyValueEntity`）和 SharedPreferences `flclash_ui` 导入：原文件（含 `-wal`/`-shm`）先复制到缓存目录再读取，原文件不改；导入在一个事务内完成并写入标记 `legacy_import`，配置 ID 与 AUTOINCREMENT 计数保持不变，已选配置等设置因此继续有效。导入失败不写标记，存储保持为空，下次启动重试；存储已有数据时不导入。旧文件保留到后续版本，降级到旧版本时旧版本读取的是升级前的数据。
 
@@ -85,7 +85,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接，内核在每次订阅时重放已保存的行，缓冲（去 ANSI、环形追加、快照）在后台单线程执行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
 
-连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序处理；`ConnectionStore` 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射，只有 NEW 和带快照的 CLOSED 经 JNI 读取连接，UPDATE 按增量复制该行，关闭 5 分钟后淘汰，DNS 连接不显示；未变化的行保持同一实例与桥接映射。
+连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序转为增量（只有 NEW 和带快照的 CLOSED 经 JNI 读取连接），暂存到桥接最多每秒发送一次 `connectionEvents`；界面用 client-core [connections.rs](crates/client-core/src/connections.rs) 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射并算出列表与仪表盘计数：UPDATE 按增量更新该行，关闭 5 分钟后淘汰，DNS 连接不显示；本地服务的 DNS 计数仍取内核自己的统计，远程会话按连接列表计数。
 
 日志原生缓冲保留最近 3000 条记录；[LogStream.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/LogStream.kt) 仅在前台日志页请求数据时生成桥接消息，首次订阅及恢复可见时发送快照，随后发送新增记录、最早保留 ID 和默认等级，两次发送至少间隔一秒（期间的新记录合并到下一次）。清空或缓冲身份重置发送替换消息，单纯等级变化不重新编码记录。隐藏日志页不影响原生缓冲和当前会话的等级同步。
 

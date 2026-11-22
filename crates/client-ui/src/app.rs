@@ -43,6 +43,9 @@ pub struct Data {
     pub profiles: Vec<Value>,
     pub groups: Vec<Value>,
     pub connections: Vec<Value>,
+    // The rows behind [`Data::connections`], built from the host's
+    // "connectionEvents" batches.
+    pub connection_events: fkbox_client_core::connections::Connections,
     pub logs: Vec<Value>,
     pub default_log_level: Option<String>,
     pub upload_history: VecDeque<f64>,
@@ -701,6 +704,15 @@ pub fn on_event(payload: &str) {
         "connections" => {
             d.connections = rows(&value);
             Mark::RECORDS
+        }
+        // The core's connection events since the last batch (BoxBridge
+        // flushConnections); "dnsQueries" is the local core's own count.
+        "connectionEvents" => {
+            let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);
+            d.connection_events.apply_batch(&value, now);
+            d.connections = d.connection_events.rows();
+            d.connection_stats = obj(&d.connection_events.stats(long(&value["dnsQueries"])));
+            Mark::RECORDS | Mark::RATES
         }
         "connectionStats" => {
             d.connection_stats = obj(&value);

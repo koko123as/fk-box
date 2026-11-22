@@ -107,37 +107,6 @@ pub fn encode(backup: &Value) -> Result<String, String> {
     Ok(text)
 }
 
-/// A remote control server address as the Kotlin `RemoteServer.validateURL`
-/// took it: an http(s) address (http assumed without a scheme) with a host,
-/// normalized (trimmed, no trailing slash, no `http://`). None when invalid.
-pub fn remote_server_url(value: &str) -> Option<String> {
-    let trimmed = value.trim().trim_end_matches('/');
-    if trimmed.is_empty() {
-        return None;
-    }
-    let lower = trimmed.to_ascii_lowercase();
-    let connect = if lower.starts_with("http://") || lower.starts_with("https://") {
-        // java.net.URI compares the scheme case-insensitively here.
-        let (scheme, rest) = trimmed.split_once("://")?;
-        format!("{}://{rest}", scheme.to_ascii_lowercase())
-    } else {
-        format!("http://{trimmed}")
-    };
-    if !crate::geo::valid_url(&connect) {
-        return None;
-    }
-    Some(normalize_server_url(value))
-}
-
-fn normalize_server_url(value: &str) -> String {
-    let trimmed = value.trim().trim_end_matches('/');
-    if trimmed.len() >= 7 && trimmed[..7].eq_ignore_ascii_case("http://") {
-        trimmed[7..].to_string()
-    } else {
-        trimmed.to_string()
-    }
-}
-
 /// A profile's backup identity: its file name when that is a UUID (files
 /// are named so), otherwise a UUID derived from the origin and the id.
 pub fn profile_key(profile: &Profile, origin: &str) -> String {
@@ -316,7 +285,7 @@ pub fn validate<'a>(backup: &'a Value, scope: &str, kernel: &mut dyn Kernel) -> 
         let mut identities = Vec::new();
         for server in &servers {
             let name = opt(server, "name").and_then(Value::as_str);
-            let url = opt(server, "url").and_then(Value::as_str).and_then(remote_server_url);
+            let url = opt(server, "url").and_then(Value::as_str).and_then(crate::remote_servers::validate_url);
             let (Some(name), Some(url)) = (name, url) else { return Err("Invalid remote server".into()) };
             if opt(server, "secret").is_some_and(|v| !v.is_string()) {
                 return Err("Invalid remote secret".into());
@@ -571,8 +540,8 @@ pub fn restore(store: &Store, kernel: &mut dyn Kernel, backup: &Value, scope: &s
             let mut kept = Vec::new();
             for (index, entry) in rows(opt(doc, "servers"))?.iter().enumerate() {
                 let name = opt(entry, "name").and_then(Value::as_str).unwrap_or("");
-                let url = opt(entry, "url").and_then(Value::as_str).and_then(remote_server_url).ok_or("Invalid remote server")?;
-                let existing = previous.servers.iter().find(|s| normalize_server_url(&s.url) == url && s.name == name);
+                let url = opt(entry, "url").and_then(Value::as_str).and_then(crate::remote_servers::validate_url).ok_or("Invalid remote server")?;
+                let existing = previous.servers.iter().find(|s| crate::remote_servers::normalize_url(&s.url) == url && s.name == name);
                 let mut server = RemoteServer {
                     id: existing.map_or(0, |s| s.id),
                     user_order: existing.map_or(0, |s| s.user_order),
@@ -827,13 +796,13 @@ mod tests {
 
     #[test]
     fn helpers_follow_the_kotlin_rules() {
-        assert_eq!(remote_server_url(" HTTP://h:9090/ ").as_deref(), Some("h:9090"));
-        assert_eq!(remote_server_url("https://h").as_deref(), Some("https://h"));
-        assert_eq!(remote_server_url("10.0.0.1:9090").as_deref(), Some("10.0.0.1:9090"));
-        assert_eq!(remote_server_url(""), None);
+        assert_eq!(crate::remote_servers::validate_url(" HTTP://h:9090/ ").as_deref(), Some("h:9090"));
+        assert_eq!(crate::remote_servers::validate_url("https://h").as_deref(), Some("https://h"));
+        assert_eq!(crate::remote_servers::validate_url("10.0.0.1:9090").as_deref(), Some("10.0.0.1:9090"));
+        assert_eq!(crate::remote_servers::validate_url(""), None);
         // As java.net.URI: "ftp:" reads as host "ftp" with an empty port.
-        assert_eq!(remote_server_url("ftp://").as_deref(), Some("ftp:"));
-        assert_eq!(remote_server_url("a b"), None);
+        assert_eq!(crate::remote_servers::validate_url("ftp://").as_deref(), Some("ftp:"));
+        assert_eq!(crate::remote_servers::validate_url("a b"), None);
         let named = Profile { id: 7, path: "/x/90015098-3cd2-3fb0-9696-3f7d28e17f72.json".into(), ..Default::default() };
         assert_eq!(profile_key(&named, "o"), "90015098-3cd2-3fb0-9696-3f7d28e17f72");
         let other = Profile { id: 7, path: "/x/7.json".into(), ..Default::default() };

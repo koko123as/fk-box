@@ -17,7 +17,7 @@
 | 项目 | 现在位置 | 目标 | 切片 |
 | --- | --- | --- | --- |
 | 配置列表元数据（名称、顺序、图标、类型、订阅 URL、自动更新、间隔、内核、流量/到期、网站、`intervalUserSet`） | `database/Profile.kt`、`TypedProfile.kt`（Room `profiles.db` 表 `profiles`，`typed` 列为 Parcel 二进制） | Rust client-core `storage` | **2a** |
-| 远程控制服务器列表 | `database/RemoteServer.kt`、`RemoteServerManager.kt`（`profiles.db` 表 `remote_servers`） | Rust client-core `storage`（URL 规范化/校验留 Kotlin 至 2e） | **2a**（存储） |
+| 远程控制服务器列表 | `database/RemoteServer.kt`、`RemoteServerManager.kt`（`profiles.db` 表 `remote_servers`） | 已迁：client-core `remote_servers.rs`（地址规范化、校验、连接地址、显示名、表单保存）；界面直接读列表与保存，删除与连接仍经宿主（需要当前远程会话） | **2a**（存储）/**2e-2**（地址与表单） |
 | 服务设置键值（已选配置、服务模式、分应用代理、内核开关、OOM、Geo、路由规则原文、Tailscale SSH 等） | `database/Settings.kt`、`preference/KeyValueEntity.kt`、`RoomPreferenceDataStore.kt`（Room `settings.db` 表 `KeyValueEntity`） | Rust client-core `storage`（键值、类型保持） | **2a**（存储） |
 | 界面偏好（主题、配色、仪表盘卡片、代理页布局……）及校验 | `bridge/BoxPreferences.kt`、`BoxBridge.setPreferences`（SharedPreferences `flclash_ui` 的 `value`） | Rust client-core `preferences` | **2a** |
 | 备份身份 `backupOrigin` | SharedPreferences `flclash_ui` | Rust client-core `storage` | **2a**（存储） |
@@ -34,7 +34,7 @@
 | 更新检查（GitHub Release 元数据、版本比较） | 已迁：client-core `updates.rs`；`bridge/BoxUpdates.kt` 已删；请求经 Go `UIHTTPGet` | Rust | **2d** |
 | 终端（Ghostty）设置、字体导入 | 已迁：client-core `terminal.rs`（取值、校验、写入、备份部分）；`bridge/BoxTerminalSettings.kt` 只剩主题目录/预览、字体文件选择导入与删除 | 设置值 → Rust；字体文件选择留 Kotlin | **2d** |
 | 抓包设置 | 已迁：client-core `capture.rs`（读取、一次性升级、修订检查、原子写入，校验经内核方法 `capture.validate`）；`bridge/CaptureSettings.kt` 只剩退役 Keystore 密钥清理与调用封装 | 设置模型 → Rust；证书生成留 Kotlin（Keystore）+ Go | **2e-1** |
-| 界面状态与命令分发（仪表盘/代理组/连接/日志的状态模型、命令总线） | `backend/*ViewModel.kt`、`bridge/BoxBridge.kt`、`SlintHost.kt`、`LogStream.kt`、`ConnectionWire`、`DashboardConfigCache.kt`、`VisiblePolling.kt` | Rust client-core 控制器；数据源仍为 libbox 命令客户端 | 2e |
+| 界面状态与命令分发（仪表盘/代理组/连接/日志的状态模型、命令总线） | 连接列表已迁：client-core `connections.rs`（事件批次 → 行与计数，界面持有），`ConnectionsViewModel` 只转发增量，`ConnectionStore`/`ConnectionWire`/`backend/model/Connection.kt` 已删；其余仍在 `backend/*ViewModel.kt`、`bridge/BoxBridge.kt`、`SlintHost.kt`、`LogStream.kt`、`ConnectionWire`、`DashboardConfigCache.kt`、`VisiblePolling.kt` | Rust client-core 控制器；数据源仍为 libbox 命令客户端 | 2e |
 | 仪表盘 IP 质量缓存 | 已迁：client-core `ip_quality.rs`（`preferences` 键 `ip_quality`，一次性导入旧 `dashboard_ip_quality.xml`）；界面直接读写，宿主方法已删 | Rust client-core `storage` | **2e-1** |
 | 应用列表缓存（`AppListCache`）、应用标签 | `bridge/AppListCache.kt` | 留 Kotlin（PackageManager） | — |
 | VpnService、前台服务、通知、磁贴、开机启动、网络监听、Root/Shizuku、USB/IP、Taildrop 发送 | `bg/*`、`vendor/*`、`usbip/*` | 留 Kotlin | — |
@@ -114,3 +114,10 @@
 - **IP 质量缓存**：存 `preferences` 键 `ip_quality`（JSON 对象）。写入校验 IP、`quality.ip` 一致、`checkedAt` 不晚于现在、不超过 16 KiB，并顺带清掉 3 天前或时间在未来的其他 IP；恢复事务中拒绝写入（只丢缓存，不报错）。`open` 时一次性导入旧 SharedPreferences（`.bak` 优先，先复制再读，元数据键 `legacy_ip_quality_import`）。
 - **schema**：未改，`user_version` 不变。
 - **推迟（2e-2）**：界面控制器其余部分与 `BoxBridge` 收缩；备份/WebDAV/更新检查/geo 地址入口仍经宿主——它们需要文件选择器或 libbox 默认值，改成界面直调要先有 Rust→Kotlin 平台回调，放到 2e-2 与回调一起做。
+
+## 2e-2 设计要点
+
+- **连接列表**：client-core `connections.rs` 按 libbox `Connections.ApplyEvents` 维护 ID → 行映射（NEW/UPDATE/CLOSED、5 分钟淘汰、DNS 行只计数不显示、仪表盘的活动/最近/DNS 计数）。Kotlin `ConnectionsViewModel` 不再持有连接表，只在单线程通道里把 libbox 事件转为增量放进缓冲；`BoxBridge.flushConnections` 最多每秒发一次 `connectionEvents`（`reset`、`events`、本地服务的 `dnsQueries`），页面或统计卡片可见时立即补发一次。原来每秒整表发送行（含未变化的行），现在只发增量；界面收到后重建行列表。`connections`、`connectionStats` 事件仍保留给没有 client-core 的宿主（截图工具）。
+- **远程控制服务器**：地址规范化、校验、连接地址、显示名迁 client-core `remote_servers.rs`（原 `backup.rs` 里的校验移入）；界面直接从存储读列表并保存表单（恢复事务中拒绝），宿主的 `remoteServers`/`saveRemoteServer` 已删。Kotlin `RemoteServer.connectURL`/`displayName` 调 Rust。删除与连接仍经宿主（要先看当前远程会话）。
+- **schema**：未改，`user_version` 不变。
+- **推迟（2e-3）**：日志流（`LogStream`/`LogViewModel`）、代理组与仪表盘状态模型；命令客户端连接调度（`CommandClient`、可见性与前后台）留 Kotlin——它们依赖 libbox 命令客户端与 Android 生命周期，迁 Rust 要先让 Rust 直接连 libbox 命令服务（第三阶段评估）。

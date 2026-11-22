@@ -128,8 +128,6 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "openBatterySettings" -> openBatterySettings()
     "openUrl" -> openUrl(args.str("url"))
     // Remote control
-    "remoteServers" -> remoteServers()
-    "saveRemoteServer" -> saveRemoteServer(args.long("id"), args.getString("name"), args.getString("url"), args.optString("secret"))
     "deleteRemoteServer" -> deleteRemoteServer(args.long("id"))
     "connectRemoteServer" -> connectRemoteServer(args.long("id"))
     "disconnectRemoteServer" -> disconnectRemoteServer()

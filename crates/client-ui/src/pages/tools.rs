@@ -496,10 +496,10 @@ fn open_report_text(kind: &'static str, id: String, name: String, title: String)
 
 fn open_remote() {
     let st: LoadedRef = Rc::new(RefCell::new(Loaded::default()));
-    reload(&st, "remoteServers", json!({}));
+    reload_servers(&st);
     let refresh: Rc<dyn Fn()> = {
         let st = st.clone();
-        Rc::new(move || reload(&st, "remoteServers", json!({})))
+        Rc::new(move || reload_servers(&st))
     };
     rows::push(move || {
         let s = st.borrow();
@@ -551,6 +551,39 @@ fn open_remote() {
     });
 }
 
+/// The server list from the client store; through the host without one
+/// (the screenshot harness).
+fn reload_servers(st: &LoadedRef) {
+    let Some(store) = crate::store::get() else {
+        return reload(st, "remoteServers", json!({}));
+    };
+    let mut s = st.borrow_mut();
+    s.generation += 1;
+    match crate::store::remote_servers(&store) {
+        Ok(items) => {
+            s.items = Some(items);
+            s.error = None;
+        }
+        Err(e) => s.error = Some(format::clean_error(&e)),
+    }
+    drop(s);
+    mark(Mark::ROWS);
+}
+
+/// Saves the server form to the client store (the host without one).
+fn save_server(id: Option<i64>, name: String, url: String, secret: String, then: impl FnOnce(bool) + 'static) {
+    let Some(store) = crate::store::get() else {
+        return app::act_then("saveRemoteServer", json!({ "id": id, "name": name, "url": url, "secret": secret }), then);
+    };
+    match crate::store::save_remote_server(&store, id.unwrap_or(0), &name, &url, &secret) {
+        Ok(_) => then(true),
+        Err(e) => {
+            app::report(&e);
+            then(false)
+        }
+    }
+}
+
 fn remote_form(initial: Json, on_closed: Rc<dyn Fn()>) {
     let get = |k: &str| initial.get(k).and_then(Value::as_str).unwrap_or("").to_string();
     let st = Rc::new(RefCell::new((get("name"), get("url"), get("secret"), false)));
@@ -581,7 +614,7 @@ fn remote_form(initial: Json, on_closed: Rc<dyn Fn()>) {
                     mark(Mark::ROWS);
                     let c = b.clone();
                     let route = nav::top().map(|r| r.id);
-                    app::act_then("saveRemoteServer", json!({ "id": id, "name": name, "url": url, "secret": secret }), move |ok| {
+                    save_server(id, name, url, secret, move |ok| {
                         c.borrow_mut().3 = false;
                         if ok {
                             if let Some(r) = route {

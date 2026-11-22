@@ -34,6 +34,10 @@
 //! - [`capture`]: the capture (MITM) settings file (validation by the
 //!   capture engine through the platform).
 //! - [`ip_quality`]: the dashboard's IP quality cache.
+//! - [`remote_servers`]: remote control server addresses and the server
+//!   form's save.
+//! - [`connections`]: the connections page's state, built from the core's
+//!   connection events.
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
@@ -44,6 +48,7 @@ pub mod api;
 pub mod backup;
 pub mod capture;
 mod codec;
+pub mod connections;
 pub mod content;
 pub mod geo;
 pub mod ip_quality;
@@ -52,6 +57,7 @@ mod parcel;
 pub mod preferences;
 pub mod profile_array;
 pub mod profiles;
+pub mod remote_servers;
 pub mod routing;
 pub mod service_settings;
 pub mod storage;

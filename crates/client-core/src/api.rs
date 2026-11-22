@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
 use crate::service_settings::{self, Written};
-use crate::{backup, capture, geo, ip_quality, profiles, routing, terminal, updates, webdav};
+use crate::{backup, capture, geo, ip_quality, profiles, remote_servers, routing, terminal, updates, webdav};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -292,6 +292,9 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
             let server: RemoteServer = serde_json::from_value(arg(&args, "server")?.clone()).map_err(|e| format!("Invalid server: {e}"))?;
             store.update_remote_server(&server).map_err(e)?.into()
         }
+        "servers.save" => remote_servers::save(store, id(&args, "id").unwrap_or(0), text_or(&args, "name", ""), text(&args, "url")?, text_or(&args, "secret", ""))?.into(),
+        "servers.connectUrl" => remote_servers::connect_url(text(&args, "url")?).into(),
+        "servers.displayName" => remote_servers::display_name(text_or(&args, "name", ""), text(&args, "url")?).into(),
         "servers.delete" => store.delete_remote_server(id(&args, "id")?).map_err(e)?.into(),
         "servers.nextOrder" => store.next_remote_server_order().map_err(e)?.into(),
         "preferences.get" => Value::Object(store.ui_preferences().map_err(e)?),

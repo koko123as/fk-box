@@ -3,7 +3,7 @@ package io.nekohasekai.sfa.backend.connections
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.ConnectionEvents
 import io.nekohasekai.sfa.backend.base.BaseViewModel
-import io.nekohasekai.sfa.backend.model.Connection
+import io.nekohasekai.sfa.bridge.toWire
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
@@ -18,12 +18,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
 
-data class ConnectionsUiState(
-    val allConnections: List<Connection> = emptyList(),
-    // DNS lookups the store holds (live, or closed within its five-minute
-    // window); kept out of [allConnections], counted for the dashboard.
-    val dnsCount: Int = 0,
-)
+/**
+ * [version] changes whenever events wait in the buffer ([ConnectionsViewModel.drain]).
+ * The connection list itself lives in the UI (client-core `connections.rs`),
+ * which applies the core's event batches the bridge forwards.
+ */
+data class ConnectionsUiState(val version: Long = 0)
 
 class ConnectionsViewModel :
     BaseViewModel<ConnectionsUiState>(),
@@ -40,13 +40,13 @@ class ConnectionsViewModel :
 
     private val _visibleCount = MutableStateFlow(0)
 
-    // Every event batch, reset and clear runs on one lane, in arrival order
-    // (as LogViewModel's buffer lane), so NEW/UPDATE/CLOSED deltas can never be
-    // applied out of order. Only the lane touches [connectionStore].
+    // Every event batch and clear runs on one lane, in arrival order (as
+    // LogViewModel's buffer lane), so NEW/UPDATE/CLOSED deltas reach the UI in
+    // order. The buffer holds what arrived since the bridge last drained it.
     @OptIn(ExperimentalCoroutinesApi::class)
     private val connectionsLane = Dispatchers.Default.limitedParallelism(1)
-    private val connectionStore = ConnectionStore()
-    private val connectionsGeneration = AtomicLong(0)
+    private val buffer = EventBuffer()
+    private val version = AtomicLong(0)
 
     override fun createInitialState() = ConnectionsUiState()
 
@@ -89,13 +89,7 @@ class ConnectionsViewModel :
             return
         }
         if (status != Status.Started) {
-            withContext(connectionsLane) {
-                connectionStore.clear()
-                connectionsGeneration.incrementAndGet()
-            }
-            updateState {
-                copy(allConnections = emptyList(), dnsCount = 0)
-            }
+            withContext(connectionsLane) { reset() }
         }
     }
 
@@ -109,113 +103,74 @@ class ConnectionsViewModel :
     }
 
     override fun onDisconnected() {
-        viewModelScope.launch(connectionsLane) {
-            connectionStore.clear()
-            connectionsGeneration.incrementAndGet()
-            withContext(Dispatchers.Main) {
-                updateState {
-                    copy(allConnections = emptyList(), dnsCount = 0)
-                }
-            }
-        }
+        viewModelScope.launch(connectionsLane) { reset() }
     }
+
+    private fun reset() {
+        buffer.reset()
+        published()
+    }
+
+    private fun published() {
+        val next = version.incrementAndGet()
+        updateState { copy(version = next) }
+    }
+
+    /**
+     * What arrived since the last call, as one batch for client-core
+     * `Connections::apply_batch` (`reset`, `events`); null when nothing did,
+     * unless [force] (an empty batch then).
+     */
+    fun drain(force: Boolean = false): Map<String, Any?>? = buffer.drain(force)
 
     override fun writeConnectionEvents(events: ConnectionEvents) {
         viewModelScope.launch(connectionsLane) {
-            val generation = connectionsGeneration.get()
-            val snapshot = connectionStore.apply(events, System.currentTimeMillis())
-            val dnsCount = connectionStore.dnsCount()
-            withContext(Dispatchers.Main) {
-                if (connectionsGeneration.get() != generation) {
-                    return@withContext
-                }
-                updateState {
-                    copy(
-                        allConnections = snapshot,
-                        dnsCount = dnsCount,
-                    )
-                }
+            val batch = ArrayList<Map<String, Any?>>()
+            val iterator = events.iterator()
+            while (iterator.hasNext()) {
+                val event = iterator.next() ?: continue
+                // Only NEW and CLOSED-with-snapshot events read a libbox
+                // connection over JNI; UPDATE carries the deltas alone.
+                batch.add(mapOf(
+                    "type" to event.type, "id" to event.id,
+                    "connection" to event.connection?.toWire(),
+                    "uplinkDelta" to event.uplinkDelta, "downlinkDelta" to event.downlinkDelta,
+                    "closedAt" to event.closedAt,
+                ))
             }
+            buffer.add(events.reset, batch)
+            published()
         }
     }
 }
 
 /**
- * A Kotlin port of libbox Connections.ApplyEvents (sing-box
- * experimental/libbox/command_types.go): an id → [Connection] map updated from
- * the NEW/UPDATE/CLOSED deltas. Only NEW and CLOSED-with-snapshot events read
- * a libbox connection over JNI; UPDATE copies the existing row, and unchanged
- * rows keep their instance across batches. Not thread-safe; callers serialize.
+ * The core's connection events since the bridge last drained them. A reset
+ * (the core's own, a stopped service, a lost command connection) drops what
+ * waits and makes the next batch a reset.
  */
-internal class ConnectionStore {
-    private val connections = LinkedHashMap<String, Connection>()
+internal class EventBuffer {
+    private var reset = false
+    private var events = ArrayList<Map<String, Any?>>()
 
-    fun clear() = connections.clear()
-
-    /** Applies one event batch in order and returns the visible connections. */
-    fun apply(events: ConnectionEvents, nowMillis: Long): List<Connection> {
-        if (events.reset) connections.clear()
-        val iterator = events.iterator()
-        while (iterator.hasNext()) {
-            val event = iterator.next() ?: continue
-            apply(event.type, event.id, event.connection?.let(Connection::from),
-                event.uplinkDelta, event.downlinkDelta, event.closedAt)
-        }
-        evictClosed(nowMillis)
-        return snapshot()
+    @Synchronized
+    fun reset() {
+        reset = true
+        events = ArrayList()
     }
 
-    fun apply(type: Int, id: String, connection: Connection?, uplinkDelta: Long, downlinkDelta: Long, closedAt: Long): Boolean {
-        when (type) {
-            EVENT_NEW -> {
-                if (connection == null) return false
-                connections[id] = connection
-            }
-            EVENT_UPDATE -> {
-                val current = connections[id] ?: return false
-                connections[id] = current.copy(
-                    upload = uplinkDelta,
-                    download = downlinkDelta,
-                    uploadTotal = current.uploadTotal + uplinkDelta,
-                    downloadTotal = current.downloadTotal + downlinkDelta,
-                )
-            }
-            EVENT_CLOSED -> {
-                val current = connection ?: connections[id] ?: return false
-                connections[id] = current.copy(closedAt = closedAt.takeIf { it > 0 }, upload = 0, download = 0)
-            }
-            else -> return false
-        }
-        return true
+    @Synchronized
+    fun add(isReset: Boolean, batch: List<Map<String, Any?>>) {
+        if (isReset) reset()
+        events.addAll(batch)
     }
 
-    fun evictClosed(nowMillis: Long) {
-        val iterator = connections.values.iterator()
-        while (iterator.hasNext()) {
-            val closedAt = iterator.next().closedAt ?: continue
-            if (nowMillis - closedAt > CLOSED_MAX_AGE_MILLIS) {
-                iterator.remove()
-            }
-        }
-    }
-
-    fun snapshot(): List<Connection> = connections.values.filter { it.outboundType != "dns" }
-
-    /**
-     * The DNS lookups among the connections the core reports: rows of a DNS
-     * outbound, sniffed as DNS, or to port 53. Queries a core answers inside
-     * its own resolver (sing-box hijack-dns, mihomo dns-hijack) never become
-     * connections, so they are not counted here.
-     */
-    fun dnsCount(): Int = connections.values.count {
-        it.outboundType == "dns" || it.protocolName.equals("dns", ignoreCase = true) || it.destination.endsWith(":53")
-    }
-
-    companion object {
-        // libbox ConnectionEventNew/Update/Closed (iota) and closedConnectionMaxAge.
-        const val EVENT_NEW = 0
-        const val EVENT_UPDATE = 1
-        const val EVENT_CLOSED = 2
-        const val CLOSED_MAX_AGE_MILLIS = 5 * 60 * 1000L
+    @Synchronized
+    fun drain(force: Boolean): Map<String, Any?>? {
+        if (!force && !reset && events.isEmpty()) return null
+        val batch = mapOf("reset" to reset, "events" to events)
+        reset = false
+        events = ArrayList()
+        return batch
     }
 }

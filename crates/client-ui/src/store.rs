@@ -170,3 +170,20 @@ mod tests {
         store.rollback().unwrap();
     }
 }
+
+/// The remote control servers in list order, as the host's former
+/// `remoteServers` rows (id, name, url, secret).
+pub fn remote_servers(store: &Store) -> Result<Vec<Value>, String> {
+    Ok(store
+        .remote_servers()
+        .map_err(|e| e.0)?
+        .into_iter()
+        .map(|s| serde_json::json!({ "id": s.id, "name": s.name, "url": s.url, "secret": s.secret }))
+        .collect())
+}
+
+/// The server form's save (client-core `remote_servers::save`); `id` 0 adds.
+pub fn save_remote_server(store: &Store, id: i64, name: &str, url: &str, secret: &str) -> Result<i64, String> {
+    writable(store)?;
+    fkbox_client_core::remote_servers::save(store, id, name, url, secret)
+}

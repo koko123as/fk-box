@@ -12,7 +12,6 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
-import io.nekohasekai.sfa.backend.connections.ConnectionsUiState
 import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
@@ -23,7 +22,6 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
-import io.nekohasekai.sfa.database.RemoteServer
 import io.nekohasekai.sfa.database.RemoteServerManager
 import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
@@ -82,7 +80,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private lateinit var dashboardDetails: BoxDashboard
     private var connectionsVisible = false
     private var connectionStatsVisible = false
-    private val connectionWire = ConnectionWire()
     private val logsVisible = MutableStateFlow(false)
     private val operations = Mutex()
     private val apps = AppListCache {
@@ -181,11 +178,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                         // keeps only the newest state meanwhile. Showing a
                         // page sends its current state at once (the
                         // set*Visible commands, and the log stream restarting).
-                        launch { connections.uiState.collect { state ->
-                            val sent = connectionsVisible || connectionStatsVisible
-                            if (connectionsVisible) emit("connections", withContext(Dispatchers.Default) { connectionWire.rows(state.allConnections) })
-                            if (connectionStatsVisible) emit("connectionStats", connectionStats(state))
-                            if (sent) delay(UI_UPDATE_INTERVAL_MILLIS)
+                        launch { connections.uiState.collect {
+                            if (flushConnections()) delay(UI_UPDATE_INTERVAL_MILLIS)
                         } }
                         launch {
                             val stream = LogStream()
@@ -472,7 +466,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             connectionsVisible = visible
             connections.setVisible(visible)
         }
-        if (visible) emit("connections", connectionWire.rows(connections.uiState.value.allConnections))
+        if (visible) flushConnections(force = true)
     }
 
     /** The dashboard's connection statistics card: counts only, no rows. */
@@ -481,20 +475,23 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             connectionStatsVisible = visible
             connections.setVisible(visible)
         }
-        if (visible) emit("connectionStats", connectionStats(connections.uiState.value))
+        if (visible) flushConnections(force = true)
     }
 
-    private fun connectionStats(state: ConnectionsUiState): Map<String, Any?> {
-        var active = 0
-        var recent = 0
-        for (connection in state.allConnections) {
-            if (connection.closedAt == null) active++ else recent++
-        }
-        // DNS: the queries the local core answered since it started, counted
-        // inside the core (hijack-dns never becomes a connection). A remote
-        // session only has its connection list to go by.
-        val dns = if (CommandTarget.isRemote) state.dnsCount.toLong() else Libbox.readUIDNSQueryCount()
-        return mapOf("active" to active, "recent" to recent, "dns" to dns)
+    /**
+     * Sends the connection events that arrived since the last send
+     * ("connectionEvents"; the UI keeps the list and its counts in client-core
+     * `connections.rs`). False when nothing was sent. DNS: the queries the
+     * local core answered since it started, counted inside the core
+     * (hijack-dns never becomes a connection); a remote session only has its
+     * connection list to go by, which the UI counts.
+     */
+    private fun flushConnections(force: Boolean = false): Boolean {
+        if (!connectionsVisible && !connectionStatsVisible) return false
+        val batch = connections.drain(force) ?: return false
+        val dns = if (CommandTarget.isRemote) null else Libbox.readUIDNSQueryCount()
+        emit("connectionEvents", batch + ("dnsQueries" to dns))
+        return true
     }
 
     suspend fun closeConnection(id: String?) {
@@ -651,21 +648,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         val uri = Uri.parse(required(url, "url"))
         require(uri.scheme in listOf("http", "https")) { "Unsupported URL" }
         activity.startActivity(Intent(Intent.ACTION_VIEW, uri))
-    }
-
-    suspend fun remoteServers() = withContext(Dispatchers.IO) {
-        RemoteServerManager.list().map { mapOf("id" to it.id, "name" to it.name, "url" to it.url, "secret" to it.secret) }
-    }
-
-    /** Creates the server when [id] is null or 0, otherwise edits it; returns its ID. */
-    suspend fun saveRemoteServer(id: Long?, name: String, url: String, secret: String) = withContext(Dispatchers.IO) {
-        val serverId = id ?: 0L
-        val server = if (serverId == 0L) RemoteServer() else RemoteServerManager.get(serverId) ?: error("Server no longer exists")
-        server.name = name
-        server.url = RemoteServer.validateURL(url) ?: error("Invalid server address")
-        server.secret = secret
-        if (serverId == 0L) RemoteServerManager.create(server) else RemoteServerManager.update(server)
-        server.id
     }
 
     suspend fun deleteRemoteServer(id: Long?) {
