@@ -21,6 +21,9 @@ object ProfileManager {
         callbacks.remove(callback)
     }
 
+    /** Tells listeners the list changed (client-core wrote a row directly, ProfileContent). */
+    internal fun notifyChanged() = changed()
+
     private fun changed() {
         for (callback in callbacks.toList()) {
             callback()

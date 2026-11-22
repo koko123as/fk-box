@@ -7,17 +7,28 @@
 //!   file whose location the platform shell passes in.
 //! - [`legacy`]: the one-time import of the Android app's Room databases and
 //!   SharedPreferences into the store.
-//! - [`api`]: the store's JSON call surface for a platform host (the Kotlin
-//!   service layer on Android reaches the store through it over JNI).
+//! - [`subscription`]: provider headers (`subscription-userinfo`,
+//!   `profile-update-interval`, `profile-web-page-url`), the metadata they
+//!   leave on a profile, and the automatic update policy.
+//! - [`profile_array`]: naming and following the profiles of a JSON array of
+//!   configs.
+//! - [`content`]: the save flow of a profile's configuration (edits and
+//!   subscription updates: revision check, atomic write, rollback), with the
+//!   cores' own work behind the platform's [`content::Kernel`].
+//! - [`api`]: the JSON call surface for a platform host (the Kotlin service
+//!   layer on Android reaches it over JNI).
 //!
-//! Subscriptions, routing rules, backups, WebDAV and update checks follow in
-//! later phase-2 slices (docs/architecture/phase2.md).
+//! Routing rules, backups, WebDAV and update checks follow in later phase-2
+//! slices (docs/architecture/phase2.md).
 
 pub mod api;
+pub mod content;
 pub mod legacy;
 mod parcel;
 pub mod preferences;
+pub mod profile_array;
 pub mod storage;
+pub mod subscription;
 
 /// What the UI needs from the platform: one asynchronous call into the host
 /// app. The UI sends `method` with JSON `args` under the request `id`; the

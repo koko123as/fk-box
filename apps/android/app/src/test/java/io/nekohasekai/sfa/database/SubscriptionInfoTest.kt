@@ -8,74 +8,27 @@ import org.junit.Test
 import java.util.Date
 
 class SubscriptionInfoTest {
-    @Test fun parsesUserInfoWithSpacesCaseAndMissingKeys() {
-        assertEquals(
-            SubscriptionInfo(upload = 1024, download = 2048, total = 10_737_418_240, expire = 1_790_000_000),
-            SubscriptionHeaders.parseUserInfo(" upload=1024; Download = 2048 ;TOTAL=10737418240; expire=1790000000 "),
-        )
-        assertEquals(SubscriptionInfo(download = 5, total = 100), SubscriptionHeaders.parseUserInfo("download=5; total=100"))
-        assertEquals(SubscriptionInfo(upload = 1, total = 3), SubscriptionHeaders.parseUserInfo("upload=1;;total=3;"))
-    }
+    // Header parsing and the metadata a fetch leaves are tested in Rust
+    // (crates/client-core/src/subscription.rs).
 
-    @Test fun parsesFloatsAndIgnoresBadValues() {
-        assertEquals(SubscriptionInfo(upload = 12, download = 0, total = 1_000_000_000), SubscriptionHeaders.parseUserInfo("upload=12.9; download=-4; total=1e9; expire=never"))
-        assertEquals(Long.MAX_VALUE, SubscriptionHeaders.parseUserInfo("total=1e30")!!.total)
-    }
-
-    @Test fun noUsableHeaderMeansNoInfo() {
-        assertNull(SubscriptionHeaders.parseUserInfo(null))
-        assertNull(SubscriptionHeaders.parseUserInfo(""))
-        assertNull(SubscriptionHeaders.parseUserInfo("   "))
-        assertNull(SubscriptionHeaders.parseUserInfo("foo=1; bar"))
-        assertNull(SubscriptionHeaders.parseUserInfo("upload=abc"))
-    }
-
-    @Test fun expireZeroIsNoExpiry() {
-        val info = SubscriptionHeaders.parseUserInfo("upload=0; download=0; total=0; expire=0")!!
-        assertTrue(info.isEmpty)
-        val quota = SubscriptionHeaders.parseUserInfo("upload=30; download=70; total=200; expire=0")!!
-        assertEquals(0L, quota.expire)
+    @Test fun usedAndRemainingSaturate() {
+        val quota = SubscriptionInfo(upload = 30, download = 70, total = 200)
         assertEquals(100L, quota.remaining)
         assertEquals(0L, SubscriptionInfo(upload = 300, total = 200).remaining)
+        assertEquals(Long.MAX_VALUE, SubscriptionInfo(upload = Long.MAX_VALUE, download = 5).used)
+        assertTrue(SubscriptionInfo().isEmpty)
     }
 
-    @Test fun updateIntervalIsHoursClampedToAndroidMinimum() {
-        assertEquals(720, SubscriptionHeaders.parseUpdateIntervalMinutes("12"))
-        assertEquals(90, SubscriptionHeaders.parseUpdateIntervalMinutes(" 1.5 "))
-        assertEquals(15, SubscriptionHeaders.parseUpdateIntervalMinutes("0.1"))
-        assertEquals(SubscriptionHeaders.MAX_INTERVAL_MINUTES, SubscriptionHeaders.parseUpdateIntervalMinutes("1000000"))
-        assertNull(SubscriptionHeaders.parseUpdateIntervalMinutes("0"))
-        assertNull(SubscriptionHeaders.parseUpdateIntervalMinutes("-3"))
-        assertNull(SubscriptionHeaders.parseUpdateIntervalMinutes("daily"))
-        assertNull(SubscriptionHeaders.parseUpdateIntervalMinutes(null))
-    }
-
-    @Test fun webPageAcceptsOnlyHttpAndHttps() {
-        assertEquals("https://example.com/user", SubscriptionHeaders.parseWebPageUrl(" https://example.com/user "))
-        assertEquals("http://panel.example.com", SubscriptionHeaders.parseWebPageUrl("http://panel.example.com"))
-        assertEquals("", SubscriptionHeaders.parseWebPageUrl("javascript:alert(1)"))
-        assertEquals("", SubscriptionHeaders.parseWebPageUrl("intent://example.com"))
-        assertEquals("", SubscriptionHeaders.parseWebPageUrl("https://"))
-        assertEquals("", SubscriptionHeaders.parseWebPageUrl("not a url"))
-        assertEquals("", SubscriptionHeaders.parseWebPageUrl(null))
-    }
-
-    @Test fun providerIntervalAppliesOnlyWhileUserHasNotChosenOne() {
-        val profile = TypedProfile().apply { autoUpdateInterval = 60 }
-        val fetch = SubscriptionHeaders.fetch("{}", "upload=1; download=2; total=3", "24", "https://example.com")
-        assertEquals(SubscriptionMetadata(1, 2, 3, 0, "https://example.com", 1440), profile.metadataAfter(fetch))
-        profile.intervalUserSet = true
-        assertEquals(60, profile.metadataAfter(fetch).autoUpdateInterval)
-    }
-
-    @Test fun fetchWithoutHeadersClearsStaleInfo() {
+    @Test fun metadataRestoresAsOneUnit() {
         val profile = TypedProfile().apply {
             upload = 5; download = 6; total = 7; expire = 8; webPageUrl = "https://old.example.com"; autoUpdateInterval = 120
         }
-        assertEquals(SubscriptionMetadata(0, 0, 0, 0, "", 120), profile.metadataAfter(SubscriptionHeaders.fetch("{}", null, null, null)))
-        profile.restoreSubscriptionMetadata(profile.metadataAfter(SubscriptionHeaders.fetch("{}", "", "", "")))
+        val saved = profile.subscriptionMetadata()
+        profile.restoreSubscriptionMetadata(SubscriptionMetadata(0, 0, 0, 0, "", 120))
         assertNull(profile.subscriptionInfo)
         assertEquals("", profile.webPageUrl)
+        profile.restoreSubscriptionMetadata(saved)
+        assertEquals(SubscriptionInfo(5, 6, 7, 8), profile.subscriptionInfo)
     }
 
     // --- Parcel format ----------------------------------------------------

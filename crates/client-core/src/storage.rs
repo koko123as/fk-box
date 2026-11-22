@@ -20,6 +20,8 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
+use crate::subscription::{Fetch, Metadata};
+
 /// The schema this build writes. 1: settings, profiles, remote_servers,
 /// preferences and meta (phase 2a).
 pub const SCHEMA_VERSION: i64 = 1;
@@ -253,6 +255,21 @@ pub const PREF_BACKUP_ORIGIN: &str = "backupOrigin";
 pub struct Store {
     conn: Mutex<Connection>,
     in_transaction: AtomicBool,
+    /// Content saves waiting for the platform to apply them to the running
+    /// service, kept so a failed application can be rolled back
+    /// ([`crate::content`]).
+    pub(crate) pending: crate::content::Pending,
+}
+
+/// The columns a save of a profile's content writes: when it was last
+/// updated and the subscription metadata. Nothing else (order, name, URL,
+/// core, auto-update switch) is ever written by a content save or an
+/// automatic update, so a reorder or an edit made meanwhile is kept.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ContentState {
+    pub last_updated: i64,
+    pub metadata: Metadata,
 }
 
 const PROFILE_COLUMNS: &str = "id, user_order, name, icon, path, kind, remote_url, last_updated, auto_update, auto_update_interval, core, \
@@ -282,7 +299,7 @@ impl Store {
     fn with_connection(mut conn: Connection) -> Result<Store> {
         conn.pragma_update(None, "foreign_keys", "ON")?;
         migrate_schema(&mut conn)?;
-        Ok(Store { conn: Mutex::new(conn), in_transaction: AtomicBool::new(false) })
+        Ok(Store { conn: Mutex::new(conn), in_transaction: AtomicBool::new(false), pending: Default::default() })
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -497,6 +514,45 @@ impl Store {
         Ok(())
     }
 
+    /// The [`ContentState`] of a profile, None when it does not exist.
+    pub fn content_state(&self, id: i64) -> Result<Option<ContentState>> {
+        Ok(content_state(&self.conn(), id)?)
+    }
+
+    /// Records a save of a profile's content in its row: `last_updated` when
+    /// given, and the subscription metadata of `fetch` when given, its update
+    /// interval decided against the row's own `interval_user_set` as read in
+    /// the same locked step. Only the [`ContentState`] columns are written.
+    /// Returns the state before and after, or None when the profile no
+    /// longer exists.
+    pub fn record_content_save(
+        &self,
+        id: i64,
+        last_updated: Option<i64>,
+        fetch: Option<&Fetch>,
+    ) -> Result<Option<(ContentState, ContentState)>> {
+        let conn = self.conn();
+        let Some(before) = content_state(&conn, id)? else { return Ok(None) };
+        let user_set: bool = conn.query_row("SELECT interval_user_set FROM profiles WHERE id = ?1", [id], |r| r.get(0))?;
+        let after = ContentState {
+            last_updated: last_updated.unwrap_or(before.last_updated),
+            metadata: match fetch {
+                Some(fetch) => Metadata::after(before.metadata.auto_update_interval, user_set, fetch),
+                None => before.metadata.clone(),
+            },
+        };
+        if after != before {
+            write_content_state(&conn, id, &after)?;
+        }
+        Ok(Some((before, after)))
+    }
+
+    /// Puts a [`ContentState`] back (a failed save rolled back). False when
+    /// the profile no longer exists.
+    pub fn restore_content_state(&self, id: i64, state: &ContentState) -> Result<bool> {
+        Ok(write_content_state(&self.conn(), id, state)? == 1)
+    }
+
     /// Records the core a profile's content resolved to for the file `stamp`.
     pub fn set_resolved_core(&self, id: i64, core: &str, stamp: &str) -> Result<()> {
         self.conn().execute("UPDATE profiles SET resolved_core = ?2, resolved_stamp = ?3 WHERE id = ?1", params![id, core, stamp])?;
@@ -644,6 +700,36 @@ fn migrate_schema(conn: &mut Connection) -> Result<()> {
     tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
     tx.commit()?;
     Ok(())
+}
+
+fn content_state(conn: &Connection, id: i64) -> rusqlite::Result<Option<ContentState>> {
+    conn.query_row(
+        "SELECT last_updated, upload, download, total, expire, web_page_url, auto_update_interval FROM profiles WHERE id = ?1",
+        [id],
+        |r| {
+            Ok(ContentState {
+                last_updated: r.get(0)?,
+                metadata: Metadata {
+                    upload: r.get(1)?,
+                    download: r.get(2)?,
+                    total: r.get(3)?,
+                    expire: r.get(4)?,
+                    web_page_url: r.get(5)?,
+                    auto_update_interval: r.get(6)?,
+                },
+            })
+        },
+    )
+    .optional()
+}
+
+fn write_content_state(conn: &Connection, id: i64, state: &ContentState) -> rusqlite::Result<usize> {
+    let m = &state.metadata;
+    conn.execute(
+        "UPDATE profiles SET last_updated = ?2, upload = ?3, download = ?4, total = ?5, expire = ?6, web_page_url = ?7, \
+         auto_update_interval = ?8 WHERE id = ?1",
+        params![id, state.last_updated, m.upload, m.download, m.total, m.expire, m.web_page_url, m.auto_update_interval],
+    )
 }
 
 fn validate_profile(profile: &Profile) -> Result<()> {

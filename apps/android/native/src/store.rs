@@ -6,14 +6,21 @@
 //! the same instance in `android_main` ([`store`]), so the process has one
 //! connection to the file. libfkui.so is loaded by `CoreStore` before the
 //! activity exists, so the service can start (boot, tile) without the UI.
+//!
+//! Calls that need the cores (`nativeCallKernel`: subscription fetches and
+//! profile content saves, `fkbox_client_core::content`) get the Kotlin
+//! kernel bridge (`database/CoreKernel.kt`) with the call; Rust calls back
+//! into it on the same thread, and it runs libbox in Go.
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use jni::errors::ThrowRuntimeExAndDefault;
-use jni::objects::{JClass, JObject, JString};
-use jni::EnvUnowned;
+use jni::objects::{JClass, JObject, JString, JValue};
+use jni::{jni_sig, jni_str, EnvUnowned};
+use serde_json::Value;
 
+use fkbox_client_core::content::Kernel;
 use fkbox_client_core::legacy::{self, Outcome, Sources};
 use fkbox_client_core::{api, storage::Store};
 
@@ -49,6 +56,52 @@ pub fn open(path: PathBuf, sources: Sources) -> Result<String, String> {
 fn call(method: &str, args: &str) -> Result<String, String> {
     let store = store().ok_or("The client store is not open")?;
     api::call(&store, method, args)
+}
+
+/// The Kotlin kernel bridge passed with a call: `CoreKernel.call(method,
+/// argsJson)` answers `{"ok": value}` or `{"error": message}`.
+struct JniKernel<'a, 'local> {
+    env: &'a mut jni::Env<'local>,
+    bridge: &'a JObject<'local>,
+}
+
+impl Kernel for JniKernel<'_, '_> {
+    fn call(&mut self, method: &str, args: Value) -> Result<Value, String> {
+        let bridge = self.bridge;
+        // Its own local frame: a subscription update makes several calls with
+        // large strings, freed as each returns.
+        let reply = self.env.with_local_frame(8, |env| -> jni::errors::Result<Result<String, String>> {
+            let name = env.new_string(method)?;
+            let args = env.new_string(args.to_string())?;
+            let result = env.call_method(
+                bridge,
+                jni_str!("call"),
+                jni_sig!("(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;"),
+                &[JValue::Object(&name), JValue::Object(&args)],
+            );
+            let reply = match result {
+                Ok(value) => value.l()?,
+                Err(jni::errors::Error::JavaException) => {
+                    return Ok(Err(match env.exception_catch() {
+                        Err(jni::errors::Error::CaughtJavaException { name, msg, .. }) => format!("{name}: {msg}"),
+                        _ => "The kernel bridge failed".to_string(),
+                    }));
+                }
+                Err(error) => return Err(error),
+            };
+            let reply = env.cast_local::<JString>(reply)?;
+            if reply.is_null() {
+                return Ok(Err("The kernel bridge returned nothing".to_string()));
+            }
+            Ok(Ok(reply.try_to_string(env)?))
+        });
+        let reply = reply.map_err(|e| format!("kernel {method}: {e}"))??;
+        let mut reply: Value = serde_json::from_str(&reply).map_err(|e| format!("kernel {method}: {e}"))?;
+        if let Some(message) = reply.get("error").and_then(Value::as_str) {
+            return Err(message.to_string());
+        }
+        Ok(reply.get_mut("ok").map(Value::take).unwrap_or(Value::Null))
+    }
 }
 
 /// Runs `f`; its error message becomes a RuntimeException with that message.
@@ -101,5 +154,22 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeCall<'lo
         let method = method.try_to_string(env)?;
         let args = args.try_to_string(env)?;
         Ok(call(&method, &args))
+    })
+}
+
+#[no_mangle]
+pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeCallKernel<'local>(
+    mut env: EnvUnowned<'local>,
+    _class: JClass<'local>,
+    method: JString<'local>,
+    args: JString<'local>,
+    kernel: JObject<'local>,
+) -> JObject<'local> {
+    jni_string(&mut env, |env| {
+        let method = method.try_to_string(env)?;
+        let args = args.try_to_string(env)?;
+        let Some(store) = store() else { return Ok(Err("The client store is not open".to_string())) };
+        let mut kernel = JniKernel { env, bridge: &kernel };
+        Ok(api::call_with_kernel(&store, &mut kernel, &method, &args))
     })
 }

@@ -15,14 +15,11 @@ import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.nekohasekai.sfa.Application
+import io.nekohasekai.sfa.database.CoreSubscriptions
 import io.nekohasekai.sfa.database.ProfileContent
-import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.TypedProfile
-import io.nekohasekai.sfa.utils.HTTPClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.withLock
-import java.util.Date
 import java.util.concurrent.TimeUnit
 
 class UpdateProfileWork {
@@ -39,69 +36,55 @@ class UpdateProfileWork {
             }
         }
 
+        /** The schedule itself is client-core's policy (`subscription::schedule`); WorkManager runs it. */
         private suspend fun reconfigureUpdater0() {
-            val remoteProfiles =
-                ProfileManager.list()
-                    .filter { it.typed.type == TypedProfile.Type.Remote && it.typed.autoUpdate }
-            if (remoteProfiles.isEmpty()) {
+            val schedule = CoreSubscriptions.schedule()
+            if (schedule == null) {
                 WorkManager.getInstance(Application.application).cancelUniqueWork(WORK_NAME)
                 return
             }
-
-            var minDelay =
-                remoteProfiles.minByOrNull { it.typed.autoUpdateInterval }!!.typed.autoUpdateInterval.toLong()
-            val nowSeconds = System.currentTimeMillis() / 1000L
-            val minInitDelay =
-                remoteProfiles.minOf { (it.typed.autoUpdateInterval * 60) - (nowSeconds - (it.typed.lastUpdated.time / 1000L)) }
-            if (minDelay < 15) minDelay = 15
             WorkManager.getInstance(Application.application).enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
-                PeriodicWorkRequest.Builder(UpdateTask::class.java, minDelay, TimeUnit.MINUTES)
+                PeriodicWorkRequest.Builder(UpdateTask::class.java, schedule.intervalMinutes, TimeUnit.MINUTES)
                     .apply {
-                        if (minInitDelay > 0) setInitialDelay(minInitDelay, TimeUnit.SECONDS)
+                        if (schedule.initialDelaySeconds > 0) setInitialDelay(schedule.initialDelaySeconds, TimeUnit.SECONDS)
                         setBackoffCriteria(BackoffPolicy.LINEAR, 15, TimeUnit.MINUTES)
                     }
                     .build(),
             )
         }
 
+        /**
+         * Runs the automatic updates that are due (`subscription::due`), one at a time under
+         * [ProfileContent.mutex]. Each is saved by client-core, which writes only the profile's
+         * update time and subscription columns, so a reorder or edit made meanwhile is kept.
+         */
         internal suspend fun updateProfiles(context: Context): Boolean {
-            val remoteProfiles =
-                ProfileManager.list()
-                    .filter { it.typed.type == TypedProfile.Type.Remote && it.typed.autoUpdate }
-            if (remoteProfiles.isEmpty()) return true
+            val due = CoreSubscriptions.due()
+            if (due.isEmpty()) return true
             var success = true
             var intervalChanged = false
-            for (profile in remoteProfiles) {
-                val lastSeconds =
-                    (System.currentTimeMillis() - profile.typed.lastUpdated.time) / 1000L
-                if (lastSeconds < profile.typed.autoUpdateInterval * 60) {
-                    continue
-                }
+            for (id in due) {
                 try {
                     ProfileContent.mutex.withLock {
-                        val current = ProfileManager.get(profile.id) ?: return@withLock
-                        if (current.typed.type != TypedProfile.Type.Remote || !current.typed.autoUpdate) return@withLock
-                        val age = (System.currentTimeMillis() - current.typed.lastUpdated.time) / 1000L
-                        if (age < current.typed.autoUpdateInterval * 60) return@withLock
+                        // Re-checked under the lock: an edit may have turned it off or updated it.
+                        if (!CoreSubscriptions.isDue(id)) return@withLock
                         // Applying a changed selected profile reloads the core and drops
                         // every connection; with the screen off that is a silent outage.
-                        if (deferUntilScreenOn(current.id)) return@withLock
-                        val fetch = HTTPClient().use { it.getSubscription(current.typed.remoteURL, current.typed.core) }
-                        val interval = current.typed.autoUpdateInterval
+                        if (deferUntilScreenOn(id)) return@withLock
                         val service = BackgroundProfileService(context)
-                        try {
-                            ProfileContent.replaceLocked(current, fetch.content, updatedAt = Date(), subscription = fetch, applySelected = service::apply)
+                        val result = try {
+                            ProfileContent.replaceLocked(id, subscription = true, applySelected = service::apply)
                         } finally {
                             service.close()
                         }
-                        if (current.typed.autoUpdateInterval != interval) intervalChanged = true
+                        if (result.intervalChanged) intervalChanged = true
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    Log.e(TAG, "update profile ${profile.name}", e)
+                    Log.e(TAG, "update profile $id", e)
                     success = false
                 }
             }
