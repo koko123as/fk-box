@@ -52,7 +52,7 @@ impl Reader<'_> {
         }
         let bytes = self.take((len + 1) * 2)?.to_vec();
         self.pad((len + 1) * 2)?;
-        let units: Vec<u16> = bytes.chunks_exact(2).map(|c| u16::from_le_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|c| u16::from_le_bytes(*c)).collect();
         if units[len] != 0 {
             return Err("unterminated string".into());
         }
