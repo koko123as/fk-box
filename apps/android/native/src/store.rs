@@ -35,7 +35,8 @@ pub fn store() -> Option<Arc<Store>> {
 /// summary of an import already recorded) and imports the earlier storage:
 /// the Room databases and interface preferences (`sources`), and the WebDAV
 /// account from SharedPreferences `bbox_webdav` (`webdav`, its own one-time
-/// import, phase 2d).
+/// import, phase 2d) and the dashboard's IP quality cache from
+/// `dashboard_ip_quality` beside it (phase 2e).
 pub fn open(path: PathBuf, sources: Sources, webdav: PathBuf) -> Result<String, String> {
     let mut slot = STORE.lock().unwrap_or_else(|e| e.into_inner());
     let store = match slot.as_ref() {
@@ -54,11 +55,19 @@ pub fn open(path: PathBuf, sources: Sources, webdav: PathBuf) -> Result<String, 
         Ok(Outcome::Done(summary)) => serde_json::to_string(&summary).unwrap_or_default(),
         Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
     };
-    let webdav = match legacy::migrate_webdav(&store, &webdav, &sources.scratch_dir) {
+    let webdav_path = webdav;
+    let webdav = match legacy::migrate_webdav(&store, &webdav_path, &sources.scratch_dir) {
         Ok(summary) => summary,
         Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
     };
-    Ok(format!("{summary}; webdav: {webdav}"))
+    // The dashboard's IP quality cache sits next to `bbox_webdav` in
+    // shared_prefs (phase 2e, its own one-time import).
+    let quality_xml = webdav_path.with_file_name("dashboard_ip_quality.xml");
+    let quality = match fkbox_client_core::ip_quality::migrate(&store, &quality_xml, &sources.scratch_dir) {
+        Ok(summary) => summary,
+        Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
+    };
+    Ok(format!("{summary}; webdav: {webdav}; ipQuality: {quality}"))
 }
 
 fn call(method: &str, args: &str) -> Result<String, String> {

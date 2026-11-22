@@ -104,6 +104,17 @@ pub fn set_terminal_setting(store: &Store, key: &str, value: &Value) -> Result<(
     Ok((written, terminal::snapshot(store)?))
 }
 
+/// The dashboard's cached IP quality record for `ip` (client-core
+/// `ip_quality`).
+pub fn read_ip_quality(store: &Store, ip: &str) -> Result<Option<Value>, String> {
+    fkbox_client_core::ip_quality::read(store, ip)
+}
+
+/// Caches an IP quality record (old records of other IPs are dropped).
+pub fn write_ip_quality(store: &Store, ip: &str, record: &Value) -> Result<(), String> {
+    fkbox_client_core::ip_quality::write(store, ip, record, crate::format::now_ms())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

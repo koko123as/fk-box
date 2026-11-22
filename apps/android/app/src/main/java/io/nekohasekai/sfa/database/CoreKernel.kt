@@ -66,6 +66,7 @@ internal object CoreKernel {
             ProfileContent.validate(core, content)
             JsonPrimitive(core)
         }
+        "capture.validate" -> JsonPrimitive(Libbox.validateUICaptureConfig(args.text("content")))
         "http.get" -> {
             // gomobile lowercases the initial uppercase run in UIHTTPGet.
             val response = Libbox.uihttpGet(args.text("url"))

@@ -73,8 +73,6 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "probeGet" -> probeGet(args.getString("id"), args.getString("url"), args.optLong("timeoutMillis", 10_000))
     "serviceCheck" -> serviceCheck(args.getString("id"), args.getString("name"), args.optLong("timeoutMillis", 10_000))
     "closeProbe" -> closeProbe(args.getString("id"))
-    "readQualityCache" -> readQualityCache(args.getString("ip"))
-    "writeQualityCache" -> writeQualityCache(args.getString("ip"), args.map("value"))
     "releaseMemory" -> releaseMemory()
     "setMemoryVisible" -> setMemoryVisible(args.getBoolean("visible"))
     "setLanVisible" -> setLanVisible(args.getBoolean("visible"))

@@ -329,7 +329,8 @@ class ProfileRecoveryTest {
             // A small base must not bypass the limit on the recovered backup.
             base.writeText("{}")
             backup.writeText(" ".repeat(4 * 1024 * 1024 + 1))
-            val error = assertThrows(IllegalArgumentException::class.java) {
+            // client-core reports the limit as a store error (a RuntimeException from JNI).
+            val error = assertThrows(RuntimeException::class.java) {
                 CaptureSettings(directory, retiredKeyAlias = null).snapshot()
             }
             assertTrue(error.message.orEmpty().contains("exceed"))

@@ -742,7 +742,10 @@ fn lookup(generation: u64, probe: String, ip: String, refresh: bool, result: Jso
         None if refresh => run_waves(generation, probe, ip, Box::new(done)),
         None => {
             // The persistent cache, then the network.
-            call("readQualityCache", json!({ "ip": ip }), move |r| {
+            // The client store holds the cache; without one (the screenshot
+            // harness) the host answers.
+            let ip_key = ip.clone();
+            let on_record = move |r: Result<Value, String>| {
                 if !current(generation) {
                     close_probe(probe);
                     return;
@@ -758,7 +761,14 @@ fn lookup(generation: u64, probe: String, ip: String, refresh: bool, result: Jso
                     }
                     _ => run_waves(generation, probe, ip, Box::new(done)),
                 }
-            });
+            };
+            match crate::store::get() {
+                Some(store) => {
+                    let record = crate::store::read_ip_quality(&store, &ip_key).map(|r| r.unwrap_or(Value::Null));
+                    on_record(record);
+                }
+                None => call("readQualityCache", json!({ "ip": ip_key }), on_record),
+            }
         }
     }
 }
@@ -809,7 +819,13 @@ fn complete(state: &Rc<RefCell<Lookup>>, outcome: Result<Quality, ()>) {
                 m.failures.remove(&ip);
             });
             let stored = json!({ "quality": record.quality.to_json(), "checkedAt": record.checked_at });
-            call("writeQualityCache", json!({ "ip": ip, "value": stored }), |_| {});
+            match crate::store::get() {
+                // A refused write (a restore in progress) only loses the cache entry.
+                Some(store) => {
+                    let _ = crate::store::write_ip_quality(&store, &ip, &stored);
+                }
+                None => call("writeQualityCache", json!({ "ip": ip, "value": stored }), |_| {}),
+            }
             done(Ok(record));
         }
         Err(()) => {

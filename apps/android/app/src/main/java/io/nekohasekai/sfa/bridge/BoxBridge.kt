@@ -273,10 +273,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     fun closeProbe(id: String) { dashboardDetails.closeProbe(id) }
 
-    fun readQualityCache(ip: String) = dashboardDetails.readQualityCache(ip)
-
-    suspend fun writeQualityCache(ip: String, value: Map<String, Any?>) { dashboardDetails.writeQualityCache(ip, value) }
-
     suspend fun releaseMemory() = dashboardDetails.releaseMemory()
 
     fun setMemoryVisible(visible: Boolean) { dashboardDetails.setMemoryVisible(visible) }

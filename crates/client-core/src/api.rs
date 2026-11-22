@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
 use crate::service_settings::{self, Written};
-use crate::{backup, geo, profiles, routing, terminal, updates, webdav};
+use crate::{backup, capture, geo, ip_quality, profiles, routing, terminal, updates, webdav};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -223,6 +223,17 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         // -- update check ----------------------------------------------------
         "updates.check" => updates::check(kernel()?, &parsed(&args, "build")?)?,
         // -- terminal settings -----------------------------------------------
+        // -- capture settings and the IP quality cache (phase 2e) ------------
+        "capture.snapshot" => capture::snapshot(std::path::Path::new(text(&args, "dir")?), kernel()?)?,
+        "capture.config" => capture::config(std::path::Path::new(text(&args, "dir")?), kernel()?)?.into(),
+        "capture.save" => {
+            capture::save(std::path::Path::new(text(&args, "dir")?), kernel()?, text(&args, "revision")?, text(&args, "content")?)?
+        }
+        "ipQuality.read" => ip_quality::read(store, text(&args, "ip")?)?.unwrap_or(Value::Null),
+        "ipQuality.write" => {
+            ip_quality::write(store, text(&args, "ip")?, arg(&args, "value")?, id(&args, "now")?)?;
+            Value::Null
+        }
         "terminal.snapshot" => Value::Object(terminal::snapshot(store)?),
         "terminal.set" => {
             let key = text(&args, "key")?;

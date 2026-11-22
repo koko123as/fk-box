@@ -31,6 +31,9 @@
 //! - [`profiles`]: the profile form's save, the import of a split JSON
 //!   array as several profiles, and deleting a profile (targeted column
 //!   writes; applying to the service stays with the platform).
+//! - [`capture`]: the capture (MITM) settings file (validation by the
+//!   capture engine through the platform).
+//! - [`ip_quality`]: the dashboard's IP quality cache.
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
@@ -39,9 +42,11 @@
 
 pub mod api;
 pub mod backup;
+pub mod capture;
 mod codec;
 pub mod content;
 pub mod geo;
+pub mod ip_quality;
 pub mod legacy;
 mod parcel;
 pub mod preferences;

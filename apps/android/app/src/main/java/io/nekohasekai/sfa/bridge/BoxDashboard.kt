@@ -54,7 +54,6 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
             egressSessions.filterValues { !isCurrent(it) }.keys.toList().forEach(::closeProbe)
         }
     }
-    private val qualityCache = activity.getSharedPreferences("dashboard_ip_quality", 0)
     private val memoryVisible = MutableStateFlow(false)
     private val memoryPolling = activity.lifecycleScope.pollWhileVisible(
         memoryVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn,
@@ -284,24 +283,6 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
     }
 
     fun closeProbe(id: String) { egressSessions.remove(id)?.close() }
-
-    fun readQualityCache(ip: String): Map<String, Any?>? = runCatching {
-        qualityCache.getString(ip, null)?.let { jsonObject(JSONObject(it)) }
-    }.getOrNull()
-
-    suspend fun writeQualityCache(ip: String, value: Map<String, Any?>) = withContext(Dispatchers.IO) {
-        val encoded = JSONObject(value).toString()
-        val record = JSONObject(encoded)
-        val now = System.currentTimeMillis()
-        require(ip.length in 1..128 && encoded.toByteArray().size <= 16384 &&
-            record.optJSONObject("quality")?.optString("ip") == ip && record.optLong("checkedAt", -1) in 0..now) { "Invalid IP quality record" }
-        val editor = qualityCache.edit().putString(ip, encoded)
-        qualityCache.all.forEach { (key, stored) ->
-            val checkedAt = runCatching { JSONObject(stored as String).optLong("checkedAt", -1) }.getOrDefault(-1)
-            if (key != ip && (checkedAt < now - 3 * 24 * 60 * 60 * 1000L || checkedAt > now)) editor.remove(key)
-        }
-        check(editor.commit()) { "Unable to cache IP quality" }
-    }
 
     suspend fun releaseMemory(): Map<String, Any?> = withContext(Dispatchers.IO) {
         require(!CommandTarget.isRemote) { "Remote memory collection is not supported" }
