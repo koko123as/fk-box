@@ -42,12 +42,18 @@
 | 通道与命令 | `bridge/BoxBridge.kt` | 沿用原 MethodChannel 命令与 EventChannel 消息名，经 `call()` / `listen()`（不注册平台通道）对接配置、工具和设置 |
 | 原生状态 | `backend/` | 仪表盘、分组、连接、日志、Tailscale/Taildrop、诊断和认证状态模型 |
 | 平台视图 | `bridge/BoxBrowserFactory.kt`、`bridge/BoxTerminalFactory.kt` | OpenConnect WebView 与 Ghostty 终端经 `BoxController.browserView` / `terminalView` 以原生视图叠加在 Slint 页面上 |
-| 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、Room、订阅更新及本地/远程命令目标 |
+| 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、订阅更新及本地/远程命令目标；Room 已移除，设置、配置元数据与远程服务器经 `database/CoreStore.kt`（JNI）存于 `crates/client-core` 的客户端存储 |
 | 应用查询 | [vendor/](apps/android/app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
 配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
 
-桥接载荷只携带 Rust 界面读取的字段（以 `crates/client-ui/src` 中的键名为准）；USB/IP 设备、OpenConnect/OpenVPN 隧道信息和连接的进程信息由界面整体列出，保留完整字段。只供已删除 Compose 页面使用的状态与载荷字段（加载标志、Tailscale 头像/密钥到期/最后在线、Ping 历史、测速精度、扫码裁剪框回调、未接入的设置 DAO 方法等）已删除，新增字段时先确认界面会读取。设置存储 [RoomPreferenceDataStore](apps/android/app/src/main/java/io/nekohasekai/sfa/database/preference/RoomPreferenceDataStore.kt) 是独立类，不再继承 androidx.preference 的 `PreferenceDataStore`，该依赖已移除；数据库与键值格式不变。
+桥接载荷只携带 Rust 界面读取的字段（以 `crates/client-ui/src` 中的键名为准）；USB/IP 设备、OpenConnect/OpenVPN 隧道信息和连接的进程信息由界面整体列出，保留完整字段。只供已删除 Compose 页面使用的状态与载荷字段（加载标志、Tailscale 头像/密钥到期/最后在线、Ping 历史、测速精度、扫码裁剪框回调、未接入的设置 DAO 方法等）已删除，新增字段时先确认界面会读取。设置存储 [StorePreferenceDataStore](apps/android/app/src/main/java/io/nekohasekai/sfa/database/preference/StorePreferenceDataStore.kt) 读写客户端存储的 `settings` 表（类型码沿用旧 `KeyValueEntity`），内存缓存与按序异步写入的行为不变。
+
+### 客户端存储与旧数据导入
+
+设置、配置列表元数据、远程控制服务器、界面偏好与备份身份存于 `crates/client-core` 的 SQLite 存储（`files/fkbox/client.db`，`PRAGMA user_version` 为结构版本）。`libfkui.so` 中只有一个存储实例：Kotlin `CoreStore` 首次访问时加载 `libfkui.so` 并打开（服务在没有界面时也能启动），Rust 界面使用同一实例，直接读配置列表与界面偏好、写偏好与排序；涉及配置内容或服务的修改仍经 Kotlin，之后发送不带载荷的 `profiles` 事件，界面重新读取。配置的“解析内核”由 Kotlin（libbox 检测）按文件大小与修改时间缓存到存储中。
+
+首次打开时，若存储为空，从旧 Room `profiles.db`（结构 1–3，`typed` 列为 `TypedProfile` Parcel）、`settings.db`（`KeyValueEntity`）和 SharedPreferences `flclash_ui` 导入：原文件（含 `-wal`/`-shm`）先复制到缓存目录再读取，原文件不改；导入在一个事务内完成并写入标记 `legacy_import`，配置 ID 与 AUTOINCREMENT 计数保持不变，已选配置等设置因此继续有效。导入失败不写标记，存储保持为空，下次启动重试；存储已有数据时不导入。旧文件保留到后续版本，降级到旧版本时旧版本读取的是升级前的数据。
 
 Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/Shizuku 终端、Ghostty 设置和导入字体、OpenConnect/OpenVPN 认证、USB/IP、网络诊断、崩溃/OOM/电量报告均通过新页面使用现有后端。报告导出的“为 sing-box 维护者加密”开关默认关闭：上游 `Libbox.createZipArchive` 的 age 收件人是 sing-box 维护者的密钥，加密后的 `.zip.age` 只有他们能解开；崩溃报告导出总是包含 `jvm.log`（崩溃堆栈，“包含日志”只控制 `go.log`），并附带界面（libfkui）最近一次 panic 的 `fkui-panic.txt`（panic 钩子写入应用 files 目录，被捕获的 panic 也会写入）。历史 MOD-014 的功能移除已回退，不能按旧裁剪记录删除这些能力。
 
@@ -57,7 +63,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 - 保存前检查内容修订和完整 `Libbox.checkConfig`，以原子写入替换内容。高级配置编辑原生 DNS、路由、规则集、入站、出站、端点和日志；原始 JSON 编辑保留配置元数据及订阅 URL。
 - 顶层为对象数组的 JSON（v2rayNG 多个自定义配置导出，或订阅返回此格式）：文件、剪贴板、扫码和外部打开经 `BoxProfiles.decode`/`decodeText` 拆分（[ProfileContent.splitArray](apps/android/app/src/main/java/io/nekohasekai/sfa/database/ProfileContent.kt) 调 libbox `SplitCoreConfigArray`），每个元素单独识别内核并校验，任一元素失败则整批不保存并指出第几个；`profiles.saveAll` 一次创建全部本地配置，界面提示导入数量。只差一个节点的 Xray 数组由 libbox 合并为一个配置（规则见 [libbox.md](libbox.md#多内核xray-与-mihomo)），以来源名（文件名或远程配置名）命名，节点在一个组里。其他情况名称取元素的 `remarks`，没有时为“来源名 #序号”（[ProfileArray.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/database/ProfileArray.kt)）。新建远程配置的首次获取是数组时，同一 URL 生成多个远程配置；之后手动/自动更新在 `ProfileContent.replaceLocked` 中按已保存内容的 `remarks`、再按配置名、再按“#序号”回退名选回各自的元素，单元素数组总是匹配，找不到时更新失败并保留原内容。合并后的远程配置每次更新都重新合并；此前按元素拆出的同一 URL 远程配置，更新后各自都会变成合并版，可删去多余的。单个配置不保存数组，原始编辑器粘贴数组会报错。
-- 本地配置创建时在 Room 记录时间，原始/高级编辑及局域网入站变更成功保存内容时更新 `lastUpdated`；无内容变化和仅编辑名称等元数据不刷新时间。保存或应用失败与内容一起恢复旧时间。远程配置的该字段仍表示订阅更新时间，手动 JSON 编辑不覆盖它；没有时间记录的旧配置保持未知。界面展示见 [flclash.md](flclash.md#配置页与内核差异)。
+- 本地配置创建时在客户端存储记录时间，原始/高级编辑及局域网入站变更成功保存内容时更新 `lastUpdated`；无内容变化和仅编辑名称等元数据不刷新时间。保存或应用失败与内容一起恢复旧时间。远程配置的该字段仍表示订阅更新时间，手动 JSON 编辑不覆盖它；没有时间记录的旧配置保持未知。界面展示见 [flclash.md](flclash.md#配置页与内核差异)。
 - 运行中修改选中配置需应用到服务：模式相同时重载，模式变化时停止并重新走权限/启动流程。需要重启时通过 [ServiceStartResult.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/ServiceStartResult.kt) 等待 Started 回调；失败或超时恢复旧文件/设置并尝试恢复原服务。停服时普通保存不会自动启动 VPN。
 - 原始/高级 JSON 编辑、手动/自动订阅更新和配置切换共用 [ProfileChange.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/database/ProfileChange.kt) 的失败恢复流程。订阅保存或应用失败恢复旧内容和更新时间；切换失败恢复原选择及服务模式。恢复在不可取消的协程上下文完成，保留原错误及恢复错误；持久数据恢复失败时不启动未恢复的配置。
 - 配置切换在配置互斥区内、修改选中配置前读取最新服务状态；启动中或停止中拒绝切换，避免界面状态延迟导致启动配置与保存的选择不一致。界面禁用行为见 [flclash.md](flclash.md#配置页与内核差异)。
@@ -71,7 +77,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 - [DashboardConfigCache.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/DashboardConfigCache.kt) 仅缓存选中配置和已启动配置的内容、修订及最近一组接口地址的 LAN 解析结果，相同内容共用缓存。前台两秒轮询保留网络/热点检测，以配置 ID、路径、文件时间/大小及写入代次检查保存配置；未变化时不重读内容、计算哈希或调用 LAN 解析。地址变化复用内容和修订，重新调用 LAN 解析；运行配置按成功启动快照更新。普通写入及备份恢复/回滚共用 `ProfileContent.write` 推进代次，避免同大小、同时间戳的修改漏刷。解析错误也缓存，配置/地址变化或手动刷新时重试，取消不缓存。缓存条目同时保存 `Libbox.detectCoreConfig` 的结果（每份内容只识别一次），判断 LAN 开关是否可用时不再每次轮询解析整份配置。启动快照 `ready()` 并行读取配置列表与设置，不再扫描 LAN；内网 IP 卡片的可见轮询负责加载。
 - 二进制 `.bpf` 导入保留订阅 URL、更新间隔、自动更新及时间戳。动态 QRS 通过 [BoxQrScanner.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxQrScanner.kt) 按相机会话收集有界帧、校验 CRC，并支持原压缩文件封装。
 
-[BoxBackups.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用 Room 事务；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
+[BoxBackups.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxBackups.kt) 提供 `bbox-1` 格式，配置条目经 [ProfileWireFields.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/ProfileWireFields.kt) 携带并恢复 `core` 与订阅流量/到期/官网字段（旧备份缺少时为 `auto`/无），按声明的内核校验内容；恢复覆盖已有配置时复制全部 `TypedProfile` 字段。包含稳定配置身份、界面/应用设置、终端设置与导入字体，以及可选 WebDAV 设置。仅恢复配置时不改其他设置。恢复先暂存文件，再使用客户端存储事务（事务期间界面自身的偏好/排序写入会被拒绝并提示稍后重试）；应用失败回滚文件、数据库和设置。兼容策略保留其他配置，覆盖策略在用户确认后删除备份中不存在的配置。
 
 界面偏好的读取、保存及备份恢复共用 [BoxPreferences.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt) 校验，卡片布局接受仪表盘的全部卡片键（含 `VPN`、`Service status`、`Connection stats`、`System HTTP proxy` 及已退役仍被接受的 `Connections`）；已退役的外观键（`appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded`、`locale`）在读取和恢复时丢弃（界面见 [flclash.md](flclash.md#朴素界面约定)）；新的页面切换偏好为 `tabMotion`（`slide`/`fade`），与退役的 `tabAnimation` 无关。`BoxActivity` 读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，在 `locale` 回复中以 `animatorScale` 提供，回到前台或重新连接界面时若有变化再发 `motion` 事件（`{"scale": …}`），界面按其缩放全部动效（见 [flclash.md](flclash.md#动效)）。首页卡片交互见 [flclash.md](flclash.md#导航与交互约定)。
 
@@ -206,7 +212,7 @@ JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界�
 
 模拟器统一入口为 [android_smoke.py](tools/android_smoke.py)：安装应用和仪器测试 APK，分别重置应用数据后运行 UI smoke 与原生回归，前一组失败不跳过后一组。UI 覆盖首次启动、远程 JSON 导入、VPN 授权、启停、实际内核分组及进程重启后配置保留；原生组运行全部仪器测试并拒绝零测试结果。`build/android-smoke/` 保存截图、logcat、失败堆栈、仪器测试输出及带源码 SHA 的 `results.json`，超时也保留日志。启动阶段允许截图后关闭一次 Google APIs 模拟器的 Pixel Launcher ANR 弹窗，再重新打开 fk-box；不关闭 fk-box 自身的 ANR 或其他错误。脚本仅用于 CI 模拟器，不能对保有用户数据的设备执行。
 
-查询策略回归在每次切换 Root/Shizuku 并刷盘后重新打开 Room 数据库读取持久值，同时核对状态流，不以读取同一内存缓存代替持久化验证。
+查询策略回归在每次切换 Root/Shizuku 并刷盘后直接读取客户端存储中的持久值，同时核对状态流，不以读取同一内存缓存代替持久化验证。
 
 `ProfileRecoveryTest.logLevelFollowsSuccessfulConfigurationReloads` 另覆盖真实内核日志订阅的默认级别、运行中修改 `log.level` 后刷新，以及移除该字段后恢复当前核心的默认值。
 
