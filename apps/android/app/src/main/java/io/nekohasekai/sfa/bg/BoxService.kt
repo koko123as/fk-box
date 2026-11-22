@@ -32,7 +32,7 @@ import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.bridge.CoreRouting
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -133,7 +133,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     // The configuration the core last started with, used to fall back when a
     // reload of the same profile fails (for example a remote rule set that cannot
     // be downloaded while the phone sleeps) instead of stopping the service.
-    // [routing] is the routing rule set the core was compiled with (CoreRouting.coreJson).
+    // [routing] is the routing rule set the core was compiled with (client-core routing::core_json).
     private class StartedConfig(val profileId: Long, val content: String, val core: String, val routing: String?)
     @Volatile private var lastStarted: StartedConfig? = null
     private var startupJob: Job? = null
@@ -283,7 +283,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */
     private fun currentRouting(declaredCore: String, content: String): String? = runCatching {
-        CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), Libbox.resolveProfileCore(declaredCore, content))
+        ServiceSettings.routingCoreJson(Libbox.resolveProfileCore(declaredCore, content))
     }.getOrNull()
 
     /**
@@ -295,7 +295,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         val core = Libbox.resolveProfileCore(declaredCore, content)
         Settings.requireCoreEnabled(core)
         var unreadable: String? = null
-        val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
+        val rules = routing ?: runCatching { ServiceSettings.routingCoreJson(core) }
             .onFailure {
                 Log.w(TAG, "routing rules unreadable, starting without them", it)
                 unreadable = it.message ?: it.javaClass.simpleName

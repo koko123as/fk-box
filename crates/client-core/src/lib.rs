@@ -15,18 +15,28 @@
 //! - [`content`]: the save flow of a profile's configuration (edits and
 //!   subscription updates: revision check, atomic write, rollback), with the
 //!   cores' own work behind the platform's [`content::Kernel`].
+//! - [`routing`]: the per-core routing rule model, its validation and its
+//!   stored and wire forms (compiling a set for a core stays in the kernel
+//!   layer).
+//! - [`geo`]: the geo resource policy (which files a core needs, bundled
+//!   copy versus installed file, automatic update schedule, user addresses).
+//! - [`service_settings`]: the service settings snapshot the pages show,
+//!   its validation and the write, with what the platform does around it.
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
-//! Routing rules, backups, WebDAV and update checks follow in later phase-2
-//! slices (docs/architecture/phase2.md).
+//! Backups, WebDAV and update checks follow in later phase-2 slices
+//! (docs/architecture/phase2.md).
 
 pub mod api;
 pub mod content;
+pub mod geo;
 pub mod legacy;
 mod parcel;
 pub mod preferences;
 pub mod profile_array;
+pub mod routing;
+pub mod service_settings;
 pub mod storage;
 pub mod subscription;
 

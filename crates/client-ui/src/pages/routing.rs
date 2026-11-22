@@ -1,10 +1,12 @@
-//! Traffic routing (pages/RoutingPage.kt): one rule set per core
-//! (bridge/CoreRouting.kt's wire form, kept as JSON here), the rule editor,
-//! the preview and the last start's status. Rust-built rows.
+//! Traffic routing (pages/RoutingPage.kt): one rule set per core (the wire
+//! form of `fkbox_client_core::routing`, kept as JSON here and checked by
+//! that model), the rule editor, the preview and the last start's status.
+//! Rust-built rows.
 
 use std::cell::RefCell;
 use std::rc::Rc;
 
+use fkbox_client_core::routing::{self, CORES, FINALS, MODES, NETWORKS, PRESETS, TARGETS};
 use serde_json::{json, Value};
 
 use crate::app::{self, data, long, text, truthy};
@@ -15,20 +17,9 @@ use crate::nav::{self, MenuEntry};
 use crate::pages::{mark, Mark};
 use crate::rows::{self, Bar, Page, Row};
 
-const CORES: [&str; 3] = ["sing-box", "xray", "mihomo"];
-const MODES: [&str; 3] = ["prepend", "override", "off"];
 // In the order the editor offers them; "all" with apps, a network or ports
 // is a rule that matches by those alone (an app-only rule).
 const CONTENTS: [&str; 4] = ["match", "preset", "list", "all"];
-const TARGETS: [&str; 4] = ["proxy", "direct", "block", "node"];
-const FINALS: [&str; 5] = ["config", "proxy", "direct", "block", "node"];
-const NETWORKS: [&str; 3] = ["any", "tcp", "udp"];
-const PRESETS: [(&str, &str, &str); 4] = [
-    ("cn-direct", "Bypass mainland China", "geosite:cn, geoip:cn and private addresses go direct"),
-    ("gfw-proxy", "GFW list through proxy, the rest direct", "geosite:gfw through the proxy; all other traffic direct"),
-    ("ads-block", "Block ads", "geosite:category-ads-all is blocked"),
-    ("lan-direct", "LAN direct", "Private and LAN addresses go direct"),
-];
 
 fn core_title(core: &str) -> &str {
     match core {
@@ -93,10 +84,14 @@ fn list_of(v: &Value, k: &str) -> Vec<String> {
     v[k].as_array().map(|a| a.iter().map(text).filter(|x| !x.trim().is_empty()).collect()).unwrap_or_default()
 }
 
+/// A rule of the wire form, read by the client-core model.
+fn rule_of(rule: &Value) -> Option<routing::Rule> {
+    serde_json::from_value(rule.clone()).ok()
+}
+
 /// Apps, a network or ports: the conditions a rule can match by without a destination.
 fn has_conditions(rule: &Value) -> bool {
-    let network = s(rule, "network");
-    !list_of(rule, "apps").is_empty() || (network != "any" && !network.is_empty()) || !s(rule, "ports").trim().is_empty()
+    rule_of(rule).is_some_and(|r| routing::has_conditions(&r))
 }
 
 thread_local! {
@@ -144,173 +139,58 @@ fn apps_text(apps: &[String]) -> String {
 }
 
 fn uuid() -> String {
-    // A random v4 UUID from the clock and a counter (no RNG crate needed).
-    thread_local!(static N: std::cell::Cell<u64> = const { std::cell::Cell::new(0) });
-    let n = N.with(|n| {
-        n.set(n.get().wrapping_add(1));
-        n.get()
-    });
-    let mut x = (format::now_ms() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
-        ^ n.wrapping_mul(0xBF58_476D_1CE4_E5B9)
-        ^ (std::process::id() as u64) << 32;
-    let mut bytes = [0u8; 16];
-    for b in bytes.iter_mut() {
-        x ^= x >> 33;
-        x = x.wrapping_mul(0xFF51_AFD7_ED55_8CCD);
-        x ^= x >> 29;
-        *b = (x & 0xff) as u8;
-    }
-    bytes[6] = (bytes[6] & 0x0f) | 0x40;
-    bytes[8] = (bytes[8] & 0x3f) | 0x80;
-    let h: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+    routing::new_id()
 }
 
 fn new_rule() -> Value {
-    json!({ "id": uuid(), "enabled": true, "name": "", "content": "match", "values": [], "preset": "", "url": "", "target": { "type": "proxy", "tag": "" }, "apps": [], "network": "any", "ports": "" })
+    serde_json::to_value(routing::Rule::default()).unwrap_or_default()
 }
 
 fn preset_rules(id: &str) -> Vec<Value> {
-    let rule = |name: &str, content: &str, preset: &str, target: &str| {
-        let mut r = new_rule();
-        r["name"] = json!(name);
-        r["content"] = json!(content);
-        r["preset"] = json!(preset);
-        r["target"] = json!({ "type": target, "tag": "" });
-        r
-    };
-    match id {
-        "cn-direct" => vec![rule("Bypass mainland China", "preset", "cn-direct", "direct")],
-        "gfw-proxy" => vec![rule("GFW list", "preset", "gfw-proxy", "proxy"), rule("Everything else", "all", "", "direct")],
-        "ads-block" => vec![rule("Block ads", "preset", "ads-block", "block")],
-        "lan-direct" => vec![rule("LAN direct", "preset", "lan-direct", "direct")],
-        _ => Vec::new(),
-    }
+    routing::preset_rules(id).iter().filter_map(|r| serde_json::to_value(r).ok()).collect()
 }
 
 fn default_set() -> Value {
-    json!({ "mode": "prepend", "final": { "type": "config", "tag": "" }, "rules": [] })
+    serde_json::to_value(routing::CoreSet::default()).unwrap_or_default()
 }
 
-/// storedRouting: the saved rules, defaults filled in.
+/// storedRouting: the saved rules (the settings snapshot, read from the
+/// client store), defaults filled in by the model.
 fn stored() -> Value {
     let wire = data(|d| d.settings.get("routingRules").cloned().unwrap_or(Value::Null));
-    let mut rules = json!({ "version": 1, "cores": {} });
-    if let Some(cores) = wire.get("cores").and_then(Value::as_object) {
-        for (core, set) in cores {
-            let mut full = default_set();
-            if let Some(o) = set.as_object() {
-                for (k, v) in o {
-                    full[k] = v.clone();
-                }
-            }
-            let rules_list: Vec<Value> = full["rules"]
-                .as_array()
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|r| {
-                    let mut base = new_rule();
-                    if let Some(o) = r.as_object() {
-                        for (k, v) in o {
-                            base[k] = v.clone();
-                        }
-                    }
-                    base
-                })
-                .collect();
-            full["rules"] = json!(rules_list);
-            rules["cores"][core] = full;
-        }
-    }
-    rules
+    routing::to_wire(&routing::from_wire(&wire).unwrap_or_default())
 }
 
 fn core_set(rules: &Value, core: &str) -> Value {
     rules["cores"].get(core).cloned().unwrap_or_else(default_set)
 }
 
-/// splitValues: one per line, or several on a line split by commas or spaces; `regexp:` lines whole.
 fn split_values(text: &str) -> Vec<String> {
-    text.lines()
-        .flat_map(|line| {
-            let t = line.trim();
-            if t.get(..7).is_some_and(|p| p.eq_ignore_ascii_case("regexp:")) {
-                vec![t.to_string()]
-            } else {
-                t.split([',', ' ', '\t']).map(str::to_string).collect()
-            }
-        })
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty())
-        .collect()
+    routing::split_values(text)
 }
 
 fn ports_valid(text: &str) -> bool {
-    if text.trim().is_empty() {
-        return true;
-    }
-    if !text.chars().all(|c| c.is_ascii_digit() || matches!(c, ',' | ' ' | '-' | '\t')) {
-        return false;
-    }
-    let ranges: Vec<&str> = text.split([',', ' ']).filter(|p| !p.trim().is_empty()).collect();
-    if ranges.is_empty() || ranges.len() > 28 {
-        return false;
-    }
-    ranges.iter().all(|part| {
-        let bounds: Vec<Option<u32>> = part.split('-').map(|b| b.trim().parse::<u32>().ok().filter(|_| b.trim().len() <= 5)).collect();
-        if bounds.iter().any(Option::is_none) || bounds.len() > 2 {
-            return false;
-        }
-        let b: Vec<u32> = bounds.into_iter().flatten().collect();
-        b.iter().all(|v| (1..=65535).contains(v)) && (b.len() == 1 || b[0] <= b[1])
-    })
+    routing::ports_valid(text)
 }
 
-fn package_valid(name: &str) -> bool {
-    name.len() < 256
-        && !name.is_empty()
-        && name.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+/// The model's message, translated (a `Title: detail` message by its title).
+fn tr_error(message: &str) -> String {
+    let translated = tr(message);
+    if translated != message {
+        return translated;
+    }
+    match message.split_once(": ") {
+        Some((head, tail)) => format!("{}: {}", tr(head), tail),
+        None => translated,
+    }
 }
 
-fn url_valid(url: &str) -> bool {
-    url.len() <= 2048 && (url.starts_with("https://") || url.starts_with("http://")) && url.len() > 8
-}
-
-/// validateRule
+/// validateRule, with what the edited core cannot express.
 fn validate_rule(rule: &Value, core: &str) -> Result<(), String> {
-    let content = s(rule, "content");
-    let target = rule["target"].clone();
-    let values: Vec<String> = rule["values"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
-    let apps: Vec<String> = rule["apps"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
-    if s(&target, "type") == "node" && s(&target, "tag").trim().is_empty() {
-        return Err(tr("Choose a node or group"));
-    }
-    if values.len() > 5000 || values.iter().any(|v| v.len() > 2048) {
-        return Err(tr("Too many or too long entries"));
-    }
-    if content == "match" && !values.iter().any(|v| !v.trim().is_empty()) && !has_conditions(rule) {
-        return Err(tr("Add a domain, IP or geo entry, or choose apps, a network or ports"));
-    }
-    if core == "xray" && apps.iter().any(|a| !a.trim().is_empty()) {
-        return Err(tr("Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control)."));
-    }
-    if content == "preset" && !PRESETS.iter().any(|p| p.0 == s(rule, "preset")) {
-        return Err(format!("{}: {}", tr("Unknown preset"), s(rule, "preset")));
-    }
-    if content == "list" && !url_valid(&s(rule, "url")) {
-        return Err(tr("Enter an http(s) rule list URL"));
-    }
-    if apps.len() > 1000 || !apps.iter().all(|a| package_valid(a)) {
-        return Err(tr("Invalid package name"));
-    }
-    if !ports_valid(&s(rule, "ports")) {
-        return Err(tr("Ports are 1–65535, as 443 or 8000-9000, separated by commas"));
-    }
-    Ok(())
+    let rule = rule_of(rule).ok_or_else(|| tr("Invalid routing rules"))?;
+    routing::validate_rule_for_core(&rule, core).map_err(|e| tr_error(&e))
 }
 
-/// The summary under a rule; without the app names when the title already shows them.
 fn rule_summary_with(rule: &Value, app_names: bool) -> String {
     let content = s(rule, "content");
     let apps = list_of(rule, "apps");
@@ -318,7 +198,7 @@ fn rule_summary_with(rule: &Value, app_names: bool) -> String {
         // An app-only (or network/port-only) rule: its conditions say it all.
         "all" if has_conditions(rule) => String::new(),
         "all" => tr("All traffic"),
-        "preset" => tr(PRESETS.iter().find(|p| p.0 == s(rule, "preset")).map(|p| p.1).unwrap_or(&s(rule, "preset"))),
+        "preset" => tr(PRESETS.iter().find(|p| p.id == s(rule, "preset")).map(|p| p.title).unwrap_or(&s(rule, "preset"))),
         "list" => s(rule, "url").split_once("://").map(|x| x.1).unwrap_or(&s(rule, "url")).chars().take(48).collect(),
         _ => {
             let values: Vec<String> = rule["values"].as_array().map(|a| a.iter().map(text).collect()).unwrap_or_default();
@@ -569,7 +449,7 @@ fn routing_page(st: &RoutingRef) -> Page {
 
 fn routing_menu(st: &RoutingRef) -> Vec<MenuEntry> {
     let mut items = Vec::new();
-    for (id, title, description) in PRESETS {
+    for &routing::Preset { id, title, description } in PRESETS.iter() {
         let a = st.clone();
         let mut m = MenuEntry::plain(&tr(title), move || {
             let added = preset_rules(id);
@@ -654,7 +534,7 @@ fn save(st: &RoutingRef) {
         r.saving = false;
         match res {
             Ok(settings) => {
-                app::data_mut(|d| d.settings = app::obj(&settings));
+                app::data_mut(|d| d.settings = app::service_settings(&d.settings, &settings));
                 r.saved = stored();
                 r.draft = r.saved.clone();
             }
@@ -759,7 +639,7 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             Rc::new(|c: &str| content_choice(c)),
             Rc::new(set(Rc::new(|r: &mut Value, v: String| {
                 if v == "preset" && s(r, "preset").trim().is_empty() {
-                    r["preset"] = json!(PRESETS[0].0);
+                    r["preset"] = json!(PRESETS[0].id);
                 }
                 r["content"] = json!(v);
             }))),
@@ -780,9 +660,9 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             rows.push(
                 forms::options_row(
                     &tr("Preset"),
-                    PRESETS.iter().map(|p| p.0.to_string()).collect(),
+                    PRESETS.iter().map(|p| p.id.to_string()).collect(),
                     &s(&rule, "preset"),
-                    Rc::new(|id: &str| PRESETS.iter().find(|p| p.0 == id).map(|p| tr(p.1)).unwrap_or_else(|| id.to_string())),
+                    Rc::new(|id: &str| PRESETS.iter().find(|p| p.id == id).map(|p| tr(p.title)).unwrap_or_else(|| id.to_string())),
                     Rc::new(set(Rc::new(|r: &mut Value, v: String| r["preset"] = json!(v)))),
                 )
                 .key("preset"),

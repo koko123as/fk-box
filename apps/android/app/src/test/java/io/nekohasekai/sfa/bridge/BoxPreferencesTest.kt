@@ -4,26 +4,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
 import org.junit.Test
 
-class BoxSettingsTest {
-    @Test
-    fun validatesWholeBackupBeforeMutation() {
-        val value = mapOf("perAppMode" to 2, "perAppList" to listOf("org.example.app"), "oomMemoryLimitMB" to 50)
-        assertEquals(value, BoxSettings.validate(value))
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("oomMemoryLimitMB" to 9)) }
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("allowBypass" to "true")) }
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("serviceMode" to "VPN")) }
-    }
-
-    @Test
-    fun geoResourceSettingsAreValidated() {
-        val value = mapOf("geoAutoUpdate" to true, "geoUpdateInterval" to 24, "geoUrls" to mapOf("geoip" to "https://example.com/geoip.dat"))
-        assertEquals(value, BoxSettings.validate(value))
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUpdateInterval" to 0)) }
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUpdateInterval" to 1.5)) }
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUrls" to mapOf("geoip" to "file:///sdcard/geoip.dat"))) }
-        assertThrows(IllegalArgumentException::class.java) { BoxSettings.validate(value + ("geoUrls" to mapOf("rules" to "https://example.com/x"))) }
-    }
-
+/** Interface preference validation; the service settings' checks are client-core's (service_settings.rs tests). */
+class BoxPreferencesTest {
     @Test
     fun preferencesRejectInventedFeaturesAndMissingStatusCard() {
         assertThrows(IllegalArgumentException::class.java) { BoxPreferences.validate(mapOf("clashScript" to "code")) }

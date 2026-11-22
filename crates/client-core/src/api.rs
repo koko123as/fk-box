@@ -9,6 +9,8 @@
 use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
+use crate::service_settings::{self, Written};
+use crate::{geo, routing};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -40,6 +42,15 @@ fn ids(args: &Value, key: &str) -> Result<Vec<i64>, String> {
 
 fn parsed<T: for<'de> serde::Deserialize<'de>>(args: &Value, key: &str) -> Result<T, String> {
     serde_json::from_value(arg(args, key)?.clone()).map_err(|e| format!("Invalid argument: {key}: {e}"))
+}
+
+fn strings(args: &Value, key: &str) -> Result<Vec<String>, String> {
+    arg(args, key)?
+        .as_array()
+        .ok_or_else(|| format!("Invalid argument: {key}"))?
+        .iter()
+        .map(|v| v.as_str().map(str::to_string).ok_or_else(|| format!("Invalid argument: {key}")))
+        .collect()
 }
 
 fn to_json<T: serde::Serialize>(value: &T) -> Result<Value, String> {
@@ -96,6 +107,56 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
             Value::Null
         }
         "content.revision" => content::revision(text(&args, "content")?).into(),
+        // -- service settings ----------------------------------------------
+        "serviceSettings.snapshot" => Value::Object(service_settings::snapshot(store)?),
+        "serviceSettings.backup" => Value::Object(service_settings::backup(store)?),
+        "serviceSettings.validate" => {
+            service_settings::validate(object(&args, "values")?)?;
+            Value::Null
+        }
+        "serviceSettings.plan" => to_json(&service_settings::plan(store, object(&args, "values")?)?)?,
+        "serviceSettings.patch" => {
+            let values = object(&args, "values")?;
+            let plan = service_settings::plan(store, values)?;
+            let written = service_settings::patch(store, values)?;
+            json!({ "written": to_json(&written)?, "plan": to_json(&plan)? })
+        }
+        // -- routing rules -------------------------------------------------
+        "routing.normalize" => routing::to_wire(&routing::from_wire(arg(&args, "value")?)?),
+        "routing.saved" => routing::to_wire(&routing::load(store)),
+        "routing.coreJson" => match args.get("value").filter(|v| !v.is_null()) {
+            Some(draft) => routing::core_json(&routing::from_wire(draft)?, text(&args, "core")?).into(),
+            None => routing::saved_core_json(store, text(&args, "core")?)?.into(),
+        },
+        // -- geo resources -------------------------------------------------
+        "geo.schedule" => to_json(&geo::schedule(store)?)?,
+        "geo.needed" => to_json(&geo::needed(text(&args, "core")?, text(&args, "text")?))?,
+        "geo.shouldExtract" => {
+            let installed: Option<geo::Installed> = match args.get("installed").filter(|v| !v.is_null()) {
+                Some(v) => Some(serde_json::from_value(v.clone()).map_err(|e| format!("Invalid argument: installed: {e}"))?),
+                None => None,
+            };
+            geo::should_extract(
+                arg(&args, "exists")?.as_bool().ok_or("Invalid argument: exists")?,
+                installed.as_ref(),
+                text(&args, "bundledSha256")?,
+                id(&args, "bundleTime")?,
+                id(&args, "fileModified")?,
+            )
+            .into()
+        }
+        "geo.due" => {
+            let interval = geo::schedule(store)?.interval_hours;
+            to_json(&geo::due(args.get("state").and_then(Value::as_str).unwrap_or(""), &strings(&args, "installed")?, interval, id(&args, "now")?))?
+        }
+        "geo.custom" => to_json(&geo::custom_urls(store)?)?,
+        "geo.url" => geo::url(store, text(&args, "name")?, text(&args, "defaultUrl")?)?.into(),
+        "geo.validUrl" => geo::valid_url(text(&args, "url")?).into(),
+        "geo.setUrl" => {
+            let stored = geo::set_url(store, text(&args, "name")?, text(&args, "url")?, text(&args, "defaultUrl")?)?;
+            let written: Vec<Written> = stored.iter().map(|v| Written::of(geo::URLS_KEY, v)).collect();
+            json!({ "written": to_json(&written)? })
+        }
         // -- store ---------------------------------------------------------
         "settings.all" => {
             let mut out = Map::new();
@@ -278,6 +339,40 @@ mod tests {
         let token = done["token"].as_i64().unwrap();
         run(&store, "content.rollback", json!({"token": token}));
         assert_eq!(store.profile(id).unwrap().unwrap().last_updated, 1_000);
+    }
+
+    #[test]
+    fn service_settings_routing_and_geo_calls() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(run(&store, "serviceSettings.snapshot", Value::Null)["oomMemoryLimitMB"], json!(50));
+        assert!(run(&store, "serviceSettings.backup", Value::Null).get("perAppManagedList").is_none());
+        assert!(call(&store, "serviceSettings.validate", &json!({"values": {"oomMemoryLimitMB": 1}}).to_string()).is_err());
+        let plan = run(&store, "serviceSettings.plan", json!({"values": {"queryMode": "ROOT"}}));
+        assert_eq!(plan, json!({"queryMode": "ROOT", "scan": false, "reloadSetup": false, "rescheduleGeo": false}));
+        let rules = json!({"cores": {"mihomo": {"rules": [{"id": "a", "content": "all", "apps": ["com.tencent.mm"], "target": {"type": "direct"}}]}}});
+        let done = run(&store, "serviceSettings.patch", json!({"values": {"routingRules": rules, "geoAutoUpdate": true}}));
+        assert_eq!(done["plan"]["rescheduleGeo"], json!(true));
+        assert_eq!(done["written"].as_array().unwrap().len(), 2);
+        assert_eq!(run(&store, "routing.saved", Value::Null)["cores"]["mihomo"]["mode"], json!("prepend"));
+        let core = run(&store, "routing.coreJson", json!({"core": "mihomo"}));
+        assert!(core.as_str().unwrap().contains("com.tencent.mm"));
+        assert_eq!(run(&store, "routing.coreJson", json!({"core": "xray"})), json!(""));
+        let draft = run(&store, "routing.coreJson", json!({"core": "xray", "value": {"cores": {"xray": {}}}}));
+        assert!(draft.as_str().unwrap().starts_with(r#"{"mode":"prepend""#));
+        assert_eq!(run(&store, "routing.normalize", json!({"value": {"cores": {}}})), json!({"version": 1, "cores": {}}));
+        assert!(call(&store, "routing.normalize", &json!({"value": {"version": 3}}).to_string()).is_err());
+
+        assert_eq!(run(&store, "geo.schedule", Value::Null), json!({"enabled": true, "intervalHours": 24}));
+        assert_eq!(run(&store, "geo.needed", json!({"core": "mihomo", "text": "rules: []"})), json!(["geosite", "mmdb"]));
+        let extract = json!({"exists": true, "installed": {"source": "builtin", "sha256": "x", "time": 1}, "bundledSha256": "y", "bundleTime": 2, "fileModified": 0});
+        assert_eq!(run(&store, "geo.shouldExtract", extract), json!(true));
+        assert_eq!(run(&store, "geo.shouldExtract", json!({"exists": true, "bundledSha256": "y", "bundleTime": 2, "fileModified": 0})), json!(false));
+        assert_eq!(run(&store, "geo.due", json!({"state": "", "installed": ["asn", "geoip"], "now": 5})), json!(["geoip", "asn"]));
+        let set = run(&store, "geo.setUrl", json!({"name": "asn", "url": "https://m.example/asn", "defaultUrl": "https://d.example/asn"}));
+        assert_eq!(set["written"][0]["key"], json!("geo_urls"));
+        assert_eq!(run(&store, "geo.url", json!({"name": "asn", "defaultUrl": "https://d.example/asn"})), json!("https://m.example/asn"));
+        assert_eq!(run(&store, "geo.custom", Value::Null), json!({"asn": "https://m.example/asn"}));
+        assert_eq!(run(&store, "geo.validUrl", json!({"url": "https://"})), json!(false));
     }
 
     #[test]

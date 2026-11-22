@@ -120,6 +120,18 @@ class StorePreferenceDataStore {
         fireChangeListener(key)
     }
 
+    /**
+     * A value the client store already holds, written by `fkbox-client-core`
+     * (ServiceSettings): cached without writing it again; null removes it.
+     */
+    fun adopt(key: String, kind: Int, value: JsonElement?) {
+        val values = cache
+        synchronized(writeAccess) {
+            if (value == null) values.remove(key) else values[key] = Entry(kind, value)
+        }
+        fireChangeListener(key)
+    }
+
     private val listeners = HashSet<OnPreferenceDataStoreChangeListener>()
 
     private fun fireChangeListener(key: String) {

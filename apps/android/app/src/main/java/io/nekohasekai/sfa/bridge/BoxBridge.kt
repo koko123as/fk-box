@@ -16,7 +16,6 @@ import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
 import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
 import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
 import io.nekohasekai.sfa.backend.log.LogViewModel
-import io.nekohasekai.sfa.bg.GeoPolicy
 import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.constant.Status
@@ -24,6 +23,7 @@ import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.RemoteServer
 import io.nekohasekai.sfa.database.RemoteServerManager
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
@@ -98,7 +98,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     internal val capture = BoxCapture(activity)
     private val qrScanner = BoxQrScanner(profiles::decode)
     private val webdav = BoxWebDAV(activity)
-    private val backups = BoxBackups(activity, ::settings, ::patchSettings,
+    private val backups = BoxBackups(activity, ::patchSettings,
         { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit, webdav)
     private val rates = object : CommandClient.Handler {
         override fun updateStatus(status: StatusMessage) {
@@ -245,8 +245,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun geoSetUrl(name: String, url: String) = operations.withLock {
         GeoResources.setUrl(name, url)
-        withContext(Dispatchers.IO) { Settings.dataStore.flush() }
-        emit("settings", settings())
+        publishSettings()
         GeoResources.list(activity)
     }
 
@@ -288,7 +287,10 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      */
     suspend fun ready(): Map<String, Any?> = coroutineScope {
         val resolved = async(Dispatchers.IO) { profiles.resolveCores() }
-        val settingsValue = withContext(Dispatchers.IO) { settings() }
+        val settingsValue = withContext(Dispatchers.IO) {
+            Settings.dataStore.flush()
+            platformSettings()
+        }
         resolved.await()
         mapOf(
             "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
@@ -503,7 +505,20 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     /** One setting; [restart] restarts a running local service for it (allowBypass, autoRedirect, dynamicNotification). */
     suspend fun setSetting(key: String, value: Any?, restart: Boolean = false) = operations.withLock {
         saveSettings(key, value, restart)
-        settings()
+        platformSettings()
+    }
+
+    /**
+     * The UI wrote service settings to the client store itself (ones that
+     * need nothing from Android first): they enter the settings cache, the
+     * setup options are re-read and geo updates rescheduled when needed.
+     * Returns the Android state the UI shows with them.
+     */
+    suspend fun serviceSettingsWritten(written: List<Any?>) = operations.withLock {
+        val keys = ServiceSettings.adopt(ServiceSettings.element(written))
+        withContext(Dispatchers.IO) { Application.application.reloadSetupOptions() }
+        if (keys.any { it in GEO_SCHEDULE_STORE_KEYS }) UpdateGeoWork.reconfigure()
+        platformSettings()
     }
 
     /**
@@ -511,8 +526,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * the previous rules come back if the reload fails.
      */
     suspend fun saveRouting(value: Map<String, Any?>) = operations.withLock {
-        val values = mapOf("routingRules" to CoreRouting.toWire(CoreRouting.fromWire(value)))
-        val previous = mapOf("routingRules" to CoreRouting.toWire(savedRouting()))
+        val values = mapOf("routingRules" to ServiceSettings.normalizeRouting(value))
+        val previous = mapOf("routingRules" to ServiceSettings.snapshot()["routingRules"])
         if (previous != values) {
             if (CommandTarget.isRemote || activity.serviceStatus.value != Status.Started) {
                 patchSettings(values)
@@ -522,7 +537,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 }
             }
         }
-        settings()
+        platformSettings()
     }
 
     /**
@@ -531,14 +546,13 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      */
     suspend fun routingPreview(draft: Map<String, Any?>): Map<String, Any?> {
         require(!CommandTarget.isRemote) { "Routing rules apply to the local service" }
-        val rules = CoreRouting.fromWire(draft)
         return withContext(Dispatchers.IO) {
             val id = Settings.selectedProfile
             require(id != -1L) { "No profile selected" }
             val profile = ProfileManager.get(id) ?: error("Profile no longer exists")
             val content = java.io.File(profile.typed.path).readText()
             val core = ProfileContent.coreOf(profile, content)
-            val result = Libbox.applyCoreRouting(core, content, CoreRouting.coreJson(rules, core))
+            val result = Libbox.applyCoreRouting(core, content, ServiceSettings.routingCoreJson(core, draft))
             mapOf(
                 "profile" to profile.name, "core" to core, "content" to result.content,
                 "applied" to result.applied, "active" to result.active,
@@ -564,11 +578,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 
-    private fun savedRouting(): CoreRouting.Rules = runCatching { CoreRouting.decode(Settings.routingRules) }.getOrDefault(CoreRouting.Rules())
-
     suspend fun updateSettings(values: Map<String, Any?>) = operations.withLock {
         patchSettings(values)
-        settings()
+        platformSettings()
     }
 
     suspend fun listApps(refresh: Boolean, system: Boolean, nonInternet: Boolean): Any? {
@@ -581,7 +593,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             )
         }
         // Package broadcasts may have updated managed selections while the page was closed.
-        emit("settings", settings())
+        publishSettings()
         return result
     }
 
@@ -616,10 +628,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun rescanApps() = operations.withLock {
         if (Settings.perAppProxyManagedMode) {
             Settings.perAppProxyManagedList = PerAppProxyScanner.scanAllChinaApps()
-            withContext(Dispatchers.IO) { Settings.dataStore.flush() }
-            emit("settings", settings())
+            publishSettings()
         }
-        settings()
+        platformSettings()
     }
 
     fun openBatterySettings() {
@@ -756,21 +767,20 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         if (::dashboard.isInitialized) emit("dashboard", dashboard.uiState.value.toWire())
     }
 
-    private fun settings(): Map<String, Any?> = mapOf(
-        "perAppEnabled" to Settings.perAppProxyEnabled, "perAppMode" to Settings.perAppProxyMode,
-        "perAppList" to Settings.perAppProxyList.toList(), "perAppManaged" to Settings.perAppProxyManagedMode,
-        "perAppManagedList" to Settings.perAppProxyManagedList.toList(),
-        "allowBypass" to Settings.allowBypass, "autoRedirect" to Settings.autoRedirect,
-        "dynamicNotification" to Settings.dynamicNotification, "disableDeprecatedWarnings" to Settings.disableDeprecatedWarnings,
-        "singBoxEnabled" to Settings.singBoxEnabled, "xrayEnabled" to Settings.xrayEnabled, "mihomoEnabled" to Settings.mihomoEnabled,
-        "oomKillerEnabled" to Settings.oomKillerEnabled, "oomKillerDisabled" to Settings.oomKillerDisabled,
-        "oomMemoryLimitMB" to Settings.oomMemoryLimitMB, "powerReportEnabled" to Settings.powerReportEnabled,
-        "queryMode" to Settings.perAppProxyPackageQueryMode,
-        "geoAutoUpdate" to Settings.geoAutoUpdate, "geoUpdateInterval" to Settings.geoUpdateInterval,
-        "geoUrls" to GeoPolicy.decodeUrls(Settings.geoUrls),
-        "routingRules" to CoreRouting.toWire(savedRouting()),
+    /**
+     * Android state shown with the service settings. The settings themselves
+     * are client-core's snapshot ([ServiceSettings.snapshot]), which the UI
+     * reads from the client store and shows with these entries on top.
+     */
+    private fun platformSettings(): Map<String, Any?> = mapOf(
         "batteryExempt" to (activity.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(activity.packageName) == true),
     )
+
+    /** The settings changed: pending cache writes reach the store before the UI re-reads it. */
+    private suspend fun publishSettings() {
+        withContext(Dispatchers.IO) { Settings.dataStore.flush() }
+        emit("settings", platformSettings())
+    }
 
     private suspend fun saveSettings(key: String, value: Any?, restart: Boolean) {
         val values = mapOf(key to value)
@@ -782,7 +792,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         require(CommandTarget.isRemote || activity.serviceStatus.value in setOf(Status.Started, Status.Stopped)) {
             "Wait for the service to finish starting or stopping"
         }
-        val previous = mapOf(key to settings()[key])
+        val previous = mapOf(key to withContext(Dispatchers.IO) { ServiceSettings.snapshot()[key] })
         if (previous == values) return
         if (CommandTarget.isRemote || activity.serviceStatus.value != Status.Started) {
             patchSettings(values)
@@ -793,75 +803,34 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 
+    /**
+     * Writes service settings through client-core ([ServiceSettings]): it
+     * checks them and says what Android does first (switch the package query
+     * mode, scan the apps for the managed list); the write itself is one
+     * step, after which the setup options are re-read and geo updates
+     * rescheduled. Managed mode is never on without its first scan's list.
+     */
     private suspend fun patchSettings(values: Map<String, Any?>) {
-        BoxSettings.validate(values)
-        val managed = values["perAppManaged"] as? Boolean ?: Settings.perAppProxyManagedMode
-        val enabled = values["perAppEnabled"] as? Boolean ?: Settings.perAppProxyEnabled
+        withContext(Dispatchers.IO) { Settings.dataStore.flush() }
+        val plan = withContext(Dispatchers.IO) { ServiceSettings.plan(values) }
         val oldQueryMode = Settings.perAppProxyPackageQueryMode
-        val managedApps = try {
-            (values["queryMode"] as? String)?.let(PackageQueryManager::setQueryMode)
-            if (managed && enabled && values.keys.any { it in setOf("perAppManaged", "perAppEnabled", "queryMode") }) {
-                PerAppProxyScanner.scanAllChinaApps()
-            } else null
+        val restoreQueryMode = { if (plan.queryMode != null) PackageQueryManager.setQueryMode(oldQueryMode) }
+        try {
+            plan.queryMode?.let(PackageQueryManager::setQueryMode)
+            if (plan.scan) {
+                Settings.perAppProxyManagedList = PerAppProxyScanner.scanAllChinaApps()
+            }
+            withContext(Dispatchers.IO) {
+                Settings.dataStore.flush()
+                ServiceSettings.patch(values)
+            }
         } catch (error: Exception) {
-            PackageQueryManager.setQueryMode(oldQueryMode)
+            restoreQueryMode()
             throw error
         }
-        // Do not enable managed mode until its first scan has succeeded.
-        if (managedApps != null) Settings.perAppProxyManagedList = managedApps
-        for ((key, item) in values) {
-        val args = mapOf("value" to item)
-        when (key) {
-            "perAppEnabled" -> Settings.perAppProxyEnabled = args["value"] == true
-            "perAppMode" -> {
-                val value = (args["value"] as Number).toInt()
-                require(value == Settings.PER_APP_PROXY_INCLUDE || value == Settings.PER_APP_PROXY_EXCLUDE)
-                Settings.perAppProxyMode = value
-            }
-            "perAppList" -> Settings.perAppProxyList = (args["value"] as List<*>).map { it as String }.toSet()
-            "perAppManaged" -> Settings.perAppProxyManagedMode = args["value"] == true
-            "allowBypass" -> Settings.allowBypass = args["value"] == true
-            "autoRedirect" -> Settings.autoRedirect = args["value"] == true
-            "dynamicNotification" -> Settings.dynamicNotification = args["value"] == true
-            "disableDeprecatedWarnings" -> Settings.disableDeprecatedWarnings = args["value"] == true
-            "singBoxEnabled", "xrayEnabled", "mihomoEnabled" -> {
-                val value = args["value"] == true
-                val next = mapOf(
-                    "singBoxEnabled" to Settings.singBoxEnabled, "xrayEnabled" to Settings.xrayEnabled, "mihomoEnabled" to Settings.mihomoEnabled,
-                ) + (key to value)
-                require(next.values.any { it }) { "Keep at least one core turned on" }
-                when (key) {
-                    "singBoxEnabled" -> Settings.singBoxEnabled = value
-                    "xrayEnabled" -> Settings.xrayEnabled = value
-                    else -> Settings.mihomoEnabled = value
-                }
-            }
-            "oomKillerEnabled" -> Settings.oomKillerEnabled = args["value"] == true
-            "oomKillerDisabled" -> Settings.oomKillerDisabled = args["value"] == true
-            "oomMemoryLimitMB" -> {
-                val value = (args["value"] as Number).toInt()
-                require(value in 10..4096) { "Memory limit must be 10–4096 MiB" }
-                Settings.oomMemoryLimitMB = value
-            }
-            "powerReportEnabled" -> Settings.powerReportEnabled = args["value"] == true
-            "geoAutoUpdate" -> Settings.geoAutoUpdate = args["value"] == true
-            "geoUpdateInterval" -> Settings.geoUpdateInterval = (args["value"] as Number).toInt()
-            "routingRules" -> Settings.routingRules = CoreRouting.encode(CoreRouting.fromWire(args["value"]))
-            "geoUrls" -> Settings.geoUrls = GeoPolicy.encodeUrls((args["value"] as Map<*, *>).entries.associate { it.key as String to it.value as String })
-            "queryMode" -> {
-                val value = args["value"] as String
-                require(value in listOf(Settings.PACKAGE_QUERY_MODE_ROOT, Settings.PACKAGE_QUERY_MODE_SHIZUKU))
-                PackageQueryManager.setQueryMode(value)
-            }
-            else -> error("Unknown setting: " + key)
-        }
-        }
-        withContext(Dispatchers.IO) {
-            Settings.dataStore.flush()
-            Application.application.reloadSetupOptions()
-        }
-        if (values.keys.any { it == "geoAutoUpdate" || it == "geoUpdateInterval" }) UpdateGeoWork.reconfigure()
-        emit("settings", settings())
+        withContext(Dispatchers.IO) { Application.application.reloadSetupOptions() }
+        if (plan.rescheduleGeo) UpdateGeoWork.reconfigure()
+        publishSettings()
     }
 
     fun reportError(message: String) {
@@ -921,6 +890,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 }
+
+/** Store keys of the geo update schedule (client-core geo::AUTO_UPDATE_KEY, UPDATE_INTERVAL_KEY). */
+private val GEO_SCHEDULE_STORE_KEYS = setOf("geo_auto_update", "geo_update_interval")
 
 /** The streamed connection list and logs reach the UI at most this often. */
 private const val UI_UPDATE_INTERVAL_MILLIS = 1000L

@@ -1172,7 +1172,7 @@ fn access_menu(
             app::call("rescanApps", json!({}), move |r| {
                 b.borrow_mut().scanning = false;
                 match r {
-                    Ok(v) => app::data_mut(|d| d.settings = obj(&v)),
+                    Ok(v) => app::data_mut(|d| d.settings = app::service_settings(&d.settings, &v)),
                     Err(e) => app::report(&e),
                 }
                 mark(Mark::ALL);

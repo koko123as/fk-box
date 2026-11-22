@@ -413,6 +413,25 @@ impl Store {
         put_setting(&self.conn(), key, value)
     }
 
+    /// Writes several settings as one change. Inside a [`Store::begin`]
+    /// transaction (a backup restore) they join it; otherwise they get their
+    /// own, so either all are written or none.
+    pub fn put_settings(&self, entries: &[(String, SettingValue)]) -> Result<()> {
+        let mut conn = self.conn();
+        if self.in_transaction() {
+            for (key, value) in entries {
+                put_setting(&conn, key, value)?;
+            }
+            return Ok(());
+        }
+        let tx = conn.transaction()?;
+        for (key, value) in entries {
+            put_setting(&tx, key, value)?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn remove_setting(&self, key: &str) -> Result<()> {
         self.conn().execute("DELETE FROM settings WHERE key = ?1", [key])?;
         Ok(())

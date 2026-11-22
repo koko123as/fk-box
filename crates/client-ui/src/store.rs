@@ -1,7 +1,8 @@
 //! The client store ([`fkbox_client_core::storage::Store`]) as the UI uses it:
-//! the profile list and the interface preferences are read here, and
-//! preferences and the profile order are written here, instead of asking the
-//! host. Changes that involve a profile's configuration or the running
+//! the profile list, the interface preferences, the service settings and the
+//! routing rules are read here, and preferences, the profile order and the
+//! service settings that need nothing from the platform first are written
+//! here, instead of asking the host. Changes that involve a profile's configuration or the running
 //! service still go through the host, which writes the same store and then
 //! sends a `profiles` event without a payload (src/app.rs re-reads).
 //!
@@ -12,6 +13,7 @@
 
 use std::sync::{Arc, OnceLock};
 
+use fkbox_client_core::service_settings::{self, Plan, Written};
 use fkbox_client_core::storage::Store;
 use serde_json::{Map, Value};
 
@@ -58,6 +60,32 @@ pub fn reorder_profiles(store: &Store, ids: &[i64]) -> Result<(), String> {
     store.reorder_profiles(ids).map_err(|e| e.0)
 }
 
+/// The service settings snapshot (without the platform's own state).
+pub fn service_settings(store: &Store) -> Result<Map<String, Value>, String> {
+    service_settings::snapshot(store)
+}
+
+/// What the platform must do around a write of `values`, after checking them.
+pub fn plan_service_settings(store: &Store, values: &Map<String, Value>) -> Result<Plan, String> {
+    service_settings::plan(store, values)
+}
+
+/// Writes service settings that need nothing from the platform first; the
+/// caller tells the platform what was written.
+pub fn patch_service_settings(store: &Store, values: &Map<String, Value>) -> Result<Vec<Written>, String> {
+    writable(store)?;
+    let plan = service_settings::plan(store, values)?;
+    if !plan.store_only() {
+        return Err("This setting is saved by the app".into());
+    }
+    service_settings::patch(store, values)
+}
+
+/// The saved routing rules in their wire form (unreadable ones read as none).
+pub fn routing_rules(store: &Store) -> Value {
+    fkbox_client_core::routing::to_wire(&fkbox_client_core::routing::load(store))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +110,24 @@ mod tests {
         assert!(reorder_profiles(&store, &[a, b]).is_err());
         assert!(update_preferences(&store, &json!({"theme": "light"})).is_err());
         store.rollback().unwrap();
+    }
+
+    #[test]
+    fn service_settings_are_read_and_written_here_unless_the_platform_must_act() {
+        let store = Store::open_in_memory().unwrap();
+        assert_eq!(service_settings(&store).unwrap()["oomMemoryLimitMB"], json!(50));
+        let values = json!({"oomMemoryLimitMB": 64, "disableDeprecatedWarnings": true});
+        let plan = plan_service_settings(&store, values.as_object().unwrap()).unwrap();
+        assert!(plan.store_only() && plan.reload_setup);
+        let written = patch_service_settings(&store, values.as_object().unwrap()).unwrap();
+        assert_eq!(written.len(), 2);
+        assert_eq!(service_settings(&store).unwrap()["oomMemoryLimitMB"], json!(64));
+        // Query mode and managed scans go through the platform.
+        assert!(patch_service_settings(&store, json!({"queryMode": "ROOT"}).as_object().unwrap()).is_err());
+        assert!(patch_service_settings(&store, json!({"oomMemoryLimitMB": 1}).as_object().unwrap()).is_err());
+        store.begin().unwrap();
+        assert!(patch_service_settings(&store, json!({"allowBypass": true}).as_object().unwrap()).is_err());
+        store.rollback().unwrap();
+        assert_eq!(routing_rules(&store), json!({"version": 1, "cores": {}}));
     }
 }
