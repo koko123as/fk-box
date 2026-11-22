@@ -12,7 +12,6 @@ import io.nekohasekai.sfa.utils.RemoteControlManager
 import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -22,8 +21,7 @@ data class GroupsUiState(val groups: List<Map<String, Any?>> = emptyList())
 class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val commandClient = CommandClient(viewModelScope, CommandClient.ConnectionType.Groups, this)
 
-    private val _serviceStatus = MutableStateFlow(Status.Stopped)
-    val serviceStatus = _serviceStatus.asStateFlow()
+    private val serviceStatus = MutableStateFlow(Status.Stopped)
     private var lastServiceStatus: Status = Status.Stopped
     private val updateSequence = java.util.concurrent.atomic.AtomicLong()
 
@@ -58,7 +56,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
         }
         lastServiceStatus = status
         viewModelScope.launch {
-            _serviceStatus.emit(status)
+            serviceStatus.emit(status)
             handleServiceStatusChange(status)
         }
     }

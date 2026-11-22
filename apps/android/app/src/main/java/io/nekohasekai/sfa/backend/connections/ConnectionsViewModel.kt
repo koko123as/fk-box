@@ -11,8 +11,6 @@ import io.nekohasekai.sfa.utils.RemoteControlManager
 import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
@@ -33,8 +31,6 @@ class ConnectionsViewModel :
         this,
     )
 
-    private val _serviceStatus = MutableStateFlow(Status.Stopped)
-    val serviceStatus = _serviceStatus.asStateFlow()
     private var lastServiceStatus: Status = Status.Stopped
 
     // Every event batch and clear runs on one lane, in arrival order (as
@@ -69,10 +65,7 @@ class ConnectionsViewModel :
     fun updateServiceStatus(status: Status) {
         if (status == lastServiceStatus) return
         lastServiceStatus = status
-        viewModelScope.launch {
-            _serviceStatus.emit(status)
-            handleServiceStatusChange(status)
-        }
+        viewModelScope.launch { handleServiceStatusChange(status) }
     }
 
     override fun onDisconnected() {

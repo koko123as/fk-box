@@ -13,8 +13,6 @@ import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -40,7 +38,6 @@ class DashboardViewModel :
     BaseViewModel<DashboardUiState>(),
     CommandClient.Handler {
     private val _serviceStatus = MutableStateFlow(Status.Stopped)
-    val serviceStatus: StateFlow<Status> = _serviceStatus.asStateFlow()
 
     // The mode follows every page, so its subscription runs whenever the
     // service is reachable in the foreground.

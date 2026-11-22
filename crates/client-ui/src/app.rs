@@ -704,10 +704,6 @@ pub fn on_event(payload: &str) {
             d.groups = rows(&value);
             Mark::DASH | Mark::PROXIES
         }
-        "connections" => {
-            d.connections = rows(&value);
-            Mark::RECORDS
-        }
         // The core's connection events since the last batch (BoxBridge
         // flushConnections); "dnsQueries" is the local core's own count.
         "connectionEvents" => {
@@ -716,10 +712,6 @@ pub fn on_event(payload: &str) {
             d.connections = d.connection_events.rows();
             d.connection_stats = obj(&d.connection_events.stats(long(&value["dnsQueries"])));
             Mark::RECORDS | Mark::RATES
-        }
-        "connectionStats" => {
-            d.connection_stats = obj(&value);
-            Mark::RATES
         }
         // The core's log lines since the last batch (BoxBridge logs
         // stream), after a clear when "reset" is set.

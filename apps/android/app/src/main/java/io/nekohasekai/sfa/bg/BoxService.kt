@@ -583,12 +583,6 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         }
     }
 
-    internal fun cancelNotification(identifier: String, typeID: Int) {
-        GlobalScope.launch(Dispatchers.Main) {
-            Application.notification.cancel(identifier, typeID)
-        }
-    }
-
     override fun triggerNativeCrash() {
         Thread {
             Thread.sleep(200)

@@ -482,7 +482,24 @@ impl Harness {
             "rates",
             json!({ "upload": up, "download": down, "uploadTotal": format!("{:.1} MB", t * 0.3), "downloadTotal": format!("{:.1} MB", t * 4.1), "memoryBytes": 19_700_000, "connections": 23 }),
         );
-        event("connectionStats", json!({ "active": 23, "recent": 148 + self.tick * 3, "dns": 14 }));
+        // The dashboard's connection card counts what the host streams
+        // ("connectionEvents", as BoxBridge flushConnections): 23 open, one
+        // more closed every second.
+        let conn = |n: u64| {
+            json!({ "id": format!("c{n}"), "network": "tcp", "destination": "1.1.1.1:443", "protocol": "tls",
+                "upload": 0, "download": 0, "uploadTotal": 0, "downloadTotal": 0, "outbound": "proxy", "outboundType": "vless" })
+        };
+        let tick = self.tick;
+        let events: Vec<Value> = if tick == 1 {
+            (0..23).map(|n| json!({ "type": 0, "id": format!("c{n}"), "connection": conn(n) })).collect()
+        } else {
+            let (opened, closed) = (21 + tick, tick - 2);
+            vec![
+                json!({ "type": 0, "id": format!("c{opened}"), "connection": conn(opened) }),
+                json!({ "type": 2, "id": format!("c{closed}"), "closedAt": crate::format::now_ms() }),
+            ]
+        };
+        event("connectionEvents", json!({ "reset": tick == 1, "events": events, "dnsQueries": 14 }));
         event(
             "memory",
             json!({ "total": 85_000_000, "rss": 85_000_000, "app": 65_300_000, "core": 19_700_000, "remote": false, "running": true, "heapInuse": 9_000_000, "heapIdle": 4_000_000, "stack": 1_000_000, "runtimeOther": 5_700_000, "goroutines": 120 }),
@@ -558,7 +575,7 @@ impl Harness {
             let next = ICONS_LATER.with(|l| {
                 let mut l = l.borrow_mut();
                 let later = l.as_mut()?;
-                if *serial % 2 == 0 {
+                if (*serial).is_multiple_of(2) {
                     later.pop_back()
                 } else {
                     later.pop_front()
