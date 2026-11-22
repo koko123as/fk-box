@@ -1,13 +1,14 @@
 package io.nekohasekai.sfa.database
 
-import androidx.room.Room
-import androidx.room.withTransaction
-import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.constant.Path
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
+import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
+import kotlinx.serialization.json.put
 
+/** The profile list, kept in the client store ([CoreStore]). */
 @Suppress("RedundantSuspendModifier")
 object ProfileManager {
     private val callbacks = mutableListOf<() -> Unit>()
@@ -20,80 +21,94 @@ object ProfileManager {
         callbacks.remove(callback)
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
-    private val instance by lazy {
-        Application.application.getDatabasePath(Path.PROFILES_DATABASE_PATH).parentFile?.mkdirs()
-        Room
-            .databaseBuilder(
-                Application.application,
-                ProfileDatabase::class.java,
-                Path.PROFILES_DATABASE_PATH,
-            )
-            .addMigrations(ProfileDatabase.MIGRATION_1_2, ProfileDatabase.MIGRATION_2_3)
-            .fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
-            .enableMultiInstanceInvalidation()
-            .setQueryExecutor { GlobalScope.launch { it.run() } }
-            .build()
-    }
-
-    suspend fun nextOrder(): Long = instance.profileDao().nextOrder() ?: 0
-
-    suspend fun get(id: Long): Profile? = instance.profileDao().get(id)
-
-    suspend fun create(profile: Profile, andSelect: Boolean = false): Profile {
-        profile.id = instance.profileDao().insert(profile)
-        if (andSelect) {
-            Settings.selectedProfile = profile.id
-        }
+    private fun changed() {
         for (callback in callbacks.toList()) {
             callback()
         }
+    }
+
+    suspend fun nextOrder(): Long = CoreStore.call("profiles.nextOrder").jsonPrimitive.long
+
+    suspend fun get(id: Long): Profile? {
+        val value = CoreStore.call("profiles.get") { put("id", id) }
+        if (value is JsonNull) return null
+        return CoreStore.decode(StoredProfile.serializer(), value).toProfile()
+    }
+
+    /** Inserts [profile]: under a new id when its id is 0, otherwise under that id (a restore putting it back). */
+    suspend fun create(profile: Profile, andSelect: Boolean = false): Profile {
+        profile.id = CoreStore.call("profiles.insert") { put("profile", CoreStore.encode(StoredProfile.serializer(), StoredProfile.of(profile))) }.jsonPrimitive.long
+        profile.storedOrder = profile.userOrder
+        if (andSelect) {
+            Settings.selectedProfile = profile.id
+        }
+        changed()
         return profile
     }
 
-    suspend fun update(profile: Profile): Int {
+    private fun write(profile: Profile, forceOrder: Boolean = false): Int {
+        // The order is written only when this copy changed it (or [forceOrder],
+        // a rollback putting the old order back), so saving a copy read before
+        // the UI reordered the list keeps the new order.
+        val writeOrder = forceOrder || profile.storedOrder != profile.userOrder
+        val count = CoreStore.call("profiles.update") {
+            put("profile", CoreStore.encode(StoredProfile.serializer(), StoredProfile.of(profile)))
+            put("writeOrder", writeOrder)
+        }.jsonPrimitive.long.toInt()
+        profile.storedOrder = profile.userOrder
+        return count
+    }
+
+    suspend fun update(profile: Profile, forceOrder: Boolean = false): Int {
         try {
-            return instance.profileDao().update(profile)
+            return write(profile, forceOrder)
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            changed()
         }
     }
 
     suspend fun update(profiles: List<Profile>): Int {
         try {
-            return instance.profileDao().update(profiles)
+            return profiles.sumOf { write(it) }
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            changed()
         }
     }
 
-    suspend fun delete(profile: Profile): Int {
-        try {
-            return instance.profileDao().delete(profile)
-        } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
-        }
-    }
+    suspend fun delete(profile: Profile): Int = delete(listOf(profile))
 
     suspend fun delete(profiles: List<Profile>): Int {
         try {
-            return instance.profileDao().delete(profiles)
+            return CoreStore.call("profiles.delete") { put("ids", JsonArray(profiles.map { JsonPrimitive(it.id) })) }.jsonPrimitive.long.toInt()
         } finally {
-            for (callback in callbacks.toList()) {
-                callback()
-            }
+            changed()
         }
     }
 
-    suspend fun list(): List<Profile> = instance.profileDao().list()
+    suspend fun list(): List<Profile> =
+        CoreStore.decode(ListSerializer(StoredProfile.serializer()), CoreStore.call("profiles.list")).map { it.toProfile() }
 
-    internal suspend fun <T> transaction(block: suspend () -> T): T = instance.withTransaction(block)
+    /** Records the core a profile's file resolved to (no change callback: it is a cache). */
+    internal fun setResolvedCore(profile: Profile, core: String, stamp: String) {
+        CoreStore.call("profiles.setResolvedCore") {
+            put("id", profile.id)
+            put("core", core)
+            put("stamp", stamp)
+        }
+        profile.resolvedCore = core
+        profile.resolvedStamp = stamp
+    }
 
-    fun remoteServerDao(): RemoteServer.Dao = instance.remoteServerDao()
+    /** Runs [block] as one store transaction: it commits when [block] returns and rolls back when it throws. */
+    internal suspend fun <T> transaction(block: suspend () -> T): T {
+        CoreStore.call("tx.begin")
+        val value = try {
+            block()
+        } catch (error: Throwable) {
+            runCatching { CoreStore.call("tx.rollback") }.exceptionOrNull()?.let(error::addSuppressed)
+            throw error
+        }
+        CoreStore.call("tx.commit")
+        return value
+    }
 }

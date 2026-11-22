@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.bridge
 
 import android.os.Build
 import androidx.lifecycle.ViewModelProvider
-import androidx.room.Room
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -13,13 +12,12 @@ import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.compose.MainActivity
-import io.nekohasekai.sfa.constant.Path
 import io.nekohasekai.sfa.constant.SettingsKey
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.ProfileContent
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.preference.KeyValueDatabase
 import io.nekohasekai.sfa.vendor.PackageQueryManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -28,6 +26,9 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -377,12 +378,12 @@ class ProfileRecoveryTest {
             val profile = profiles.get(id)
             profile.typed.lastUpdated = Date(0) // A local profile created before timestamps were recorded.
             ProfileManager.update(profile)
-            assertEquals(0L, profiles.list().single { it["id"] == id }["updatedAt"])
+            assertEquals(0L, ProfileManager.get(id)!!.toWire()["updatedAt"])
             val content = """{"log":{"level":"warn"}}"""
             profiles.writeContent(id, content, BoxProfiles.revision("{}"))
             val savedAt = profiles.get(id).typed.lastUpdated.time
             assertTrue(savedAt >= createdAfter)
-            assertEquals(savedAt, profiles.list().single { it["id"] == id }["updatedAt"])
+            assertEquals(savedAt, ProfileManager.get(id)!!.toWire()["updatedAt"])
             profiles.writeContent(id, content, BoxProfiles.revision(content))
             profiles.save(mapOf("id" to id, "name" to "Renamed local profile"))
             assertEquals(savedAt, profiles.get(id).typed.lastUpdated.time)
@@ -403,22 +404,16 @@ class ProfileRecoveryTest {
         }
     }
 
-    @Test fun queryModesSurviveReopeningTheSettingsDatabase() = runBlocking(Dispatchers.IO) {
+    @Test fun queryModesReachTheClientStore() = runBlocking(Dispatchers.IO) {
         Settings.dataStore.initialize()
         val before = Settings.perAppProxyPackageQueryMode
         try {
             for (mode in listOf(Settings.PACKAGE_QUERY_MODE_ROOT, Settings.PACKAGE_QUERY_MODE_SHIZUKU)) {
                 PackageQueryManager.setQueryMode(mode)
                 Settings.dataStore.flush()
-                // Read a new Room connection, not the data store's in-memory cache.
-                val stored = Room.databaseBuilder(
-                    Application.application, KeyValueDatabase::class.java, Path.SETTINGS_DATABASE_PATH,
-                ).build()
-                try {
-                    assertEquals(mode, stored.keyValuePairDao()[SettingsKey.PER_APP_PROXY_PACKAGE_QUERY_MODE]?.string)
-                } finally {
-                    stored.close()
-                }
+                // Read the client store itself, not the data store's in-memory cache.
+                val stored = CoreStore.call("settings.all").jsonObject[SettingsKey.PER_APP_PROXY_PACKAGE_QUERY_MODE]
+                assertEquals(mode, stored?.jsonObject?.get("v")?.jsonPrimitive?.content)
                 assertEquals(mode, PackageQueryManager.queryMode.value)
             }
         } finally {
@@ -684,8 +679,7 @@ class ProfileRecoveryTest {
                 val oldSelection = Settings.selectedProfile
                 val profiles = BoxProfiles { recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart = true, recover = recover) } }
                 val id = profiles.save(mapOf("name" to "Recovery fixture", "content" to "{}"))
-                val preferences = activity.getSharedPreferences("flclash_ui", 0)
-                val oldPreferences = preferences.getString("value", "{}")
+                val oldPreferences = CoreStore.call("preferences.get")
                 try {
                     Settings.selectedProfile = id
                     Settings.dataStore.flush()
@@ -713,7 +707,7 @@ class ProfileRecoveryTest {
                         assertEquals("Recovery fixture", profiles.get(id).name)
                         assertEquals("{}", profiles.read(id))
                         assertEquals(id, Settings.selectedProfile)
-                        assertEquals(oldPreferences, preferences.getString("value", "{}"))
+                        assertEquals(oldPreferences, CoreStore.call("preferences.get"))
                         assertEquals(Status.Started, activity.serviceStatus.value)
                         assertEquals(0, restoreFailure!!.suppressed.size)
                     }
@@ -723,7 +717,7 @@ class ProfileRecoveryTest {
                     val fixture = ProfileManager.get(id)
                     if (fixture != null) { ProfileManager.delete(fixture); File(fixture.typed.path).delete() }
                     Settings.selectedProfile = oldSelection
-                    preferences.edit().putString("value", oldPreferences).commit()
+                    CoreStore.call("preferences.replace") { put("values", oldPreferences) }
                     Settings.dataStore.flush()
                 }
             }

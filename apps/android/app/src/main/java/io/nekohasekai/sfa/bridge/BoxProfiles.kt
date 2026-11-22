@@ -29,7 +29,17 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     suspend fun get(id: Long): Profile = ProfileManager.get(id) ?: error("Profile no longer exists")
 
-    suspend fun list(): List<Map<String, Any>> = ProfileManager.list().map { it.toWire() }
+    /**
+     * Records in the client store the core each profile's file resolves to
+     * (libbox detection, which the UI cannot run), for the files that changed
+     * since it was last resolved; the UI reads the list from the store.
+     */
+    suspend fun resolveCores() {
+        for (profile in ProfileManager.list()) {
+            val stamp = profile.coreStamp()
+            if (stamp != profile.resolvedStamp) ProfileManager.setResolvedCore(profile, profile.resolvedCore(), stamp)
+        }
+    }
 
     suspend fun read(id: Long): String = mutex.withLock { File(get(id).typed.path).readText() }
 
@@ -281,13 +291,6 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         UpdateProfileWork.reconfigureUpdater()
     }
 
-    suspend fun reorder(ids: List<Long>) = mutex.withLock {
-        val profiles = ProfileManager.list()
-        require(ids.size == profiles.size && ids.toSet() == profiles.map { it.id }.toSet()) { "Profile list changed; refresh and retry" }
-        val byId = profiles.associateBy { it.id }
-        ProfileManager.update(ids.mapIndexed { index, id -> byId.getValue(id).apply { userOrder = index.toLong() } })
-    }
-
     /**
      * A JSON array of configs, split for [saveAll]: "entries" holds one name/content/core per
      * element, already checked by its core. Null when [text] is not such an array.
@@ -345,9 +348,15 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 /** The core each profile file resolves to, cached by path, size and modification time. */
 private val resolvedCores = java.util.concurrent.ConcurrentHashMap<String, Pair<String, String>>()
 
+/** What the resolved core depends on: the declared core and the file's size and modification time. */
+internal fun Profile.coreStamp(): String {
+    val file = File(typed.path)
+    return "${typed.core}:${file.length()}:${file.lastModified()}"
+}
+
 internal fun Profile.resolvedCore(): String {
     val file = File(typed.path)
-    val stamp = "${typed.core}:${file.length()}:${file.lastModified()}"
+    val stamp = coreStamp()
     resolvedCores[typed.path]?.let { if (it.first == stamp) return it.second }
     val core = runCatching { ProfileContent.coreOf(this, file.readText()) }.getOrDefault(TypedProfile.CORE_SING_BOX)
     resolvedCores[typed.path] = stamp to core

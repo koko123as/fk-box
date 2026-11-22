@@ -10,7 +10,7 @@ fk-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 
 | 项目 | 许可证 | 取用内容 |
 | --- | --- | --- |
-| [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android) | GPL-3.0-or-later（含附加条款，见下文 License） | 应用基础：VPN/前台服务、Room 数据库、配置与订阅、Root/Shizuku、Tailscale/终端等 Android 后端；比较基线见 [app.md](app.md) |
+| [SagerNet/sing-box-for-android](https://github.com/SagerNet/sing-box-for-android) | GPL-3.0-or-later（含附加条款，见下文 License） | 应用基础：VPN/前台服务、配置与订阅、Root/Shizuku、Tailscale/终端等 Android 后端；比较基线见 [app.md](app.md) |
 | [giturass/B-box](https://github.com/giturass/B-box)（及其分叉 [koko123as/B-box](https://github.com/koko123as/B-box)） | GPL-3.0（沿用上游） | 直接前身：libbox 扩展绑定、HTTP/HTTPS 请求调试与 MITM、配置改写、多内核接入、界面适配、备份格式 `bbox-1` 等，见 [libbox.md](libbox.md) |
 | [SagerNet/sing-box](https://github.com/SagerNet/sing-box) | GPL-3.0-or-later | 主代理内核（libbox，含 Tailscale 等协议），版本见 [version.properties](version.properties) |
 | [XTLS/Xray-core](https://github.com/XTLS/Xray-core) | MPL-2.0 | 第二内核，编入同一 `libbox.aar` |
@@ -19,7 +19,7 @@ fk-box 使用或参考了下列项目（许可证以各项目为准；本仓库�
 | [shadowsocks/shadowsocks-android](https://github.com/shadowsocks/shadowsocks-android) | GPL-3.0 | `DefaultNetworkListener.kt`（经 sing-box-for-android 沿用） |
 | [Android Open Source Project](https://source.android.com/) / [androidx](https://github.com/androidx/androidx) | Apache-2.0 | `ParceledListSlice.java` |
 | [Slint](https://github.com/slint-ui/slint) | GPL-3.0 | 界面框架（Rust） |
-| [AndroidX](https://developer.android.com/jetpack)（含 GameActivity、CameraX、Room、WorkManager）、[Material Icons](https://github.com/google/material-design-icons)、[Material Components](https://github.com/material-components/material-components-android) | Apache-2.0 | 界面框架与 Android 组件；CameraX 用于扫码取景 |
+| [AndroidX](https://developer.android.com/jetpack)（含 GameActivity、CameraX、WorkManager）、[Material Icons](https://github.com/google/material-design-icons)、[Material Components](https://github.com/material-components/material-components-android) | Apache-2.0 | 界面框架与 Android 组件；CameraX 用于扫码取景 |
 | [ZXing](https://github.com/zxing/zxing) | Apache-2.0 | 二维码识别与生成 |
 | [ghostty-org/ghostty](https://github.com/ghostty-org/ghostty)（经 [SagerNet/libghostty-android](https://github.com/SagerNet/libghostty-android)） | MIT | 终端渲染 |
 | [RikkaApps/Shizuku-API](https://github.com/RikkaApps/Shizuku-API) | MIT | Shizuku 权限调用 |

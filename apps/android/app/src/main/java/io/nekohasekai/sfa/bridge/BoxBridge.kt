@@ -97,7 +97,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private val profiles = BoxProfiles { recover -> withContext(Dispatchers.Main) { activity.applyProfile(recover = recover) } }
     internal val capture = BoxCapture(activity)
     private val qrScanner = BoxQrScanner(profiles::decode)
-    private val preferences = activity.getSharedPreferences("flclash_ui", 0)
     private val webdav = BoxWebDAV(activity)
     private val backups = BoxBackups(activity, ::settings, ::patchSettings,
         { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit, webdav)
@@ -281,21 +280,22 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     }
 
     /**
-     * The first snapshot behind the splash. Profiles (Room) and the settings and
-     * preferences reads are independent, so they run concurrently; the LAN scan
-     * is left to the intranet card's own visibility polling.
+     * The first snapshot behind the splash. The UI reads the profile list and
+     * its preferences from the client store itself once this answers (the
+     * store is open: initialization touched the settings); the profiles' cores
+     * are resolved into it first. The LAN scan is left to the intranet card's
+     * own visibility polling.
      */
     suspend fun ready(): Map<String, Any?> = coroutineScope {
-        val profileList = async(Dispatchers.IO) { profiles.list() }
-        val stored = async(Dispatchers.IO) { settings() to readPreferences() }
-        val (settingsValue, preferencesValue) = stored.await()
+        val resolved = async(Dispatchers.IO) { profiles.resolveCores() }
+        val settingsValue = withContext(Dispatchers.IO) { settings() }
+        resolved.await()
         mapOf(
             "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
             "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
             "systemAccentColor" to systemAccentColor(),
             "dashboard" to dashboard.uiState.value.toWire(),
-            "profiles" to profileList.await(),
-            "settings" to settingsValue, "preferences" to preferencesValue,
+            "settings" to settingsValue,
             "tools" to toolBridge.snapshot(), "diagnostics" to toolBridge.diagnostics(),
             "intent" to activity.takeIntent(),
         )
@@ -366,13 +366,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun deleteProfile(id: Long?) {
         localProfiles {
             profiles.delete(required(id))
-            publishProfiles()
-        }
-    }
-
-    suspend fun reorderProfiles(ids: List<Long>) {
-        localProfiles {
-            profiles.reorder(ids)
             publishProfiles()
         }
     }
@@ -506,14 +499,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     /** The core's per-second status stream ("rates") while a page shows it. */
     fun setTrafficVisible(visible: Boolean) { dashboard.setTrafficVisible(visible) }
-
-    suspend fun setPreferences(values: Map<String, Any?>) = operations.withLock {
-        val value = BoxPreferences.validate(values)
-        val old = JSONObject(preferences.getString("value", "{}")!!).apply { remove("locale") }
-        value.forEach { (key, item) -> old.put(key, JSONObject.wrap(item)) }
-        withContext(Dispatchers.IO) { check(preferences.edit().putString("value", old.toString()).commit()) { "Unable to save preferences" } }
-        readPreferences()
-    }
 
     /** One setting; [restart] restarts a running local service for it (allowBypass, autoRedirect, dynamicNotification). */
     suspend fun setSetting(key: String, value: Any?, restart: Boolean = false) = operations.withLock {
@@ -764,15 +749,12 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return operations.withLock { withContext(Dispatchers.IO) { block() } }
     }
 
+    /** The profiles changed in the client store: their cores are resolved, then the UI re-reads the list. */
     private suspend fun publishProfiles() {
-        val value = withContext(Dispatchers.IO) { profiles.list() }
-        emit("profiles", value)
+        withContext(Dispatchers.IO) { profiles.resolveCores() }
+        emit("profiles", null)
         if (::dashboard.isInitialized) emit("dashboard", dashboard.uiState.value.toWire())
     }
-
-    private fun readPreferences(): Map<String, Any?> = runCatching {
-        BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
-    }.getOrDefault(emptyMap())
 
     private fun settings(): Map<String, Any?> = mapOf(
         "perAppEnabled" to Settings.perAppProxyEnabled, "perAppMode" to Settings.perAppProxyMode,

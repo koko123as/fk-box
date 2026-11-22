@@ -1,52 +1,23 @@
 package io.nekohasekai.sfa.database
 
 import android.os.Parcelable
-import androidx.room.ColumnInfo
-import androidx.room.Delete
-import androidx.room.Entity
-import androidx.room.Insert
-import androidx.room.PrimaryKey
-import androidx.room.Query
-import androidx.room.TypeConverters
-import androidx.room.Update
+import kotlinx.parcelize.IgnoredOnParcel
 import kotlinx.parcelize.Parcelize
 
-@Entity(
-    tableName = "profiles",
-)
-@TypeConverters(TypedProfile.Convertor::class)
+/** One profile's metadata, kept in the client store ([ProfileManager]); its configuration is the file at `typed.path`. */
 @Parcelize
 class Profile(
-    @PrimaryKey(autoGenerate = true) var id: Long = 0L,
+    var id: Long = 0L,
     var userOrder: Long = 0L,
     var name: String = "",
-    @ColumnInfo(defaultValue = "NULL") var icon: String? = null,
+    var icon: String? = null,
     var typed: TypedProfile = TypedProfile(),
 ) : Parcelable {
-    @androidx.room.Dao
-    interface Dao {
-        @Insert
-        fun insert(profile: Profile): Long
+    /** [userOrder] as read from the store; an update writes the order only when it changed since. */
+    @IgnoredOnParcel internal var storedOrder: Long? = null
 
-        @Update
-        fun update(profile: Profile): Int
+    /** The core the content resolved to and the file stamp it was resolved for (BoxProfiles). */
+    @IgnoredOnParcel internal var resolvedCore: String = ""
 
-        @Update
-        fun update(profile: List<Profile>): Int
-
-        @Delete
-        fun delete(profile: Profile): Int
-
-        @Delete
-        fun delete(profile: List<Profile>): Int
-
-        @Query("SELECT * FROM profiles WHERE id = :profileId")
-        fun get(profileId: Long): Profile?
-
-        @Query("select * from profiles order by userOrder asc")
-        fun list(): List<Profile>
-
-        @Query("SELECT MAX(userOrder) + 1 FROM profiles")
-        fun nextOrder(): Long?
-    }
+    @IgnoredOnParcel internal var resolvedStamp: String = ""
 }

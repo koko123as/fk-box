@@ -1,9 +1,23 @@
 //! FK-box platform-neutral client layer.
 //!
-//! Phase 1 holds only [`Host`], the contract between the Slint UI
-//! (`fkbox-client-ui`) and the platform shell that runs it
-//! (`apps/android/native` on Android). Subscriptions, storage, settings,
-//! routing rules, update checks and WebDAV move here in phase 2 (README.md).
+//! - [`Host`]: the contract between the Slint UI (`fkbox-client-ui`) and the
+//!   platform shell that runs it (`apps/android/native` on Android).
+//! - [`storage::Store`]: the client store (service settings, profile
+//!   metadata, remote control servers, interface preferences), one SQLite
+//!   file whose location the platform shell passes in.
+//! - [`legacy`]: the one-time import of the Android app's Room databases and
+//!   SharedPreferences into the store.
+//! - [`api`]: the store's JSON call surface for a platform host (the Kotlin
+//!   service layer on Android reaches the store through it over JNI).
+//!
+//! Subscriptions, routing rules, backups, WebDAV and update checks follow in
+//! later phase-2 slices (docs/architecture/phase2.md).
+
+pub mod api;
+pub mod legacy;
+mod parcel;
+pub mod preferences;
+pub mod storage;
 
 /// What the UI needs from the platform: one asynchronous call into the host
 /// app. The UI sends `method` with JSON `args` under the request `id`; the

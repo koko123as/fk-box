@@ -15,7 +15,7 @@ import io.nekohasekai.sfa.constant.SettingsKey
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.preference.OnPreferenceDataStoreChangeListener
-import io.nekohasekai.sfa.database.preference.RoomPreferenceDataStore
+import io.nekohasekai.sfa.database.preference.StorePreferenceDataStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -78,7 +78,7 @@ class ServiceConnection(private val context: Context, callback: Callback, privat
         connect()
     }
 
-    override fun onPreferenceDataStoreChanged(store: RoomPreferenceDataStore, key: String) {
+    override fun onPreferenceDataStoreChanged(store: StorePreferenceDataStore, key: String) {
         if (key != SettingsKey.SERVICE_MODE) return
         scope.launch {
             if (connectJob != null) reconnect()

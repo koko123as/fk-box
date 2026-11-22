@@ -2,6 +2,7 @@ package io.nekohasekai.sfa.bridge
 
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.UpdateProfileWork
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
@@ -11,6 +12,9 @@ import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.json.JSONObject
 import java.io.File
 import java.util.UUID
@@ -24,18 +28,24 @@ internal class BoxBackups(
     private val emit: (String, Any?) -> Unit,
     private val webdav: BoxWebDAV,
 ) {
-    private val preferences = activity.getSharedPreferences("flclash_ui", 0)
     private val terminal = BoxTerminalSettings(activity)
 
-    private fun origin(): String = preferences.getString("backupOrigin", null) ?: UUID.randomUUID().toString().also {
-        check(preferences.edit().putString("backupOrigin", it).commit()) { "Unable to save backup identity" }
-    }
+    private fun origin(): String = CoreStore.call("backup.origin") { put("generated", UUID.randomUUID().toString()) }.jsonPrimitive.content
     private fun profileKey(profile: Profile, origin: String): String {
         val name = File(profile.typed.path).nameWithoutExtension
         return runCatching { UUID.fromString(name).toString().takeIf { it == name } }.getOrNull()
             ?: UUID.nameUUIDFromBytes("$origin:${profile.id}".toByteArray()).toString()
     }
-    private fun readPreferences() = BoxPreferences.validate(jsonObject(JSONObject(preferences.getString("value", "{}")!!)))
+    /** The interface preferences in the client store, as the UI reads them. */
+    private fun readPreferences(): Map<String, Any?> = jsonObject(JSONObject(CoreStore.call("preferences.get").toString()))
+    private fun rawPreferences(): String = CoreStore.call("preferences.raw").toString()
+    private fun writePreferences(values: Map<String, Any?>) {
+        CoreStore.call("preferences.replace") { put("values", Json.parseToJsonElement(JSONObject(values).toString())) }
+    }
+    private fun restoreRawPreferences(text: String) {
+        val values = runCatching { BoxPreferences.validate(jsonObject(JSONObject(text))) }.getOrDefault(emptyMap())
+        writePreferences(values)
+    }
     private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }
 
     suspend fun create(): Map<String, Any?> = ProfileContent.mutex.withLock {
@@ -141,7 +151,7 @@ internal class BoxBackups(
             val oldProfiles = ProfileManager.list()
             val oldServers = RemoteServerManager.list()
             val oldSelection = Settings.selectedProfile
-            val oldPreferences = preferences.getString("value", "{}")!!
+            val oldPreferences = rawPreferences()
             val oldSettings = editableSettings()
             val oldTerminal = terminal.snapshot()
             val oldWebDAV = webdav.snapshot()
@@ -209,13 +219,13 @@ internal class BoxBackups(
                         val id = key.removePrefix("local:").toLongOrNull()
                         (if (key.startsWith("local:") && id != null && mapping.containsKey(id)) "local:${mapping[id]}" else key) to value
                     }
-                    check(preferences.edit().putString("value", JSONObject(restoredPreferences).toString()).commit()) { "Unable to restore preferences" }
+                    writePreferences(restoredPreferences)
                 }
                 Settings.dataStore.flush()
                 applySelected(scope == "all", false)
                 val keptPaths = current.map { it.typed.path }.toSet()
                 publish()
-                emit("preferences", readPreferences())
+                emit("preferences", null)
                 if (strategy == "Override") oldProfiles.filter { it.typed.path !in keptPaths }.forEach { runCatching { File(it.typed.path).delete() } }
                 restored.size
             } catch (error: Exception) {
@@ -226,7 +236,7 @@ internal class BoxBackups(
                     attempt {
                         ProfileManager.transaction {
                             ProfileManager.delete(ProfileManager.list().filter { now -> oldProfiles.none { it.id == now.id } })
-                            for (profile in oldProfiles) if (ProfileManager.get(profile.id) == null) ProfileManager.create(profile) else ProfileManager.update(profile)
+                            for (profile in oldProfiles) if (ProfileManager.get(profile.id) == null) ProfileManager.create(profile) else ProfileManager.update(profile, forceOrder = true)
                             if (scope == "all") {
                                 RemoteServerManager.list().filter { now -> oldServers.none { it.id == now.id } }.forEach { RemoteServerManager.delete(it) }
                                 for (server in oldServers) if (RemoteServerManager.get(server.id) == null) {
@@ -246,12 +256,12 @@ internal class BoxBackups(
                         attempt { writeSettings(oldSettings) }
                         attempt { terminal.restoreState(oldTerminal) }
                         attempt { webdav.save(oldWebDAV) }
-                        attempt { check(preferences.edit().putString("value", oldPreferences).commit()) }
+                        attempt { restoreRawPreferences(oldPreferences) }
                     }
                     newFont?.delete()
                     attempt { Settings.dataStore.flush() }
                     if (wasRunning) attempt { applySelected(true, true) }
-                    attempt { publish(); emit("preferences", readPreferences()) }
+                    attempt { publish(); emit("preferences", null) }
                 }
                 throw error
             } finally { if (cleanup) workDir.deleteRecursively() }
