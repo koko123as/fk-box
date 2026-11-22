@@ -14,7 +14,6 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -40,6 +39,10 @@ object RemoteControlManager : CommandClient.Handler {
             return
         }
         restored = true
+        // The monitor runs for a remote session in the foreground and is
+        // renewed for a new server (client-core sessions.rs). Started here,
+        // after this object is set up, since the plan reads its flows.
+        monitorClient.follow(scope, CommandSessions.Stream.RemoteMonitor)
         scope.launch {
             val server =
                 withContext(Dispatchers.IO) {
@@ -56,17 +59,6 @@ object RemoteControlManager : CommandClient.Handler {
             if (server != null && _remoteServer.value == null) {
                 enterRemoteControl(server)
             }
-            // The initial state was already handled by enterRemoteControl.
-            AppLifecycleObserver.isForeground.drop(1).collect { foreground ->
-                if (_remoteServer.value == null) {
-                    return@collect
-                }
-                if (foreground) {
-                    monitorClient.connect()
-                } else {
-                    monitorClient.disconnect()
-                }
-            }
         }
     }
 
@@ -74,9 +66,6 @@ object RemoteControlManager : CommandClient.Handler {
         CommandTarget.setRemoteServer(server)
         resetSessionState()
         _remoteServer.value = server
-        if (AppLifecycleObserver.isForeground.value) {
-            monitorClient.connect()
-        }
         scope.launch(Dispatchers.IO) {
             Settings.activeRemoteServerId = server.id
         }
@@ -92,7 +81,6 @@ object RemoteControlManager : CommandClient.Handler {
         CommandTarget.setRemoteServer(null)
         resetSessionState()
         _remoteServer.value = null
-        monitorClient.disconnect()
         scope.launch(Dispatchers.IO) {
             Settings.activeRemoteServerId = 0L
         }

@@ -38,11 +38,14 @@
 //!   form's save.
 //! - [`connections`]: the connections page's state, built from the core's
 //!   connection events.
+//! - [`logs`], [`dashboard`], [`groups`]: log records, the dashboard view and
+//!   the proxy group checks.
+//! - [`sessions`]: which libbox command subscriptions run, and to which
+//!   target (the host keeps the clients).
 //! - [`api`]: the JSON call surface for a platform host (the Kotlin service
 //!   layer on Android reaches it over JNI).
 //!
-//! The interface controllers follow in a later phase-2 slice
-//! (docs/architecture/phase2.md).
+//! Phases: docs/architecture/phase2.md, docs/architecture/phase3.md.
 
 pub mod api;
 pub mod backup;
@@ -63,6 +66,7 @@ pub mod profiles;
 pub mod remote_servers;
 pub mod routing;
 pub mod service_settings;
+pub mod sessions;
 pub mod storage;
 pub mod subscription;
 pub mod terminal;

@@ -3,17 +3,12 @@ package io.nekohasekai.sfa.backend.log
 import androidx.lifecycle.viewModelScope
 import io.nekohasekai.libbox.LogEntry
 import io.nekohasekai.sfa.backend.base.BaseViewModel
-import io.nekohasekai.sfa.bg.BoxService
-import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.CommandTarget
-import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
@@ -37,50 +32,13 @@ class LogViewModel :
             connectionType = CommandClient.ConnectionType.Log,
             handler = this,
         )
-    private val serviceStatusFlow = MutableStateFlow(Status.Stopped)
 
-    // The log stream is only subscribed while the Logs page is shown; the
-    // service replays its saved lines (with a reset) on every subscribe.
-    private val visibleFlow = MutableStateFlow(false)
-
+    // The log stream is only subscribed while the Logs page is shown (and,
+    // locally, renewed on every configuration load; client-core sessions.rs);
+    // the service replays its saved lines (with a reset) on every subscribe.
     init {
-        viewModelScope.launch {
-            combine(
-                AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer,
-                RemoteControlManager.isConnected,
-                serviceStatusFlow,
-                BoxService.dashboardConfig,
-            ) { foreground, remoteServer, remoteConnected, status, config ->
-                SessionTarget(
-                    connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started && config != null,
-                    remoteServerId = remoteServer?.id,
-                    // libbox reports the default level when subscribing. Reloading
-                    // a local configuration must renew that subscription as well.
-                    localConfig = if (remoteServer == null) config else null,
-                )
-            }.combine(visibleFlow) { target, visible ->
-                target.copy(connect = target.connect && visible)
-            }.distinctUntilChanged().collect { target ->
-                if (target.connect) {
-                    commandClient.connect()
-                } else {
-                    commandClient.disconnect()
-                }
-            }
-        }
+        commandClient.follow(viewModelScope, CommandSessions.Stream.Log)
     }
-
-    private data class SessionTarget(
-        val connect: Boolean,
-        val remoteServerId: Long?,
-        val localConfig: BoxService.DashboardConfig?,
-    )
-
-    fun updateServiceStatus(status: Status) { serviceStatusFlow.value = status }
-
-    fun setVisible(visible: Boolean) { visibleFlow.value = visible }
 
     override fun setDefaultLogLevel(level: Int) {
         viewModelScope.launch(bufferLane) {

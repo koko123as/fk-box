@@ -41,6 +41,7 @@ HSPLio/nekohasekai/sfa/backend/connections/**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/CommandClient**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/CommandTarget**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
+HSPLio/nekohasekai/sfa/utils/CommandSessions**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 
 # UI kit and theme

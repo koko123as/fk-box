@@ -5,15 +5,14 @@ import io.nekohasekai.libbox.ConnectionEvents
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.bridge.toWire
 import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicLong
@@ -38,8 +37,6 @@ class ConnectionsViewModel :
     val serviceStatus = _serviceStatus.asStateFlow()
     private var lastServiceStatus: Status = Status.Stopped
 
-    private val _visibleCount = MutableStateFlow(0)
-
     // Every event batch and clear runs on one lane, in arrival order (as
     // LogViewModel's buffer lane), so NEW/UPDATE/CLOSED deltas reach the UI in
     // order. The buffer holds what arrived since the bridge last drained it.
@@ -51,32 +48,8 @@ class ConnectionsViewModel :
     override fun createInitialState() = ConnectionsUiState()
 
     init {
-        viewModelScope.launch {
-            combine(
-                AppLifecycleObserver.isForeground,
-                AppLifecycleObserver.isScreenOn,
-                _visibleCount,
-                _serviceStatus,
-                combine(
-                    RemoteControlManager.remoteServer,
-                    RemoteControlManager.isConnected,
-                ) { remoteServer, remoteConnected -> remoteServer?.id to remoteConnected },
-            ) { foreground, screenOn, visibleCount, status, (remoteServerId, remoteConnected) ->
-                val serviceReady = if (remoteServerId != null) remoteConnected else status == Status.Started
-                val shouldConnect = foreground && screenOn && visibleCount > 0 && serviceReady
-                shouldConnect to remoteServerId
-            }.distinctUntilChanged().collect { (shouldConnect, _) ->
-                if (shouldConnect) {
-                    commandClient.connect()
-                } else {
-                    commandClient.disconnect()
-                }
-            }
-        }
-    }
-
-    fun setVisible(visible: Boolean) {
-        _visibleCount.value = (_visibleCount.value + if (visible) 1 else -1).coerceAtLeast(0)
+        // When to subscribe: client-core sessions.rs (the connection pages shown).
+        commandClient.follow(viewModelScope, CommandSessions.Stream.Connections)
     }
 
     override fun onCleared() {

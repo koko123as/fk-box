@@ -128,5 +128,5 @@
 - **仪表盘**：client-core `dashboard.rs` 从 Kotlin 上报的原值推导显示（`trafficAvailable`、仅可切换时的 `modes`、仅本地服务的 `systemProxyAvailable`、远程会话优先的 `startedAt`）；已是显示形态的值（截图工具）原样通过。
 - **代理组**：`backend/model/Groups.kt` 已删，`GroupsViewModel` 直接把 libbox `OutboundGroup` 转为界面读取的映射。选择节点、测速、切换模式的检查移到 client-core `groups.rs`，界面在调用宿主前检查（选择失败仍静默忽略，测速与模式报错）；`BoxBridge.selectOutbound`/`urlTest`/`setMode` 不再重复检查。
 - **schema**：未改，`user_version` 不变。
-- **第二阶段到此结束。留到第三阶段**：命令客户端连接调度（`CommandClient`、页面可见性、前后台、远程会话切换）——需要 Rust 直接连 libbox 命令服务后再迁。
+- **第二阶段到此结束。留到第三阶段**（已在第三阶段 3b 完成，见 [phase3.md](phase3.md)）：命令客户端连接调度（`CommandClient`、页面可见性、前后台、远程会话切换）——需要 Rust 直接连 libbox 命令服务后再迁。
 

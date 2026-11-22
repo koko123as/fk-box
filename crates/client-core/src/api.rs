@@ -10,7 +10,7 @@ use serde_json::{json, Map, Value};
 
 use crate::content::{self, Kernel, Replace};
 use crate::service_settings::{self, Written};
-use crate::{backup, capture, geo, ip_quality, profiles, remote_servers, routing, terminal, updates, webdav};
+use crate::{backup, capture, geo, ip_quality, profiles, remote_servers, routing, sessions, terminal, updates, webdav};
 use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
 use crate::subscription::{self, Fetch, Metadata};
@@ -222,6 +222,15 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         }
         // -- update check ----------------------------------------------------
         "updates.check" => updates::check(kernel()?, &parsed(&args, "build")?)?,
+        // -- command subscriptions (phase 3b) ------------------------------
+        "sessions.plan" => {
+            let inputs: sessions::Inputs = if args.is_null() {
+                sessions::Inputs::default()
+            } else {
+                serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?
+            };
+            to_json(&sessions::plan(&inputs))?
+        }
         // -- terminal settings -----------------------------------------------
         // -- capture settings and the IP quality cache (phase 2e) ------------
         "capture.snapshot" => capture::snapshot(std::path::Path::new(text(&args, "dir")?), kernel()?)?,

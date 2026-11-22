@@ -6,16 +6,15 @@ import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.backend.base.BaseViewModel
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -53,7 +52,7 @@ class DashboardViewModel :
         )
 
     // The per-second status (rates, traffic totals, memory) only while a page
-    // shows it ([setTrafficVisible]); the bridge reads it through addHandler.
+    // shows it ([CommandSessions.setTrafficVisible]); the bridge reads it through addHandler.
     // Its own handler, so onConnected and the mode callbacks are not doubled.
     internal val commandClient =
         CommandClient(
@@ -63,61 +62,16 @@ class DashboardViewModel :
                 override fun updateStatus(status: StatusMessage) = this@DashboardViewModel.updateStatus(status)
             },
         )
-    private val trafficWanted = MutableStateFlow(false)
 
     override fun createInitialState() = DashboardUiState()
 
     init {
-
-        viewModelScope.launch {
-            combine(
-                AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer,
-                RemoteControlManager.isConnected,
-                _serviceStatus,
-            ) { foreground, remoteServer, remoteConnected, status ->
-                SessionTarget(
-                    connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
-                    remoteServerId = remoteServer?.id,
-                )
-            }.distinctUntilChanged().collect { target ->
-                if (target.connect) {
-                    modeClient.connect()
-                } else {
-                    modeClient.disconnect()
-                }
-            }
-        }
-        viewModelScope.launch {
-            combine(
-                AppLifecycleObserver.isForeground,
-                AppLifecycleObserver.isScreenOn,
-                trafficWanted,
-                RemoteControlManager.remoteServer,
-                combine(RemoteControlManager.isConnected, _serviceStatus) { remoteConnected, status -> remoteConnected to status },
-            ) { foreground, screenOn, wanted, remoteServer, (remoteConnected, status) ->
-                SessionTarget(
-                    connect = foreground && screenOn && wanted &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
-                    remoteServerId = remoteServer?.id,
-                )
-            }.distinctUntilChanged().collect { target ->
-                // A fresh subscription reports the current status at once, so
-                // a page shown again starts from current values.
-                if (target.connect) {
-                    commandClient.connect()
-                } else {
-                    commandClient.disconnect()
-                }
-            }
-        }
+        // When each subscription runs: client-core sessions.rs.
+        modeClient.follow(viewModelScope, CommandSessions.Stream.ClashMode)
+        // A fresh status subscription reports the current values at once, so
+        // a page shown again starts from them.
+        commandClient.follow(viewModelScope, CommandSessions.Stream.Status)
     }
-
-    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?)
-
-    /** Whether a page shows the per-second status (the Slint UI's visibility sync). */
-    fun setTrafficVisible(visible: Boolean) { trafficWanted.value = visible }
 
     override fun onCleared() {
         super.onCleared()

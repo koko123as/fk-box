@@ -27,6 +27,7 @@ import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import io.nekohasekai.sfa.vendor.PackageQueryManager
@@ -134,12 +135,12 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
                 dashboard.updateServiceStatus(it)
                 groups.updateServiceStatus(it)
                 connections.updateServiceStatus(it)
-                logs.updateServiceStatus(it)
+                CommandSessions.setServiceStatus(it)
                 if (it == Status.Stopped) emit("rates", mapOf("upload" to 0L, "download" to 0L))
             }
         }
         // The Log client follows the Logs page instead of running on every page.
-        scope.launch { logsVisible.collect { logs.setVisible(it) } }
+        scope.launch { logsVisible.collect { CommandSessions.setLogsVisible(it) } }
         scope.launch {
             GlobalEventBus.events.collect { event ->
                 when (event) {
@@ -206,18 +207,18 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         streamJob?.cancel()
         logsVisible.value = false
-        if (::dashboard.isInitialized) dashboard.setTrafficVisible(false)
+        if (::dashboard.isInitialized) CommandSessions.setTrafficVisible(false)
         if (::dashboardDetails.isInitialized) {
             dashboardDetails.setMemoryVisible(false)
             dashboardDetails.setLanVisible(false)
         }
         if (::connections.isInitialized && connectionsVisible) {
             connectionsVisible = false
-            connections.setVisible(false)
+            CommandSessions.setConnectionsVisible(false)
         }
         if (::connections.isInitialized && connectionStatsVisible) {
             connectionStatsVisible = false
-            connections.setVisible(false)
+            CommandSessions.setConnectionsVisible(false)
         }
     }
 
@@ -454,7 +455,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun setConnectionsVisible(visible: Boolean) {
         if (visible != connectionsVisible) {
             connectionsVisible = visible
-            connections.setVisible(visible)
+            CommandSessions.setConnectionsVisible(visible)
         }
         if (visible) flushConnections(force = true)
     }
@@ -463,7 +464,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun setConnectionStatsVisible(visible: Boolean) {
         if (visible != connectionStatsVisible) {
             connectionStatsVisible = visible
-            connections.setVisible(visible)
+            CommandSessions.setConnectionsVisible(visible)
         }
         if (visible) flushConnections(force = true)
     }
@@ -508,7 +509,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
 
     /** The core's per-second status stream ("rates") while a page shows it. */
-    fun setTrafficVisible(visible: Boolean) { dashboard.setTrafficVisible(visible) }
+    fun setTrafficVisible(visible: Boolean) { CommandSessions.setTrafficVisible(visible) }
 
     /** One setting; [restart] restarts a running local service for it (allowBypass, autoRedirect, dynamicNotification). */
     suspend fun setSetting(key: String, value: Any?, restart: Boolean = false) = operations.withLock {
@@ -870,12 +871,12 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         if (::dashboard.isInitialized) {
             dashboard.commandClient.removeHandler(rates)
-            dashboard.setTrafficVisible(false)
+            CommandSessions.setTrafficVisible(false)
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
-            if (connectionsVisible) connections.setVisible(false)
-            if (connectionStatsVisible) connections.setVisible(false)
-            logs.setVisible(false)
+            if (connectionsVisible) CommandSessions.setConnectionsVisible(false)
+            if (connectionStatsVisible) CommandSessions.setConnectionsVisible(false)
+            CommandSessions.setLogsVisible(false)
             toolBridge.close()
             dashboardDetails.close()
         }

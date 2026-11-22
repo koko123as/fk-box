@@ -7,12 +7,12 @@ import io.nekohasekai.sfa.bridge.toWire
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -28,29 +28,9 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val updateSequence = java.util.concurrent.atomic.AtomicLong()
 
     init {
-        viewModelScope.launch {
-            combine(
-                AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer,
-                RemoteControlManager.isConnected,
-                _serviceStatus,
-            ) { foreground, remoteServer, remoteConnected, status ->
-                SessionTarget(
-                    connect = foreground &&
-                        if (remoteServer != null) remoteConnected else status == Status.Started,
-                    remoteServerId = remoteServer?.id,
-                )
-            }.distinctUntilChanged().collect { target ->
-                if (target.connect) {
-                    commandClient.connect()
-                } else {
-                    commandClient.disconnect()
-                }
-            }
-        }
+        // When to subscribe: client-core sessions.rs.
+        commandClient.follow(viewModelScope, CommandSessions.Stream.Groups)
     }
-
-    private data class SessionTarget(val connect: Boolean, val remoteServerId: Long?)
 
     override fun createInitialState() = GroupsUiState()
 
