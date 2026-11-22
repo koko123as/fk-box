@@ -670,7 +670,7 @@ fn open_order() {
                     mark(Mark::ROWS);
                     let b = a.clone();
                     let route = nav::top().map(|r| r.id);
-                    app::act_then("reorderProfiles", json!({ "ids": ids }), move |ok| {
+                    app::reorder_profiles(ids, move |ok| {
                         if ok {
                             if let Some(id) = route {
                                 nav::close(id);

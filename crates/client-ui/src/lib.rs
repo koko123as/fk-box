@@ -1,5 +1,6 @@
-//! FK-box UI in Rust + Slint. The Go cores (libbox) and the Kotlin service and
-//! bridge layer are unchanged; this library draws the pages (a code-level port
+//! FK-box UI in Rust + Slint. The profile list and interface preferences come
+//! from the client store (fkbox-client-core, src/store.rs); everything else
+//! from the Kotlin bridge. This library draws the pages (a code-level port
 //! of the Jetpack Compose UI, compose/*) and drives them from BoxBridge events.
 //! A platform shell (apps/android/native, libfkui.so) runs it through
 //! [platform].
@@ -25,6 +26,7 @@ mod records;
 mod rows;
 #[cfg(all(not(target_os = "android"), feature = "shot"))]
 pub mod shot;
+mod store;
 mod theme;
 mod theme_apply;
 
@@ -38,6 +40,7 @@ pub mod platform {
     pub use crate::guarded;
     pub use crate::host::set_host;
     pub use crate::i18n::tr;
+    pub use crate::store::set_store_provider;
 }
 
 /// Runs one host event, reply or deferred callback. A panic in it is logged

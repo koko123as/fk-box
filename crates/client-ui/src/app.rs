@@ -307,7 +307,23 @@ pub fn on_reply(id: i64, ok: bool, payload: &str) {
 // Settings and preferences (BoxController.setPreferences / setSetting / setSettings)
 // ---------------------------------------------------------------------------
 
+/// Saves interface preferences in the client store; without one (the
+/// screenshot harness) the host keeps them.
 pub fn set_preferences(values: Value, then: impl FnOnce(bool) + 'static) {
+    if let Some(store) = crate::store::get() {
+        match crate::store::update_preferences(&store, &values) {
+            Ok(saved) => {
+                data_mut(|d| d.preferences = saved);
+                pages::mark(Mark::ALL);
+                then(true)
+            }
+            Err(error) => {
+                report(&error);
+                then(false)
+            }
+        }
+        return;
+    }
     call("setPreferences", json!({ "values": values }), move |result| match result {
         Ok(value) => {
             data_mut(|d| d.preferences = obj(&value));
@@ -319,6 +335,54 @@ pub fn set_preferences(values: Value, then: impl FnOnce(bool) + 'static) {
             then(false)
         }
     });
+}
+
+/// The profile rows from the client store; `None` without a store. A read
+/// failure is reported and keeps the rows shown.
+fn stored_profiles() -> Option<Vec<Value>> {
+    let store = crate::store::get()?;
+    match crate::store::profiles(&store) {
+        Ok(rows) => Some(rows),
+        Err(error) => {
+            crate::defer("store", move || report(&error));
+            None
+        }
+    }
+}
+
+fn stored_preferences() -> Option<Json> {
+    let store = crate::store::get()?;
+    match crate::store::preferences(&store) {
+        Ok(values) => Some(values),
+        Err(error) => {
+            crate::defer("store", move || report(&error));
+            None
+        }
+    }
+}
+
+/// Saves the profile order in the client store (through the host without one).
+pub fn reorder_profiles(ids: Vec<i64>, then: impl FnOnce(bool) + 'static) {
+    let Some(store) = crate::store::get() else {
+        act_then("reorderProfiles", json!({ "ids": ids }), then);
+        return;
+    };
+    match crate::store::reorder_profiles(&store, &ids) {
+        Ok(()) => {
+            if let Some(rows) = stored_profiles() {
+                data_mut(|d| {
+                    d.profiles_revision += 1;
+                    d.profiles = rows;
+                });
+            }
+            pages::mark(Mark::DASH | Mark::PROFILES | Mark::SETTINGS);
+            then(true)
+        }
+        Err(error) => {
+            report(&error);
+            then(false)
+        }
+    }
 }
 
 pub fn set_preference(key: &str, value: Value) {
@@ -515,10 +579,12 @@ pub fn on_event(payload: &str) {
             d.dashboard = obj(&value);
             Mark::ALL
         }
+        // The host changed profiles in the client store (no payload: re-read
+        // it); a host without a store sends the rows.
         "profiles" => {
             d.profiles_revision += 1;
             d.profile_stats.clear();
-            d.profiles = rows(&value);
+            d.profiles = if value.is_array() { rows(&value) } else { stored_profiles().unwrap_or_else(|| d.profiles.clone()) };
             Mark::DASH | Mark::PROFILES | Mark::SETTINGS
         }
         "groups" => {
@@ -554,7 +620,7 @@ pub fn on_event(payload: &str) {
             Mark::ALL
         }
         "preferences" => {
-            d.preferences = obj(&value);
+            d.preferences = if value.is_object() { obj(&value) } else { stored_preferences().unwrap_or_else(|| d.preferences.clone()) };
             Mark::ALL
         }
         "systemAccent" => {
@@ -673,9 +739,10 @@ fn initialize() {
                 d.mihomo_version = text(&result["mihomoVersion"]);
                 d.system_accent = long(&result["systemAccentColor"]).map(|v| v as u32).unwrap_or(0xff007aff);
                 d.dashboard = obj(&result["dashboard"]);
-                d.profiles = rows(&result["profiles"]);
+                // The host opened the client store before answering.
+                d.profiles = stored_profiles().unwrap_or_else(|| rows(&result["profiles"]));
                 d.settings = obj(&result["settings"]);
-                d.preferences = obj(&result["preferences"]);
+                d.preferences = stored_preferences().unwrap_or_else(|| obj(&result["preferences"]));
                 if result["lan"].is_object() {
                     d.lan = obj(&result["lan"]);
                 }

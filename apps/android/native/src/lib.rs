@@ -1,11 +1,12 @@
-//! FK-box on Android: the GameActivity entry point (`android_main`) and the
-//! JNI link to the Kotlin host (src/host.rs) around the Slint UI in
-//! `fkbox-client-ui`. Built into libfkui.so (BoxActivity's
-//! `android.app.lib_name`); the Go cores (libbox) and the Kotlin service and
-//! bridge layer are unchanged.
+//! FK-box on Android: the GameActivity entry point (`android_main`), the JNI
+//! link to the Kotlin host (src/host.rs) around the Slint UI in
+//! `fkbox-client-ui`, and the client store shared by the UI and the Kotlin
+//! service layer (src/store.rs). Built into libfkui.so (BoxActivity's
+//! `android.app.lib_name`, also loaded by `CoreStore` for the service).
 
 #[cfg(target_os = "android")]
 mod host;
+pub mod store;
 
 #[cfg(target_os = "android")]
 use fkbox_client_ui::platform as ui;
@@ -21,6 +22,8 @@ fn android_main(android: i_slint_backend_android_activity::AndroidApp) {
         return;
     }
     ui::set_host(Box::new(host::AndroidHost));
+    // The store Kotlin opens (CoreStore) before it answers the UI's `ready`.
+    ui::set_store_provider(store::store);
     let platform = i_slint_backend_android_activity::AndroidPlatform::new(android);
     if let Err(error) = slint::platform::set_platform(Box::new(platform)) {
         log::error!("set_platform failed: {error}");
