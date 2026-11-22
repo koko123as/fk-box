@@ -32,6 +32,6 @@
 
 **清理：**
 - 宿主已不再发送的界面事件 `connections`、`connectionStats` 从 `client-ui` 删除；截图工具 `shot.rs` 改发 `connectionEvents`（与 `BoxBridge.flushConnections` 相同的批次）。
-- 3b 之后无人读取的 `serviceStatus` 流（Connections、Groups、Dashboard ViewModel 的公开属性）删除；`BoxService.cancelNotification`（无调用）删除。
+- 3b 之后无人读取的 `serviceStatus` 流（Connections、Groups、Dashboard ViewModel 的公开属性）删除。
 - `.gitignore` 加 `__pycache__/`。
 - 检查过：Kotlin 无其他未引用的函数/类（`vendor/` 不动）；Go 导出函数除测试外都有调用；client-ui 在非 Android 目标下被 `allow(dead_code)` 掩盖的只有 Android 专用的 `fonts.rs`。
