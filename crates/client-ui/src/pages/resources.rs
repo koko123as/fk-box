@@ -132,7 +132,10 @@ fn page(st: &ResRef) -> Page {
             let mut spec = nav::InputSpec::new(&tr("Update interval"), &interval.to_string());
             spec.number = true;
             spec.suffix = tr("hours");
-            spec.validator = Some(Box::new(|v: &str| if (1..=8760).contains(&v.trim().parse::<i64>().unwrap_or(0)) { None } else { Some("1–8760".into()) }));
+            spec.validator =
+                Some(Box::new(
+                    |v: &str| if (1..=8760).contains(&v.trim().parse::<i64>().unwrap_or(0)) { None } else { Some("1–8760".into()) },
+                ));
             nav::input(spec, |v| {
                 if let Some(n) = v.and_then(|v| v.trim().parse::<i64>().ok()) {
                     app::set_setting("geoUpdateInterval", json!(n), false, false);

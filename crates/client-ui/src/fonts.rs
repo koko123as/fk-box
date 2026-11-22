@@ -121,9 +121,7 @@ fn faces(value: &serde_json::Value) -> Vec<Face> {
         .as_array()
         .map(|a| {
             a.iter()
-                .filter_map(|f| {
-                    Some(Face { path: f["path"].as_str()?.to_string(), index: f["index"].as_u64().unwrap_or(0) as u32 })
-                })
+                .filter_map(|f| Some(Face { path: f["path"].as_str()?.to_string(), index: f["index"].as_u64().unwrap_or(0) as u32 }))
                 .collect()
         })
         .unwrap_or_default()

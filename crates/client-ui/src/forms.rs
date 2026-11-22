@@ -80,14 +80,18 @@ pub fn parse_list(text: &str, max_length: Option<usize>, valid: Option<&dyn Fn(&
 
 /// parseLineInput: each non-blank line whole, with its 1-based number.
 pub fn parse_lines(text: &str) -> Vec<(usize, String)> {
-    lines(text).into_iter().enumerate().filter_map(|(i, l)| {
-        let t = l.trim();
-        if t.is_empty() {
-            None
-        } else {
-            Some((i + 1, t.to_string()))
-        }
-    }).collect()
+    lines(text)
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, l)| {
+            let t = l.trim();
+            if t.is_empty() {
+                None
+            } else {
+                Some((i + 1, t.to_string()))
+            }
+        })
+        .collect()
 }
 
 pub fn line_issue(line: usize, message: &str) -> String {
@@ -153,12 +157,14 @@ pub fn quick_edit(title: &str, content: &str, hint: Option<&str>, apply: Apply) 
             }
         };
         let st_edit = st.clone();
-        Page::new(&title)
-            .loading(s.saving)
-            .confirm(Bar::new("check", "Save", save).when(!s.saving))
-            .rows(vec![
-                Row::editor("", &s.text, 12, move |t| st_edit.borrow_mut().text = t).hint(&hint).enabled(!s.saving),
-            ])
+        Page::new(&title).loading(s.saving).confirm(Bar::new("check", "Save", save).when(!s.saving)).rows(vec![Row::editor(
+            "",
+            &s.text,
+            12,
+            move |t| st_edit.borrow_mut().text = t,
+        )
+        .hint(&hint)
+        .enabled(!s.saving)])
     });
     *id_cell.borrow_mut() = id;
     let st = state.clone();
@@ -293,7 +299,13 @@ pub fn value_editor(title: &str, initial: &Value, on_save: Rc<dyn Fn(Value, Done
 }
 
 /// ListItemOptions: a row whose value opens a choice dialog.
-pub fn options_row(title: &str, options: Vec<String>, current: &str, label: Rc<dyn Fn(&str) -> String>, on_changed: Rc<dyn Fn(String)>) -> Row {
+pub fn options_row(
+    title: &str,
+    options: Vec<String>,
+    current: &str,
+    label: Rc<dyn Fn(&str) -> String>,
+    on_changed: Rc<dyn Fn(String)>,
+) -> Row {
     let shown = label(current);
     let title_owned = title.to_string();
     let current = current.to_string();
@@ -311,7 +323,14 @@ pub fn options_row(title: &str, options: Vec<String>, current: &str, label: Rc<d
 }
 
 /// ListItemInput: a row whose value opens an input dialog.
-pub fn input_row(title: &str, value: &str, number: bool, suffix: &str, validator: Option<Rc<dyn Fn(&str) -> Option<String>>>, on_changed: Rc<dyn Fn(String)>) -> Row {
+pub fn input_row(
+    title: &str,
+    value: &str,
+    number: bool,
+    suffix: &str,
+    validator: Option<Rc<dyn Fn(&str) -> Option<String>>>,
+    on_changed: Rc<dyn Fn(String)>,
+) -> Row {
     let title_owned = title.to_string();
     let value_owned = value.to_string();
     let suffix = suffix.to_string();

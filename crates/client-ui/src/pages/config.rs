@@ -97,7 +97,13 @@ pub fn load(store: &StoreRef) {
 }
 
 /// set(): writes `value` at `path` (or removes it) over the loaded revision.
-pub fn set(store: &StoreRef, path: &[&str], value: Option<Value>, expected: Option<String>, done: impl FnOnce(Result<(), String>) + 'static) {
+pub fn set(
+    store: &StoreRef,
+    path: &[&str],
+    value: Option<Value>,
+    expected: Option<String>,
+    done: impl FnOnce(Result<(), String>) + 'static,
+) {
     {
         let s = store.borrow();
         if !s.ready || s.saving || s.loading {
@@ -248,7 +254,9 @@ pub fn open(profile: crate::app::Json, resources: bool) {
         let a = st.clone();
         out.push(Row::open(&tr("Rule sets"), Some("resources"), move || {
             let a = a.clone();
-            rows::push(move || list_page(&a, "Rule sets", vec!["route", "rule_set"], json!({ "type": "inline", "tag": "new-rules", "rules": [] })));
+            rows::push(move || {
+                list_page(&a, "Rule sets", vec!["route", "rule_set"], json!({ "type": "inline", "tag": "new-rules", "rules": [] }))
+            });
         }));
         let a = st.clone();
         out.push(Row::open(&tr("Log settings"), Some("logs"), move || log_page(&a)));
@@ -278,7 +286,14 @@ fn network_page(store: &StoreRef) {
         Page::new(&tr("Network")).loading(saving).rows(vec![
             Row::open(&tr("Inbounds"), Some("devices"), move || {
                 let a = a.clone();
-                rows::push(move || list_page(&a, "Inbounds", vec!["inbounds"], json!({ "type": "socks", "tag": "new-socks", "listen": "127.0.0.1", "listen_port": 2080 })));
+                rows::push(move || {
+                    list_page(
+                        &a,
+                        "Inbounds",
+                        vec!["inbounds"],
+                        json!({ "type": "socks", "tag": "new-socks", "listen": "127.0.0.1", "listen_port": 2080 }),
+                    )
+                });
             }),
             Row::open(&tr("Outbounds"), Some("proxies"), move || {
                 let b = b.clone();
@@ -326,7 +341,9 @@ fn dns_page(store: &StoreRef) {
             ),
             Row::switch(&tr("Reverse mapping"), reverse, move |v| launch_set(&d, &["dns", "reverse_mapping"], Some(json!(v)))),
             Row::switch(&tr("Disable DNS cache"), disable_cache, move |v| launch_set(&e, &["dns", "disable_cache"], Some(json!(v)))),
-            Row::switch(&tr("Disable DNS cache expiration"), disable_expire, move |v| launch_set(&f, &["dns", "disable_expire"], Some(json!(v)))),
+            Row::switch(&tr("Disable DNS cache expiration"), disable_expire, move |v| {
+                launch_set(&f, &["dns", "disable_expire"], Some(json!(v)))
+            }),
             forms::input_row(
                 &tr("DNS cache capacity"),
                 &capacity.to_string(),
@@ -423,10 +440,14 @@ fn http_rewrite_page(store: &StoreRef) {
         let enabled = truthy(&s.value(&hr(&["enabled"])));
         let mitm = s.value(&hr(&["mitm"]));
         let hosts: Vec<String> = s.value(&hr(&["mitm", "hosts"])).as_array().cloned().unwrap_or_default().iter().map(text).collect();
-        let excluded: Vec<String> = s.value(&hr(&["mitm", "excluded_hosts"])).as_array().cloned().unwrap_or_default().iter().map(text).collect();
+        let excluded: Vec<String> =
+            s.value(&hr(&["mitm", "excluded_hosts"])).as_array().cloned().unwrap_or_default().iter().map(text).collect();
         let resources = s.value(&hr(&["resources"]));
         let whole = s.value(&HTTP_REWRITE);
-        let counts: Vec<usize> = ["header_rewrite", "url_rewrite", "map_remote", "body_rewrite", "map_local", "scripts"].iter().map(|k| s.entries(&hr(&[k])).len()).collect();
+        let counts: Vec<usize> = ["header_rewrite", "url_rewrite", "map_remote", "body_rewrite", "map_local", "scripts"]
+            .iter()
+            .map(|k| s.entries(&hr(&[k])).len())
+            .collect();
         drop(s);
         let pattern = "^https?://example\\.com/(.*)";
         let sections: Vec<(&str, &'static str, Value)> = vec![
@@ -434,17 +455,27 @@ fn http_rewrite_page(store: &StoreRef) {
             ("URL Rewrite", "url_rewrite", json!({ "action": "header", "replacement": "https://example.com/$1" })),
             ("Map Remote", "map_remote", json!({ "replacement": "https://example.net/$1" })),
             ("Body Rewrite", "body_rewrite", json!({ "phase": "response", "regex": "old", "replacement": "new" })),
-            ("Map Local / API Mock", "map_local", json!({ "status": 200, "data_type": "text", "data": "{}", "headers": [{ "name": "Content-Type", "value": "application/json" }] })),
+            (
+                "Map Local / API Mock",
+                "map_local",
+                json!({ "status": 200, "data_type": "text", "data": "{}", "headers": [{ "name": "Content-Type", "value": "application/json" }] }),
+            ),
             ("JavaScript", "scripts", json!({ "phase": "response", "requires_body": true, "source": "$done({body: $response.body});" })),
         ];
         let mut out = Vec::new();
         out.extend(error_rows(&st));
         let a = st.clone();
-        out.push(Row::switch(&tr("Enable HTTP rewriting"), enabled, move |v| launch_set(&a, &hr(&["enabled"]), Some(json!(v)))).enabled(!saving));
+        out.push(
+            Row::switch(&tr("Enable HTTP rewriting"), enabled, move |v| launch_set(&a, &hr(&["enabled"]), Some(json!(v)))).enabled(!saving),
+        );
         let a = st.clone();
         out.push(
             Row::open("MITM", Some("lock"), move || {
-                let initial = if mitm.is_null() { json!({ "enabled": false, "hosts": [], "excluded_hosts": [], "block_quic": false }) } else { mitm.clone() };
+                let initial = if mitm.is_null() {
+                    json!({ "enabled": false, "hosts": [], "excluded_hosts": [], "block_quic": false })
+                } else {
+                    mitm.clone()
+                };
                 forms::value_editor("MITM", &initial, saver(&a, hr(&["mitm"])));
             })
             .subtitle(&tr("Choose HTTPS hosts in this profile")),
@@ -464,7 +495,9 @@ fn http_rewrite_page(store: &StoreRef) {
                         None,
                         None,
                         Rc::new(move |entries: Vec<String>, done: Done| {
-                            set(&a, &path, Some(json!(entries)), Some(revision.clone()), move |r| done(r.map_err(|e| if e.is_empty() { None } else { Some(e) })));
+                            set(&a, &path, Some(json!(entries)), Some(revision.clone()), move |r| {
+                                done(r.map_err(|e| if e.is_empty() { None } else { Some(e) }))
+                            });
                         }),
                     );
                 })
@@ -540,7 +573,9 @@ fn edit_entry(store: &StoreRef, path: Vec<&'static str>, initial: Value, index: 
                 Some(i) if i < next.len() => next[i] = edited,
                 Some(_) => next.push(edited),
             }
-            set(&st, &path, Some(Value::Array(next)), Some(revision.clone()), move |r| done(r.map_err(|e| if e.is_empty() { None } else { Some(e) })));
+            set(&st, &path, Some(Value::Array(next)), Some(revision.clone()), move |r| {
+                done(r.map_err(|e| if e.is_empty() { None } else { Some(e) }))
+            });
         }),
     );
 }
@@ -616,38 +651,35 @@ fn list_page_titled(store: &StoreRef, title: String, path: Vec<&'static str>, in
             .unwrap_or_else(|| encode(entry).split_whitespace().collect::<Vec<_>>().join(" "));
         let (st, p, i) = (store.clone(), path.clone(), initial.clone());
         let (st_m, p_m, i_m, label_m) = (store.clone(), path.clone(), initial.clone(), label.clone());
-        out.push(
-            Row::card(&label, &subtitle, move || edit_entry(&st, p.clone(), i.clone(), Some(index)))
-                .icon("profiles")
-                .lines(2)
-                .menu(move || {
-                    let (st, p, i) = (st_m.clone(), p_m.clone(), i_m.clone());
-                    let (st_d, p_d, label_d) = (st_m.clone(), p_m.clone(), label_m.clone());
-                    vec![
-                        MenuEntry::act("Edit", "edit", move || edit_entry(&st, p.clone(), i.clone(), Some(index))),
-                        MenuEntry::act("Delete", "delete", move || {
-                            let (st, p) = (st_d.clone(), p_d.clone());
-                            nav::confirm("Delete", Some(&label_d), "Delete", move |ok| {
-                                if ok {
-                                    let mut next = st.borrow().entries(&p);
-                                    if index < next.len() {
-                                        next.remove(index);
-                                    }
-                                    let revision = st.borrow().revision.clone();
-                                    set(&st, &p, Some(Value::Array(next)), Some(revision), |r| {
-                                        if let Err(e) = r {
-                                            if !e.is_empty() {
-                                                app::report(&e)
-                                            }
-                                        }
-                                    });
+        out.push(Row::card(&label, &subtitle, move || edit_entry(&st, p.clone(), i.clone(), Some(index))).icon("profiles").lines(2).menu(
+            move || {
+                let (st, p, i) = (st_m.clone(), p_m.clone(), i_m.clone());
+                let (st_d, p_d, label_d) = (st_m.clone(), p_m.clone(), label_m.clone());
+                vec![
+                    MenuEntry::act("Edit", "edit", move || edit_entry(&st, p.clone(), i.clone(), Some(index))),
+                    MenuEntry::act("Delete", "delete", move || {
+                        let (st, p) = (st_d.clone(), p_d.clone());
+                        nav::confirm("Delete", Some(&label_d), "Delete", move |ok| {
+                            if ok {
+                                let mut next = st.borrow().entries(&p);
+                                if index < next.len() {
+                                    next.remove(index);
                                 }
-                            });
-                        })
-                        .danger(),
-                    ]
-                }),
-        );
+                                let revision = st.borrow().revision.clone();
+                                set(&st, &p, Some(Value::Array(next)), Some(revision), |r| {
+                                    if let Err(e) = r {
+                                        if !e.is_empty() {
+                                            app::report(&e)
+                                        }
+                                    }
+                                });
+                            }
+                        });
+                    })
+                    .danger(),
+                ]
+            },
+        ));
         out.push(Row::spacer(8));
     }
     let mut page = Page::new(&title).loading(saving).bar(bar).rows(out);
@@ -670,7 +702,8 @@ fn order_page(store: &StoreRef, path: Vec<&'static str>) {
         let list = en.borrow().clone();
         let busy = *sv.borrow();
         let save = {
-            let (en, sv, er, st, p, rev, idc) = (en.clone(), sv.clone(), er.clone(), st.clone(), path.clone(), revision.clone(), idc2.clone());
+            let (en, sv, er, st, p, rev, idc) =
+                (en.clone(), sv.clone(), er.clone(), st.clone(), path.clone(), revision.clone(), idc2.clone());
             move || {
                 *sv.borrow_mut() = true;
                 mark(Mark::ROWS);

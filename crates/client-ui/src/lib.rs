@@ -9,10 +9,10 @@
 slint::include_modules!();
 
 mod app;
-mod forms;
 mod fonts;
-mod gesture;
 mod format;
+mod forms;
+mod gesture;
 mod host;
 mod i18n;
 #[cfg(test)]
@@ -23,10 +23,10 @@ mod nav;
 mod pages;
 mod records;
 mod rows;
-mod theme;
-mod theme_apply;
 #[cfg(all(not(target_os = "android"), feature = "shot"))]
 pub mod shot;
+mod theme;
+mod theme_apply;
 
 /// What a platform shell calls into the UI: register its host, start the
 /// event loop, and hand over host replies and events, touches and fonts.

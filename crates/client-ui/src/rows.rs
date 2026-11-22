@@ -29,7 +29,15 @@ pub struct Bar {
 
 impl Bar {
     pub fn new(icon: &'static str, tooltip: &str, action: impl Fn() + 'static) -> Bar {
-        Bar { id: format!("{icon}:{tooltip}"), icon, tooltip: tr(tooltip), enabled: true, selected: false, loading: false, action: Some(Rc::new(action)) }
+        Bar {
+            id: format!("{icon}:{tooltip}"),
+            icon,
+            tooltip: tr(tooltip),
+            enabled: true,
+            selected: false,
+            loading: false,
+            action: Some(Rc::new(action)),
+        }
     }
 
     pub fn when(mut self, enabled: bool) -> Bar {
@@ -670,7 +678,8 @@ pub fn update<T: Clone + PartialEq + 'static>(current: ModelRc<T>, next: Vec<T>)
 }
 
 fn build(id: i32) -> Option<PageData> {
-    let entry = ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.builder.clone(), en.rows.clone(), en.actions.clone(), en.keywords.clone())));
+    let entry =
+        ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.builder.clone(), en.rows.clone(), en.actions.clone(), en.keywords.clone())));
     let (builder, rows_model, actions_model, keywords_model) = entry?;
     let mut page = builder();
     for (i, r) in page.rows.iter_mut().enumerate() {
@@ -715,7 +724,13 @@ fn build(id: i32) -> Option<PageData> {
     let keywords: Vec<crate::Keyword> = page
         .keywords
         .iter()
-        .map(|(key, label, removable, selected, section)| crate::Keyword { key: ss(key), label: ss(label), removable: *removable, selected: *selected, section_start: *section })
+        .map(|(key, label, removable, selected, section)| crate::Keyword {
+            key: ss(key),
+            label: ss(label),
+            removable: *removable,
+            selected: *selected,
+            section_start: *section,
+        })
         .collect();
     let has_keywords = !keywords.is_empty();
     sync_model(&keywords_model, keywords);
@@ -908,12 +923,19 @@ pub fn act2(id: &str, a: &str, b: &str) -> bool {
 pub fn menu(key: &str) -> Vec<MenuEntry> {
     if let Some(rest) = key.strip_prefix("page:") {
         let Ok(id) = rest.parse::<i32>() else { return Vec::new() };
-        let (folded, f) = ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.last.folded.clone(), en.last.menu.clone())).unwrap_or_default());
+        let (folded, f) =
+            ENTRIES.with(|e| e.borrow().get(&id).map(|en| (en.last.folded.clone(), en.last.menu.clone())).unwrap_or_default());
         let mut items: Vec<MenuEntry> = folded
             .into_iter()
             .map(|b| {
                 let enabled = b.enabled && !b.loading;
-                let mut m = MenuEntry { label: b.tooltip.clone(), icon: Some(b.icon), checked: b.selected, action: b.action.clone(), ..Default::default() };
+                let mut m = MenuEntry {
+                    label: b.tooltip.clone(),
+                    icon: Some(b.icon),
+                    checked: b.selected,
+                    action: b.action.clone(),
+                    ..Default::default()
+                };
                 if !enabled {
                     m.action = None;
                 }

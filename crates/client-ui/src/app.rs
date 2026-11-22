@@ -4,8 +4,8 @@
 //! here runs on the Slint event-loop thread.
 
 use std::cell::RefCell;
-use std::rc::Rc;
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 
 use serde_json::{json, Map, Value};
 use slint::{ComponentHandle, SharedString};
@@ -294,10 +294,7 @@ pub fn copy_text(value: &str) {
 pub fn on_reply(id: i64, ok: bool, payload: &str) {
     let reply = CALLS.with(|c| c.borrow_mut().pending.remove(&id));
     let Some(reply) = reply else { return };
-    let value = serde_json::from_str::<Value>(payload)
-        .ok()
-        .and_then(|mut v| v.get_mut("v").map(Value::take))
-        .unwrap_or(Value::Null);
+    let value = serde_json::from_str::<Value>(payload).ok().and_then(|mut v| v.get_mut("v").map(Value::take)).unwrap_or(Value::Null);
     if ok {
         reply(Ok(value))
     } else {
@@ -330,8 +327,7 @@ pub fn set_preference(key: &str, value: Value) {
 
 /// An auto-restart setting restarts a running local service itself.
 pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
-    let (busy, running, remote, transitioning) =
-        data(|d| (d.service_settings_changing, d.running(), d.remote(), d.transitioning()));
+    let (busy, running, remote, transitioning) = data(|d| (d.service_settings_changing, d.running(), d.remote(), d.transitioning()));
     if busy || (auto_restart && transitioning && !remote) {
         return;
     }
@@ -340,27 +336,23 @@ pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
         data_mut(|d| d.service_settings_changing = true);
         pages::mark(Mark::SETTINGS);
     }
-    call(
-        "setSetting",
-        json!({ "key": key, "value": value, "restart": restart_service }),
-        move |result| {
-            if auto_restart {
-                data_mut(|d| d.service_settings_changing = false);
-            }
-            match result {
-                Ok(saved) => data_mut(|d| {
-                    d.settings = obj(&saved);
-                    if restart_service {
-                        d.apply_required = None;
-                    } else if restart && !auto_restart && d.running() && !d.remote() {
-                        d.apply_required = Some("Restart".into());
-                    }
-                }),
-                Err(error) => report(&error),
-            }
-            pages::mark(Mark::ALL);
-        },
-    );
+    call("setSetting", json!({ "key": key, "value": value, "restart": restart_service }), move |result| {
+        if auto_restart {
+            data_mut(|d| d.service_settings_changing = false);
+        }
+        match result {
+            Ok(saved) => data_mut(|d| {
+                d.settings = obj(&saved);
+                if restart_service {
+                    d.apply_required = None;
+                } else if restart && !auto_restart && d.running() && !d.remote() {
+                    d.apply_required = Some("Restart".into());
+                }
+            }),
+            Err(error) => report(&error),
+        }
+        pages::mark(Mark::ALL);
+    });
 }
 
 pub fn set_settings(values: Value, restart: bool, then: impl FnOnce(bool) + 'static) {
@@ -417,7 +409,13 @@ pub fn refresh_lan() {
 }
 
 /// setLanProxy: false when the switch could not be changed.
-pub fn set_lan_proxy(enabled: bool, port: Option<i64>, profile_id: Option<i64>, revision: Option<String>, then: impl FnOnce(bool) + 'static) {
+pub fn set_lan_proxy(
+    enabled: bool,
+    port: Option<i64>,
+    profile_id: Option<i64>,
+    revision: Option<String>,
+    then: impl FnOnce(bool) + 'static,
+) {
     let (can, selected, current_revision) = data(|d| (d.can_set_lan_proxy(), d.selected_profile_id(), d.lan.get("revision").map(text)));
     if !can {
         then(false);
@@ -432,30 +430,26 @@ pub fn set_lan_proxy(enabled: bool, port: Option<i64>, profile_id: Option<i64>, 
     data_mut(|d| d.lan_changing = true);
     pages::mark(Mark::DASH);
     let revision = revision.or(current_revision);
-    call(
-        "setLanProxy",
-        json!({ "profileId": target, "revision": revision, "enabled": enabled, "port": port }),
-        move |result| {
-            data_mut(|d| d.lan_changing = false);
-            match result {
-                Ok(value) => {
-                    data_mut(|d| {
-                        if !d.remote() && d.selected_profile_id() == target {
-                            d.lan = obj(&value);
-                        }
-                    });
-                    pages::mark(Mark::DASH);
-                    then(true)
-                }
-                Err(error) => {
-                    report(&error);
-                    refresh_lan();
-                    pages::mark(Mark::DASH);
-                    then(false)
-                }
+    call("setLanProxy", json!({ "profileId": target, "revision": revision, "enabled": enabled, "port": port }), move |result| {
+        data_mut(|d| d.lan_changing = false);
+        match result {
+            Ok(value) => {
+                data_mut(|d| {
+                    if !d.remote() && d.selected_profile_id() == target {
+                        d.lan = obj(&value);
+                    }
+                });
+                pages::mark(Mark::DASH);
+                then(true)
             }
-        },
-    );
+            Err(error) => {
+                report(&error);
+                refresh_lan();
+                pages::mark(Mark::DASH);
+                then(false)
+            }
+        }
+    });
 }
 
 // ---------------------------------------------------------------------------

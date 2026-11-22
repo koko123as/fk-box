@@ -5,10 +5,10 @@
 //! the seed, light and dark; harmonized success and warning custom colours;
 //! and the pure black variant of the dark scheme.
 
+use material_colors::blend::harmonize;
 use material_colors::color::Rgb;
 use material_colors::dynamic_color::{DynamicScheme, MaterialDynamicColors};
 use material_colors::hct::Hct;
-use material_colors::blend::harmonize;
 use material_colors::palette::TonalPalette;
 use material_colors::scheme::variant::{SchemeContent, SchemeFidelity, SchemeMonochrome, SchemeTonalSpot};
 
@@ -198,7 +198,11 @@ impl BoxScheme {
 pub fn luminance(argb_value: u32) -> f64 {
     let lin = |c: u32| {
         let v = (c & 0xff) as f64 / 255.0;
-        if v <= 0.03928 { v / 12.92 } else { ((v + 0.055) / 1.055).powf(2.4) }
+        if v <= 0.03928 {
+            v / 12.92
+        } else {
+            ((v + 0.055) / 1.055).powf(2.4)
+        }
     };
     0.2126 * lin(argb_value >> 16) + 0.7152 * lin(argb_value >> 8) + 0.0722 * lin(argb_value)
 }

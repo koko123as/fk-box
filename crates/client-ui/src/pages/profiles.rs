@@ -111,7 +111,13 @@ fn traffic_line(info: &SubInfo) -> Option<String> {
     if info.total <= 0 {
         return None;
     }
-    Some(format!("{} / {} · {} {}", format::bytes(info.used() as f64), format::bytes(info.total as f64), tr("Remaining"), format::bytes(info.remaining() as f64)))
+    Some(format!(
+        "{} / {} · {} {}",
+        format::bytes(info.used() as f64),
+        format::bytes(info.total as f64),
+        tr("Remaining"),
+        format::bytes(info.remaining() as f64)
+    ))
 }
 
 fn web_page(p: &Json) -> Option<String> {
@@ -173,9 +179,30 @@ pub fn project(w: &AppWindow, _m: Mark) {
         Vec::new()
     } else {
         vec![
-            BarAction { id: "add".into(), glyph: glyph("add-circle"), tooltip: ss(tr("Add profile")), enabled: !local(|l| l.importing), selected: false, loading: false },
-            BarAction { id: "update-all".into(), glyph: glyph("sync"), tooltip: ss(tr("Update all")), enabled: !busy && has_remote, selected: false, loading: busy },
-            BarAction { id: "reorder".into(), glyph: glyph("sort"), tooltip: ss(tr("Reorder")), enabled: count >= 2, selected: false, loading: false },
+            BarAction {
+                id: "add".into(),
+                glyph: glyph("add-circle"),
+                tooltip: ss(tr("Add profile")),
+                enabled: !local(|l| l.importing),
+                selected: false,
+                loading: false,
+            },
+            BarAction {
+                id: "update-all".into(),
+                glyph: glyph("sync"),
+                tooltip: ss(tr("Update all")),
+                enabled: !busy && has_remote,
+                selected: false,
+                loading: busy,
+            },
+            BarAction {
+                id: "reorder".into(),
+                glyph: glyph("sort"),
+                tooltip: ss(tr("Reorder")),
+                enabled: count >= 2,
+                selected: false,
+                loading: false,
+            },
         ]
     };
     if let Some(m) = rows::update(g.get_bar_actions(), actions) {
@@ -349,12 +376,16 @@ fn import(source: &str) {
         }),
         // ScanPage: the native camera Activity returns the decoded profile, or
         // the text of a QR code that is not a profile link.
-        _ => app::call("scanQrCode", json!({ "title": tr("Scan QR code"), "flash": tr("Flash"), "camera": tr("Camera"), "retry": tr("Retry"), "scanning": tr("Scanning configuration"), "dark": crate::theme_apply::is_dark() }), |r| match r {
-            Ok(v) if v.get("profile").map(Value::is_object).unwrap_or(false) => import_done(Ok(v["profile"].clone())),
-            Ok(v) if v.get("text").map(Value::is_string).unwrap_or(false) => decode_import(text(&v["text"]), import_done),
-            Ok(_) => import_done(Ok(Value::Null)),
-            Err(e) => import_done(Err(e)),
-        }),
+        _ => app::call(
+            "scanQrCode",
+            json!({ "title": tr("Scan QR code"), "flash": tr("Flash"), "camera": tr("Camera"), "retry": tr("Retry"), "scanning": tr("Scanning configuration"), "dark": crate::theme_apply::is_dark() }),
+            |r| match r {
+                Ok(v) if v.get("profile").map(Value::is_object).unwrap_or(false) => import_done(Ok(v["profile"].clone())),
+                Ok(v) if v.get("text").map(Value::is_string).unwrap_or(false) => decode_import(text(&v["text"]), import_done),
+                Ok(_) => import_done(Ok(Value::Null)),
+                Err(e) => import_done(Err(e)),
+            },
+        ),
     }
 }
 
@@ -509,7 +540,8 @@ fn form_save(form: &Rc<RefCell<Form>>) {
             }),
         );
         // A typed interval outranks the provider's profile-update-interval.
-        let edited = f.initial.get("intervalEdited").map(truthy).unwrap_or(false) || (f.remote && f.auto && f.interval != f.initial_interval);
+        let edited =
+            f.initial.get("intervalEdited").map(truthy).unwrap_or(false) || (f.remote && f.auto && f.interval != f.initial_interval);
         p.insert("intervalEdited".into(), json!(edited));
         p.insert("core".into(), json!(f.core));
         if let Some(revision) = &f.revision {
@@ -550,26 +582,20 @@ fn form_page(form: &Rc<RefCell<Form>>) -> Page {
     rows.push(Row::switch(&tr("Remote"), f.remote, move |v| a.borrow_mut().remote = v).key("remote"));
     let a = form.clone();
     let current_core = core_labels().into_iter().find(|(k, _)| *k == f.core).map(|(_, l)| l).unwrap_or_else(|| f.core.clone());
-    rows.push(
-        Row::item(&tr("Core"))
-            .value(&current_core)
-            .key("core")
-            .on(|_| {})
-            .menu(move || {
-                let current = a.borrow().core.clone();
-                core_labels()
-                    .into_iter()
-                    .map(|(value, label)| {
-                        let b = a.clone();
-                        MenuEntry::plain(&label, move || {
-                            b.borrow_mut().core = value.to_string();
-                            mark(Mark::ROWS);
-                        })
-                        .checked(current == value)
-                    })
-                    .collect()
-            }),
-    );
+    rows.push(Row::item(&tr("Core")).value(&current_core).key("core").on(|_| {}).menu(move || {
+        let current = a.borrow().core.clone();
+        core_labels()
+            .into_iter()
+            .map(|(value, label)| {
+                let b = a.clone();
+                MenuEntry::plain(&label, move || {
+                    b.borrow_mut().core = value.to_string();
+                    mark(Mark::ROWS);
+                })
+                .checked(current == value)
+            })
+            .collect()
+    }));
     if f.remote {
         let a = form.clone();
         rows.push(Row::field(&tr("URL"), &f.url, &tr("Required"), move |v| a.borrow_mut().url = v).key("url").invalid(bad("url")).mono());
@@ -581,12 +607,14 @@ fn form_page(form: &Rc<RefCell<Form>>) -> Page {
         if f.auto {
             let a = form.clone();
             rows.push(
-                Row::field(&tr("Update interval"), &f.interval, &tr("Required"), move |v| a.borrow_mut().interval = v.chars().filter(char::is_ascii_digit).collect())
-                    .key("interval")
-                    .number()
-                    .value(&f.interval)
-                    .subtitle(&tr("minutes"))
-                    .invalid(bad("interval")),
+                Row::field(&tr("Update interval"), &f.interval, &tr("Required"), move |v| {
+                    a.borrow_mut().interval = v.chars().filter(char::is_ascii_digit).collect()
+                })
+                .key("interval")
+                .number()
+                .value(&f.interval)
+                .subtitle(&tr("minutes"))
+                .invalid(bad("interval")),
             );
             rows.push(Row::footer(&tr("At least 15 minutes")));
         }
@@ -724,7 +752,11 @@ fn details_page(id: Option<i64>) -> Page {
     let web = web_page(&p);
     if let Some(info) = SubInfo::of(&p) {
         rows.push(Row::section(&tr("Subscription info")));
-        let line = if info.total > 0 { format!("{} / {}", format::bytes(info.used() as f64), format::bytes(info.total as f64)) } else { tr("Traffic not reported") };
+        let line = if info.total > 0 {
+            format!("{} / {}", format::bytes(info.used() as f64), format::bytes(info.total as f64))
+        } else {
+            tr("Traffic not reported")
+        };
         let expire = match expire_date(&info) {
             Some(date) => format!("{} {} · {}", tr("Expires"), date, info.days_text(now)),
             None => tr("No expiry"),
@@ -742,7 +774,13 @@ fn details_page(id: Option<i64>) -> Page {
         }
         rows.push(r);
         if let Some(url) = web.clone() {
-            rows.push(Row::item(&tr("Open website")).subtitle(&url).lines(1).subtitle_lines(1).on(move |_| app::act("openUrl", json!({ "url": url }))));
+            rows.push(
+                Row::item(&tr("Open website"))
+                    .subtitle(&url)
+                    .lines(1)
+                    .subtitle_lines(1)
+                    .on(move |_| app::act("openUrl", json!({ "url": url }))),
+            );
         }
     } else if let Some(url) = web {
         rows.push(Row::section(&tr("Subscription info")));
@@ -761,7 +799,11 @@ fn details_page(id: Option<i64>) -> Page {
     let updated = p.get("updatedAt").and_then(long).unwrap_or(0);
     rows.push(Row::item(&tr("Last updated")).subtitle(&if updated <= 0 { tr("Unknown") } else { format::local_date(updated) }));
     if remote_profile {
-        rows.push(Row::item(&tr("Auto update")).value(&tr(if p.get("autoUpdate").map(truthy).unwrap_or(false) { "Turn on" } else { "Turn off" })));
+        rows.push(Row::item(&tr("Auto update")).value(&tr(if p.get("autoUpdate").map(truthy).unwrap_or(false) {
+            "Turn on"
+        } else {
+            "Turn off"
+        })));
         rows.push(Row::item(&tr("Update interval (minutes)")).value(&interval_text(p.get("interval"))));
     }
     rows.push(Row::gap());
@@ -1091,7 +1133,11 @@ fn project_editor(w: &AppWindow) {
             e.busy(),
             e.search,
             e.error.clone().unwrap_or_default(),
-            if is_remote(&e.profile) { tr("Configuration changes will replace the remote content until its next update.") } else { String::new() },
+            if is_remote(&e.profile) {
+                tr("Configuration changes will replace the remote content until its next update.")
+            } else {
+                String::new()
+            },
             e.text.matches('\n').count() + 1,
             e.select,
             e.text_tick,
@@ -1103,7 +1149,14 @@ fn project_editor(w: &AppWindow) {
     let (shown, _) = editor_bar();
     let actions: Vec<BarAction> = shown
         .iter()
-        .map(|b| BarAction { id: ss(b.icon), glyph: glyph(b.icon), tooltip: ss(&b.tooltip), enabled: b.enabled, selected: b.selected, loading: b.loading })
+        .map(|b| BarAction {
+            id: ss(b.icon),
+            glyph: glyph(b.icon),
+            tooltip: ss(&b.tooltip),
+            enabled: b.enabled,
+            selected: b.selected,
+            loading: b.loading,
+        })
         .collect();
     g.set_editor_title(title.into());
     g.set_config_loading(loading);
@@ -1261,7 +1314,13 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
         return folded
             .into_iter()
             .map(|b| {
-                let mut m = MenuEntry { label: b.tooltip.clone(), icon: Some(b.icon), checked: b.selected, action: b.action.clone(), ..Default::default() };
+                let mut m = MenuEntry {
+                    label: b.tooltip.clone(),
+                    icon: Some(b.icon),
+                    checked: b.selected,
+                    action: b.action.clone(),
+                    ..Default::default()
+                };
                 if !b.enabled {
                     m.action = None;
                 }

@@ -59,7 +59,11 @@ fn error_row(error: &str, retry: Option<Rc<dyn Fn()>>) -> Vec<Row> {
 fn tools_page() -> Page {
     let sidebar = !nav::mobile();
     let endpoints: Vec<&'static str> = data(|d| {
-        if d.running() { ENDPOINT_KINDS.into_iter().filter(|k| d.tool_state.get(*k).map(|v| !list(v).is_empty()).unwrap_or(false)).collect() } else { Vec::new() }
+        if d.running() {
+            ENDPOINT_KINDS.into_iter().filter(|k| d.tool_state.get(*k).map(|v| !list(v).is_empty()).unwrap_or(false)).collect()
+        } else {
+            Vec::new()
+        }
     });
     let mut rows = Vec::new();
     if !sidebar {
@@ -112,8 +116,10 @@ struct Diag {
 }
 
 fn open_diagnostics(quality: bool) {
-    let initial = data(|d| if quality { s(&Value::Object(d.quality.clone()), "configURL") } else { s(&Value::Object(d.stun.clone()), "server") });
-    let st = Rc::new(RefCell::new(Diag { address: initial, outbound: String::new(), serial: false, http3: false, seconds: 30, asking: false }));
+    let initial =
+        data(|d| if quality { s(&Value::Object(d.quality.clone()), "configURL") } else { s(&Value::Object(d.stun.clone()), "server") });
+    let st =
+        Rc::new(RefCell::new(Diag { address: initial, outbound: String::new(), serial: false, http3: false, seconds: 30, asking: false }));
     let a = st.clone();
     let id = rows::push(move || diagnostics_page(&a, quality));
     nav::on_closed(id, move || app::act(if quality { "tools.stopQuality" } else { "tools.stopStun" }, json!({})));
@@ -138,15 +144,28 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
         let a = st.clone();
         crate::defer("quality confirm", move || {
             let a = a.clone();
-            nav::confirm_styled("Network quality", Some("This test transfers data on a metered network. Continue?"), "Start", false, move |ok| {
-                app::act_then(if ok { "tools.confirmQuality" } else { "tools.dismissQuality" }, json!({}), move |_| a.borrow_mut().asking = false);
-            });
+            nav::confirm_styled(
+                "Network quality",
+                Some("This test transfers data on a metered network. Continue?"),
+                "Start",
+                false,
+                move |ok| {
+                    app::act_then(if ok { "tools.confirmQuality" } else { "tools.dismissQuality" }, json!({}), move |_| {
+                        a.borrow_mut().asking = false
+                    });
+                },
+            );
         });
     }
     let d = st.borrow();
     let mut rows = Vec::new();
     let a = st.clone();
-    rows.push(Row::input(&tr(if quality { "URL" } else { "Address" }), &d.address, "", move |v| a.borrow_mut().address = v).key("address").enabled(!running).mono());
+    rows.push(
+        Row::input(&tr(if quality { "URL" } else { "Address" }), &d.address, "", move |v| a.borrow_mut().address = v)
+            .key("address")
+            .enabled(!running)
+            .mono(),
+    );
     rows.push(Row::spacer(8));
     if service_running {
         let a = st.clone();
@@ -198,7 +217,10 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
         } else {
             let d = a.borrow();
             if quality {
-                app::act("tools.startQuality", json!({ "url": d.address.trim(), "outbound": d.outbound, "serial": d.serial, "http3": d.http3, "seconds": d.seconds }));
+                app::act(
+                    "tools.startQuality",
+                    json!({ "url": d.address.trim(), "outbound": d.outbound, "serial": d.serial, "http3": d.http3, "seconds": d.seconds }),
+                );
             } else {
                 app::act("tools.startStun", json!({ "server": d.address.trim(), "outbound": d.outbound }));
             }
@@ -215,7 +237,13 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
         rows.push(Row::spacer(16));
         let values = if quality {
             vec![
-                ("Latency", format!("{} ms", state.get("idleLatencyMs").map(text).filter(|t| !t.is_empty() && t != "null").unwrap_or_else(|| "0".into()))),
+                (
+                    "Latency",
+                    format!(
+                        "{} ms",
+                        state.get("idleLatencyMs").map(text).filter(|t| !t.is_empty() && t != "null").unwrap_or_else(|| "0".into())
+                    ),
+                ),
                 ("Download", format!("{:.2} Mbps", num(&state["downloadCapacity"]) / 1_000_000.0)),
                 ("Upload", format!("{:.2} Mbps", num(&state["uploadCapacity"]) / 1_000_000.0)),
                 ("Download RPM", s(&state, "downloadRPM")),
@@ -224,7 +252,13 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
         } else {
             let mut v = vec![
                 ("Address", s(&state, "externalAddr")),
-                ("Latency", format!("{} ms", state.get("latencyMs").map(text).filter(|t| !t.is_empty() && t != "null").unwrap_or_else(|| "0".into()))),
+                (
+                    "Latency",
+                    format!(
+                        "{} ms",
+                        state.get("latencyMs").map(text).filter(|t| !t.is_empty() && t != "null").unwrap_or_else(|| "0".into())
+                    ),
+                ),
             ];
             if truthy(&state["natTypeSupported"]) {
                 v.push(("NAT mapping", s(&state, "mapping")));
@@ -419,10 +453,14 @@ fn open_report(kind: &'static str, id: String, on_closed: Rc<dyn Fn()>) {
                         (x.config, x.logs, x.encrypt)
                     };
                     let b = a.clone();
-                    app::act_then("reports.export", json!({ "kind": kind, "id": id_x, "config": config, "logs": logs, "encrypt": encrypt }), move |_| {
-                        b.borrow_mut().busy = false;
-                        mark(Mark::ROWS);
-                    });
+                    app::act_then(
+                        "reports.export",
+                        json!({ "kind": kind, "id": id_x, "config": config, "logs": logs, "encrypt": encrypt }),
+                        move |_| {
+                            b.borrow_mut().busy = false;
+                            mark(Mark::ROWS);
+                        },
+                    );
                 })
                 .enabled(!e.busy),
         );
@@ -470,7 +508,12 @@ fn open_remote() {
         let mut rows = Vec::new();
         let (remote, remote_name) = data(|d| (d.remote(), d.dashboard.get("remote").map(text).unwrap_or_default()));
         if remote {
-            rows.push(Row::item(&remote_name).trailing("close", || app::act("disconnectRemoteServer", json!({}))).value(&tr("Disconnect")).key("current"));
+            rows.push(
+                Row::item(&remote_name)
+                    .trailing("close", || app::act("disconnectRemoteServer", json!({})))
+                    .value(&tr("Disconnect"))
+                    .key("current"),
+            );
         }
         if let Some(e) = &s.error {
             rows.extend(error_row(e, None));
@@ -637,15 +680,20 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
             let auth = s(&endpoint, "authURL");
             if !auth.is_empty() {
                 rows.push(Row::gap());
-                rows.push(Row::item(&tr("Sign in")).trailing("open-external", {
-                    let a = auth.clone();
-                    move || app::act("openUrl", json!({ "url": a }))
-                }).on(move |_| app::act("openUrl", json!({ "url": auth }))));
+                rows.push(
+                    Row::item(&tr("Sign in"))
+                        .trailing("open-external", {
+                            let a = auth.clone();
+                            move || app::act("openUrl", json!({ "url": a }))
+                        })
+                        .on(move |_| app::act("openUrl", json!({ "url": auth }))),
+                );
             }
             if truthy(&endpoint["canShareFiles"]) {
                 rows.push(Row::section("Taildrop"));
                 let t = tag_s.clone();
-                let waiting = endpoint.get("waitingFileCount").map(text).filter(|v| !v.is_empty() && v != "null").unwrap_or_else(|| "0".into());
+                let waiting =
+                    endpoint.get("waitingFileCount").map(text).filter(|v| !v.is_empty() && v != "null").unwrap_or_else(|| "0".into());
                 rows.push(Row::open(&tr("Received files"), None, move || open_inbox(t.clone())).subtitle(&waiting));
                 rows.push(Row::open(&tr("Transfers"), None, open_transfers));
             }
@@ -671,7 +719,14 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
                 Rc::new(move |id| app::act("tools.setTailscaleExitNode", json!({ "endpoint": t, "peer": id }))),
             ));
             for group in list(&endpoint["userGroups"]) {
-                let title = { let d = s(&group, "displayName"); if d.is_empty() || d == "null" { s(&group, "loginName") } else { d } };
+                let title = {
+                    let d = s(&group, "displayName");
+                    if d.is_empty() || d == "null" {
+                        s(&group, "loginName")
+                    } else {
+                        d
+                    }
+                };
                 rows.push(Row::section(&title));
                 for peer in list(&group["peers"]) {
                     let pid = s(&peer, "id");
@@ -709,7 +764,8 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
                     Row::open(&title, None, move || {
                         let d = d.clone();
                         rows::push(move || {
-                            let values: Vec<(String, String)> = d.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), text(v))).collect()).unwrap_or_default();
+                            let values: Vec<(String, String)> =
+                                d.as_object().map(|o| o.iter().map(|(k, v)| (k.clone(), text(v))).collect()).unwrap_or_default();
                             Page::new("USB/IP").rows(values.iter().map(|(k, v)| Row::item(k).subtitle(&or_dash(v.clone()))).collect())
                         });
                     })
@@ -719,7 +775,15 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
             if !data(|d| d.remote()) {
                 rows.push(Row::gap());
                 let t = tag_s.clone();
-                rows.push(Row::item(&tr("Attach USB device")).trailing("add", { let t = t.clone(); move || usb_picker(t.clone()) }).on(move |_| usb_picker(t.clone())).key("attach"));
+                rows.push(
+                    Row::item(&tr("Attach USB device"))
+                        .trailing("add", {
+                            let t = t.clone();
+                            move || usb_picker(t.clone())
+                        })
+                        .on(move |_| usb_picker(t.clone()))
+                        .key("attach"),
+                );
                 let attached: Vec<Value> = data(|d| d.usb_devices.iter().filter(|u| text(&u["server"]) == tag_s).cloned().collect());
                 for device in attached {
                     let id = s(&device, "id");
@@ -749,10 +813,22 @@ fn endpoint_page(kind: &'static str, tag: &str) -> Page {
             }
             if has_challenge {
                 rows.push(Row::section(&tr("Authentication")));
-                let message = { let m = s(&challenge, "message"); if m.is_empty() || m == "null" { s(&challenge, "banner") } else { m } };
+                let message = {
+                    let m = s(&challenge, "message");
+                    if m.is_empty() || m == "null" {
+                        s(&challenge, "banner")
+                    } else {
+                        m
+                    }
+                };
                 let t = tag_s.clone();
                 let c = challenge.clone();
-                rows.push(Row::item(&tr("Authenticate")).subtitle(&message).key("auth").on(move |_| open_authentication(kind, t.clone(), c.clone())));
+                rows.push(
+                    Row::item(&tr("Authenticate"))
+                        .subtitle(&message)
+                        .key("auth")
+                        .on(move |_| open_authentication(kind, t.clone(), c.clone())),
+                );
             }
         }
     }
@@ -771,7 +847,10 @@ fn open_peer(endpoint: String, id: String) {
 }
 
 fn peer_page(endpoint_tag: &str, id: &str, ping: &Rc<RefCell<bool>>) -> Page {
-    let peer = endpoints_of("tailscale").into_iter().find(|e| s(e, "endpointTag") == endpoint_tag).and_then(|e| endpoint_peers(&e).into_iter().find(|p| s(p, "id") == id));
+    let peer = endpoints_of("tailscale")
+        .into_iter()
+        .find(|e| s(e, "endpointTag") == endpoint_tag)
+        .and_then(|e| endpoint_peers(&e).into_iter().find(|p| s(p, "id") == id));
     let Some(peer) = peer else {
         return Page::new("Tailscale").rows(vec![Row::empty(&tr("Peer disconnected"), "", "info")]);
     };
@@ -809,7 +888,17 @@ fn peer_page(endpoint_tag: &str, id: &str, ping: &Rc<RefCell<bool>>) -> Page {
             rows.push(Row::progress("", -1.0));
         }
         let mut values = vec![
-            ("Latency", format!("{} ms", { let l = s(&state, "latencyMs"); if l.is_empty() || l == "null" { "0".into() } else { l } })),
+            (
+                "Latency",
+                format!("{} ms", {
+                    let l = s(&state, "latencyMs");
+                    if l.is_empty() || l == "null" {
+                        "0".into()
+                    } else {
+                        l
+                    }
+                }),
+            ),
             ("Path", if truthy(&state["isDirect"]) { tr("Direct") } else { s(&state, "derpRegionCode") }),
         ];
         let err = s(&state, "error");
@@ -891,7 +980,9 @@ fn open_inbox(endpoint: String) {
                 Row::item(&name)
                     .subtitle(&format!("{} / {}", format::bytes(num(&file["receivedBytes"])), format::bytes(num(&file["size"]))))
                     .key(&format!("r:{name}"))
-                    .trailing("close", move || app::act("tools.cancelTaildropReceive", json!({ "endpoint": e, "sender": sender, "name": name }))),
+                    .trailing("close", move || {
+                        app::act("tools.cancelTaildropReceive", json!({ "endpoint": e, "sender": sender, "name": name }))
+                    }),
             );
         }
         for file in files {
@@ -930,8 +1021,18 @@ fn open_transfers() {
             for file in list(&transfer["files"]) {
                 let size = num(&file["size"]);
                 let sent = num(&file["sentBytes"]);
-                let progress = if truthy(&file["completed"]) { 1.0 } else if size > 0.0 { (sent / size).clamp(0.0, 1.0) as f32 } else { -1.0 };
-                rows.push(Row::item(&s(&file, "name")).subtitle(&format!("{} / {}", format::bytes(sent), format::bytes(size))).key(&format!("{tid}:{}", s(&file, "name"))));
+                let progress = if truthy(&file["completed"]) {
+                    1.0
+                } else if size > 0.0 {
+                    (sent / size).clamp(0.0, 1.0) as f32
+                } else {
+                    -1.0
+                };
+                rows.push(
+                    Row::item(&s(&file, "name"))
+                        .subtitle(&format!("{} / {}", format::bytes(sent), format::bytes(size)))
+                        .key(&format!("{tid}:{}", s(&file, "name"))),
+                );
                 rows.push(Row::progress("", progress));
             }
             if !transfer["error"].is_null() {
@@ -1028,7 +1129,10 @@ fn open_authentication(kind: &'static str, endpoint: String, challenge: Value) {
         }
     } else {
         for key in ["username", "password", "secret"] {
-            texts.insert(key.to_string(), if key == "username" { challenge.get(key).and_then(Value::as_str).unwrap_or("").to_string() } else { String::new() });
+            texts.insert(
+                key.to_string(),
+                if key == "username" { challenge.get(key).and_then(Value::as_str).unwrap_or("").to_string() } else { String::new() },
+            );
         }
     }
     let complete = Rc::new(RefCell::new(false));
@@ -1058,11 +1162,13 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
     let field = |rows: &mut Vec<Row>, key: &str, label: &str, secret: bool| {
         let b = st.clone();
         let k = key.to_string();
-        rows.push(Row::input(label, a.texts.get(key).map(String::as_str).unwrap_or(""), "", move |v| {
-            b.borrow_mut().texts.insert(k.clone(), v);
-        })
-        .key(key)
-        .secret(secret));
+        rows.push(
+            Row::input(label, a.texts.get(key).map(String::as_str).unwrap_or(""), "", move |v| {
+                b.borrow_mut().texts.insert(k.clone(), v);
+            })
+            .key(key)
+            .secret(secret),
+        );
         rows.push(Row::spacer(16));
     };
     if kind == "openconnect" {
@@ -1070,12 +1176,22 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
             let (e, i) = (endpoint.to_string(), id.to_string());
             rows.push(Row::item(&tr("Open sign-in page")).key("browser").on(move |_| {
                 // AuthBrowser: the native WebView Activity; its result arrives as browserComplete.
-                app::act("openConnectBrowser", json!({ "endpoint": e, "challenge": i, "title": tr("Sign in"), "dark": crate::theme_apply::is_dark() }));
+                app::act(
+                    "openConnectBrowser",
+                    json!({ "endpoint": e, "challenge": i, "title": tr("Sign in"), "dark": crate::theme_apply::is_dark() }),
+                );
             }));
         }
         for f in list(&challenge["form"]["fields"]) {
             let key = s(&f, "submissionKey");
-            let label = { let l = s(&f, "label"); if l.is_empty() || l == "null" { s(&f, "name") } else { l } };
+            let label = {
+                let l = s(&f, "label");
+                if l.is_empty() || l == "null" {
+                    s(&f, "name")
+                } else {
+                    l
+                }
+            };
             if s(&f, "kind") == "select" {
                 let options = list(&f["options"]);
                 let values: Vec<String> = options.iter().map(|o| s(o, "value")).collect();
@@ -1085,7 +1201,9 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
                     &label,
                     values,
                     a.texts.get(&key).map(String::as_str).unwrap_or(""),
-                    Rc::new(move |v: &str| options.iter().find(|o| s(o, "value") == v).map(|o| s(o, "label")).unwrap_or_else(|| v.to_string())),
+                    Rc::new(move |v: &str| {
+                        options.iter().find(|o| s(o, "value") == v).map(|o| s(o, "label")).unwrap_or_else(|| v.to_string())
+                    }),
                     Rc::new(move |v| {
                         b.borrow_mut().texts.insert(k.clone(), v);
                         mark(Mark::ROWS);
@@ -1098,7 +1216,13 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
     } else if s(challenge, "kind") == "open-url" {
         let url = s(challenge, "url");
         let u = url.clone();
-        rows.push(Row::item(&tr("Open sign-in page")).subtitle(&url).subtitle_lines(1).key("url").on(move |_| app::act("openUrl", json!({ "url": u }))));
+        rows.push(
+            Row::item(&tr("Open sign-in page"))
+                .subtitle(&url)
+                .subtitle_lines(1)
+                .key("url")
+                .on(move |_| app::act("openUrl", json!({ "url": u }))),
+        );
     } else {
         if s(challenge, "kind") == "credentials" {
             field(&mut rows, "username", &tr("Username"), false);
@@ -1111,7 +1235,11 @@ fn auth_page(kind: &'static str, endpoint: &str, challenge: &Value, id: &str, st
             field(&mut rows, "secret", &label, !truthy(&challenge["echo"]));
         }
     }
-    let can_submit = if kind == "openconnect" { challenge["form"].as_object().map(|o| !o.is_empty()).unwrap_or(false) } else { s(challenge, "kind") != "open-url" };
+    let can_submit = if kind == "openconnect" {
+        challenge["form"].as_object().map(|o| !o.is_empty()).unwrap_or(false)
+    } else {
+        s(challenge, "kind") != "open-url"
+    };
     let busy = a.busy;
     drop(a);
     if can_submit {
@@ -1178,4 +1306,3 @@ pub fn install(_w: &AppWindow) {
 pub fn open_mitm_certificate() {
     crate::pages::requests::open_mitm_certificate();
 }
-

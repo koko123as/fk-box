@@ -12,20 +12,20 @@ use crate::app::data;
 use crate::nav::MenuEntry;
 use crate::{AppWindow, Nav};
 
+pub mod appearance;
 pub mod config;
 pub mod dashboard;
 pub mod egress;
 pub mod profiles;
 pub mod proxies;
 pub mod requests;
-pub mod settings;
-pub mod tools;
 pub mod resources;
-pub mod terminal;
-pub mod appearance;
 pub mod routing;
-pub mod services;
 pub mod service_icons;
+pub mod services;
+pub mod settings;
+pub mod terminal;
+pub mod tools;
 
 /// What changed, so only the affected pages are projected again.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -272,7 +272,8 @@ pub fn sync_visibility(force: bool) {
         });
         mark(Mark::RATES);
     }
-    let names = ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible", "setTrafficVisible"];
+    let names =
+        ["setMemoryVisible", "setLanVisible", "setLogsVisible", "setConnectionsVisible", "setConnectionStatsVisible", "setTrafficVisible"];
     for i in 0..names.len() {
         if force || previous[i] != next[i] {
             crate::app::act(names[i], serde_json::json!({ "visible": next[i] }));
@@ -323,10 +324,7 @@ fn act(id: &str, arg: &str) {
             crate::app::set_preferences(serde_json::json!({ "railExtended": extended }), |_| {});
         }
         _ => {
-            let _ = appearance::act(id, arg)
-                || dashboard::act(id, arg)
-                || proxies::act(id, arg)
-                || profiles::act(id, arg);
+            let _ = appearance::act(id, arg) || dashboard::act(id, arg) || proxies::act(id, arg) || profiles::act(id, arg);
         }
     }
 }

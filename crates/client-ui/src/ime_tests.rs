@@ -3,6 +3,8 @@
 //! byte offsets against Java's UTF-16 indices with Chinese text and emoji,
 //! compositions, backspace and reversed selections.
 
+// Not formatted here: the file belongs to the vendored crate.
+#[rustfmt::skip]
 #[path = "../../../vendor/i-slint-backend-android-activity/fkbox_ime.rs"]
 mod fkbox_ime;
 
@@ -20,7 +22,7 @@ fn utf16_and_byte_offsets_round_trip() {
     assert_eq!(byte_to_utf16(text, 2), 1);
     assert_eq!(byte_to_utf16(text, 6), 2);
     assert_eq!(utf16_to_byte(text, 3), 4); // between the emoji's surrogates
-    // Past the end: clamped.
+                                           // Past the end: clamped.
     assert_eq!(byte_to_utf16(text, 100), 5);
     assert_eq!(utf16_to_byte(text, 100), text.len());
     assert_eq!(floor_char_boundary(text, 3), 1);

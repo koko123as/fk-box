@@ -26,8 +26,24 @@ fn s(v: &Value, k: &str) -> String {
 fn native_texts() -> Value {
     let mut m = serde_json::Map::new();
     for k in [
-        "Esc", "Tab", "Ctrl", "Alt", "Home", "End", "PgUp", "PgDn", "Paste", "Keyboard", "Paste multiple lines?", "Pasted text may execute commands in this terminal.",
-        "Allow terminal to read clipboard?", "Allow", "Cancel", "Link", "Open", "Copy",
+        "Esc",
+        "Tab",
+        "Ctrl",
+        "Alt",
+        "Home",
+        "End",
+        "PgUp",
+        "PgDn",
+        "Paste",
+        "Keyboard",
+        "Paste multiple lines?",
+        "Pasted text may execute commands in this terminal.",
+        "Allow terminal to read clipboard?",
+        "Allow",
+        "Cancel",
+        "Link",
+        "Open",
+        "Copy",
     ] {
         m.insert(k.into(), json!(tr(k)));
     }
@@ -36,7 +52,10 @@ fn native_texts() -> Value {
 
 /// GhosttySurface: the native terminal page for `session` (or the preview).
 fn open_surface(session: &str, title: &str, preview: bool) {
-    app::act("openTerminalView", json!({ "id": session, "title": title, "preview": preview, "dark": crate::theme_apply::is_dark(), "texts": native_texts() }));
+    app::act(
+        "openTerminalView",
+        json!({ "id": session, "title": title, "preview": preview, "dark": crate::theme_apply::is_dark(), "texts": native_texts() }),
+    );
 }
 
 struct Term {
@@ -190,10 +209,15 @@ fn terminal_page(st: &TermRef) -> Page {
         rows_list.push(Row::field(&tr("Username"), &t.username, "", move |v| a.borrow_mut().username = v).key("username"));
         rows_list.push(Row::spacer(16));
         let a = st.clone();
-        rows_list.push(Row::field(&tr("Terminal type"), &t.terminal_type, "", move |v| a.borrow_mut().terminal_type = v).key("type").mono());
+        rows_list
+            .push(Row::field(&tr("Terminal type"), &t.terminal_type, "", move |v| a.borrow_mut().terminal_type = v).key("type").mono());
         rows_list.push(Row::spacer(16));
         let a = st.clone();
-        rows_list.push(Row::switch(&tr("Quick connect"), t.quick, move |v| a.borrow_mut().quick = v).subtitle(&tr("Remember options and connect directly next time")).key("quick"));
+        rows_list.push(
+            Row::switch(&tr("Quick connect"), t.quick, move |v| a.borrow_mut().quick = v)
+                .subtitle(&tr("Remember options and connect directly next time"))
+                .key("quick"),
+        );
         if let Some(e) = &t.error {
             rows_list.push(Row::text(e).danger());
         }
@@ -209,14 +233,24 @@ fn terminal_page(st: &TermRef) -> Page {
         let progress = &session["progress"];
         if phase == "CONNECTING" || progress.as_object().map(|o| !o.is_empty()).unwrap_or(false) {
             let percent = progress["percent"].as_f64();
-            rows_list.push(Row::progress("", if phase == "CONNECTING" || percent.is_none() { -1.0 } else { (percent.unwrap_or(0.0) / 100.0) as f32 }));
+            rows_list.push(Row::progress(
+                "",
+                if phase == "CONNECTING" || percent.is_none() { -1.0 } else { (percent.unwrap_or(0.0) / 100.0) as f32 },
+            ));
         }
         let banner = s(session, "banner");
         if !banner.is_empty() {
             rows_list.push(Row::text(&banner).checked(true));
         }
         let (i, n) = (sid.clone(), name.clone());
-        rows_list.push(Row::item(&name).subtitle(&format!("{}@{}", s(session, "username"), s(session, "host"))).icon("code").chevron().key("surface").on(move |_| open_surface(&i, &n, false)));
+        rows_list.push(
+            Row::item(&name)
+                .subtitle(&format!("{}@{}", s(session, "username"), s(session, "host")))
+                .icon("code")
+                .chevron()
+                .key("surface")
+                .on(move |_| open_surface(&i, &n, false)),
+        );
         if phase == "FINISHED" {
             let i = sid.clone();
             rows_list.push(Row::button(&tr("Close session"), 2, move || app::act("ssh.closeSession", json!({ "id": i }))).key("close"));
@@ -238,7 +272,11 @@ fn terminal_page(st: &TermRef) -> Page {
     drop(t);
     let mut page = Page::new(&title)
         .loading(busy)
-        .bar(vec![Bar::new("add", "New session", new_session), Bar::new("layers", "Sessions", open_sessions), Bar::new("settings", "Ghostty settings", open_settings)])
+        .bar(vec![
+            Bar::new("add", "New session", new_session),
+            Bar::new("layers", "Sessions", open_sessions),
+            Bar::new("settings", "Ghostty settings", open_settings),
+        ])
         .rows(rows_list);
     if let Some(message) = page_empty {
         page = page.empty(&tr("No terminal sessions"), &message, "code").empty_action(&tr("New session"), new_session);
@@ -352,37 +390,67 @@ fn open_settings() {
             rows_list.push(Row::empty(&tr("Error"), e, "info").value(&tr("Retry")).on(move |_| load_settings(&a)));
         }
         if let Some(cur) = &current {
-            rows_list.push(Row::item(&tr("Terminal preview")).icon("code").chevron().key("preview").on(|_| open_surface("", &tr("Terminal preview"), true)));
+            rows_list.push(
+                Row::item(&tr("Terminal preview"))
+                    .icon("code")
+                    .chevron()
+                    .key("preview")
+                    .on(|_| open_surface("", &tr("Terminal preview"), true)),
+            );
             for dark in [false, true] {
                 let theme_key = if dark { "darkTheme" } else { "lightTheme" };
                 let custom = s(cur, theme_key).is_empty() && !cur[theme_key].is_null();
                 rows_list.push(Row::section(&tr(if dark { "Dark configuration" } else { "Light configuration" })));
                 let a = st.clone();
-                rows_list.push(Row::item(&tr("Theme")).subtitle(&if custom { tr("Custom configuration") } else { s(cur, theme_key) }).chevron().key(&format!("{theme_key}-theme")).on(move |_| {
-                    let b = a.clone();
-                    open_themes(dark, Rc::new(move || load_settings(&b)));
-                }));
+                rows_list.push(
+                    Row::item(&tr("Theme"))
+                        .subtitle(&if custom { tr("Custom configuration") } else { s(cur, theme_key) })
+                        .chevron()
+                        .key(&format!("{theme_key}-theme"))
+                        .on(move |_| {
+                            let b = a.clone();
+                            open_themes(dark, Rc::new(move || load_settings(&b)));
+                        }),
+                );
                 let a = st.clone();
                 let default = cur[if dark { "defaultDarkTheme" } else { "defaultLightTheme" }].clone();
-                rows_list.push(Row::switch(&tr("Custom configuration"), custom, move |on| set_setting(&a, theme_key, if on { json!("") } else { default.clone() })).enabled(!saving).key(&format!("{theme_key}-custom")));
+                rows_list.push(
+                    Row::switch(&tr("Custom configuration"), custom, move |on| {
+                        set_setting(&a, theme_key, if on { json!("") } else { default.clone() })
+                    })
+                    .enabled(!saving)
+                    .key(&format!("{theme_key}-custom")),
+                );
                 if custom {
                     let a = st.clone();
                     let initial = s(cur, if dark { "darkConfig" } else { "lightConfig" });
-                    rows_list.push(Row::item(&tr("Edit Ghostty configuration")).chevron().key(&format!("{theme_key}-edit")).on(move |_| {
-                        let b = a.clone();
-                        open_config(dark, initial.clone(), Rc::new(move || load_settings(&b)));
-                    }));
+                    rows_list.push(Row::item(&tr("Edit Ghostty configuration")).chevron().key(&format!("{theme_key}-edit")).on(
+                        move |_| {
+                            let b = a.clone();
+                            open_config(dark, initial.clone(), Rc::new(move || load_settings(&b)));
+                        },
+                    ));
                 }
             }
             let follow = cur["fontFollowTheme"] != Value::Bool(false);
             let size = long(&cur["fontSize"]).unwrap_or(14);
             rows_list.push(Row::section(&tr("Font")));
             let a = st.clone();
-            rows_list.push(Row::switch(&tr("Font follows theme"), follow, move |v| set_setting(&a, "fontFollowTheme", json!(v))).enabled(!saving).key("follow"));
+            rows_list.push(
+                Row::switch(&tr("Font follows theme"), follow, move |v| set_setting(&a, "fontFollowTheme", json!(v)))
+                    .enabled(!saving)
+                    .key("follow"),
+            );
             if !follow {
                 let path = s(cur, "fontPath");
                 let family = s(cur, "fontFamily");
-                let shown = if !path.is_empty() { path.rsplit('/').next().unwrap_or("").to_string() } else if family.is_empty() { "monospace".into() } else { family };
+                let shown = if !path.is_empty() {
+                    path.rsplit('/').next().unwrap_or("").to_string()
+                } else if family.is_empty() {
+                    "monospace".into()
+                } else {
+                    family
+                };
                 let a = st.clone();
                 rows_list.push(Row::item(&tr("Font family")).subtitle(&shown).chevron().key("family").on(move |_| {
                     let b = a.clone();
@@ -392,18 +460,18 @@ fn open_settings() {
             let (a, b) = (st.clone(), st.clone());
             rows_list.push(
                 Row::field(&tr("Font size"), &size.to_string(), "8-48", |_| {})
-                .on_done(move |v| {
-                    if let Ok(n) = v.trim().parse::<i64>() {
-                        set_setting(&b, "fontSize", json!(n.clamp(8, 48)))
-                    }
-                })
-                .number()
-                .key("size")
-                .trailing("remove", move || {
-                    if size > 8 {
-                        set_setting(&a, "fontSize", json!(size - 1))
-                    }
-                }),
+                    .on_done(move |v| {
+                        if let Ok(n) = v.trim().parse::<i64>() {
+                            set_setting(&b, "fontSize", json!(n.clamp(8, 48)))
+                        }
+                    })
+                    .number()
+                    .key("size")
+                    .trailing("remove", move || {
+                        if size > 8 {
+                            set_setting(&a, "fontSize", json!(size - 1))
+                        }
+                    }),
             );
             let c = st.clone();
             rows_list.push(Row::item(&tr("Increase font size")).key("size-up").enabled(size < 48).trailing("add", move || {
@@ -417,14 +485,16 @@ fn open_settings() {
 }
 
 fn open_themes(dark: bool, on_closed: Rc<dyn Fn()>) {
-    let st: Rc<RefCell<(Option<Vec<Value>>, Option<String>, Option<String>, String)>> = Rc::new(RefCell::new((None, None, None, String::new())));
+    let st: Rc<RefCell<(Option<Vec<Value>>, Option<String>, Option<String>, String)>> =
+        Rc::new(RefCell::new((None, None, None, String::new())));
     let load: Rc<dyn Fn()> = {
         let st = st.clone();
         Rc::new(move || {
             let a = st.clone();
             app::call("terminalSettings", json!({}), move |r| match r {
                 Ok(settings) => {
-                    a.borrow_mut().2 = settings.get(if dark { "darkTheme" } else { "lightTheme" }).and_then(Value::as_str).map(str::to_string);
+                    a.borrow_mut().2 =
+                        settings.get(if dark { "darkTheme" } else { "lightTheme" }).and_then(Value::as_str).map(str::to_string);
                     let b = a.clone();
                     app::call("terminalThemes", json!({ "dark": dark }), move |r| {
                         match r {
@@ -458,13 +528,17 @@ fn open_themes(dark: bool, on_closed: Rc<dyn Fn()>) {
             let n = name.clone();
             let mut r = Row::item(&name).key(&name).on(move |_| {
                 let route = nav::top().map(|r| r.id);
-                app::act_then("setTerminalSetting", json!({ "key": if dark { "darkTheme" } else { "lightTheme" }, "value": n }), move |ok| {
-                    if ok {
-                        if let Some(r) = route {
-                            nav::close(r);
+                app::act_then(
+                    "setTerminalSetting",
+                    json!({ "key": if dark { "darkTheme" } else { "lightTheme" }, "value": n }),
+                    move |ok| {
+                        if ok {
+                            if let Some(r) = route {
+                                nav::close(r);
+                            }
                         }
-                    }
-                });
+                    },
+                );
             });
             if x.2.as_deref() == Some(name.as_str()) {
                 r = r.trailing("check-circle", || {});
@@ -474,7 +548,10 @@ fn open_themes(dark: bool, on_closed: Rc<dyn Fn()>) {
         let loading = x.0.is_none() && x.1.is_none();
         drop(x);
         let a = st.clone();
-        Page::new(&tr(if dark { "Dark theme" } else { "Light theme" })).loading(loading).search(move |q| a.borrow_mut().3 = q).rows(rows_list)
+        Page::new(&tr(if dark { "Dark theme" } else { "Light theme" }))
+            .loading(loading)
+            .search(move |q| a.borrow_mut().3 = q)
+            .rows(rows_list)
     });
     nav::on_closed(id, move || on_closed());
 }
@@ -540,14 +617,17 @@ fn open_fonts(on_closed: Rc<dyn Fn()>) {
             let path = s(&font, "path");
             let p = path.clone();
             let l = load.clone();
-            let mut r = Row::item(&s(&font, "name")).key(&format!("i:{path}")).on(select("fontPath", path.clone(), load.clone())).trailing("delete", move || {
-                let (p, l) = (p.clone(), l.clone());
-                nav::confirm("Delete this font?", None, "Delete", move |ok| {
-                    if ok {
-                        app::act_then("deleteTerminalFont", json!({ "path": p }), move |_| l());
-                    }
-                });
-            });
+            let mut r = Row::item(&s(&font, "name")).key(&format!("i:{path}")).on(select("fontPath", path.clone(), load.clone())).trailing(
+                "delete",
+                move || {
+                    let (p, l) = (p.clone(), l.clone());
+                    nav::confirm("Delete this font?", None, "Delete", move |ok| {
+                        if ok {
+                            app::act_then("deleteTerminalFont", json!({ "path": p }), move |_| l());
+                        }
+                    });
+                },
+            );
             if s(&settings, "fontPath") == path {
                 r = r.icon("check-circle");
             }
@@ -571,9 +651,7 @@ fn open_config(dark: bool, initial: String, on_closed: Rc<dyn Fn()>) {
     let id = rows::push(move || {
         let (text_value, _saved, saving) = a.borrow().clone();
         let b = a.clone();
-        let rows_list = vec![
-            Row::editor("", &text_value, 20, move |v| b.borrow_mut().0 = v).mono().key("config"),
-        ];
+        let rows_list = vec![Row::editor("", &text_value, 20, move |v| b.borrow_mut().0 = v).mono().key("config")];
         let c = a.clone();
         Page::new(&tr(if dark { "Dark configuration" } else { "Light configuration" }))
             .loading(saving)
@@ -586,16 +664,20 @@ fn open_config(dark: bool, initial: String, on_closed: Rc<dyn Fn()>) {
                     };
                     mark(Mark::ROWS);
                     let d = c.clone();
-                    app::act_then("setTerminalSetting", json!({ "key": if dark { "darkConfig" } else { "lightConfig" }, "value": value.clone() }), move |ok| {
-                        let mut x = d.borrow_mut();
-                        x.2 = false;
-                        if ok {
-                            x.1 = value.clone();
-                            app::message("Done");
-                        }
-                        drop(x);
-                        mark(Mark::ROWS);
-                    });
+                    app::act_then(
+                        "setTerminalSetting",
+                        json!({ "key": if dark { "darkConfig" } else { "lightConfig" }, "value": value.clone() }),
+                        move |ok| {
+                            let mut x = d.borrow_mut();
+                            x.2 = false;
+                            if ok {
+                                x.1 = value.clone();
+                                app::message("Done");
+                            }
+                            drop(x);
+                            mark(Mark::ROWS);
+                        },
+                    );
                 })
                 .when(!saving),
             )

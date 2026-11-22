@@ -104,7 +104,12 @@ impl Status {
         match self {
             Status::Pending => 0,
             Status::Available => 1,
-            Status::Restricted | Status::DisallowedIsp | Status::Blocked | Status::UnsupportedRegion | Status::OriginalsOnly | Status::ComingSoon => 2,
+            Status::Restricted
+            | Status::DisallowedIsp
+            | Status::Blocked
+            | Status::UnsupportedRegion
+            | Status::OriginalsOnly
+            | Status::ComingSoon => 2,
             Status::Unavailable | Status::Timeout | Status::Failed => 3,
         }
     }
@@ -161,7 +166,13 @@ fn index_of(id: &str) -> Option<usize> {
 // ---------------------------------------------------------------------------
 
 fn preference_ids(key: &str) -> Vec<String> {
-    data(|d| d.preferences.get(key).and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect()).unwrap_or_default())
+    data(|d| {
+        d.preferences
+            .get(key)
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    })
 }
 
 /// orderServiceTargets: the saved order first, then the rest in FlClash's order.
@@ -266,17 +277,7 @@ fn view_of(index: usize, e: &Entry, enabled: bool, on_card: bool, now: i64) -> V
     if e.checked_at > 0 {
         parts.push(crate::format::checked_ago(e.checked_at, now));
     }
-    View {
-        id,
-        label,
-        icon,
-        status,
-        tone,
-        loading: e.checking && e.status.is_none(),
-        subtitle: parts.join(" · "),
-        enabled,
-        on_card,
-    }
+    View { id, label, icon, status, tone, loading: e.checking && e.status.is_none(), subtitle: parts.join(" · "), enabled, on_card }
 }
 
 /// The card's services.
@@ -502,7 +503,14 @@ fn finish(index: usize, generation: u64, probe: &str, answer: Result<(Status, St
             Ok(a) => a,
             Err(s) => (s, String::new(), 0),
         };
-        m.entries[index] = Entry { status: Some(status), region, delay: if status == Status::Available { delay } else { 0 }, checked_at: crate::format::now_ms(), checking: false, queued: false };
+        m.entries[index] = Entry {
+            status: Some(status),
+            region,
+            delay: if status == Status::Available { delay } else { 0 },
+            checked_at: crate::format::now_ms(),
+            checking: false,
+            queued: false,
+        };
     });
     mark(Mark::DASH);
     pump();

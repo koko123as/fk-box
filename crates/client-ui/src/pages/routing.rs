@@ -150,7 +150,9 @@ fn uuid() -> String {
         n.set(n.get().wrapping_add(1));
         n.get()
     });
-    let mut x = (format::now_ms() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ n.wrapping_mul(0xBF58_476D_1CE4_E5B9) ^ (std::process::id() as u64) << 32;
+    let mut x = (format::now_ms() as u64).wrapping_mul(0x9E37_79B9_7F4A_7C15)
+        ^ n.wrapping_mul(0xBF58_476D_1CE4_E5B9)
+        ^ (std::process::id() as u64) << 32;
     let mut bytes = [0u8; 16];
     for b in bytes.iter_mut() {
         x ^= x >> 33;
@@ -202,15 +204,21 @@ fn stored() -> Value {
                     full[k] = v.clone();
                 }
             }
-            let rules_list: Vec<Value> = full["rules"].as_array().cloned().unwrap_or_default().into_iter().map(|r| {
-                let mut base = new_rule();
-                if let Some(o) = r.as_object() {
-                    for (k, v) in o {
-                        base[k] = v.clone();
+            let rules_list: Vec<Value> = full["rules"]
+                .as_array()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|r| {
+                    let mut base = new_rule();
+                    if let Some(o) = r.as_object() {
+                        for (k, v) in o {
+                            base[k] = v.clone();
+                        }
                     }
-                }
-                base
-            }).collect();
+                    base
+                })
+                .collect();
             full["rules"] = json!(rules_list);
             rules["cores"][core] = full;
         }
@@ -260,7 +268,9 @@ fn ports_valid(text: &str) -> bool {
 }
 
 fn package_valid(name: &str) -> bool {
-    name.len() < 256 && !name.is_empty() && name.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
+    name.len() < 256
+        && !name.is_empty()
+        && name.split('.').all(|p| !p.is_empty() && p.chars().all(|c| c.is_ascii_alphanumeric() || c == '_'))
 }
 
 fn url_valid(url: &str) -> bool {
@@ -396,7 +406,8 @@ fn load_status(st: &RoutingRef) {
 
 pub fn open() {
     let saved = stored();
-    let st: RoutingRef = Rc::new(RefCell::new(Routing { draft: saved.clone(), saved, core: "sing-box".into(), saving: false, error: None, status: None }));
+    let st: RoutingRef =
+        Rc::new(RefCell::new(Routing { draft: saved.clone(), saved, core: "sing-box".into(), saving: false, error: None, status: None }));
     load_status(&st);
     let a = st.clone();
     let id = rows::push(move || routing_page(&a));
@@ -417,10 +428,17 @@ fn routing_page(st: &RoutingRef) -> Page {
     let dirty = r.draft != r.saved;
     let mut rows = Vec::new();
     let a = st.clone();
-    rows.push(Row::segments(CORES.iter().map(|c| core_title(c).to_string()).collect(), CORES.iter().position(|c| *c == core).unwrap_or(0) as i32, move |i| {
-        a.borrow_mut().core = CORES[i.min(2)].to_string();
-        mark(Mark::ROWS);
-    }).key("cores"));
+    rows.push(
+        Row::segments(
+            CORES.iter().map(|c| core_title(c).to_string()).collect(),
+            CORES.iter().position(|c| *c == core).unwrap_or(0) as i32,
+            move |i| {
+                a.borrow_mut().core = CORES[i.min(2)].to_string();
+                mark(Mark::ROWS);
+            },
+        )
+        .key("cores"),
+    );
     if let Some(e) = &r.error {
         rows.push(Row::text(e).danger());
     }
@@ -451,8 +469,14 @@ fn routing_page(st: &RoutingRef) -> Page {
     rows.push(Row::spacer(12));
     let a = st.clone();
     rows.push(
-        forms::options_row(&tr("Merge mode"), MODES.iter().map(|m| m.to_string()).collect(), &s(&set, "mode"), Rc::new(|m: &str| mode_title(m)), Rc::new(move |m| update(&a, |set| set["mode"] = json!(m))))
-            .key("mode"),
+        forms::options_row(
+            &tr("Merge mode"),
+            MODES.iter().map(|m| m.to_string()).collect(),
+            &s(&set, "mode"),
+            Rc::new(|m: &str| mode_title(m)),
+            Rc::new(move |m| update(&a, |set| set["mode"] = json!(m))),
+        )
+        .key("mode"),
     );
     let final_target = set["final"].clone();
     let a = st.clone();
@@ -568,7 +592,11 @@ fn routing_menu(st: &RoutingRef) -> Vec<MenuEntry> {
         items.push(MenuEntry::plain(&label, move || {
             let (count, empty, to) = {
                 let r = a.borrow();
-                (core_set(&r.draft, &from)["rules"].as_array().map(Vec::len).unwrap_or(0), core_set(&r.draft, &r.core)["rules"].as_array().map(Vec::is_empty).unwrap_or(true), r.core.clone())
+                (
+                    core_set(&r.draft, &from)["rules"].as_array().map(Vec::len).unwrap_or(0),
+                    core_set(&r.draft, &r.core)["rules"].as_array().map(Vec::is_empty).unwrap_or(true),
+                    r.core.clone(),
+                )
             };
             let a2 = a.clone();
             let from2 = from.clone();
@@ -677,7 +705,15 @@ fn open_rule(st: &RoutingRef, index: Option<usize>) {
         (index.and_then(|i| set["rules"].get(i).cloned()).unwrap_or_else(new_rule), r.core.clone())
     };
     let join = |k: &str| rule[k].as_array().map(|a| a.iter().map(text).collect::<Vec<_>>().join("\n")).unwrap_or_default();
-    let ed = Rc::new(RefCell::new(Editor { initial: rule.clone(), values: join("values"), apps: join("apps"), rule, error: None, tags: Vec::new(), is_new: index.is_none() }));
+    let ed = Rc::new(RefCell::new(Editor {
+        initial: rule.clone(),
+        values: join("values"),
+        apps: join("apps"),
+        rule,
+        error: None,
+        tags: Vec::new(),
+        is_new: index.is_none(),
+    }));
     // Outbounds, groups and balancers of the selected profile when it runs on this core.
     let e = ed.clone();
     app::call("routingTargets", json!({ "core": core }), move |r| {
@@ -762,7 +798,9 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
         "list" => {
             rows.push(Row::gap());
             let a = ed.clone();
-            rows.push(Row::field(&tr("URL"), &s(&rule, "url"), "https://", move |v| a.borrow_mut().rule["url"] = json!(v)).key("url").mono());
+            rows.push(
+                Row::field(&tr("URL"), &s(&rule, "url"), "https://", move |v| a.borrow_mut().rule["url"] = json!(v)).key("url").mono(),
+            );
         }
         _ => {}
     }
@@ -775,7 +813,13 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             &tr("Target"),
             TARGETS.iter().map(|t| t.to_string()).collect(),
             &s(&target, "type"),
-            Rc::new(move |t: &str| if t == "node" && s(&tg, "type") == "node" && !s(&tg, "tag").trim().is_empty() { s(&tg, "tag") } else { target_title(t) }),
+            Rc::new(move |t: &str| {
+                if t == "node" && s(&tg, "type") == "node" && !s(&tg, "tag").trim().is_empty() {
+                    s(&tg, "tag")
+                } else {
+                    target_title(t)
+                }
+            }),
             Rc::new(move |t| {
                 if t == "node" {
                     let a = a.clone();
@@ -798,10 +842,13 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
     );
     if s(&target, "type") == "node" && !e.tags.is_empty() {
         let a = ed.clone();
-        rows.push(Row::chips(e.tags.iter().take(60).cloned().collect(), move |tag| {
-            a.borrow_mut().rule["target"] = json!({ "type": "node", "tag": tag });
-            mark(Mark::ROWS);
-        }).key("tags"));
+        rows.push(
+            Row::chips(e.tags.iter().take(60).cloned().collect(), move |tag| {
+                a.borrow_mut().rule["target"] = json!({ "type": "node", "tag": tag });
+                mark(Mark::ROWS);
+            })
+            .key("tags"),
+        );
     }
     rows.push(Row::section(&tr("Conditions")));
     rows.push(
@@ -815,10 +862,14 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
         .key("network"),
     );
     let a = ed.clone();
-    rows.push(Row::field(&tr("Ports"), &s(&rule, "ports"), "443, 8000-9000", move |v| {
-        a.borrow_mut().rule["ports"] = json!(v);
-        mark(Mark::ROWS);
-    }).key("ports").invalid(!ports_valid(&s(&rule, "ports"))));
+    rows.push(
+        Row::field(&tr("Ports"), &s(&rule, "ports"), "443, 8000-9000", move |v| {
+            a.borrow_mut().rule["ports"] = json!(v);
+            mark(Mark::ROWS);
+        })
+        .key("ports")
+        .invalid(!ports_valid(&s(&rule, "ports"))),
+    );
     // Apps: picked from the installed list like Access control (Xray cannot match apps).
     let chosen = split_values(&e.apps);
     let xray = routing.borrow().core == "xray";
@@ -843,30 +894,36 @@ fn rule_page(ed: &Rc<RefCell<Editor>>, routing: &RoutingRef) -> Page {
             });
         }));
         if xray && !chosen.is_empty() {
-            rows.push(Row::footer(&tr("Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control).")));
+            rows.push(Row::footer(&tr(
+                "Xray cannot route by app. Remove the apps, or use the sing-box or mihomo core (or Access control).",
+            )));
         }
     }
     if !e.is_new {
         rows.push(Row::spacer(24));
         let (a, r) = (ed.clone(), routing.clone());
-        rows.push(Row::button(&tr("Delete rule"), 0, move || {
-            let (a, r) = (a.clone(), r.clone());
-            nav::confirm(&format!("{}?", tr("Delete rule")), None, "Delete", move |ok| {
-                if ok {
-                    let id = s(&a.borrow().initial, "id");
-                    update(&r, |set| {
-                        if let Some(rules) = set["rules"].as_array_mut() {
-                            rules.retain(|x| s(x, "id") != id);
-                        }
-                    });
-                    // result() borrows the editor; take it before borrowing mutably
-                    // (doing both in one statement panicked and closed the app).
-                    let done = a.borrow().result();
-                    a.borrow_mut().initial = done;
-                    nav::pop();
-                }
-            });
-        }).icon("delete").key("delete"));
+        rows.push(
+            Row::button(&tr("Delete rule"), 0, move || {
+                let (a, r) = (a.clone(), r.clone());
+                nav::confirm(&format!("{}?", tr("Delete rule")), None, "Delete", move |ok| {
+                    if ok {
+                        let id = s(&a.borrow().initial, "id");
+                        update(&r, |set| {
+                            if let Some(rules) = set["rules"].as_array_mut() {
+                                rules.retain(|x| s(x, "id") != id);
+                            }
+                        });
+                        // result() borrows the editor; take it before borrowing mutably
+                        // (doing both in one statement panicked and closed the app).
+                        let done = a.borrow().result();
+                        a.borrow_mut().initial = done;
+                        nav::pop();
+                    }
+                });
+            })
+            .icon("delete")
+            .key("delete"),
+        );
     }
     let title = tr(if e.is_new { "Add rule" } else { "Edit rule" });
     drop(e);
@@ -931,8 +988,7 @@ fn open_preview(draft: Value, tab_core: String) {
                 rows.push(Row::item(&tr("Profile")).value(&text(&v["profile"])));
                 rows.push(Row::item(&tr("Core")).value(core_title(&core)));
                 rows.push(Row::item(&tr("Rules applied")).value(&text(&v["applied"])));
-                if core != tab_core {
-                }
+                if core != tab_core {}
                 if !truthy(&v["active"]) {
                     rows.push(Row::footer(&tr("No routing changes: the profile starts as it is.")));
                 }
@@ -958,7 +1014,11 @@ fn open_status(routing: &RoutingRef) {
     rows::push(move || {
         let status = r.borrow().status.clone();
         let Some(current) = status else {
-            return Page::new(&tr("Routing status")).rows(vec![Row::empty(&tr("Not started yet"), &tr("The status appears after the service starts."), "info")]);
+            return Page::new(&tr("Routing status")).rows(vec![Row::empty(
+                &tr("Not started yet"),
+                &tr("The status appears after the service starts."),
+                "info",
+            )]);
         };
         let error = s(&current, "error");
         let time = format::local_date(long(&current["time"]).unwrap_or(0));
@@ -974,22 +1034,27 @@ fn open_status(routing: &RoutingRef) {
             rows.push(Row::spacer(12));
             let (retrying, failure) = retry.borrow().clone();
             let (a, rr) = (retry.clone(), r.clone());
-            rows.push(Row::button(&tr("Reload service"), 0, move || {
-                a.borrow_mut().0 = true;
-                a.borrow_mut().1 = None;
-                mark(Mark::ROWS);
-                let (b, rr) = (a.clone(), rr.clone());
-                app::call("reloadService", json!({}), move |res| {
-                    let mut x = b.borrow_mut();
-                    x.0 = false;
-                    if let Err(e) = res {
-                        x.1 = Some(format::clean_error(&e));
-                    }
-                    drop(x);
-                    load_status(&rr);
+            rows.push(
+                Row::button(&tr("Reload service"), 0, move || {
+                    a.borrow_mut().0 = true;
+                    a.borrow_mut().1 = None;
                     mark(Mark::ROWS);
-                });
-            }).icon("refresh").enabled(!retrying).key("reload"));
+                    let (b, rr) = (a.clone(), rr.clone());
+                    app::call("reloadService", json!({}), move |res| {
+                        let mut x = b.borrow_mut();
+                        x.0 = false;
+                        if let Err(e) = res {
+                            x.1 = Some(format::clean_error(&e));
+                        }
+                        drop(x);
+                        load_status(&rr);
+                        mark(Mark::ROWS);
+                    });
+                })
+                .icon("refresh")
+                .enabled(!retrying)
+                .key("reload"),
+            );
             if let Some(f) = failure {
                 rows.push(Row::footer(&f));
             }
@@ -1004,7 +1069,6 @@ fn open_status(routing: &RoutingRef) {
         Page::new(&tr("Routing status")).rows(rows)
     });
 }
-
 
 #[cfg(test)]
 mod tests {

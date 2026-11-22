@@ -33,7 +33,13 @@ fn local<R>(f: impl FnOnce(&mut Local) -> R) -> R {
 }
 
 fn profile_key() -> String {
-    data(|d| if d.remote() { format!("remote:{}", text(d.dashboard.get("remote").unwrap_or(&Value::Null))) } else { format!("local:{}", d.selected_profile_id()) })
+    data(|d| {
+        if d.remote() {
+            format!("remote:{}", text(d.dashboard.get("remote").unwrap_or(&Value::Null)))
+        } else {
+            format!("local:{}", d.selected_profile_id())
+        }
+    })
 }
 
 /// savedUnfolded: the groups open for this profile.
@@ -127,7 +133,13 @@ pub fn project(w: &AppWindow) {
                             testing: testing.contains(&tag) || testing.contains(&node),
                             tag: ss(&node),
                             kind: ss(text(&n["type"])),
-                            delay: ss(if delay > 0 { format!("{delay} ms") } else if tested { tr("Unreachable") } else { "—".into() }),
+                            delay: ss(if delay > 0 {
+                                format!("{delay} ms")
+                            } else if tested {
+                                tr("Unreachable")
+                            } else {
+                                "—".into()
+                            }),
                             tested,
                             delay_ms: delay as i32,
                         }
@@ -156,7 +168,10 @@ pub fn project(w: &AppWindow) {
         p.set_tab((count - 1).max(0));
     }
     let details = local(|l| l.details.clone());
-    if let Some(m) = crate::rows::update(p.get_details(), details.into_iter().map(|(k, v)| KeyValue { key: k.into(), value: v.into() }).collect::<Vec<_>>()) {
+    if let Some(m) = crate::rows::update(
+        p.get_details(),
+        details.into_iter().map(|(k, v)| KeyValue { key: k.into(), value: v.into() }).collect::<Vec<_>>(),
+    ) {
         p.set_details(m);
     }
 }
@@ -176,8 +191,7 @@ fn test(tag: String) {
 
 fn select(group: &str, node: &str) {
     let ok = data(|d| {
-        d.running()
-            && d.groups.iter().any(|g| text(&g["tag"]) == group && truthy(&g["selectable"]) && text(&g["selected"]) != node)
+        d.running() && d.groups.iter().any(|g| text(&g["tag"]) == group && truthy(&g["selectable"]) && text(&g["selected"]) != node)
     });
     if !ok {
         return;
@@ -264,7 +278,13 @@ fn options(label: &str, icon: &'static str, key: &'static str, values: &[&'stati
 
 pub fn menu(key: &str) -> Vec<MenuEntry> {
     if key == "proxies" {
-        let (list, hide, close) = data(|d| (d.pref_str("proxyLayout", "Tabs") == "List", truthy(&d.pref("hideTimeoutProxies")), truthy(&d.pref("closeConnectionsOnSelect"))));
+        let (list, hide, close) = data(|d| {
+            (
+                d.pref_str("proxyLayout", "Tabs") == "List",
+                truthy(&d.pref("hideTimeoutProxies")),
+                truthy(&d.pref("closeConnectionsOnSelect")),
+            )
+        });
         let mut items = vec![
             options("Style", "apps-list", "proxyLayout", &["Tabs", "List"], "Tabs"),
             options("Sort", "sort", "proxySort", &["Default", "Latency", "Name"], "Default"),
@@ -274,7 +294,11 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
         if list {
             items.push(options("Icon style", "icon-tile", "proxyIconStyle", &["Filled", "Plain", "Hidden"], "Filled"));
         }
-        items.push(MenuEntry::act("Hide timeout proxies", "eye-off", move || app::set_preference("hideTimeoutProxies", json!(!hide))).checked(hide).section(""));
+        items.push(
+            MenuEntry::act("Hide timeout proxies", "eye-off", move || app::set_preference("hideTimeoutProxies", json!(!hide)))
+                .checked(hide)
+                .section(""),
+        );
         items.push(MenuEntry::act("Test all", "bolt", || {
             if data(|d| d.running()) {
                 for tag in data(|d| d.groups.iter().map(|g| text(&g["tag"])).collect::<Vec<_>>()) {
@@ -282,7 +306,12 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
                 }
             }
         }));
-        items.push(MenuEntry::act("Close connections after switching", "connections", move || app::set_preference("closeConnectionsOnSelect", json!(!close))).checked(close));
+        items.push(
+            MenuEntry::act("Close connections after switching", "connections", move || {
+                app::set_preference("closeConnectionsOnSelect", json!(!close))
+            })
+            .checked(close),
+        );
         return items;
     }
     if key == "proxy-tabs" {
@@ -292,7 +321,8 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
             .enumerate()
             .map(|(i, tag)| {
                 // A group's own name, not translated.
-                let entry = MenuEntry::new("", None, Some(Rc::new(move || crate::app::with_window(|w| w.global::<Proxies>().set_tab(i as i32)))));
+                let entry =
+                    MenuEntry::new("", None, Some(Rc::new(move || crate::app::with_window(|w| w.global::<Proxies>().set_tab(i as i32)))));
                 MenuEntry { label: tag, ..entry }.checked(i as i32 == current)
             })
             .collect();
@@ -309,7 +339,13 @@ pub fn menu(key: &str) -> Vec<MenuEntry> {
         let selected = text(&group["selected"]) == node_tag;
         let delay = long(&node["delay"]).unwrap_or(0);
         let tested = long(&node["testedAt"]).unwrap_or(0) > 0;
-        let delay_text = if delay > 0 { format!("{delay} ms") } else if tested { tr("Unreachable") } else { "—".into() };
+        let delay_text = if delay > 0 {
+            format!("{delay} ms")
+        } else if tested {
+            tr("Unreachable")
+        } else {
+            "—".into()
+        };
         let mut items = Vec::new();
         let (g, n) = (group_tag.to_string(), node_tag.to_string());
         if truthy(&group["selectable"]) {

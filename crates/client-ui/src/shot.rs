@@ -41,8 +41,8 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 use slint::platform::software_renderer::{MinimalSoftwareWindow, RepaintBufferType};
-use slint::Rgb8Pixel;
 use slint::platform::{Platform, WindowAdapter, WindowEvent};
+use slint::Rgb8Pixel;
 use slint::{ComponentHandle, LogicalPosition, PhysicalSize};
 
 use crate::{AppWindow, Motion, Nav, Theme};
@@ -280,7 +280,9 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
             "tools": {},
             "diagnostics": { "stun": {}, "quality": {} },
         }),
-        "egress" => json!({ "ip": "23.191.200.117", "country": "us", "organization": "Unredacted Inc", "asn": "AS396356", "type": "Hosting", "ipSource": "ident.me", "checkedAt": now }),
+        "egress" => {
+            json!({ "ip": "23.191.200.117", "country": "us", "organization": "Unredacted Inc", "asn": "AS396356", "type": "Hosting", "ipSource": "ident.me", "checkedAt": now })
+        }
         "profileStats" => json!({ "groups": "6", "outbounds": "48", "rules": "1203" }),
         // Access control: a phone's worth of installed apps, each icon a
         // 48 dp PNG at 3x like the host renders (BoxActivity appIcon).
@@ -295,7 +297,11 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
                         5 => format!("cn.example.a{i:03}"),
                         _ => format!("org.example.tools.app{i:03}"),
                     };
-                    let name = if i % 11 == 4 { format!("应用 {i:03} 一个名字很长很长的应用程序用来测试换行和省略") } else { format!("App {i:03}") };
+                    let name = if i % 11 == 4 {
+                        format!("应用 {i:03} 一个名字很长很长的应用程序用来测试换行和省略")
+                    } else {
+                        format!("App {i:03}")
+                    };
                     json!({ "package": package, "name": name, "system": false, "internet": true, "updatedAt": now - i as i64 * 60_000 })
                 })
                 .collect(),
@@ -331,9 +337,17 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
             }
         }
         "appLabels" => Value::Object(
-            args["packages"].as_array().into_iter().flatten().filter_map(Value::as_str).map(|p| (p.to_string(), json!(format!("App {}", p.rsplit('.').next().unwrap_or(p).trim_start_matches("app"))))).collect(),
+            args["packages"]
+                .as_array()
+                .into_iter()
+                .flatten()
+                .filter_map(Value::as_str)
+                .map(|p| (p.to_string(), json!(format!("App {}", p.rsplit('.').next().unwrap_or(p).trim_start_matches("app")))))
+                .collect(),
         ),
-        "readQualityCache" => json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now }),
+        "readQualityCache" => {
+            json!({ "quality": { "ip": "23.191.200.117", "type": "hosting", "risky": true, "sources": [] }, "checkedAt": now })
+        }
         // Setters and visibility switches: nothing to answer.
         _ => Value::Null,
     })
@@ -351,7 +365,11 @@ fn icon_png(pkg: &str) -> String {
         for y in 0..size {
             for x in 0..size {
                 let inside = (x as i32 - 72).pow(2) + (y as i32 - 72).pow(2) < 70 * 70;
-                pixels.extend_from_slice(&if inside { [(seed >> 4) as u8 ^ x as u8, (seed >> 12) as u8 ^ y as u8, (seed >> 20) as u8, 255] } else { [0, 0, 0, 0] });
+                pixels.extend_from_slice(&if inside {
+                    [(seed >> 4) as u8 ^ x as u8, (seed >> 12) as u8 ^ y as u8, (seed >> 20) as u8, 255]
+                } else {
+                    [0, 0, 0, 0]
+                });
             }
         }
         if let Ok(file) = std::fs::File::create(&path) {
@@ -460,9 +478,15 @@ impl Harness {
         let t = self.tick as f64;
         let up = (1.0 + (t * 0.7).sin()) * 40_000.0 + 2_000.0;
         let down = (1.0 + (t * 0.4).cos()) * 900_000.0 + 50_000.0;
-        event("rates", json!({ "upload": up, "download": down, "uploadTotal": format!("{:.1} MB", t * 0.3), "downloadTotal": format!("{:.1} MB", t * 4.1), "memoryBytes": 19_700_000, "connections": 23 }));
+        event(
+            "rates",
+            json!({ "upload": up, "download": down, "uploadTotal": format!("{:.1} MB", t * 0.3), "downloadTotal": format!("{:.1} MB", t * 4.1), "memoryBytes": 19_700_000, "connections": 23 }),
+        );
         event("connectionStats", json!({ "active": 23, "recent": 148 + self.tick * 3, "dns": 14 }));
-        event("memory", json!({ "total": 85_000_000, "rss": 85_000_000, "app": 65_300_000, "core": 19_700_000, "remote": false, "running": true, "heapInuse": 9_000_000, "heapIdle": 4_000_000, "stack": 1_000_000, "runtimeOther": 5_700_000, "goroutines": 120 }));
+        event(
+            "memory",
+            json!({ "total": 85_000_000, "rss": 85_000_000, "app": 65_300_000, "core": 19_700_000, "remote": false, "running": true, "heapInuse": 9_000_000, "heapIdle": 4_000_000, "stack": 1_000_000, "runtimeOther": 5_700_000, "goroutines": 120 }),
+        );
         for _ in 0..10 {
             self.advance(Duration::from_millis(100));
             self.pump();
@@ -534,7 +558,11 @@ impl Harness {
             let next = ICONS_LATER.with(|l| {
                 let mut l = l.borrow_mut();
                 let later = l.as_mut()?;
-                if *serial % 2 == 0 { later.pop_back() } else { later.pop_front() }
+                if *serial % 2 == 0 {
+                    later.pop_back()
+                } else {
+                    later.pop_front()
+                }
             });
             if let Some((id, method, args)) = next {
                 answer_call(id, &method, &args);
@@ -567,7 +595,10 @@ impl Harness {
             let start = if dy < 0.0 { 760.0 } else { 160.0 };
             let mut y = start;
             self.window.window().dispatch_event(WindowEvent::PointerMoved { position: LogicalPosition::new(x, y) });
-            self.window.window().dispatch_event(WindowEvent::PointerPressed { position: LogicalPosition::new(x, y), button: slint::platform::PointerEventButton::Left });
+            self.window.window().dispatch_event(WindowEvent::PointerPressed {
+                position: LogicalPosition::new(x, y),
+                button: slint::platform::PointerEventButton::Left,
+            });
             for _ in 0..6 {
                 y += dy.clamp(-600.0, 600.0) / 6.0;
                 self.advance(Duration::from_millis(8));
@@ -575,7 +606,10 @@ impl Harness {
                 self.fling_frame(1, &mut serial, &mut buffer);
                 frames += 1;
             }
-            self.window.window().dispatch_event(WindowEvent::PointerReleased { position: LogicalPosition::new(x, y), button: slint::platform::PointerEventButton::Left });
+            self.window.window().dispatch_event(WindowEvent::PointerReleased {
+                position: LogicalPosition::new(x, y),
+                button: slint::platform::PointerEventButton::Left,
+            });
             self.window.window().dispatch_event(WindowEvent::PointerExited);
             // The kinetic scroll, with icons landing on the reused rows.
             for _ in 0..12 {
@@ -944,15 +978,43 @@ mod tests {
     /// swipe to the next page and back still works and ends at rest.
     #[test]
     fn tap_jitter_leaves_pages_at_rest() {
-        steps("fkui-shot-tap", &[
-            "tab:Dashboard", "down:120,420", "move:125,420", "move:125,423", "up:125,423", "rest:dashboard tap",
-            "down:200,480", "move:205,480", "up:205,480", "rest:dashboard tap on the speed card", "pop", "rest:back to the dashboard",
-            "tab:Tools", "rest:tools", "down:200,517", "move:205,517", "up:205,517",
-            "pop", "rest:tools after the row's page (its ripple gone)",
-            "down:200,300", "move:204,302", "ms:40", "up:204,302", "rest:tools last page tap",
-            // A swipe still turns the page: from Tools (the last page) right to Profiles.
-            "down:60,500", "move:100,500", "move:180,500", "move:260,500", "move:320,500", "up:320,500", "rest:after the swipe",
-        ]);
+        steps(
+            "fkui-shot-tap",
+            &[
+                "tab:Dashboard",
+                "down:120,420",
+                "move:125,420",
+                "move:125,423",
+                "up:125,423",
+                "rest:dashboard tap",
+                "down:200,480",
+                "move:205,480",
+                "up:205,480",
+                "rest:dashboard tap on the speed card",
+                "pop",
+                "rest:back to the dashboard",
+                "tab:Tools",
+                "rest:tools",
+                "down:200,517",
+                "move:205,517",
+                "up:205,517",
+                "pop",
+                "rest:tools after the row's page (its ripple gone)",
+                "down:200,300",
+                "move:204,302",
+                "ms:40",
+                "up:204,302",
+                "rest:tools last page tap",
+                // A swipe still turns the page: from Tools (the last page) right to Profiles.
+                "down:60,500",
+                "move:100,500",
+                "move:180,500",
+                "move:260,500",
+                "move:320,500",
+                "up:320,500",
+                "rest:after the swipe",
+            ],
+        );
     }
 
     /// A slightly diagonal scroll (more than half as far across as down, which
@@ -961,13 +1023,36 @@ mod tests {
     /// clear swipe afterwards still turns the page.
     #[test]
     fn diagonal_scroll_stays_with_the_list() {
-        steps("fkui-shot-diagonal", &[
-            "tab:Tools", "rest:tools",
-            "down:200,600", "move:203,597", "move:209,588", "move:216,560", "move:224,500", "move:230,440",
-            "scrolling:diagonal scroll up", "up:230,440", "rest:after the diagonal scroll",
-            "down:150,300", "move:160,312", "move:172,340", "move:180,380", "scrolling:diagonal scroll down", "up:180,380", "rest:after the scroll down",
-            "down:60,500", "move:100,502", "move:180,505", "move:260,505", "move:320,505", "up:320,505", "rest:a swipe still turns the page",
-        ]);
+        steps(
+            "fkui-shot-diagonal",
+            &[
+                "tab:Tools",
+                "rest:tools",
+                "down:200,600",
+                "move:203,597",
+                "move:209,588",
+                "move:216,560",
+                "move:224,500",
+                "move:230,440",
+                "scrolling:diagonal scroll up",
+                "up:230,440",
+                "rest:after the diagonal scroll",
+                "down:150,300",
+                "move:160,312",
+                "move:172,340",
+                "move:180,380",
+                "scrolling:diagonal scroll down",
+                "up:180,380",
+                "rest:after the scroll down",
+                "down:60,500",
+                "move:100,502",
+                "move:180,505",
+                "move:260,505",
+                "move:320,505",
+                "up:320,505",
+                "rest:a swipe still turns the page",
+            ],
+        );
     }
 
     /// Steps from FKUI_SHOT_STEPS (space separated), for trying a gesture
@@ -988,16 +1073,42 @@ mod tests {
     /// leaves the app only from the home pages.
     #[test]
     fn fast_flick_is_not_a_tap() {
-        steps("fkui-shot-flick", &[
-            "tab:Tools", "rest:tools", "routes:0:start", "watchtaps",
-            "down:200,300", "up:200,300", "rest:after a tap", "taps:1:a plain tap on a row did not reach it",
-            "mark", "down:200,420", "move:200,400", "move:201,340", "move:202,260", "up:202,250", "rest:after a fast flick up",
-            "taps:1:a fast flick up tapped a row", "moved:a fast flick up",
-            "mark", "down:200,300", "move:200,330", "move:199,420", "up:199,430", "rest:after a fast flick down",
-            "taps:1:a fast flick down tapped a row", "moved:a fast flick down",
-            "push:memory:", "routes:1:pushed", "back:page", "rest:back from the page", "routes:0:back did not close the page",
-            "back:exit",
-        ]);
+        steps(
+            "fkui-shot-flick",
+            &[
+                "tab:Tools",
+                "rest:tools",
+                "routes:0:start",
+                "watchtaps",
+                "down:200,300",
+                "up:200,300",
+                "rest:after a tap",
+                "taps:1:a plain tap on a row did not reach it",
+                "mark",
+                "down:200,420",
+                "move:200,400",
+                "move:201,340",
+                "move:202,260",
+                "up:202,250",
+                "rest:after a fast flick up",
+                "taps:1:a fast flick up tapped a row",
+                "moved:a fast flick up",
+                "mark",
+                "down:200,300",
+                "move:200,330",
+                "move:199,420",
+                "up:199,430",
+                "rest:after a fast flick down",
+                "taps:1:a fast flick down tapped a row",
+                "moved:a fast flick down",
+                "push:memory:",
+                "routes:1:pushed",
+                "back:page",
+                "rest:back from the page",
+                "routes:0:back did not close the page",
+                "back:exit",
+            ],
+        );
     }
 
     /// A page drag whose release never arrives (the finger stays down; the
@@ -1007,19 +1118,48 @@ mod tests {
     /// foreground settles too.
     #[test]
     fn page_drag_without_release_settles() {
-        steps("fkui-shot-drag", &[
-            "tab:Profiles", "rest:start",
-            "down:320,500", "move:300,500", "move:260,500", "move:220,500", "move:200,500", "ms:1600", "rest:drag held without a release",
-            "up:200,500", "rest:released late",
-            "tab:Dashboard", "rest:dashboard",
-            "down:40,500", "move:80,500", "move:160,500", "move:240,500", "up:240,500", "rest:rubber band springs back",
-            "down:320,500", "move:280,500", "move:220,500", "bg", "fg", "rest:background mid-drag",
-            "up:220,500", "rest:released after the foreground",
-            // Page push and back (fade), a form sheet (rise and sink): their
-            // ghosts and timers end too.
-            "push:memory:", "rest:pushed page", "pop", "rest:back from the page",
-            "form:egress:", "rest:form sheet", "pop", "rest:back from the sheet",
-        ]);
+        steps(
+            "fkui-shot-drag",
+            &[
+                "tab:Profiles",
+                "rest:start",
+                "down:320,500",
+                "move:300,500",
+                "move:260,500",
+                "move:220,500",
+                "move:200,500",
+                "ms:1600",
+                "rest:drag held without a release",
+                "up:200,500",
+                "rest:released late",
+                "tab:Dashboard",
+                "rest:dashboard",
+                "down:40,500",
+                "move:80,500",
+                "move:160,500",
+                "move:240,500",
+                "up:240,500",
+                "rest:rubber band springs back",
+                "down:320,500",
+                "move:280,500",
+                "move:220,500",
+                "bg",
+                "fg",
+                "rest:background mid-drag",
+                "up:220,500",
+                "rest:released after the foreground",
+                // Page push and back (fade), a form sheet (rise and sink): their
+                // ghosts and timers end too.
+                "push:memory:",
+                "rest:pushed page",
+                "pop",
+                "rest:back from the page",
+                "form:egress:",
+                "rest:form sheet",
+                "pop",
+                "rest:back from the sheet",
+            ],
+        );
     }
 
     /// Access control with a long list of apps: thousands of px of fast drags

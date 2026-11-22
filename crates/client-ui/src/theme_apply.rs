@@ -107,12 +107,7 @@ pub fn set_motion_scale(scale: f32) {
 pub fn apply() {
     let Some(w) = crate::app::window() else { return };
     let (mode, style, pure_black, font) = data(|d| {
-        (
-            d.pref_str("theme", "system"),
-            d.pref_str("colorStyle", "vivid"),
-            truthy(&d.pref("pureBlack")),
-            d.pref_str("fontFamily", ""),
-        )
+        (d.pref_str("theme", "system"), d.pref_str("colorStyle", "vivid"), truthy(&d.pref("pureBlack")), d.pref_str("fontFamily", ""))
     });
     let seed = accent();
     let key = format!("{seed}:{style}:{pure_black}");

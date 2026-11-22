@@ -77,12 +77,8 @@ impl Source {
     }
 }
 
-const WAVES: [&[Source]; 4] = [
-    &[Source::IdentMe, Source::IpApiCom, Source::IpQuery],
-    &[Source::IpLocate],
-    &[Source::IpApiIs],
-    &[Source::ProxyCheck],
-];
+const WAVES: [&[Source]; 4] =
+    [&[Source::IdentMe, Source::IpApiCom, Source::IpQuery], &[Source::IpLocate], &[Source::IpApiIs], &[Source::ProxyCheck]];
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum IpType {
@@ -243,7 +239,15 @@ struct Answer {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn answer(ip: &str, source: Source, kind: Option<IpType>, inferred: bool, organization: Option<String>, asn: Option<i64>, flags: [bool; 4]) -> Option<Answer> {
+fn answer(
+    ip: &str,
+    source: Source,
+    kind: Option<IpType>,
+    inferred: bool,
+    organization: Option<String>,
+    asn: Option<i64>,
+    flags: [bool; 4],
+) -> Option<Answer> {
     Some(Answer {
         quality: Quality {
             ip: ip.into(),
@@ -559,7 +563,8 @@ fn current(generation: u64) -> bool {
 fn refresh(read_ip: bool, manual: bool) {
     let probe = new_probe_id();
     let (generation, retry_quality_for, previous) = model(|m| {
-        let retry_quality_for = if manual && m.quality_error.is_some() { m.egress.as_ref().and_then(|e| e.get("ip")).map(text) } else { None };
+        let retry_quality_for =
+            if manual && m.quality_error.is_some() { m.egress.as_ref().and_then(|e| e.get("ip")).map(text) } else { None };
         m.ip_due = false;
         m.quality_due = false;
         m.manual = false;
@@ -742,9 +747,10 @@ fn lookup(generation: u64, probe: String, ip: String, refresh: bool, result: Jso
                     close_probe(probe);
                     return;
                 }
-                let record = r.ok().filter(|v| v.is_object()).and_then(|v| {
-                    Some(Record { quality: Quality::from_json(&v["quality"])?, checked_at: long(&v["checkedAt"])? })
-                });
+                let record = r
+                    .ok()
+                    .filter(|v| v.is_object())
+                    .and_then(|v| Some(Record { quality: Quality::from_json(&v["quality"])?, checked_at: long(&v["checkedAt"])? }));
                 match record {
                     Some(record) if fresh(&record, &ip) => {
                         model(|m| m.records.insert(ip.clone(), record.clone()));
@@ -772,7 +778,17 @@ struct Lookup {
 }
 
 fn run_waves(generation: u64, probe: String, ip: String, done: Done) {
-    let state = Rc::new(RefCell::new(Lookup { generation, probe, ip, wave: 0, in_flight: 0, fallback: None, failures: Vec::new(), done: Some(done), hedge: None }));
+    let state = Rc::new(RefCell::new(Lookup {
+        generation,
+        probe,
+        ip,
+        wave: 0,
+        in_flight: 0,
+        fallback: None,
+        failures: Vec::new(),
+        done: Some(done),
+        hedge: None,
+    }));
     launch_wave(&state);
 }
 
@@ -892,12 +908,8 @@ fn launch_wave(state: &Rc<RefCell<Lookup>>) {
 
 /// The start toggle (StatusPanel's StartToggle onClick).
 pub fn toggle_service() {
-    let (busy, transitioning, running, has_profile) = (
-        model(|m| m.busy),
-        data(|d| d.transitioning()),
-        data(|d| d.running()),
-        data(|d| d.selected_profile().is_some()),
-    );
+    let (busy, transitioning, running, has_profile) =
+        (model(|m| m.busy), data(|d| d.transitioning()), data(|d| d.running()), data(|d| d.selected_profile().is_some()));
     if busy || transitioning {
         return;
     }

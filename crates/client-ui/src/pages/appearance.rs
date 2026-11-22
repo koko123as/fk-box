@@ -36,7 +36,8 @@ thread_local! {
 }
 
 fn grid_colors() -> Vec<u32> {
-    let mut out: Vec<u32> = (0..GRID_HUES.len()).map(|i| hct_color(0.0, 0.0, 100.0 - i as f64 * 100.0 / (GRID_HUES.len() - 1) as f64)).collect();
+    let mut out: Vec<u32> =
+        (0..GRID_HUES.len()).map(|i| hct_color(0.0, 0.0, 100.0 - i as f64 * 100.0 / (GRID_HUES.len() - 1) as f64)).collect();
     for tone in GRID_TONES {
         for hue in GRID_HUES {
             out.push(hct_color(hue, 200.0, tone));
@@ -50,8 +51,10 @@ fn color(argb: u32) -> Color {
 }
 
 fn accent_colors() -> Vec<u32> {
-    data(|d| d.preferences.get("accentColors").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| long(v).map(|x| x as u32)).collect()))
-        .unwrap_or_else(|| DEFAULT_ACCENTS.to_vec())
+    data(|d| {
+        d.preferences.get("accentColors").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| long(v).map(|x| x as u32)).collect())
+    })
+    .unwrap_or_else(|| DEFAULT_ACCENTS.to_vec())
 }
 
 fn selected_color() -> Option<u32> {
@@ -85,9 +88,21 @@ pub fn project(w: &AppWindow) {
     look.set_pure_black(pure_black);
     let selected = selected_color();
     let colors = accent_colors();
-    let mut swatches = vec![Swatch { fill: color(system), selected: selected.is_none(), system: true, light_check: luminance(system) < 0.5, value: "system".into() }];
+    let mut swatches = vec![Swatch {
+        fill: color(system),
+        selected: selected.is_none(),
+        system: true,
+        light_check: luminance(system) < 0.5,
+        value: "system".into(),
+    }];
     for c in &colors {
-        swatches.push(Swatch { fill: color(*c), selected: selected == Some(*c), system: false, light_check: luminance(*c) < 0.5, value: ss(c.to_string()) });
+        swatches.push(Swatch {
+            fill: color(*c),
+            selected: selected == Some(*c),
+            system: false,
+            light_check: luminance(*c) < 0.5,
+            value: ss(c.to_string()),
+        });
     }
     if let Some(m) = rows::update(look.get_swatches(), swatches) {
         look.set_swatches(m);
@@ -104,7 +119,9 @@ pub fn project(w: &AppWindow) {
 
 fn project_picker(w: &AppWindow) {
     let look = w.global::<Look>();
-    let Some((c, hsv, hex_tick, spectrum)) = PICKER.with(|p| p.borrow().as_ref().map(|p| (p.color, p.hsv, p.hex_tick, p.spectrum))) else { return };
+    let Some((c, hsv, hex_tick, spectrum)) = PICKER.with(|p| p.borrow().as_ref().map(|p| (p.color, p.hsv, p.hex_tick, p.spectrum))) else {
+        return;
+    };
     look.set_pick(color(c));
     look.set_hex(format!("{:06X}", c & 0xffffff).into());
     if look.get_hex_tick() != hex_tick {
@@ -270,7 +287,9 @@ fn open_fonts() {
         for family in families {
             let label = family.clone().unwrap_or_else(|| tr("Default"));
             let f = family.clone();
-            let mut r = Row::item(&label).key(family.as_deref().unwrap_or("")).on(move |_| app::set_preference("fontFamily", f.clone().map(Value::String).unwrap_or(Value::Null)));
+            let mut r = Row::item(&label)
+                .key(family.as_deref().unwrap_or(""))
+                .on(move |_| app::set_preference("fontFamily", f.clone().map(Value::String).unwrap_or(Value::Null)));
             if selected == family {
                 r = r.trailing("check-circle", || {});
             }
@@ -296,7 +315,10 @@ pub fn act(id: &str, arg: &str) -> bool {
         }
         "look-reset-colors" => nav::confirm("Reset accent colors?", None, "Reset", |ok| {
             if ok {
-                app::set_preferences(json!({ "accentColors": DEFAULT_ACCENTS, "color": 0xff007aff_u32, "systemColor": false, "colorStyle": "vivid" }), |_| {});
+                app::set_preferences(
+                    json!({ "accentColors": DEFAULT_ACCENTS, "color": 0xff007aff_u32, "systemColor": false, "colorStyle": "vivid" }),
+                    |_| {},
+                );
             }
         }),
         "look-add" => edit(None),
@@ -392,4 +414,3 @@ pub fn closed(kind: &str) {
         PICKER.with(|p| *p.borrow_mut() = None);
     }
 }
-

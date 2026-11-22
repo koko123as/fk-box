@@ -144,11 +144,7 @@ pub fn letters(tag: &str) -> String {
 
 /// GroupMonogram: the first letter or digit, else the first character.
 pub fn monogram(name: &str) -> String {
-    name.chars()
-        .find(|c| c.is_alphanumeric())
-        .or_else(|| name.chars().next())
-        .map(|c| c.to_uppercase().collect())
-        .unwrap_or_default()
+    name.chars().find(|c| c.is_alphanumeric()).or_else(|| name.chars().next()).map(|c| c.to_uppercase().collect()).unwrap_or_default()
 }
 
 /// How long ago a service check ran, relative to `now_ms`, in the UI language.

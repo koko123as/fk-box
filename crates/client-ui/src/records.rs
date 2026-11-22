@@ -129,7 +129,15 @@ impl Filters {
             }
             map.entry(key).or_default().push(item.clone());
         }
-        Some(order.into_iter().map(|k| { let v = map.remove(&k).unwrap_or_default(); (k, v) }).collect())
+        Some(
+            order
+                .into_iter()
+                .map(|k| {
+                    let v = map.remove(&k).unwrap_or_default();
+                    (k, v)
+                })
+                .collect(),
+        )
     }
 
     /// The keyword strip: [pinned] keeps every offered value as a toggle.
@@ -187,7 +195,13 @@ impl Filters {
     }
 
     /// The Filter and Group by menus. `with` applies a change to this page's filters.
-    pub fn menu_items(&self, facets: &'static [Facet], groupers: &'static [Grouper], pinned: bool, with: std::rc::Rc<dyn Fn(&dyn Fn(&mut Filters))>) -> Vec<MenuEntry> {
+    pub fn menu_items(
+        &self,
+        facets: &'static [Facet],
+        groupers: &'static [Grouper],
+        pinned: bool,
+        with: std::rc::Rc<dyn Fn(&dyn Fn(&mut Filters))>,
+    ) -> Vec<MenuEntry> {
         let mut items = Vec::new();
         if !pinned && !self.options.is_empty() {
             let mut sub = Vec::new();
@@ -234,7 +248,13 @@ impl Filters {
     }
 
     /// Rows for `items`, under folding headers when grouped.
-    pub fn rows(&self, groupers: &[Grouper], items: &[Value], toggle: std::rc::Rc<dyn Fn(String)>, row: &dyn Fn(&Value) -> Row) -> Vec<Row> {
+    pub fn rows(
+        &self,
+        groupers: &[Grouper],
+        items: &[Value],
+        toggle: std::rc::Rc<dyn Fn(String)>,
+        row: &dyn Fn(&Value) -> Row,
+    ) -> Vec<Row> {
         match self.groups(groupers, items) {
             None => items.iter().map(row).collect(),
             Some(groups) => {

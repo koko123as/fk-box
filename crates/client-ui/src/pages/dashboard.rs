@@ -241,9 +241,16 @@ fn chart(values: &[f64], width: f64, height: f64) -> (String, String) {
         })
         .collect();
     let last = length - 1;
-    let slope: Vec<f64> = (0..length)
-        .map(|i| if i == 0 || i == last { 0.0 } else { ((heights[i + 1] - heights[i - 1]) / 2.0).clamp(-3.0 * heights[i], 3.0 * heights[i]) })
-        .collect();
+    let slope: Vec<f64> =
+        (0..length)
+            .map(|i| {
+                if i == 0 || i == last {
+                    0.0
+                } else {
+                    ((heights[i + 1] - heights[i - 1]) / 2.0).clamp(-3.0 * heights[i], 3.0 * heights[i])
+                }
+            })
+            .collect();
     let step = width / (CAPACITY - 1) as f64;
     let first_x = width - last as f64 * step;
     // The curve's highest point, control points included (Path.getBounds()).
@@ -502,7 +509,12 @@ pub fn project(w: &AppWindow, m: Mark) {
             "Risky" => 2,
             _ => 0,
         });
-        let organization = info.get("organization").and_then(|v| v.as_str()).filter(|s| !s.is_empty()).map(str::to_string).or_else(|| info.get("asn").and_then(|v| v.as_str()).map(str::to_string));
+        let organization = info
+            .get("organization")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .or_else(|| info.get("asn").and_then(|v| v.as_str()).map(str::to_string));
         dash.set_organization(organization.unwrap_or_default().into());
         dash.set_organization_loading(view.loading);
         let started = if d.running() { d.dashboard.get("startedAt").and_then(long) } else { None };
@@ -591,11 +603,19 @@ pub fn project(w: &AppWindow, m: Mark) {
     dash.set_saving(saving);
     if let Some(shown) = &editing {
         sync!(dash, get_edit_shown, set_edit_shown, shown.iter().map(|c| kv(c, card_label(c))).collect());
-        sync!(dash, get_edit_hidden, set_edit_hidden, available_cards.iter().filter(|c| !shown.contains(c)).map(|c| kv(c, card_label(c))).collect());
+        sync!(
+            dash,
+            get_edit_hidden,
+            set_edit_hidden,
+            available_cards.iter().filter(|c| !shown.contains(c)).map(|c| kv(c, card_label(c))).collect()
+        );
     }
     data(|d| {
         dash.set_apply_required(d.apply_required.is_some());
-        sync!(dash, get_deprecated, set_deprecated, 
+        sync!(
+            dash,
+            get_deprecated,
+            set_deprecated,
             d.dashboard
                 .get("deprecated")
                 .map(rows)
@@ -633,7 +653,11 @@ pub fn project(w: &AppWindow, m: Mark) {
         match &profile {
             Some(p) => {
                 dash.set_profile_name(text(&p["name"]).into());
-                let core = p.get("resolvedCore").map(text).filter(|s| !s.is_empty()).unwrap_or_else(|| p.get("core").map(text).unwrap_or_default());
+                let core = p
+                    .get("resolvedCore")
+                    .map(text)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| p.get("core").map(text).unwrap_or_default());
                 dash.set_profile_core(crate::pages::profiles::core_chip(&core).into());
                 dash.set_profile_remote(p.get("remote").map(truthy).unwrap_or(false));
                 dash.set_profile_updated(
@@ -722,17 +746,24 @@ pub fn project(w: &AppWindow, m: Mark) {
         let weight = |v: f64| if total <= 0.0 || v <= 0.0 { 0.0 } else { ((v * 100.0 / total).round() * 100.0).max(1.0) as f32 };
         dash.set_memory_app_weight(if remote { 0.0 } else { weight(app_bytes) });
         dash.set_memory_core_weight(weight(core_bytes));
-        sync!(dash, get_memory_app_rows, set_memory_app_rows, vec![
-            kv(tr("Process RSS"), format::bytes(mem.get("rss").map(num).unwrap_or(0.0))),
-            kv(tr("App and shared memory"), format::bytes(app_bytes)),
-        ]);
+        sync!(
+            dash,
+            get_memory_app_rows,
+            set_memory_app_rows,
+            vec![
+                kv(tr("Process RSS"), format::bytes(mem.get("rss").map(num).unwrap_or(0.0))),
+                kv(tr("App and shared memory"), format::bytes(app_bytes)),
+            ]
+        );
         let mut core_rows = Vec::new();
         let mut percents = Vec::new();
         if !mem.get("running").map(truthy).unwrap_or(false) && !remote {
             core_rows.push(kv(tr("Not running"), ""));
             percents.push(SharedString::new());
         }
-        for (key, label) in [("heapInuse", "Heap in use"), ("heapIdle", "Retained idle heap"), ("stack", "Stack"), ("runtimeOther", "Other runtime memory")] {
+        for (key, label) in
+            [("heapInuse", "Heap in use"), ("heapIdle", "Retained idle heap"), ("stack", "Stack"), ("runtimeOther", "Other runtime memory")]
+        {
             if let Some(v) = mem.get(key).and_then(|v| v.as_f64()) {
                 core_rows.push(kv(tr(label), format::bytes(v)));
                 percents.push(ss(format!("{}%", if core_bytes == 0.0 { "0.0".into() } else { format!("{:.1}", v * 100.0 / core_bytes) })));
@@ -765,7 +796,8 @@ pub fn project(w: &AppWindow, m: Mark) {
         for b in &bindings {
             let tag = b["tag"].as_str().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| protocol(b));
             let port = long(&b["port"]).unwrap_or(0);
-            let mut subtitle = format!("{} · {}", protocol(b), if port == 0 { tr("Automatic port") } else { format!("{}: {port}", tr("Port")) });
+            let mut subtitle =
+                format!("{} · {}", protocol(b), if port == 0 { tr("Automatic port") } else { format!("{}: {port}", tr("Port")) });
             if truthy(&b["authentication"]) {
                 subtitle.push_str(&format!(" · {}", tr("Authentication required")));
             }
@@ -1013,16 +1045,49 @@ mod grid_tests {
     /// card after the one it follows by default.
     #[test]
     fn saved_order_takes_new_cards_in_place() {
-        let saved = cards(&["Status", "Network speed", "Outbound mode", "Current profile", "Proxy groups", "Memory", "Intranet IP", "System HTTP proxy"]);
+        let saved = cards(&[
+            "Status",
+            "Network speed",
+            "Outbound mode",
+            "Current profile",
+            "Proxy groups",
+            "Memory",
+            "Intranet IP",
+            "System HTTP proxy",
+        ]);
         assert_eq!(
             merge_order(&saved),
-            cards(&["Status", "Network speed", "Outbound mode", "VPN", "Current profile", "Service status", "Proxy groups", "Memory", "Connection stats", "Intranet IP", "System HTTP proxy"])
+            cards(&[
+                "Status",
+                "Network speed",
+                "Outbound mode",
+                "VPN",
+                "Current profile",
+                "Service status",
+                "Proxy groups",
+                "Memory",
+                "Connection stats",
+                "Intranet IP",
+                "System HTTP proxy"
+            ])
         );
         assert_eq!(merge_order(&[]), cards(&CARDS));
         // Unknown cards drop; a new card still follows its default neighbour.
         assert_eq!(
             merge_order(&cards(&["Memory", "Bogus", "Status"])),
-            cards(&["Memory", "Connection stats", "Proxy groups", "System HTTP proxy", "Status", "Network speed", "Outbound mode", "VPN", "Intranet IP", "Current profile", "Service status"])
+            cards(&[
+                "Memory",
+                "Connection stats",
+                "Proxy groups",
+                "System HTTP proxy",
+                "Status",
+                "Network speed",
+                "Outbound mode",
+                "VPN",
+                "Intranet IP",
+                "Current profile",
+                "Service status"
+            ])
         );
     }
 }

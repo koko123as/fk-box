@@ -671,7 +671,15 @@ pub struct InputSpec {
 
 impl InputSpec {
     pub fn new(title: &str, value: &str) -> Self {
-        InputSpec { title: tr(title), value: value.to_string(), number: false, suffix: String::new(), reset: None, multiline: false, validator: None }
+        InputSpec {
+            title: tr(title),
+            value: value.to_string(),
+            number: false,
+            suffix: String::new(),
+            reset: None,
+            multiline: false,
+            validator: None,
+        }
     }
 }
 

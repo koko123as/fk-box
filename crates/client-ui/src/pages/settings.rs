@@ -24,15 +24,15 @@ fn setting(key: &str) -> Value {
 fn native_toggle(title: &str, key: &'static str, restart: bool, auto_restart: bool) -> Row {
     let (busy, transitioning, remote) = data(|d| (d.service_settings_changing, d.transitioning(), d.remote()));
     let enabled = !(busy || (auto_restart && transitioning && !remote));
-    Row::switch(&tr(title), truthy(&setting(key)), move |v| app::set_setting(key, json!(v), restart, auto_restart)).key(key).enabled(enabled)
+    Row::switch(&tr(title), truthy(&setting(key)), move |v| app::set_setting(key, json!(v), restart, auto_restart))
+        .key(key)
+        .enabled(enabled)
 }
 
 pub fn open_general() {
     rows::push(|| {
-        Page::new(&tr("General")).rows(vec![
-            Row::open(&tr("Service"), Some("vpn"), open_service),
-            Row::open(&tr("Core"), Some("cpu"), open_core),
-        ])
+        Page::new(&tr("General"))
+            .rows(vec![Row::open(&tr("Service"), Some("vpn"), open_service), Row::open(&tr("Core"), Some("cpu"), open_core)])
     });
 }
 
@@ -64,7 +64,8 @@ fn parse_memory_limit(text: &str) -> Option<i64> {
 
 fn open_core() {
     rows::push(|| {
-        let (busy, versions) = data(|d| (d.service_settings_changing, [d.core_version.clone(), d.xray_version.clone(), d.mihomo_version.clone()]));
+        let (busy, versions) =
+            data(|d| (d.service_settings_changing, [d.core_version.clone(), d.xray_version.clone(), d.mihomo_version.clone()]));
         // One switch per linked core, with its version; a core that is off is
         // skipped by auto and refuses to start. The last one cannot go off.
         let cores = [("sing-box", "singBoxEnabled"), ("Xray", "xrayEnabled"), ("mihomo", "mihomoEnabled")];
@@ -113,7 +114,8 @@ pub fn open_about() {
     let checking = Rc::new(RefCell::new(false));
     let c = checking.clone();
     rows::push(move || {
-        let (version, core, xray, mihomo) = data(|d| (d.version.clone(), d.core_version.clone(), d.xray_version.clone(), d.mihomo_version.clone()));
+        let (version, core, xray, mihomo) =
+            data(|d| (d.version.clone(), d.core_version.clone(), d.xray_version.clone(), d.mihomo_version.clone()));
         let busy = *c.borrow();
         let mut rows = Vec::new();
         // The hero: the icon, the name, the version and license pills, the update button.
@@ -137,7 +139,14 @@ pub fn open_about() {
             rows.push(Row::item(name).value(&v).lines(1).icon("cpu").key(name).on(move |_| app::act("openUrl", json!({ "url": url }))));
         }
         rows.push(Row::section(&tr("More")));
-        rows.push(Row::item(&tr("Source code")).value("GitHub").lines(1).icon("code").key("source").on(|_| app::act("openUrl", json!({ "url": "https://github.com/koko123as/fk-box" }))));
+        rows.push(
+            Row::item(&tr("Source code"))
+                .value("GitHub")
+                .lines(1)
+                .icon("code")
+                .key("source")
+                .on(|_| app::act("openUrl", json!({ "url": "https://github.com/koko123as/fk-box" }))),
+        );
         rows.push(Row::item(&tr("Open-source licenses")).icon("info").chevron().key("licenses").on(|_| open_licenses()));
         Page::new(&tr("About")).loading(busy).rows(rows)
     });
@@ -163,7 +172,11 @@ fn check_updates(checking: &Rc<RefCell<bool>>) {
 fn update_dialog(result: Value) {
     let available = truthy(&result["available"]);
     let no_metadata = result["hasMetadata"] == Value::Bool(false);
-    let mut message = if available { format!("fk-box {}", text(&result["version"])) } else { tr(if no_metadata { "No release metadata available" } else { "You are up to date" }) };
+    let mut message = if available {
+        format!("fk-box {}", text(&result["version"]))
+    } else {
+        tr(if no_metadata { "No release metadata available" } else { "You are up to date" })
+    };
     let notes = result.get("notes").and_then(Value::as_str).unwrap_or("");
     if available && !notes.is_empty() {
         message = format!("{message}\n\n{notes}");
@@ -174,7 +187,10 @@ fn update_dialog(result: Value) {
     if available || no_metadata {
         actions.push((open, Some("open")));
     }
-    let url = [&result["downloadUrl"], &result["url"]].iter().find_map(|v| v.as_str().map(str::to_string)).unwrap_or_else(|| "https://github.com/koko123as/fk-box/releases".into());
+    let url = [&result["downloadUrl"], &result["url"]]
+        .iter()
+        .find_map(|v| v.as_str().map(str::to_string))
+        .unwrap_or_else(|| "https://github.com/koko123as/fk-box/releases".into());
     nav::choose(&title, Some(&message), actions, move |picked| {
         if picked.as_deref() == Some("open") {
             app::act("openUrl", json!({ "url": url }));
@@ -208,7 +224,13 @@ fn open_licenses() {
         let version = data(|d| d.version.clone());
         let mut rows = vec![Row::title(&format!("fk-box {version}"), "")];
         for (name, license, taken, url) in LICENSES {
-            rows.push(Row::item(name).subtitle(&format!("{license} · {}", tr(taken))).key(name).trailing("open-external", move || app::act("openUrl", json!({ "url": url }))).on(move |_| app::act("openUrl", json!({ "url": url }))));
+            rows.push(
+                Row::item(name)
+                    .subtitle(&format!("{license} · {}", tr(taken)))
+                    .key(name)
+                    .trailing("open-external", move || app::act("openUrl", json!({ "url": url })))
+                    .on(move |_| app::act("openUrl", json!({ "url": url }))),
+            );
         }
         Page::new(&tr("Open-source licenses")).rows(rows)
     });
@@ -221,7 +243,12 @@ fn open_licenses() {
 const DEFAULT_BACKUP_FILE_NAME: &str = "B-box-backup.json";
 
 fn backup_file_issue(value: &str) -> Option<&'static str> {
-    if value.is_empty() || value.chars().count() > 128 || value == "." || value == ".." || value.chars().any(|c| (c as u32) < 32 || c == '/' || c == '\\') {
+    if value.is_empty()
+        || value.chars().count() > 128
+        || value == "."
+        || value == ".."
+        || value.chars().any(|c| (c as u32) < 32 || c == '/' || c == '\\')
+    {
         Some("Invalid backup file name")
     } else {
         None
@@ -318,17 +345,20 @@ fn backup_edit(st: &BackupRef) {
     }
     let initial = st.borrow().account.clone();
     let a = st.clone();
-    webdav_form(initial, Rc::new(move |result: Option<Value>| {
-        a.borrow_mut().locked = false;
-        if let Some(v) = result {
-            if truthy(&v["deleted"]) {
-                backup_update_account(&a, None);
-            } else {
-                backup_update_account(&a, Some(obj(&v)));
+    webdav_form(
+        initial,
+        Rc::new(move |result: Option<Value>| {
+            a.borrow_mut().locked = false;
+            if let Some(v) = result {
+                if truthy(&v["deleted"]) {
+                    backup_update_account(&a, None);
+                } else {
+                    backup_update_account(&a, Some(obj(&v)));
+                }
             }
-        }
-        mark(Mark::ROWS);
-    }));
+            mark(Mark::ROWS);
+        }),
+    );
 }
 
 fn backup_run(st: &BackupRef, remote: bool) {
@@ -381,59 +411,68 @@ fn backup_restore(st: &BackupRef, remote: bool) {
     };
     let a = st.clone();
     // The scope dialog: profiles only or all data.
-    nav::choose(&tr("Restore"), None, vec![("Restore profiles only", Some("profiles")), ("Restore all data", Some("all")), ("Cancel", None)], move |picked| {
-        let Some(scope) = picked else {
-            unlock();
-            return;
-        };
-        a.borrow_mut().loading = true;
-        mark(Mark::ROWS);
-        let b = a.clone();
-        app::call(if remote { "readWebdavBackup" } else { "readBackup" }, json!({ "scope": scope }), move |r| {
-            b.borrow_mut().loading = false;
-            mark(Mark::ROWS);
-            let backup = match r {
-                Ok(v) if !v.is_null() => v,
-                Ok(_) => return unlock(),
-                Err(e) => {
-                    app::report(&e);
-                    return unlock();
-                }
+    nav::choose(
+        &tr("Restore"),
+        None,
+        vec![("Restore profiles only", Some("profiles")), ("Restore all data", Some("all")), ("Cancel", None)],
+        move |picked| {
+            let Some(scope) = picked else {
+                unlock();
+                return;
             };
-            // The backup stays on the Kotlin side; only its token and summary come here.
-            let count = backup["profileCount"].as_u64().unwrap_or(0);
-            let token = backup["token"].as_str().unwrap_or_default().to_string();
-            let override_ = strategy == "Override";
-            let mut message = tr("Restore {count} profiles?").replace("{count}", &count.to_string());
-            message.push_str("\n\n");
-            message.push_str(&tr(if override_ { "Profiles missing from this backup will be removed." } else { "Matching profiles will be replaced. Other profiles will be kept." }));
-            if scope == "all" {
-                message.push_str("\n\n");
-                message.push_str(&tr("Application settings and remote servers will also be restored."));
-            }
-            let c = b.clone();
-            nav::choose(&tr("Restore backup"), Some(&message), vec![("Cancel", None), ("Restore", Some("restore"))], move |ok| {
-                if ok.is_none() {
-                    return unlock();
-                }
-                c.borrow_mut().loading = true;
+            a.borrow_mut().loading = true;
+            mark(Mark::ROWS);
+            let b = a.clone();
+            app::call(if remote { "readWebdavBackup" } else { "readBackup" }, json!({ "scope": scope }), move |r| {
+                b.borrow_mut().loading = false;
                 mark(Mark::ROWS);
-                let d = c.clone();
-                app::call("restoreBackup", json!({ "token": token, "scope": scope, "strategy": strategy }), move |r| {
-                    match r {
-                        Ok(_) => {
-                            if scope == "all" {
-                                backup_load_account(&d);
-                            }
-                            nav::choose(&tr("Restore"), Some(&tr("Restore complete")), vec![("Close", None)], |_| {});
-                        }
-                        Err(e) => app::report(&e),
+                let backup = match r {
+                    Ok(v) if !v.is_null() => v,
+                    Ok(_) => return unlock(),
+                    Err(e) => {
+                        app::report(&e);
+                        return unlock();
                     }
-                    unlock();
+                };
+                // The backup stays on the Kotlin side; only its token and summary come here.
+                let count = backup["profileCount"].as_u64().unwrap_or(0);
+                let token = backup["token"].as_str().unwrap_or_default().to_string();
+                let override_ = strategy == "Override";
+                let mut message = tr("Restore {count} profiles?").replace("{count}", &count.to_string());
+                message.push_str("\n\n");
+                message.push_str(&tr(if override_ {
+                    "Profiles missing from this backup will be removed."
+                } else {
+                    "Matching profiles will be replaced. Other profiles will be kept."
+                }));
+                if scope == "all" {
+                    message.push_str("\n\n");
+                    message.push_str(&tr("Application settings and remote servers will also be restored."));
+                }
+                let c = b.clone();
+                nav::choose(&tr("Restore backup"), Some(&message), vec![("Cancel", None), ("Restore", Some("restore"))], move |ok| {
+                    if ok.is_none() {
+                        return unlock();
+                    }
+                    c.borrow_mut().loading = true;
+                    mark(Mark::ROWS);
+                    let d = c.clone();
+                    app::call("restoreBackup", json!({ "token": token, "scope": scope, "strategy": strategy }), move |r| {
+                        match r {
+                            Ok(_) => {
+                                if scope == "all" {
+                                    backup_load_account(&d);
+                                }
+                                nav::choose(&tr("Restore"), Some(&tr("Restore complete")), vec![("Close", None)], |_| {});
+                            }
+                            Err(e) => app::report(&e),
+                        }
+                        unlock();
+                    });
                 });
             });
-        });
-    });
+        },
+    );
 }
 
 pub fn open_backup() {
@@ -468,7 +507,14 @@ fn backup_page(st: &BackupRef) -> Page {
             format!("{} · {}", tr("Connectivity"), s.connection_error.clone().unwrap_or_else(|| tr(label)))
         };
         let a = st.clone();
-        let mut r = Row::item(&title).subtitle(&status).icon("account").lines(1).value(&tr("Edit")).key("account").on(move |_| backup_edit(&a)).loading(s.checking);
+        let mut r = Row::item(&title)
+            .subtitle(&status)
+            .icon("account")
+            .lines(1)
+            .value(&tr("Edit"))
+            .key("account")
+            .on(move |_| backup_edit(&a))
+            .loading(s.checking);
         r.data.danger = false;
         rows.push(r);
         let file_name = account.get("fileName").and_then(Value::as_str).unwrap_or(DEFAULT_BACKUP_FILE_NAME).to_string();
@@ -501,7 +547,15 @@ fn backup_page(st: &BackupRef) -> Page {
         rows.push(Row::item(&tr("Restore")).key("rr").on(move |_| backup_restore(&a, true)).enabled(!remote_session));
     } else {
         let a = st.clone();
-        rows.push(Row::item(&tr("No account")).subtitle(&tr("Bind a WebDAV account")).icon("account").value(&tr("Bind")).key("bind").on(move |_| backup_edit(&a)).enabled(!s.locked));
+        rows.push(
+            Row::item(&tr("No account"))
+                .subtitle(&tr("Bind a WebDAV account"))
+                .icon("account")
+                .value(&tr("Bind"))
+                .key("bind")
+                .on(move |_| backup_edit(&a))
+                .enabled(!s.locked),
+        );
     }
     rows.push(Row::section(&tr("Local")));
     let a = st.clone();
@@ -528,7 +582,13 @@ fn webdav_issue(uri: &str, user: &str, password: &str) -> Option<&'static str> {
     const INVALID: &str = "Enter a WebDAV HTTP or HTTPS directory address";
     let u = uri.trim();
     let lower = u.to_ascii_lowercase();
-    let rest = if lower.starts_with("https://") { &u[8..] } else if lower.starts_with("http://") { &u[7..] } else { return Some(INVALID) };
+    let rest = if lower.starts_with("https://") {
+        &u[8..]
+    } else if lower.starts_with("http://") {
+        &u[7..]
+    } else {
+        return Some(INVALID);
+    };
     if u.len() > 4096 || u.contains('?') || u.contains('#') {
         return Some(INVALID);
     }
@@ -576,7 +636,16 @@ struct WebDav {
 
 fn webdav_form(initial: Option<Json>, on_closed: Rc<dyn Fn(Option<Value>)>) {
     let get = |k: &str| initial.as_ref().and_then(|i| i.get(k)).and_then(Value::as_str).unwrap_or("").to_string();
-    let st = Rc::new(RefCell::new(WebDav { uri: get("uri"), user: get("user"), password: get("password"), initial, attempted: false, saving: false, error: None, result: None }));
+    let st = Rc::new(RefCell::new(WebDav {
+        uri: get("uri"),
+        user: get("user"),
+        password: get("password"),
+        initial,
+        attempted: false,
+        saving: false,
+        error: None,
+        result: None,
+    }));
     let a = st.clone();
     let id = rows::form(move || webdav_page(&a));
     let a = st.clone();
@@ -610,17 +679,24 @@ fn webdav_page(st: &Rc<RefCell<WebDav>>) -> Page {
         .invalid(issue == Some("Enter a WebDAV HTTP or HTTPS directory address")),
     );
     let a = st.clone();
-    rows.push(Row::field(&tr("Account"), &s.user, &tr("Optional"), move |v| {
-        let mut s = a.borrow_mut();
-        s.user = v.chars().take(4096).collect();
-        s.error = None;
-    }).key("user"));
+    rows.push(
+        Row::field(&tr("Account"), &s.user, &tr("Optional"), move |v| {
+            let mut s = a.borrow_mut();
+            s.user = v.chars().take(4096).collect();
+            s.error = None;
+        })
+        .key("user"),
+    );
     let a = st.clone();
-    rows.push(Row::field(&tr("Password"), &s.password, &tr("Optional"), move |v| {
-        let mut s = a.borrow_mut();
-        s.password = v.chars().take(4096).collect();
-        s.error = None;
-    }).key("password").secret(true));
+    rows.push(
+        Row::field(&tr("Password"), &s.password, &tr("Optional"), move |v| {
+            let mut s = a.borrow_mut();
+            s.password = v.chars().take(4096).collect();
+            s.error = None;
+        })
+        .key("password")
+        .secret(true),
+    );
     if s.initial.is_some() {
         rows.push(Row::gap());
         let a = st.clone();
@@ -982,17 +1058,22 @@ fn access_page(st: &AccessRef) -> Page {
     }
     let a = st.clone();
     let b = st.clone();
-    let mut page = Page::new(&tr("Access control")).loading(saving || s.scanning || s.apps.is_none() && s.error.is_none()).bar(bar).rows(rows).search(move |q| {
-        let mut s = a.borrow_mut();
-        s.query = q;
-        s.pinned = access_selected(&s);
-    });
+    let mut page =
+        Page::new(&tr("Access control")).loading(saving || s.scanning || s.apps.is_none() && s.error.is_none()).bar(bar).rows(rows).search(
+            move |q| {
+                let mut s = a.borrow_mut();
+                s.query = q;
+                s.pinned = access_selected(&s);
+            },
+        );
     if has_changes {
         page = page.confirm(Bar::new("check", "Save", move || access_save(&b)).when(!saving));
     }
     if let Some(e) = page_empty {
         let a = st.clone();
-        page = page.empty(&tr("Application query failed"), &e, "lock-open").empty_action(&tr("Application query"), move || access_query_settings(&a, true));
+        page = page
+            .empty(&tr("Application query failed"), &e, "lock-open")
+            .empty_action(&tr("Application query"), move || access_query_settings(&a, true));
     }
     let a = st.clone();
     let sort = s.sort;
@@ -1017,7 +1098,18 @@ fn access_page(st: &AccessRef) -> Page {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn access_menu(st: &AccessRef, enabled: bool, managed: bool, mode: i64, sort: &'static str, system: bool, non_internet: bool, selected_only: bool, scanning: bool, has_changes: bool) -> Vec<MenuEntry> {
+fn access_menu(
+    st: &AccessRef,
+    enabled: bool,
+    managed: bool,
+    mode: i64,
+    sort: &'static str,
+    system: bool,
+    non_internet: bool,
+    selected_only: bool,
+    scanning: bool,
+    has_changes: bool,
+) -> Vec<MenuEntry> {
     let set = |f: Rc<dyn Fn(&mut Draft)>| {
         let a = st.clone();
         move || {
@@ -1043,7 +1135,8 @@ fn access_menu(st: &AccessRef, enabled: bool, managed: bool, mode: i64, sort: &'
         MenuEntry::plain(&tr("Name"), view(Rc::new(|s| s.sort = "Name"), false)).checked(sort == "Name"),
         MenuEntry::plain(&tr("Time"), view(Rc::new(|s| s.sort = "Time"), false)).checked(sort == "Time"),
         MenuEntry::plain(&tr("Show system apps"), view(Rc::new(|s| s.system = !s.system), true)).checked(system).section(&tr("Source")),
-        MenuEntry::plain(&tr("Show apps without Internet permission"), view(Rc::new(|s| s.non_internet = !s.non_internet), true)).checked(non_internet),
+        MenuEntry::plain(&tr("Show apps without Internet permission"), view(Rc::new(|s| s.non_internet = !s.non_internet), true))
+            .checked(non_internet),
         MenuEntry::plain(&tr("Selected apps"), view(Rc::new(|s| s.selected_only = !s.selected_only), false)).checked(selected_only),
         MenuEntry::plain(&tr("Managed app list"), set(Rc::new(|d| d.managed = !d.managed))).checked(managed),
     ];
@@ -1142,7 +1235,15 @@ fn picker_load(st: &Rc<RefCell<Picker>>, refresh: bool) {
 /// Picks installed apps by package; `done` gets the chosen packages when saved.
 pub fn pick_apps(initial: Vec<String>, done: impl Fn(Vec<String>) + 'static) {
     let selected: BTreeSet<String> = initial.into_iter().filter(|p| !p.trim().is_empty()).collect();
-    let st = Rc::new(RefCell::new(Picker { pinned: selected.clone(), selected, query: String::new(), system: false, apps: None, error: None, generation: 0 }));
+    let st = Rc::new(RefCell::new(Picker {
+        pinned: selected.clone(),
+        selected,
+        query: String::new(),
+        system: false,
+        apps: None,
+        error: None,
+        generation: 0,
+    }));
     picker_load(&st, false);
     let done: Rc<dyn Fn(Vec<String>)> = Rc::new(done);
     let a = st.clone();
@@ -1165,7 +1266,10 @@ fn picker_page(st: &Rc<RefCell<Picker>>, done: Rc<dyn Fn(Vec<String>)>) -> Page 
         .collect();
     visible.sort_by(|a, b| {
         let (pa, pb) = (text(&a["package"]), text(&b["package"]));
-        (s.pinned.contains(&pb)).cmp(&s.pinned.contains(&pa)).then_with(|| text(&a["name"]).to_lowercase().cmp(&text(&b["name"]).to_lowercase())).then_with(|| pa.cmp(&pb))
+        (s.pinned.contains(&pb))
+            .cmp(&s.pinned.contains(&pa))
+            .then_with(|| text(&a["name"]).to_lowercase().cmp(&text(&b["name"]).to_lowercase()))
+            .then_with(|| pa.cmp(&pb))
     });
     let mut rows = Vec::new();
     if s.apps.is_some() && visible.is_empty() {
