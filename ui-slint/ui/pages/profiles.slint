@@ -300,7 +300,6 @@ export component QrPage inherits ScrollPage {
 
 export component ProfileRoutes inherits Rectangle {
     in property <string> kind;
-    in property <string> arg;
     in property <int> leading;
     out property <bool> handles: kind == "profiles-picker" || kind == "code-editor" || kind == "profile-qr";
     if root.kind == "profiles-picker": ProfilesPage { picker: true; leading: root.leading; }
