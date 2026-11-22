@@ -27,14 +27,14 @@ internal class LogEventBuffer(private val limit: Int = 3000) {
     private var reset = false
     private var level: Int? = null
     private var levelChanged = false
-    private val entries = ArrayDeque<Map<String, Any?>>()
+    private val lines = ArrayDeque<Map<String, Any?>>()
 
     init { require(limit > 0) }
 
     @Synchronized
     fun reset() {
         reset = true
-        entries.clear()
+        lines.clear()
     }
 
     @Synchronized
@@ -47,23 +47,22 @@ internal class LogEventBuffer(private val limit: Int = 3000) {
     @Synchronized
     fun add(batch: List<Map<String, Any?>>) {
         for (entry in batch.takeLast(limit)) {
-            if (entries.size == limit) entries.removeFirst()
-            entries.addLast(entry)
+            if (lines.size == limit) lines.removeFirst()
+            lines.addLast(entry)
         }
     }
 
     /** One batch for client-core `Logs::apply_batch`; null when nothing waits, unless [force]. */
     @Synchronized
     fun drain(force: Boolean): Map<String, Any?>? {
-        if (!force && !reset && !levelChanged && entries.isEmpty()) return null
-        val batch = buildMap<String, Any?> {
-            put("reset", reset)
-            if (levelChanged) put("defaultLogLevel", level)
-            put("entries", entries.toList())
-        }
+        if (!force && !reset && !levelChanged && lines.isEmpty()) return null
+        val batch = HashMap<String, Any?>()
+        batch["reset"] = reset
+        if (levelChanged) batch["defaultLogLevel"] = level
+        batch["entries"] = lines.toList()
         reset = false
         levelChanged = false
-        entries.clear()
+        lines.clear()
         return batch
     }
 }
