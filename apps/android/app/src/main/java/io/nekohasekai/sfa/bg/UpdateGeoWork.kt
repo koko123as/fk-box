@@ -11,15 +11,16 @@ import androidx.work.PeriodicWorkRequest
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.CancellationException
 import java.util.concurrent.TimeUnit
 
 /**
- * Scheduled geo updates (FlClash's geo-auto-update / geo-update-interval). Each
- * run updates the installed files whose last successful check is older than
- * the interval (a file no core has needed yet is not fetched); a failed
- * download keeps the installed file and retries later.
+ * Scheduled geo updates (FlClash's geo-auto-update / geo-update-interval).
+ * Whether they run, how often and which files are due is client-core's
+ * policy (geo::schedule, geo::due via [GeoPolicy]); this is the WorkManager
+ * entry. Each run updates the installed files whose last successful check is
+ * older than the interval (a file no core has needed yet is not fetched); a
+ * failed download keeps the installed file and retries later.
  */
 object UpdateGeoWork {
     private const val WORK_NAME = "UpdateGeoResources"
@@ -28,11 +29,12 @@ object UpdateGeoWork {
     fun reconfigure() {
         runCatching {
             val manager = WorkManager.getInstance(Application.application)
-            if (!Settings.geoAutoUpdate) {
+            val schedule = GeoPolicy.schedule()
+            if (!schedule.enabled) {
                 manager.cancelUniqueWork(WORK_NAME)
                 return
             }
-            val hours = Settings.geoUpdateInterval.coerceAtLeast(1).toLong()
+            val hours = schedule.intervalHours.coerceAtLeast(1).toLong()
             manager.enqueueUniquePeriodicWork(
                 WORK_NAME,
                 ExistingPeriodicWorkPolicy.UPDATE,
@@ -46,10 +48,10 @@ object UpdateGeoWork {
 
     class Task(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
-            if (!Settings.geoAutoUpdate) return Result.success()
+            if (!GeoPolicy.schedule().enabled) return Result.success()
             Application.application.setupLibbox()
             var failed = false
-            for (name in GeoResources.due(Settings.geoUpdateInterval)) {
+            for (name in GeoResources.due()) {
                 try {
                     GeoResources.update(name)
                 } catch (e: CancellationException) {

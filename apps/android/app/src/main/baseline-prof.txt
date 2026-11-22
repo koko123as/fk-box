@@ -27,7 +27,6 @@ HSPLio/nekohasekai/sfa/bridge/BoxActivity**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxBridge**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxDashboard**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxProfiles**;->**(**)**
-HSPLio/nekohasekai/sfa/bridge/BoxSettings**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxPreferences**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/DashboardConfigCache**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/LogStream**;->**(**)**

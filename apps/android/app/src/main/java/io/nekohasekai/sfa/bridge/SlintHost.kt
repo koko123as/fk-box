@@ -121,6 +121,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
         mapOf("core" to it.core, "applied" to it.applied, "active" to it.active, "fallback" to it.fallback, "error" to it.error, "warnings" to it.warnings, "time" to it.time)
     }
     "updateSettings" -> updateSettings(args.map("values"))
+    "serviceSettingsWritten" -> serviceSettingsWritten(args.list("written"))
     "listApps" -> listApps(args.optBoolean("refresh"), args.optBoolean("system"), args.optBoolean("nonInternet"))
     "appLabels" -> appLabels(args.list("packages").mapNotNull { it as? String })
     "releaseApps" -> releaseApps()

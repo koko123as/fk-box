@@ -8,6 +8,7 @@ import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.RemoteServer
 import io.nekohasekai.sfa.database.RemoteServerManager
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
@@ -21,7 +22,6 @@ import java.util.UUID
 
 internal class BoxBackups(
     private val activity: BoxActivity,
-    private val readSettings: () -> Map<String, Any?>,
     private val writeSettings: suspend (Map<String, Any?>) -> Unit,
     private val applySelected: suspend (restart: Boolean, recover: Boolean) -> Unit,
     private val publish: suspend () -> Unit,
@@ -46,7 +46,8 @@ internal class BoxBackups(
         val values = runCatching { BoxPreferences.validate(jsonObject(JSONObject(text))) }.getOrDefault(emptyMap())
         writePreferences(values)
     }
-    private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }
+    /** The service settings a backup carries (client-core's snapshot without the scanned managed list). */
+    private fun editableSettings() = ServiceSettings.backup()
 
     suspend fun create(): Map<String, Any?> = ProfileContent.mutex.withLock {
         val origin = origin()
@@ -127,7 +128,7 @@ internal class BoxBackups(
         encode(backup)
         if (scope == "all") {
             BoxPreferences.validate(objectValue(backup, "preferences") ?: emptyMap())
-            BoxSettings.validate(objectValue(backup, "settings") ?: emptyMap())
+            ServiceSettings.validate(objectValue(backup, "settings") ?: emptyMap())
             val servers = rows(backup["servers"])
             require(servers.size <= 1000) { "Too many remote servers" }
             servers.forEach {

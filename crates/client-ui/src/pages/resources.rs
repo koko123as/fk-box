@@ -91,13 +91,9 @@ fn update_all(st: &ResRef) {
     }
 }
 
+/// The address check of `fkbox_client_core::geo`, the one the save applies.
 fn valid_url(v: &str) -> bool {
-    let t = v.trim();
-    let rest = t.strip_prefix("http://").or_else(|| t.strip_prefix("https://"));
-    match rest {
-        Some(r) => r.chars().next().map(|c| !c.is_whitespace() && c != '/').unwrap_or(false),
-        None => false,
-    }
+    fkbox_client_core::geo::valid_url(v.trim())
 }
 
 fn edit_url(st: &ResRef, name: String, label: String, url: String, default_url: String) {

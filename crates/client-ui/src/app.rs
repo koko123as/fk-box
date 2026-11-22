@@ -304,7 +304,7 @@ pub fn on_reply(id: i64, ok: bool, payload: &str) {
 }
 
 // ---------------------------------------------------------------------------
-// Settings and preferences (BoxController.setPreferences / setSetting / setSettings)
+// Settings and preferences (client store; host for platform effects)
 // ---------------------------------------------------------------------------
 
 /// Saves interface preferences in the client store; without one (the
@@ -361,6 +361,64 @@ fn stored_preferences() -> Option<Json> {
     }
 }
 
+/// The service settings the pages show: the client store's snapshot
+/// (`fkbox_client_core::service_settings`) with the platform's own state
+/// from `payload` on top (the battery optimization exemption). Without a
+/// store (the screenshot harness) the payload is the whole snapshot; a read
+/// failure is reported and keeps `current`.
+pub fn service_settings(current: &Json, payload: &Value) -> Json {
+    let mut out = match crate::store::get().map(|store| crate::store::service_settings(&store)) {
+        Some(Ok(snapshot)) => snapshot,
+        Some(Err(error)) => {
+            crate::defer("store", move || report(&error));
+            current.clone()
+        }
+        None => Json::new(),
+    };
+    for (key, value) in obj(payload) {
+        out.insert(key, value);
+    }
+    out
+}
+
+/// The platform's own entries of the shown settings (kept across a write
+/// the UI made itself until the host answers).
+fn platform_settings(settings: &Json) -> Value {
+    Value::Object(settings.iter().filter(|(k, _)| k.as_str() == "batteryExempt").map(|(k, v)| (k.clone(), v.clone())).collect())
+}
+
+/// Writes service settings straight to the client store when they need
+/// nothing from the platform first (no package query switch, no app scan),
+/// then tells the host what was written (its settings cache, setup
+/// options, geo schedule). `None` when the host must save them.
+fn write_settings_here(values: &Value, then: impl FnOnce(Result<(), String>) + 'static) -> Option<()> {
+    let store = crate::store::get()?;
+    let map = values.as_object()?;
+    let written = match crate::store::plan_service_settings(&store, map) {
+        Ok(plan) if plan.store_only() => crate::store::patch_service_settings(&store, map),
+        Ok(_) => return None,
+        Err(error) => Err(error),
+    };
+    match written {
+        Ok(written) => {
+            data_mut(|d| {
+                let platform = platform_settings(&d.settings);
+                d.settings = service_settings(&d.settings, &platform);
+            });
+            call("serviceSettingsWritten", json!({ "written": written }), move |result| {
+                match result {
+                    Ok(platform) => data_mut(|d| d.settings = service_settings(&d.settings, &platform)),
+                    Err(error) => report(&error),
+                }
+                pages::mark(Mark::ALL);
+            });
+            then(Ok(()))
+        }
+        Err(error) => then(Err(error)),
+    }
+    Some(())
+}
+
 /// Saves the profile order in the client store (through the host without one).
 pub fn reorder_profiles(ids: Vec<i64>, then: impl FnOnce(bool) + 'static) {
     let Some(store) = crate::store::get() else {
@@ -389,13 +447,32 @@ pub fn set_preference(key: &str, value: Value) {
     set_preferences(json!({ key: value }), |_| {});
 }
 
-/// An auto-restart setting restarts a running local service itself.
+/// An auto-restart setting restarts a running local service itself. A
+/// setting that needs nothing from the platform first is written to the
+/// client store here; the rest (query mode, managed app scans, restarts) go
+/// through the host, which writes them through client-core as well.
 pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
     let (busy, running, remote, transitioning) = data(|d| (d.service_settings_changing, d.running(), d.remote(), d.transitioning()));
     if busy || (auto_restart && transitioning && !remote) {
         return;
     }
     let restart_service = auto_restart && running && !remote;
+    if !restart_service {
+        let handled = write_settings_here(&json!({ key: value.clone() }), move |result| {
+            match result {
+                Ok(()) => data_mut(|d| {
+                    if restart && !auto_restart && d.running() && !d.remote() {
+                        d.apply_required = Some("Restart".into());
+                    }
+                }),
+                Err(error) => report(&error),
+            }
+            pages::mark(Mark::ALL);
+        });
+        if handled.is_some() {
+            return;
+        }
+    }
     if auto_restart {
         data_mut(|d| d.service_settings_changing = true);
         pages::mark(Mark::SETTINGS);
@@ -406,7 +483,7 @@ pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
         }
         match result {
             Ok(saved) => data_mut(|d| {
-                d.settings = obj(&saved);
+                d.settings = service_settings(&d.settings, &saved);
                 if restart_service {
                     d.apply_required = None;
                 } else if restart && !auto_restart && d.running() && !d.remote() {
@@ -420,20 +497,50 @@ pub fn set_setting(key: &str, value: Value, restart: bool, auto_restart: bool) {
 }
 
 pub fn set_settings(values: Value, restart: bool, then: impl FnOnce(bool) + 'static) {
-    call("updateSettings", json!({ "values": values }), move |result| match result {
-        Ok(saved) => {
-            data_mut(|d| {
-                d.settings = obj(&saved);
-                if restart && d.running() && !d.remote() {
-                    d.apply_required = Some("Restart".into());
-                }
-            });
-            pages::mark(Mark::ALL);
-            then(true)
+    let then = std::rc::Rc::new(std::cell::RefCell::new(Some(then)));
+    let here = then.clone();
+    let handled = write_settings_here(&values, move |result| {
+        let ok = match result {
+            Ok(()) => {
+                data_mut(|d| {
+                    if restart && d.running() && !d.remote() {
+                        d.apply_required = Some("Restart".into());
+                    }
+                });
+                true
+            }
+            Err(error) => {
+                report(&error);
+                false
+            }
+        };
+        pages::mark(Mark::ALL);
+        if let Some(then) = here.borrow_mut().take() {
+            then(ok)
         }
-        Err(error) => {
-            report(&error);
-            then(false)
+    });
+    if handled.is_some() {
+        return;
+    }
+    call("updateSettings", json!({ "values": values }), move |result| {
+        let ok = match result {
+            Ok(saved) => {
+                data_mut(|d| {
+                    d.settings = service_settings(&d.settings, &saved);
+                    if restart && d.running() && !d.remote() {
+                        d.apply_required = Some("Restart".into());
+                    }
+                });
+                pages::mark(Mark::ALL);
+                true
+            }
+            Err(error) => {
+                report(&error);
+                false
+            }
+        };
+        if let Some(then) = then.borrow_mut().take() {
+            then(ok)
         }
     });
 }
@@ -616,7 +723,7 @@ pub fn on_event(payload: &str) {
             Mark::RECORDS
         }
         "settings" => {
-            d.settings = obj(&value);
+            d.settings = service_settings(&d.settings, &value);
             Mark::ALL
         }
         "preferences" => {
@@ -741,7 +848,7 @@ fn initialize() {
                 d.dashboard = obj(&result["dashboard"]);
                 // The host opened the client store before answering.
                 d.profiles = stored_profiles().unwrap_or_else(|| rows(&result["profiles"]));
-                d.settings = obj(&result["settings"]);
+                d.settings = service_settings(&d.settings, &result["settings"]);
                 d.preferences = stored_preferences().unwrap_or_else(|| obj(&result["preferences"]));
                 if result["lan"].is_object() {
                     d.lan = obj(&result["lan"]);

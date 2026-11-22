@@ -22,13 +22,13 @@
 | 界面偏好（主题、配色、仪表盘卡片、代理页布局……）及校验 | `bridge/BoxPreferences.kt`、`BoxBridge.setPreferences`（SharedPreferences `flclash_ui` 的 `value`） | Rust client-core `preferences` | **2a** |
 | 备份身份 `backupOrigin` | SharedPreferences `flclash_ui` | Rust client-core `storage` | **2a**（存储） |
 | Room 数据库、SharedPreferences 到新存储的迁移 | — | Rust client-core `legacy` | **2a** |
-| 服务设置的校验与组装（`BoxSettings.validate`、`BoxBridge.settings()/patchSettings`） | `bridge/BoxSettings.kt`、`BoxBridge.kt` | Rust client-core（副作用——扫描应用、切换查询方式、重启服务——留 Kotlin） | 2e |
+| 服务设置的校验与组装（`BoxSettings.validate`、`BoxBridge.settings()/patchSettings`） | 已迁：client-core `service_settings.rs`（快照、校验、`plan`、原子写入）；`bridge/BoxSettings.kt` 已删；`BoxBridge.patchSettings` 只按 `plan` 做副作用（切换查询方式、扫描应用）再调 Rust 写入，之后重读启动参数、重排 geo 任务；电池优化豁免由 Kotlin 附加 | Rust client-core（副作用——扫描应用、切换查询方式、重启服务——留 Kotlin） | **2c**（原计划 2e） |
 | 订阅下载、请求头（UA）、`subscription-userinfo`/`profile-update-interval`/`profile-web-page-url` 解析 | 已迁：client-core `subscription.rs`（解析、元数据、拉取流程）；Kotlin 留 `utils/HTTPClient.kt` 的 UA 规则与 `database/CoreKernel.kt` 的 `fetch`（调 Go `ui_subscription.go`） | 头解析与元数据计算 → Rust；HTTP 请求本身仍经 libbox（Android 证书库） | **2b** |
 | 订阅自动更新调度、亮屏补更新 | 已迁：client-core `subscription::schedule`/`due`/`is_due`/`update_all`；`bg/UpdateProfileWork.kt` 只剩 WorkManager 入队、亮屏广播与熄屏推迟（Android 电源状态） | 调度策略 → Rust；WorkManager 入口留 Kotlin | **2b** |
 | JSON 数组配置拆分后的命名与跟随（`ProfileArray`） | 已迁：client-core `profile_array.rs`；`database/ProfileArray.kt` 只剩数据类与调用；拆分本身仍是 Go `SplitCoreConfigArray` | Rust | **2b** |
 | 配置保存流程（修订号检查、原子写入、失败回滚，`ProfileChange`/`ProfileContent`/`BoxProfiles`） | 内容替换（编辑保存、手动/自动订阅更新）已迁 client-core `content.rs`；服务应用与恢复（`ProfileChange`、`replaceLocked` 外壳）留 Kotlin；新建/编辑表单保存 `BoxProfiles.saveLocked`、`saveAll`、删除仍在 Kotlin | 流程与文件写入 → Rust；内核校验/格式化调用 Go | **2b**（替换）/2e（表单保存） |
-| 路由规则数据模型、校验、序列化（`CoreRouting`） | `bridge/CoreRouting.kt` | Rust；按内核编译仍在 Go `core_routing*.go` | 2c |
-| Geo 资源 URL 策略与更新间隔 | `bg/GeoResources.kt`（`GeoPolicy`）、`bg/UpdateGeoWork.kt` | 策略 → Rust；下载与文件放置仍经 Go `core_geo.go` | 2c |
+| 路由规则数据模型、校验、序列化（`CoreRouting`） | 已迁：client-core `routing.rs`（界面路由页的重复副本一并改用它）；`bridge/CoreRouting.kt` 已删 | Rust；按内核编译仍在 Go `core_routing*.go` | **2c** |
+| Geo 资源 URL 策略与更新间隔 | 已迁：client-core `geo.rs`（`needed`、`should_extract`、`due`/`schedule`、地址读写与校验）；`bg/GeoResources.kt` 的 `GeoPolicy` 只剩清单与记录文件的数据类和对 Rust 的调用，`UpdateGeoWork.kt` 只剩 WorkManager 入口 | 策略 → Rust；下载与文件放置仍经 Go `core_geo.go` | **2c** |
 | 备份打包/校验/恢复（`bbox-1`） | `bridge/BoxBackups.kt` | Rust | 2d |
 | WebDAV 账号与上传/下载 | `bridge/BoxWebDAV.kt`（SharedPreferences `bbox_webdav`）；Go `ui_http.go`（请求） | 账号与流程 → Rust；密码加密留 Kotlin（`utils/SecretBox.kt`，Android Keystore） | 2d |
 | 更新检查（GitHub Release 元数据、版本比较） | `bridge/BoxUpdates.kt` | Rust | 2d |
@@ -56,11 +56,11 @@
 
 1. **2a 存储层**（本 PR）：`client-core` 的 SQLite 存储（设置键值、配置元数据、远程服务器、界面偏好），首次启动从 Room `profiles.db`/`settings.db` 与 SharedPreferences `flclash_ui` 一次性迁移；Kotlin 的 `Settings`/`ProfileManager`/`RemoteServerManager` 改为经 JNI 读写同一存储，Room 依赖移除；Rust 界面直接从 `client-core` 读配置列表与界面偏好、写偏好与排序。
 2. **2b 订阅**（`arch/cor-core-p2b`）：头解析、元数据计算、数组拆分命名、自动更新策略迁 Rust；保存/更新流程（修订号、原子写入、回滚）迁 Rust，内核校验仍调 Go。
-3. **2c 路由规则模型与 Geo 策略**：`CoreRouting` 模型与校验、Geo URL 策略迁 Rust；界面直接读写路由规则。
+3. **2c 路由规则模型、Geo 策略与服务设置**（`arch/cor-core-p2c`）：`CoreRouting` 模型与校验、Geo 策略迁 Rust；服务设置快照、校验与写入迁 Rust（2a 收尾），界面直接从 client-core 读服务设置和路由规则，不需要 Android 先动手的设置直接写入。
 4. **2d 备份/WebDAV、更新检查、终端设置**。
-5. **2e 界面控制器**：设置组装/校验、命令分发、状态模型迁 Rust，Kotlin `BoxBridge` 收缩为平台能力的薄层。
+5. **2e 界面控制器**：命令分发、状态模型迁 Rust，Kotlin `BoxBridge` 收缩为平台能力的薄层。
 
-2a 之后界面的“服务设置”快照仍由 Kotlin `BoxBridge.settings()` 组装（数据已在 `client-core` 存储中）：它混有电池优化豁免等 Android 状态，以及路由规则（2c）和 Geo URL（2c）模型的解码，写入还带有应用扫描、包查询方式切换、服务重启等副作用。这部分在 2c/2e 随对应模型一起迁移。
+2a 之后界面的“服务设置”快照仍由 Kotlin `BoxBridge.settings()` 组装；2c 起改由 client-core 组装（见下文 2c 设计要点），Kotlin 只附加电池优化豁免并执行副作用。
 
 ## 2a 设计要点
 
@@ -78,3 +78,17 @@
 - **WorkManager**：`UpdateProfileWork` 取 `subscription.schedule`（周期 ≥15 分钟、首次延迟）与 `subscription.due`，锁内用 `subscription.isDue` 复查，熄屏推迟仍在 Kotlin。
 - **推迟**：新建/编辑表单保存、`saveAll`、删除配置的流程（2e，与界面控制器一起）；备份恢复里的网站地址校验仍在 `ProfileWireFields`（2d）；界面的“全部更新”已是 Rust 页面逻辑，逐个调用 `updateProfile`，筛选规则另有 `subscription::update_all` 供 2e 使用。
 - **已知差异**：无效 UTF-8 的配置文件，Rust 与 Java 的替换字符数量可能不同，导致修订号与 Kotlin 读出的不一致（编辑保存会提示“配置已更改”，重新载入即可）。
+
+## 2c 设计要点
+
+- **模块**：`client-core::routing`（规则模型、校验、存储文本与线格式、`core_json`、预设、条目拆分、端口与包名校验）、`geo`（`needed`、`should_extract`、`is_due`/`due`、`schedule`、`valid_url` 及用户地址的读写）、`service_settings`（快照、`validate`、`plan`、`patch`、`backup`）。`Store::put_settings` 一次写多个设置：独立事务，或在备份恢复已开的事务里一并提交/回滚。
+- **存储不变**：仍是 `settings` 表原来的键和类型码（`routing_rules` 字符串、`geo_urls` 字符串、`geo_*`、`per_app_*` 等），`user_version` 仍为 1，无迁移。`routing_rules` 的文本与 Kotlin（kotlinx，`encodeDefaults`）写出的逐字节相同（`routing::tests::stored_text_matches_what_kotlin_wrote`），`geo_urls` 同样按名称排序、紧凑 JSON，清除地址时写 `""`（与旧版一致）。读取规则同旧 Kotlin 缓存：缺失或类型不符取默认值，整数取 long 的低 32 位，读不出的路由规则视为无规则。因此可直接降级到 2b/2a。
+- **写入路径**：
+  - `service_settings::plan` 校验（与原 `BoxSettings.validate` 相同的规则，外加“至少保留一个内核”，在任何副作用之前检查）并返回 Android 要做的事：`queryMode`（先切换包查询方式，失败时切回）、`scan`（受管模式扫描应用，扫描成功才写入，受管列表仍由 Kotlin 写）、`reloadSetup`、`rescheduleGeo`。
+  - Kotlin `BoxBridge.patchSettings`：刷出缓存的待写入 → `plan` → 副作用 → `patch`（全部或全不）→ 把写入项 `adopt` 进 `StorePreferenceDataStore` 缓存（不再重复写）→ 重读启动参数、按需重排 `UpdateGeoWork` → 发 `settings` 事件。备份恢复、`saveRouting`（含服务重载失败时恢复旧规则的 `ServiceSettingsChange`）、需要自动重启服务的开关都走这里。
+  - 界面（`client-ui` `app::set_setting/set_settings`）：有存储且 `plan.store_only()`（不切换查询方式、不扫描、不需要立即重启服务）时直接调 `service_settings::patch` 写入（恢复事务期间拒绝），再调宿主 `serviceSettingsWritten {written}` 让 Kotlin 收进缓存并重读启动参数/重排 geo 任务；其余情况仍调宿主 `setSetting`/`updateSettings`。
+- **读取路径**：界面 `d.settings` = client-core 快照 + 宿主给的平台状态（目前只有 `batteryExempt`）。宿主的 `ready`、`settings` 事件和设置类调用的返回值都只带平台状态，且发出前先刷出缓存待写入。没有存储（截图工具）时沿用宿主载荷。路由页从快照的 `routingRules` 读（经模型补全默认值），校验、预设、新规则 id、条目拆分都用 `client-core::routing`；Xray 不能按应用分流的检查（`validate_rule_for_core`）也移入模型。服务启动时编译用的规则 JSON 由 `routing.coreJson` 直接读存储（`BoxService`）。
+- **Geo**：`GeoResources` 只做文件：读取 APK 清单、解压、调 libbox 下载、读写 `geo-resources.json`；是否解压、哪些文件到期、内核需要哪些文件、下载地址由 Rust 决定。`UpdateGeoWork` 只按 `geo.schedule` 入队，按 `geo.due` 逐个调下载。`valid_url` 按 `java.net.URI` 的规则重写（方案大小写敏感、服务器型主机、非法字符），测试覆盖了原有用例和若干边界。
+- **删除**：`bridge/CoreRouting.kt`、`bridge/BoxSettings.kt` 及其 JVM 测试（`CoreRoutingTest`、`BoxSettingsTest` 中设置相关部分；偏好校验测试改名为 `BoxPreferencesTest`），`Settings.routingRules/geoAutoUpdate/geoUpdateInterval/geoUrls` 缓存属性。`GeoPolicyTest` 只剩记录文件与清单解析。
+- **推迟**：geo 地址编辑仍经宿主 `geoSetUrl`（需要 libbox 的默认地址，写入本身已在 Rust）；路由预览与可选节点仍经宿主（需要 libbox 编译与读取配置）；`saveRouting` 仍经宿主（运行中需重载服务）。命令分发与状态模型留 2e。
+- **已知差异**：多个设置一次写入现在是原子的（旧 Kotlin 逐个写，中途失败会留下部分写入）；“至少保留一个内核”在切换查询方式/扫描之前就检查。界面直接写入与 Kotlin 收进缓存之间有一次桥调用的间隔，期间服务进程读到的仍是旧值（与旧版异步写入的窗口相当）。
