@@ -21,7 +21,7 @@ if not block:
     sys.exit("StartedServiceServer interface not found in " + str(GRPC))
 methods = [m for m in re.findall(r"^\s+([A-Z]\w*)\(", block.group(1), re.M)]
 handled = set()
-for path in (ROOT / "libbox").glob("*.go"):
+for path in (ROOT / "apps/android/core").glob("*.go"):
     handled |= set(re.findall(r"func \(s \*coreStartedService\) (\w+)\(", path.read_text()))
 allowed = {line.split("#")[0].strip() for line in ALLOW.read_text().splitlines()} - {""}
 

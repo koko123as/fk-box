@@ -18,7 +18,7 @@ import sys
 import urllib.request
 from pathlib import Path
 
-PINS = Path(__file__).resolve().parent.parent / 'app' / 'geo-assets.properties'
+PINS = Path(__file__).resolve().parent.parent / 'apps' / 'android' / 'app' / 'geo-assets.properties'
 
 
 def fetch(url, accept=None):

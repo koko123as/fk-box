@@ -25,9 +25,9 @@ def main():
     shutil.copytree(ROOT / "apps/android/core/httpdebug", targets[0])
     for source in (ROOT / "apps/android/core/route").glob("*.go"):
         shutil.copyfile(source, core / "route" / ("b_box_" + source.name))
-    for source in (ROOT / "libbox").glob("ui_capture*.go"):
+    for source in (ROOT / "apps/android/core").glob("ui_capture*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
-    for source in (ROOT / "libbox").glob("ui_http_rewrite*.go"):
+    for source in (ROOT / "apps/android/core").glob("ui_http_rewrite*.go"):
         shutil.copyfile(source, core / "experimental/libbox" / source.name)
     for source in (ROOT / "apps/android/core/option").glob("*.go"):
         shutil.copyfile(source, core / "option" / source.name)
