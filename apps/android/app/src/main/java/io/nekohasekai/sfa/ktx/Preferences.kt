@@ -1,24 +1,24 @@
 package io.nekohasekai.sfa.ktx
 
-import io.nekohasekai.sfa.database.preference.RoomPreferenceDataStore
+import io.nekohasekai.sfa.database.preference.StorePreferenceDataStore
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KProperty
 
-fun RoomPreferenceDataStore.string(name: String, defaultValue: () -> String = { "" }) = PreferenceProxy(name, defaultValue, ::getString, ::putString)
+fun StorePreferenceDataStore.string(name: String, defaultValue: () -> String = { "" }) = PreferenceProxy(name, defaultValue, ::getString, ::putString)
 
 
-fun RoomPreferenceDataStore.boolean(name: String, defaultValue: () -> Boolean = { false }) = PreferenceProxy(name, defaultValue, ::getBoolean, ::putBoolean)
+fun StorePreferenceDataStore.boolean(name: String, defaultValue: () -> Boolean = { false }) = PreferenceProxy(name, defaultValue, ::getBoolean, ::putBoolean)
 
-fun RoomPreferenceDataStore.int(name: String, defaultValue: () -> Int = { 0 }) = PreferenceProxy(name, defaultValue, ::getInt, ::putInt)
-
-
-
-fun RoomPreferenceDataStore.long(name: String, defaultValue: () -> Long = { 0L }) = PreferenceProxy(name, defaultValue, ::getLong, ::putLong)
+fun StorePreferenceDataStore.int(name: String, defaultValue: () -> Int = { 0 }) = PreferenceProxy(name, defaultValue, ::getInt, ::putInt)
 
 
-fun RoomPreferenceDataStore.stringSet(name: String, defaultValue: () -> Set<String> = { emptySet() }) = PreferenceProxy(name, defaultValue, ::getStringSet, ::putStringSet)
 
-fun RoomPreferenceDataStore.map(name: String, defaultValue: () -> Map<String, String> = { emptyMap() }) = PreferenceProxy(
+fun StorePreferenceDataStore.long(name: String, defaultValue: () -> Long = { 0L }) = PreferenceProxy(name, defaultValue, ::getLong, ::putLong)
+
+
+fun StorePreferenceDataStore.stringSet(name: String, defaultValue: () -> Set<String> = { emptySet() }) = PreferenceProxy(name, defaultValue, ::getStringSet, ::putStringSet)
+
+fun StorePreferenceDataStore.map(name: String, defaultValue: () -> Map<String, String> = { emptyMap() }) = PreferenceProxy(
     name,
     defaultValue,
     { key, default ->

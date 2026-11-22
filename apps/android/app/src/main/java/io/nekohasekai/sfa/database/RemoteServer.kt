@@ -1,21 +1,15 @@
 package io.nekohasekai.sfa.database
 
 import android.os.Parcelable
-import androidx.room.Delete
-import androidx.room.Entity
-import androidx.room.Insert
-import androidx.room.PrimaryKey
-import androidx.room.Query
-import androidx.room.Update
 import kotlinx.parcelize.Parcelize
+import kotlinx.serialization.Serializable
 import java.net.URI
 
-@Entity(
-    tableName = "remote_servers",
-)
+/** A remote control server, kept in the client store ([RemoteServerManager]). */
+@Serializable
 @Parcelize
 class RemoteServer(
-    @PrimaryKey(autoGenerate = true) var id: Long = 0L,
+    var id: Long = 0L,
     var userOrder: Long = 0L,
     var name: String = "",
     var url: String = "",
@@ -74,29 +68,5 @@ class RemoteServer(
             val host = uri.host ?: return urlString
             return if (uri.port != -1) "$host:${uri.port}" else host
         }
-    }
-
-    @androidx.room.Dao
-    interface Dao {
-        @Insert
-        fun insert(server: RemoteServer): Long
-
-        @Update
-        fun update(server: RemoteServer): Int
-
-        @Update
-        fun update(servers: List<RemoteServer>): Int
-
-        @Delete
-        fun delete(server: RemoteServer): Int
-
-        @Query("SELECT * FROM remote_servers WHERE id = :serverId")
-        fun get(serverId: Long): RemoteServer?
-
-        @Query("SELECT * FROM remote_servers ORDER BY userOrder ASC")
-        fun list(): List<RemoteServer>
-
-        @Query("SELECT MAX(userOrder) + 1 FROM remote_servers")
-        fun nextOrder(): Long?
     }
 }

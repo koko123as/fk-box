@@ -92,7 +92,6 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "decodeProfileText" -> decodeProfileText(args.getString("content"), args.optString("name", "Imported profile"))
     "updateProfile" -> updateProfile(args.long("id"))
     "deleteProfile" -> deleteProfile(args.long("id"))
-    "reorderProfiles" -> reorderProfiles(args.list("ids").map { (it as Number).toLong() })
     "importProfileFile" -> importProfileFile()
     "decodeProfileIntent" -> decodeProfileIntent(args.getString("value"))
     "takeIntent" -> takeIntent()
@@ -113,7 +112,6 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "setTrafficVisible" -> setTrafficVisible(args.getBoolean("visible"))
     "clearLogs" -> clearLogs()
     // Settings
-    "setPreferences" -> setPreferences(args.map("values"))
     "setSetting" -> setSetting(args.getString("key"), args.any("value"), args.optBoolean("restart"))
     "saveRouting" -> saveRouting(args.map("value"))
     "routingPreview" -> routingPreview(args.map("draft"))

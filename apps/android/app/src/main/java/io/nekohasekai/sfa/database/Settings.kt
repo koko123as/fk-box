@@ -1,40 +1,22 @@
 package io.nekohasekai.sfa.database
 
-import androidx.room.Room
 import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.ProxyService
 import io.nekohasekai.sfa.bg.VPNService
-import io.nekohasekai.sfa.constant.Path
 import io.nekohasekai.sfa.constant.ServiceMode
 import io.nekohasekai.sfa.constant.SettingsKey
-import io.nekohasekai.sfa.database.preference.KeyValueDatabase
-import io.nekohasekai.sfa.database.preference.RoomPreferenceDataStore
+import io.nekohasekai.sfa.database.preference.StorePreferenceDataStore
 import io.nekohasekai.sfa.ktx.boolean
 import io.nekohasekai.sfa.ktx.int
 import io.nekohasekai.sfa.ktx.long
 import io.nekohasekai.sfa.ktx.map
 import io.nekohasekai.sfa.ktx.string
 import io.nekohasekai.sfa.ktx.stringSet
-import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import java.io.File
 
+/** Service settings, kept in the client store ([CoreStore]). */
 object Settings {
-    @OptIn(DelicateCoroutinesApi::class)
-    private val instance by lazy {
-        Application.application.getDatabasePath(Path.SETTINGS_DATABASE_PATH).parentFile?.mkdirs()
-        Room.databaseBuilder(
-            Application.application,
-            KeyValueDatabase::class.java,
-            Path.SETTINGS_DATABASE_PATH,
-        ).fallbackToDestructiveMigrationOnDowngrade(dropAllTables = false)
-            .enableMultiInstanceInvalidation()
-            .setQueryExecutor { GlobalScope.launch { it.run() } }
-            .build()
-    }
-    val dataStore = RoomPreferenceDataStore { instance.keyValuePairDao() }
+    val dataStore = StorePreferenceDataStore()
     var selectedProfile by dataStore.long(SettingsKey.SELECTED_PROFILE) { -1L }
     var serviceMode by dataStore.string(SettingsKey.SERVICE_MODE) { ServiceMode.NORMAL }
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)

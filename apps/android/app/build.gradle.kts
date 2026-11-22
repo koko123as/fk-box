@@ -14,7 +14,6 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.parcelize")
-    id("com.google.devtools.ksp")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.github.triplet.play")
     alias(libs.plugins.spotless)
@@ -78,11 +77,6 @@ android {
     ndkVersion = "28.0.13004108"
 
     System.getenv("ANDROID_NDK_HOME")?.let { ndkPath = it }
-
-    ksp {
-        arg("room.incremental", "true")
-        arg("room.schemaLocation", "${projectDir}/schemas")
-    }
 
     defaultConfig {
         applicationId = "io.fkbox.app"
@@ -326,7 +320,6 @@ dependencies {
 
     // Both flavors use the same API 24+ backend.
     val lifecycleVersion = "2.11.0"
-    val roomVersion = "2.8.4"
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.11.0")
@@ -339,14 +332,12 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-livedata-core:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:$lifecycleVersion")
     implementation("androidx.lifecycle:lifecycle-process:$lifecycleVersion")
-    implementation("androidx.room:room-runtime:$roomVersion")
     implementation("androidx.work:work-runtime-ktx:2.11.2")
     implementation("androidx.webkit:webkit:1.16.0")
     implementation("androidx.core:core-ktx:1.19.0")
     implementation("com.google.android.material:material:1.14.0")
     // Hosts the Slint UI (android-activity 0.6 pairs with GameActivity 4.4.0; no prefab).
     implementation("androidx.games:games-activity:4.4.0")
-    ksp("androidx.room:room-compiler:$roomVersion")
 
     // Shizuku (play and other flavors, API 24+ only)
     val shizukuVersion = "13.1.5"

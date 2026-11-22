@@ -3,11 +3,8 @@ package io.nekohasekai.sfa.database
 import android.content.Context
 import android.os.Parcel
 import android.os.Parcelable
-import androidx.room.TypeConverter
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.database.TypedProfile.Type.values
-import io.nekohasekai.sfa.ktx.marshall
-import io.nekohasekai.sfa.ktx.unmarshall
 import java.util.Date
 
 class TypedProfile() : Parcelable {
@@ -161,13 +158,5 @@ class TypedProfile() : Parcelable {
         override fun createFromParcel(parcel: Parcel): TypedProfile = TypedProfile(parcel)
 
         override fun newArray(size: Int): Array<TypedProfile?> = arrayOfNulls(size)
-    }
-
-    class Convertor {
-        @TypeConverter
-        fun marshall(profile: TypedProfile) = profile.marshall()
-
-        @TypeConverter
-        fun unmarshall(content: ByteArray) = content.unmarshall(::TypedProfile)
     }
 }
