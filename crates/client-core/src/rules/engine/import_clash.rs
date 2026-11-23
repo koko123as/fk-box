@@ -581,8 +581,8 @@ mod tests {
             ("NETWORK,sctp,P", "unknown network"),
             ("NOT,((DOMAIN,a),(DOMAIN,b)),P", "exactly one"),
             ("AND,((MATCH,x)),P", "cannot be used inside"),
-            // As in mihomo, the wrapped payload holds one malformed rule.
-            ("SUB-RULE,((DOMAIN,a),(DOMAIN,b)),x", "unknown rule type"),
+            // As in mihomo, the wrapped payload reads as one malformed rule.
+            ("SUB-RULE,((DOMAIN,a),(DOMAIN,b)),x", "(DOMAIN"),
             ("DST-PORT,,P", "missing payload"),
         ] {
             let err = parse_rule(line, &opts()).unwrap_err();

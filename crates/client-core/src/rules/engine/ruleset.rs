@@ -689,7 +689,7 @@ mod tests {
         let file = mrs_domain(&["+.example.com", ".sub.test", "exact.org", "*.wild.net"]);
         let MrsContent::Domain(mut keys) = read_mrs(&file).unwrap() else { panic!() };
         keys.sort();
-        assert_eq!(keys, ["*.wild.net", "+.example.com", "+.sub.test", "example.com", "exact.org"]);
+        assert_eq!(keys, ["*.wild.net", "+.example.com", "+.sub.test", "exact.org", "example.com"]);
         let file = mrs_ipcidr(&[("1.0.1.0", "1.0.1.255"), ("2400:3200::", "2400:3200:ffff:ffff:ffff:ffff:ffff:ffff")]);
         assert_eq!(read_mrs(&file).unwrap(), MrsContent::IpCidr(vec!["1.0.1.0/24".into(), "2400:3200::/32".into()]));
         assert!(read_mrs(&zstd_stored(b"MRS\x01\x02")).is_err());
