@@ -41,7 +41,7 @@ const fn field(wire: &'static str, key: &'static str, kind: Kind) -> Field {
     Field { wire, key, kind, writable: true }
 }
 
-const FIELDS: [Field; 20] = [
+const FIELDS: [Field; 21] = [
     field("perAppEnabled", "per_app_proxy_enabled", Kind::Bool(false)),
     field("perAppMode", "per_app_proxy_mode", Kind::Int(PER_APP_EXCLUDE)),
     field("perAppList", "per_app_proxy_list", Kind::Set),
@@ -51,6 +51,7 @@ const FIELDS: [Field; 20] = [
     field("allowBypass", "allow_bypass", Kind::Bool(false)),
     field("autoRedirect", "auto_redirect", Kind::Bool(false)),
     field("dynamicNotification", "dynamic_notification", Kind::Bool(true)),
+    field("killSwitch", "kill_switch", Kind::Bool(false)),
     field("disableDeprecatedWarnings", "disable_deprecated_warnings", Kind::Bool(false)),
     field("singBoxEnabled", "core_sing_box_enabled", Kind::Bool(true)),
     field("xrayEnabled", "core_xray_enabled", Kind::Bool(true)),
@@ -276,7 +277,8 @@ mod tests {
     fn snapshot_has_the_kotlin_defaults() {
         let store = Store::open_in_memory().unwrap();
         let all = snapshot(&store).unwrap();
-        assert_eq!(all.len(), 21);
+        assert_eq!(all.len(), 22);
+        assert_eq!(all["killSwitch"], json!(false));
         assert_eq!(all["perAppMode"], json!(1));
         assert_eq!(all["dynamicNotification"], json!(true));
         assert_eq!(all["oomKillerDisabled"], json!(true));

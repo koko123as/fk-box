@@ -93,7 +93,11 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
     /** A notification as mobile-ffi service_state.rs answers it: `title` and the `text` string resource. */
     fun show(content: JsonObject) {
         val title = content.text("title")
-        val text = if (content.textOrNull("text") == "status_started") R.string.status_started else R.string.status_starting
+        val text = when (content.textOrNull("text")) {
+            "status_started" -> R.string.status_started
+            "kill_switch_blocked" -> R.string.kill_switch_blocked
+            else -> R.string.status_starting
+        }
         lastContent = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(

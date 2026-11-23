@@ -22,6 +22,10 @@ object Settings {
     var startedByUser by dataStore.boolean(SettingsKey.STARTED_BY_USER)
 
     var dynamicNotification by dataStore.boolean(SettingsKey.DYNAMIC_NOTIFICATION) { true }
+
+    // Kill switch (Settings › Service): keep the VPN up and drop traffic while
+    // the core starts or after it fails, instead of letting traffic bypass it.
+    var killSwitch by dataStore.boolean(SettingsKey.KILL_SWITCH) { false }
     var disableDeprecatedWarnings by dataStore.boolean(SettingsKey.DISABLE_DEPRECATED_WARNINGS) { false }
 
     // Cores the user left on (Settings › Core). All three stay linked into

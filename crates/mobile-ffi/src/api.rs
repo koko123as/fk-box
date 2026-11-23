@@ -235,6 +235,8 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         "serviceState.startSucceeded" => crate::service_state::start_succeeded(&args),
         "serviceState.profileCheck" => crate::service_state::profile_check(&args),
         "serviceState.startFailure" => crate::service_state::start_failure(&args),
+        "serviceState.startGuard" => crate::service_state::start_guard(&args),
+        "serviceState.blockedNotification" => crate::service_state::blocked_notification(&args),
         "serviceState.alertText" => crate::service_state::alert_text(&args),
         "serviceState.reloadFallback" => crate::service_state::reload_fallback(&args),
         "serviceState.wifiPermission" => crate::service_state::wifi_permission(&args),

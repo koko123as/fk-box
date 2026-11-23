@@ -44,6 +44,8 @@ fn open_service() {
             native_toggle("Allow VPN bypass", "allowBypass", true, true),
             native_toggle("Auto redirect", "autoRedirect", true, true),
             native_toggle("Dynamic notification", "dynamicNotification", true, true),
+            native_toggle("Kill switch", "killSwitch", false, false)
+                .subtitle(&tr("Block the network while the core is starting or after it fails")),
             Row::item(&tr("Battery optimization"))
                 .subtitle(&tr(if exempt { "Unrestricted" } else { "Allow background operation" }))
                 .key("battery")

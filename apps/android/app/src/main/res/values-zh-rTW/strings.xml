@@ -12,6 +12,7 @@
 
     <!-- Status -->
     <string name="status_starting">啟動中</string>
+    <string name="kill_switch_blocked">斷網保護：網路已阻斷</string>
     <string name="status_started">已啟動</string>
 
     <!-- Dashboard -->
