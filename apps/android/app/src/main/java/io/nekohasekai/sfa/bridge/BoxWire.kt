@@ -7,10 +7,21 @@ import io.nekohasekai.libbox.OutboundGroup
 import org.json.JSONArray
 import org.json.JSONObject
 
+/**
+ * sing-box's display name for an outbound type. Types sing-box has no name for
+ * (mihomo's and Xray's, such as "masque") come back as "Unknown"; show the
+ * core's own type instead, upper-cased when it is a plain protocol word.
+ */
+private fun proxyTypeLabel(type: String): String {
+    val name = Libbox.proxyDisplayType(type)
+    if (name != "Unknown" || type.isBlank()) return name
+    return if (type.all { it.isLetterOrDigit() || it == '-' }) type.uppercase() else type
+}
+
 /** A libbox proxy group as client-core `groups.rs` reads it. */
 internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(
     "tag" to tag,
-    "type" to Libbox.proxyDisplayType(type),
+    "type" to proxyTypeLabel(type),
     "selectable" to selectable,
     "selected" to selected,
     "expanded" to isExpand,
@@ -18,7 +29,7 @@ internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(
         val iterator = items
         while (iterator.hasNext()) {
             val item = iterator.next()
-            add(mapOf("tag" to item.tag, "type" to Libbox.proxyDisplayType(item.type), "delay" to item.urlTestDelay, "testedAt" to item.urlTestTime))
+            add(mapOf("tag" to item.tag, "type" to proxyTypeLabel(item.type), "delay" to item.urlTestDelay, "testedAt" to item.urlTestTime))
         }
     },
 )
