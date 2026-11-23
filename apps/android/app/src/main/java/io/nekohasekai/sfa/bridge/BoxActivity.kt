@@ -36,6 +36,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import java.io.ByteArrayOutputStream
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     val serviceStatus = MutableStateFlow(Status.Stopped)
@@ -694,19 +697,25 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     private fun handleServiceAlert(type: Alert, message: String?) {
-        if (type == Alert.RequestLocationPermission) {
+        // mobile-ffi lifecycle.rs: the location alert retries after the
+        // permission; the others show the service's message or a fallback.
+        val alert = io.nekohasekai.sfa.database.CoreStore.call("lifecycle.alertText") {
+            put("type", type.ordinal)
+            put("message", message)
+        }.jsonObject
+        if (alert["permission"]?.jsonPrimitive?.content == "true") {
             startPending = true
             locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             return
         }
         startPending = false
-        val description = message ?: getString(
-            when (type) {
-                Alert.RequestVPNPermission -> R.string.error_missing_vpn_permission
-                Alert.RequestNotificationPermission -> R.string.notification_permission_required_description
-                Alert.EmptyConfiguration -> R.string.error_empty_configuration
-                Alert.StartCommandServer -> R.string.error_start_command_server
-                Alert.CreateService -> R.string.error_create_service
+        val description = (alert["message"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: getString(
+            when (alert["fallback"]?.jsonPrimitive?.content) {
+                "error_missing_vpn_permission" -> R.string.error_missing_vpn_permission
+                "notification_permission_required_description" -> R.string.notification_permission_required_description
+                "error_empty_configuration" -> R.string.error_empty_configuration
+                "error_start_command_server" -> R.string.error_start_command_server
+                "error_create_service" -> R.string.error_create_service
                 else -> R.string.error_start_service
             },
         )

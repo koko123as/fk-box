@@ -22,12 +22,15 @@
 //!   visibility the Kotlin `BoxBridge` kept (phase 4e3b).
 //! - [`service`]: the routing status, geo notice and per-app package
 //!   decisions of the Kotlin `BoxService` start (phase 4e3b).
+//! - [`lifecycle`]: the `BoxService` start and stop state machine, alerts
+//!   and foreground notification content (phase 4i1).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
 pub mod bridge;
 pub mod diagnostics;
+pub mod lifecycle;
 pub mod runtime;
 pub mod service;
 pub mod taildrop;

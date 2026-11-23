@@ -66,6 +66,18 @@ native pages and the system capabilities.
      notice, the geo data notice and the per-app package lists for
      `bg/BoxService.kt`. Kotlin keeps the Android calls only.
    - **4e3c** `database/` wrappers (awaiting a decision).
+   - **4i** the `bg/` service host, in the shape of Clash-of-Rust's
+     `TunnelService`, without touching the kernel:
+     - **4i1** the start and stop state machine: mobile-ffi `lifecycle.rs`
+       (`lifecycle.*` in `api.rs`) answers what a start request does in each
+       service state (start, restart once stopped, or only repeat
+       `startForeground`), when a stop goes ahead and what follows it, the
+       empty-configuration check, how a failed step is alerted, whether a
+       failed reload falls back to the last started configuration, the Wi-Fi
+       permission, the alert text a page shows, and the foreground
+       notification's title, text and traffic line (and whether it shows).
+       `bg/BoxService.kt`, `bg/ServiceNotification.kt` and `BoxActivity` keep
+       the state, the libbox calls and the Android notification calls.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

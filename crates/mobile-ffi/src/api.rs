@@ -228,6 +228,19 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         "service.routingStatus" => crate::service::routing_status(&args),
         "service.geoMissing" => crate::service::geo_missing(&args),
         "service.perAppPackages" => crate::service::per_app_packages(&args),
+        // -- the service's start and stop state machine (phase 4i1) ---------
+        "lifecycle.startCommand" => crate::lifecycle::start_command(&args),
+        "lifecycle.stopRequest" => crate::lifecycle::stop_request(&args),
+        "lifecycle.stopFinished" => crate::lifecycle::stop_finished(&args),
+        "lifecycle.startSucceeded" => crate::lifecycle::start_succeeded(&args),
+        "lifecycle.profileCheck" => crate::lifecycle::profile_check(&args),
+        "lifecycle.startFailure" => crate::lifecycle::start_failure(&args),
+        "lifecycle.alertText" => crate::lifecycle::alert_text(&args),
+        "lifecycle.reloadFallback" => crate::lifecycle::reload_fallback(&args),
+        "lifecycle.wifiPermission" => crate::lifecycle::wifi_permission(&args),
+        "lifecycle.notification" => crate::lifecycle::notification(&args),
+        "lifecycle.trafficShown" => crate::lifecycle::traffic_shown(&args),
+        "lifecycle.trafficText" => crate::lifecycle::traffic_text(&args),
         // -- command subscriptions (phase 3b) ------------------------------
         "sessions.plan" => {
             let inputs: sessions::Inputs = if args.is_null() {
