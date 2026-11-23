@@ -161,7 +161,14 @@ pub fn import_list(text: &str, format: SourceFormat) -> Result<ImportResult, Imp
 /// TLS, REALITY, packet encoding and transport of VLESS/VMess/Trojan links
 /// (mihomo's `handleVShareLink`). `sni_key` is `servername` (VLESS/VMess)
 /// or `sni` (Trojan).
-fn v_share(url: &Url, m: &mut Map<String, Value>, sni_key: &str, always_tls: bool, packet: bool, warnings: &mut Vec<String>) -> Result<(), String> {
+fn v_share(
+    url: &Url,
+    m: &mut Map<String, Value>,
+    sni_key: &str,
+    always_tls: bool,
+    packet: bool,
+    warnings: &mut Vec<String>,
+) -> Result<(), String> {
     if url.host.is_empty() {
         return Err("missing host".into());
     }
@@ -269,6 +276,12 @@ fn v_share(url: &Url, m: &mut Map<String, Value>, sni_key: &str, always_tls: boo
         }
         "grpc" => {
             put(m, "grpc-opts", json!({"grpc-service-name": url.get("serviceName")}));
+            if url.get("mode") == "multi" {
+                warnings.push("grpc mode=multi is only used by Xray; the node uses gun (single) mode".to_string());
+            }
+            if !url.get("authority").is_empty() {
+                warnings.push("grpc authority is only used by Xray and was not kept".to_string());
+            }
         }
         other => return Err(format!("transport {other} is not supported in share links")),
     }

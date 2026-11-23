@@ -82,7 +82,10 @@ pub fn from_mihomo(map: Map<String, Value>, notices: &mut Vec<Notice>) -> Result
         return Err(ImportError::new(at, "missing type"));
     }
     if REFUSED_TYPES.contains(&kind.as_str()) {
-        return Err(ImportError::new(at, format!("{kind} nodes are not supported (they run a network stack of their own, not a proxy protocol)")));
+        return Err(ImportError::new(
+            at,
+            format!("{kind} nodes are not supported (they run a network stack of their own, not a proxy protocol)"),
+        ));
     }
     match kind.as_str() {
         "dns" => return Err(ImportError::new(at, "type dns hands connections to mihomo's DNS server; not supported")),

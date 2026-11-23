@@ -61,14 +61,8 @@ jobs:
         run: |
           rustfmt --edition 2021 --check \
             crates/brain-ffi/src/*.rs crates/brain-ffi/benches/*.rs \
-            crates/client-core/src/rules/engine/*.rs
-
-      # Written without a local toolchain (AGENTS.md: no local builds), so the
-      # formatting of config/brain is reported here, not enforced.
-      - name: Format of config/brain (advisory)
-        run: |
-          rustfmt --edition 2021 --check crates/client-core/src/config/brain/*.rs > "$RUNNER_TEMP/fmt-brain.diff" 2>&1 \
-            || echo "::warning::config/brain is not rustfmt-clean ($(grep -c '^Diff in' "$RUNNER_TEMP/fmt-brain.diff") hunks)"
+            crates/client-core/src/rules/engine/*.rs \
+            crates/client-core/src/config/brain/*.rs
 
       - name: Header compiles as C11 (layout static asserts)
         run: gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c crates/brain-ffi/include/fkbox_brain.h
@@ -154,7 +148,6 @@ jobs:
           name: brain-configs
           path: |
             ${{ runner.temp }}/brain-configs
-            ${{ runner.temp }}/fmt-brain.diff
             ${{ runner.temp }}/go-check.log
           if-no-files-found: warn
 

@@ -322,6 +322,8 @@ fn downgrades_and_xray_choices_are_reported() {
     let x = import_text(&format!("vless://{UUID}@x.example.com:443?type=xhttp&security=tls#x")).unwrap();
     assert_eq!(x.nodes[0].implementation(), Implementation::Xray);
     assert_eq!((x.nodes[0].transport.as_str(), x.nodes[0].security), ("xhttp", Security::Tls));
+    let g = import_text(&format!("vless://{UUID}@g.example.com:443?security=tls&type=grpc&serviceName=s&mode=multi#g")).unwrap();
+    assert!(g.notices.iter().any(|n| n.kind == NoticeKind::IgnoredSettings && n.message.contains("mode=multi")), "{:?}", g.notices);
 }
 
 #[test]
@@ -616,7 +618,10 @@ fn error_paths() {
     let mut failures = Vec::new();
     for (name, input, needle) in cases {
         match import_text(&input) {
-            Ok(r) => failures.push(format!("{name}: imported, expected an error containing {needle:?} (nodes {:?})", r.nodes.iter().map(|n| &n.tag).collect::<Vec<_>>())),
+            Ok(r) => failures.push(format!(
+                "{name}: imported, expected an error containing {needle:?} (nodes {:?})",
+                r.nodes.iter().map(|n| &n.tag).collect::<Vec<_>>()
+            )),
             Err(e) => {
                 if !e.to_string().contains(needle) {
                     failures.push(format!("{name}: error {:?} does not contain {needle:?}", e.to_string()));

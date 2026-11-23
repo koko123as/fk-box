@@ -287,8 +287,7 @@ pub fn import(content: &str, loaders: &Loaders) -> Result<ImportResult, ImportEr
         return Err(ImportError::new("subscription", "empty content"));
     }
     if trimmed.starts_with('{') {
-        let config: Value =
-            serde_json::from_str(trimmed).map_err(|e| ImportError::new("subscription", format!("invalid JSON: {e}")))?;
+        let config: Value = serde_json::from_str(trimmed).map_err(|e| ImportError::new("subscription", format!("invalid JSON: {e}")))?;
         return singbox::import_value(&config, loaders.singbox);
     }
     if let Ok(yaml) = serde_yaml::from_str::<Value>(trimmed) {

@@ -81,7 +81,11 @@ fn rewrite_domain_resolver(object: &mut Map<String, Value>, tag: &str, notices: 
         Some(_) => return,
     };
     object.insert("domain_resolver".into(), replacement);
-    notices.push(Notice::new(NoticeKind::IgnoredDns, tag.to_string(), "domain_resolver now uses fkdns (subscription DNS servers are not used)"));
+    notices.push(Notice::new(
+        NoticeKind::IgnoredDns,
+        tag.to_string(),
+        "domain_resolver now uses fkdns (subscription DNS servers are not used)",
+    ));
 }
 
 fn node(kind: &str, tag: String, mut object: Map<String, Value>, endpoint: bool, notices: &mut Vec<Notice>) -> Result<Node, ImportError> {
@@ -178,7 +182,11 @@ pub fn import_value(config: &Value, loader: &dyn RuleSetLoader) -> Result<Import
     }
     let others: Vec<&str> = map.keys().map(String::as_str).filter(|k| !READ_KEYS.contains(k) && *k != "$schema").collect();
     if !others.is_empty() {
-        notices.push(Notice::new(NoticeKind::IgnoredSettings, "config", format!("settings not used (the generator writes its own): {}", others.join(", "))));
+        notices.push(Notice::new(
+            NoticeKind::IgnoredSettings,
+            "config",
+            format!("settings not used (the generator writes its own): {}", others.join(", ")),
+        ));
     }
     let mut nodes = Vec::new();
     let mut groups = Vec::new();
@@ -224,7 +232,10 @@ pub fn import_value(config: &Value, loader: &dyn RuleSetLoader) -> Result<Import
         let kind = object.get("type").and_then(Value::as_str).unwrap_or("").to_string();
         let at = format!("endpoint {tag:?}");
         if REFUSED_ENDPOINTS.contains(&kind.as_str()) {
-            return Err(ImportError::new(at, format!("{kind} endpoints are not supported (they run a network stack of their own, not a proxy protocol)")));
+            return Err(ImportError::new(
+                at,
+                format!("{kind} endpoints are not supported (they run a network stack of their own, not a proxy protocol)"),
+            ));
         }
         if !NATIVE_ENDPOINTS.contains(&kind.as_str()) {
             return Err(ImportError::new(at, format!("unknown endpoint type {kind:?}")));

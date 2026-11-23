@@ -8,9 +8,7 @@ use regex::Regex;
 use serde_json::{Map, Value};
 
 use super::value::{is_zero, scalar_text, Reader};
-use super::{
-    native, validate, Group, GroupKind, GroupParams, ImportResult, Node, Notice, NoticeKind, Rules, SourceFormat, IGNORED_DNS,
-};
+use super::{native, validate, Group, GroupKind, GroupParams, ImportResult, Node, Notice, NoticeKind, Rules, SourceFormat, IGNORED_DNS};
 use crate::rules::engine::import_clash::{self, ClashOptions, ProviderLoader};
 use crate::rules::engine::ImportError;
 
@@ -90,8 +88,7 @@ pub fn import_value(config: &Value, loader: &dyn ProviderLoader) -> Result<Impor
     if DNS_KEYS.iter().any(|k| map.contains_key(*k)) {
         notices.push(Notice::new(NoticeKind::IgnoredDns, "dns", IGNORED_DNS));
     }
-    let others: Vec<&str> =
-        map.keys().map(String::as_str).filter(|k| !READ_KEYS.contains(k) && !DNS_KEYS.contains(k)).collect();
+    let others: Vec<&str> = map.keys().map(String::as_str).filter(|k| !READ_KEYS.contains(k) && !DNS_KEYS.contains(k)).collect();
     if !others.is_empty() {
         notices.push(Notice::new(NoticeKind::IgnoredSettings, "config", format!("client settings not used: {}", others.join(", "))));
     }
@@ -145,13 +142,7 @@ pub fn import_value(config: &Value, loader: &dyn ProviderLoader) -> Result<Impor
         groups.push(group(i, raw, &all_proxies, &type_of, &mut notices)?);
     }
     let router = import_clash::import_value(config, loader, &ClashOptions::default())?;
-    let result = ImportResult {
-        format: SourceFormat::Clash,
-        nodes,
-        groups,
-        rules: Some(Rules { router, host: Vec::new() }),
-        notices,
-    };
+    let result = ImportResult { format: SourceFormat::Clash, nodes, groups, rules: Some(Rules { router, host: Vec::new() }), notices };
     validate(&result)?;
     Ok(result)
 }
@@ -261,7 +252,11 @@ fn group(
     params.hidden = r.boolean("hidden").map_err(err)?;
     params.icon = r.string("icon").map_err(err)?;
     if let Some(fallback) = r.string("empty-fallback").map_err(err)? {
-        notices.push(Notice::new(NoticeKind::IgnoredSettings, name.clone(), format!("empty-fallback {fallback:?} is not used yet (stage 5)")));
+        notices.push(Notice::new(
+            NoticeKind::IgnoredSettings,
+            name.clone(),
+            format!("empty-fallback {fallback:?} is not used yet (stage 5)"),
+        ));
     }
     let left = r.leftovers();
     if !left.is_empty() {
