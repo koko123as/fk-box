@@ -25,6 +25,8 @@
 //! - [`lifecycle`]: the `BoxService` start and stop state machine, alerts
 //!   and foreground notification content (phase 4i1).
 //! - [`tun`]: what the VPN interface is built with (phase 4i2).
+//! - [`network`]: default network changes: reconnects, system DNS and the
+//!   callback kind (phase 4i3).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
@@ -32,6 +34,7 @@ pub mod api;
 pub mod bridge;
 pub mod diagnostics;
 pub mod lifecycle;
+pub mod network;
 pub mod runtime;
 pub mod service;
 pub mod taildrop;

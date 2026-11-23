@@ -84,6 +84,13 @@ native pages and the system capabilities.
        servers, routes (`IpPrefix` routes and exclusions from Android 13,
        route ranges before), allowed and disallowed apps and the HTTP proxy.
        `bg/VPNService.kt` keeps `VpnService.Builder` and `establish`.
+     - **4i3** default network changes: mobile-ffi `network.rs`
+       (`network.*`) decides when the core is told to reconnect (a switch
+       between two networks, not updates of the same one or a lost network),
+       the system DNS line for the core and which `ConnectivityManager`
+       callback tracks the default network per Android version.
+       `bg/DefaultNetworkMonitor.kt` and `bg/DefaultNetworkListener.kt` keep
+       the callbacks, link property reads and libbox calls.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

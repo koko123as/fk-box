@@ -243,6 +243,10 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         "lifecycle.trafficText" => crate::lifecycle::traffic_text(&args),
         // -- the VPN interface (phase 4i2) -----------------------------------
         "tun.plan" => crate::tun::plan(&args),
+        // -- default network changes (phase 4i3) ----------------------------
+        "network.update" => crate::network::update(&args),
+        "network.systemDns" => crate::network::system_dns(&args),
+        "network.callback" => crate::network::callback(&args),
         // -- command subscriptions (phase 3b) ------------------------------
         "sessions.plan" => {
             let inputs: sessions::Inputs = if args.is_null() {

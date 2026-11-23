@@ -8,25 +8,25 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.activity.enableEdgeToEdge
+import com.google.androidgamesdk.GameActivity
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
 import io.nekohasekai.sfa.bg.ServiceNotification
-import com.google.androidgamesdk.GameActivity
-import kotlinx.coroutines.CancellationException
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -35,10 +35,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
-import java.io.ByteArrayOutputStream
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import java.io.ByteArrayOutputStream
 
 open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     val serviceStatus = MutableStateFlow(Status.Stopped)

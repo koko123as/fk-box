@@ -11,11 +11,11 @@ import android.util.Log
 import androidx.annotation.RequiresApi
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.Notification
-import io.nekohasekai.libbox.TunOptions
-import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.libbox.RoutePrefixIterator
 import io.nekohasekai.libbox.StringIterator
+import io.nekohasekai.libbox.TunOptions
 import io.nekohasekai.sfa.database.CoreStore
+import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.toList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
