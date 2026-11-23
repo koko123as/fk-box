@@ -66,7 +66,16 @@ native pages and the system capabilities.
      notice, the geo data notice and the per-app package lists for
      `bg/BoxService.kt`. Kotlin keeps the Android calls only.
    - **4e3c** `database/` wrappers (awaiting a decision).
-6. **4f** `apps/android/core` as its own Go module.
+6. **4f** `apps/android/core` as its own Go module
+   (`github.com/koko123as/fk-box/apps/android/core`): go.mod/go.sum pin
+   sing-box (replaced by the patched `.core/`), Xray, libXray, mihomo and
+   Goja; `tools.go` records the bound packages. gomobile binds
+   `github.com/sagernet/sing-box/experimental/libbox` from this module with
+   the upstream build_libbox flags plus `cmfa`, and the Go tests run from it.
+   The fk-box sources still compile inside sing-box's libbox package (they
+   use its private symbols), so setup-core keeps copying them; the exported
+   Go API is unchanged. Moving to the upstream exported API (no overlay) is
+   left for a later slice; JSON-string APIs are 4h.
 7. **4g** cleanup, docs, release APK.
 
 4d and 4f change kernel communication and packaging; they need a device pass

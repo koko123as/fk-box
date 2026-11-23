@@ -176,7 +176,7 @@ Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm6
 
 CI 缓存（均为 GitHub Actions 缓存，不含密钥或签名文件）：
 
-- `libbox.aar`：[build-libbox](.github/actions/build-libbox/action.yml) 以平台、`version.properties` 中的核心/Go/Xray/mihomo/libXray 版本（不含每次发布都改写的 `VERSION_NAME`/`VERSION_CODE`）以及 `apps/android/core/**`、`tools/patch_*.py` 和两个共享 Action 文件的哈希为键；命中时跳过 sing-box 检出、补丁、`go mod tidy` 与 gomobile 构建，未命中时构建后立即保存（之后的应用构建失败也保留）。
+- `libbox.aar`：[build-libbox](.github/actions/build-libbox/action.yml) 以平台、`version.properties` 中的核心/Go/Xray/mihomo/libXray 版本（不含每次发布都改写的 `VERSION_NAME`/`VERSION_CODE`）以及 `apps/android/core/**`、`tools/patch_*.py` 和两个共享 Action 文件的哈希为键；命中时跳过 sing-box 检出、补丁、模块检查与 gomobile 构建，未命中时构建后立即保存（之后的应用构建失败也保留）。
 - Go：[setup-core](.github/actions/setup-core/action.yml) 关闭 setup-go 自带缓存（只按上游 `go.sum` 取键且无回退），改用 `actions/cache` 缓存模块与构建缓存，键为用途（`test` 或 `libbox-<平台>`）、Go 版本、上述版本集合及该 Action 文件哈希，可回退到同 Go 版本的旧缓存。
 - Rust：`Swatinem/rust-cache` 缓存 `~/.cargo`（含 `cargo-ndk`）与 `target/`，在安装 `cargo-ndk` 之前恢复；键随 `Cargo.lock` 与 rustc 版本变化。Slint 的 Skia 预编译包由 `skia-bindings` 下载到其 `OUT_DIR`（`target/<目标>/release/build/skia-bindings-*/out`，下载文件在 `.cache/`），依赖的构建输出随该缓存保留，命中时不再下载；不使用指向本地文件的 `SKIA_BINARIES_URL`，因为文件名不匹配时 `skia-bindings` 会退回从源码完整构建 Skia。`ui-slint` 自身与 `vendor/` 中的 Slint 补丁 crate 仍每次重新编译。
 - Gradle：`gradle/actions/setup-gradle`，`main` 与 `ui/*` 分支写入，其他分支只读；内置地理数据的下载目录 `.gradle/geo-assets` 按 [geo-assets.properties](apps/android/app/geo-assets.properties) 的哈希缓存。

@@ -54,8 +54,8 @@ runs:
       run: |
         echo "modcache=$(go env GOMODCACHE)" >> "$GITHUB_OUTPUT"
         echo "buildcache=$(go env GOCACHE)" >> "$GITHUB_OUTPUT"
-    # Saved once per module set (core tag, pinned cores, this file's go.mod
-    # edits); a newer set starts from the closest older cache. Go's build cache
+    # Saved once per module set (core tag, pinned cores, this file and
+    # apps/android/core/go.sum); a newer set starts from the closest older cache. Go's build cache
     # is content-addressed, so objects restored from an older run are only
     # reused when their inputs match.
     - uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
@@ -63,7 +63,7 @@ runs:
         path: |
           ${{ steps.goenv.outputs.modcache }}
           ${{ steps.goenv.outputs.buildcache }}
-        key: go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-${{ steps.versions.outputs.deps_key }}-${{ hashFiles('.github/actions/setup-core/action.yml') }}
+        key: go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-${{ steps.versions.outputs.deps_key }}-${{ hashFiles('.github/actions/setup-core/action.yml', 'apps/android/core/go.sum') }}
         restore-keys: |
           go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-${{ steps.versions.outputs.deps_key }}-
           go-${{ runner.os }}-${{ inputs.cache-purpose }}-go${{ steps.versions.outputs.go_version }}-
@@ -76,66 +76,47 @@ runs:
         python3 tools/patch_httpdebug.py .core
         python3 tools/patch_multicore.py .core
         python3 tools/patch_dns_count.py .core
-        cp apps/android/core/ui_*.go .core/experimental/libbox/
-    - name: Resolve the pinned HTTP rewrite runtime
+        cp apps/android/core/ui_*.go apps/android/core/core_*.go .core/experimental/libbox/
+    - name: Check the core module
       shell: bash
-      working-directory: .core
+      working-directory: apps/android/core
+      # apps/android/core is its own Go module (go.mod/go.sum). It requires the
+      # matching sing-box tag, replaced by the patched checkout above (.core,
+      # with the fk-box libbox sources copied in), and pins Xray, libXray,
+      # mihomo and goja; the Android build and the Go tests run from here. The
+      # module set is committed, so nothing is resolved at build time.
       env:
         GOTOOLCHAIN: local
       run: |
-        go mod edit -go=1.26.0 -require=github.com/dop251/goja@v0.0.0-20261102223426-a177d211bf60
-        go mod tidy
-    - name: Resolve the pinned Xray and mihomo cores
-      shell: bash
-      working-directory: .core
-      # The multi-core files are copied only now: if the tidy above saw their
-      # imports it would resolve the newest Xray/libXray instead of the pinned
-      # ones, and minimal version selection would keep a newer xtls/reality.
-      # Xray >= 26.9 raises the go directive to 1.27 here (GO_VERSION covers it).
-      env:
-        GOTOOLCHAIN: local
-      run: |
-        cp ../apps/android/core/core_*.go experimental/libbox/
-        # mihomo is embedded the way ClashMetaForAndroid embeds it (cmfa tag):
-        # the app supplies system DNS, and no package-list reader needs root.
-        grep -q '"tfogo_checklinkname0")' cmd/internal/build_libbox/main.go
-        sed -i 's/"tfogo_checklinkname0")/"tfogo_checklinkname0", "cmfa")/' cmd/internal/build_libbox/main.go
-        xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
-        libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../version.properties | tr -d '\r')
-        mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../version.properties | tr -d '\r')
+        # The fk-box sources compile inside sing-box's libbox package, so the
+        # sing-box module gets this module's language version.
+        go_directive=$(go mod edit -json | jq -r .Go)
+        go -C ../../../.core mod edit -go="$go_directive"
+        core_version=${{ steps.versions.outputs.core_version }}
+        xray=$(sed -n 's/^XRAY_MODULE_VERSION=//p' ../../../version.properties | tr -d '\r')
+        libxray=$(sed -n 's/^LIBXRAY_MODULE_VERSION=//p' ../../../version.properties | tr -d '\r')
+        mihomo=$(sed -n 's/^MIHOMO_VERSION=//p' ../../../version.properties | tr -d '\r')
         [[ "$libxray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$xray" =~ ^v[0-9][0-9A-Za-z.+-]*$ ]]
         [[ "$mihomo" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
-        cp go.mod ../core-go.mod.before
-        go mod edit -require=github.com/xtls/xray-core@"$xray" -require=github.com/xtls/libxray@"$libxray"
-        go mod tidy
-        # Resolve Xray/libXray before mihomo enters the module graph so each
-        # core's dependency impact can be reviewed separately.
+        # go.mod and go.sum must match the sources (fails when an import was
+        # added or removed without go mod tidy).
+        go mod tidy -diff
+        test "$(go mod edit -json | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing-box") | .Version')" = "v$core_version"
+        test "$(go mod edit -json | jq -r '.Replace[] | select(.Old.Path=="github.com/sagernet/sing-box") | .New.Path')" = "../../../.core"
         test "$(go list -m -f '{{.Version}}' github.com/xtls/xray-core)" = "$xray"
         test "$(go list -m -f '{{.Version}}' github.com/xtls/libxray)" = "$libxray"
+        test "$(go list -m -f '{{.Version}}' github.com/metacubex/mihomo)" = "v$mihomo"
+        test "$(go list -m -f '{{.Version}}' github.com/dop251/goja)" = "v0.0.0-20261102223426-a177d211bf60"
         xray_reality=$(curl -fsSL "https://proxy.golang.org/github.com/xtls/xray-core/@v/$xray.mod" | awk '$1=="github.com/xtls/reality" {print $2}')
         test "$(go list -m -f '{{.Version}}' github.com/xtls/reality)" = "$xray_reality"
-        cp go.mod ../core-go.mod.after-xray
-        diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             <(go mod edit -json ../core-go.mod.after-xray | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             | sed -n 's/^> //p' > ../core-module-bumps-xray.txt || true
-        # Add mihomo only after taking the Xray snapshot; report its incremental
-        # impact as well as the combined change from the sing-box baseline.
-        go mod edit -require=github.com/metacubex/mihomo@v"$mihomo"
-        go mod tidy
-        test "$(go list -m -f '{{.Version}}' github.com/metacubex/mihomo)" = "v$mihomo"
-        diff <(go mod edit -json ../core-go.mod.after-xray | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             <(go mod edit -json go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             | sed -n 's/^> //p' > ../core-module-bumps-mihomo.txt || true
-        diff <(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             <(go mod edit -json go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
-             | sed -n 's/^> //p' > ../core-module-bumps.txt || true
         # The core must stay on the sing-box module versions it was released with.
-        test "$(go list -m -f '{{.Version}}' github.com/sagernet/sing)" = "$(go mod edit -json ../core-go.mod.before | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing") | .Version')"
+        upstream_sing=$(go mod edit -json ../../../.core/go.mod | jq -r '.Require[] | select(.Path=="github.com/sagernet/sing") | .Version')
+        test "$(go list -m -f '{{.Version}}' github.com/sagernet/sing)" = "$upstream_sing"
+        diff <(go mod edit -json ../../../.core/go.mod | jq -r '.Require[] | "\(.Path) \(.Version)"' | sort) \
+             <(go mod edit -json | jq -r '.Require[] | select(.Path!="github.com/sagernet/sing-box") | "\(.Path) \(.Version)"' | sort) \
+             | sed -n 's/^> //p' > ../../../core-module-bumps.txt || true
         {
-          echo "Shared/new module requirements added or raised by Xray $xray + libXray $libxray: $(wc -l < ../core-module-bumps-xray.txt)"
-          cat ../core-module-bumps-xray.txt
-          echo "Additional shared/new module requirements added or raised by mihomo v$mihomo: $(wc -l < ../core-module-bumps-mihomo.txt)"
-          cat ../core-module-bumps-mihomo.txt
-          echo "Combined module impact: $(wc -l < ../core-module-bumps.txt) requirement changes"
+          echo "Module requirements added or raised over sing-box $core_version by Xray $xray, libXray $libxray, mihomo v$mihomo and goja: $(wc -l < ../../../core-module-bumps.txt)"
+          cat ../../../core-module-bumps.txt
         } | tee -a "$GITHUB_STEP_SUMMARY"

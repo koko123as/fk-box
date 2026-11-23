@@ -18,8 +18,8 @@ runs:
   using: composite
   steps:
     # libbox.aar depends only on the core tag, the Go/Xray/mihomo pins, the
-    # patches and Go extensions under apps/android/core/, the patch scripts and these two
-    # actions (NDK, gomobile steps). The app's VERSION_NAME/CODE are not part
+    # fk-box core module under apps/android/core/ (sources, patches, go.mod and
+    # go.sum), the patch scripts and these two actions (NDK, gomobile steps). The app's VERSION_NAME/CODE are not part
     # of it, so a release that only bumps them reuses the cached AAR.
     - id: inputs
       name: Key the libbox inputs
@@ -61,27 +61,57 @@ runs:
           ndk;28.0.13004108
           ndk;28.2.13676358
           ndk;30.0.16248370
+    # gomobile binds sing-box's libbox package (with the fk-box sources) from
+    # the fk-box core module, apps/android/core, so the module set is the one
+    # committed in its go.mod/go.sum. Flags and tags follow sing-box's
+    # cmd/internal/build_libbox (Android, no legacy variant), plus cmfa: mihomo
+    # is embedded the way ClashMetaForAndroid embeds it (the app supplies
+    # system DNS, and no package-list reader needs root).
     - name: Build Android libbox
       if: steps.aar.outputs.cache-hit != 'true'
       shell: bash
-      working-directory: .core
+      working-directory: apps/android/core
       env:
         LIBBOX_PLATFORM: ${{ inputs.platform }}
+        GOTOOLCHAIN: local
       run: |
         case "$LIBBOX_PLATFORM" in
           android/arm64) ;;
           *) echo "Unsupported Android platform: $LIBBOX_PLATFORM" >&2; exit 1 ;;
         esac
+        java --version 2>&1 | grep 'openjdk 17'
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-        make lib_install
-        libbox_go_bin="$(go env GOPATH)/bin"
-        export PATH="$PATH:$libbox_go_bin"
-        go run ./cmd/internal/build_libbox -target android -platform "$LIBBOX_PLATFORM"
-        test ! -e libbox-legacy.aar
-        mkdir -p ../apps/android/app/libs
-        cp libbox.aar ../apps/android/app/libs/libbox.aar
-        size=$(stat -c %s libbox.aar)
-        so=$(unzip -l libbox.aar | awk '/libbox\.so/ {print $1}')
+        test -f "$ANDROID_NDK_HOME/source.properties"
+        export ANDROID_SDK_HOME="$ANDROID_HOME" NDK="$ANDROID_NDK_HOME"
+        export PATH="$PATH:$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin"
+        make -C ../../../.core lib_install
+        export PATH="$PATH:$(go env GOPATH)/bin"
+        tags=with_quic,with_wireguard,with_utls,with_naive_outbound,with_clash_api,with_usbip,with_openvpn,with_openconnect,badlinkname,tfogo_checklinkname0,with_tailscale,ts_omit_logtail,ts_omit_ssh,ts_omit_drive,ts_omit_taildrop,ts_omit_webclient,ts_omit_doctor,ts_omit_capture,ts_omit_kube,ts_omit_aws,ts_omit_synology,ts_omit_bird
+        # Fail when sing-box's own Android tag list no longer matches.
+        upstream=$(sed -n 's/^\s*sharedTags = append(sharedTags, \(.*\))$/\1/p' ../../../.core/cmd/internal/build_libbox/main.go | tr -d '" ' | paste -sd, -)
+        test "$upstream" = "$tags"
+        tags="$tags,cmfa"
+        # Version string as sing-box's build_shared.ReadTag gives it.
+        core_tag=$(git -C ../../../.core describe --tags 2>/dev/null || true)
+        core_rev=$(git -C ../../../.core describe --tags --abbrev=0 2>/dev/null || true)
+        if [ -z "$core_tag" ]; then
+          core_version=unknown
+        elif [ "$core_tag" = "$core_rev" ]; then
+          core_version=${core_tag#v}
+        else
+          core_version=${core_rev#v}-$(git -C ../../../.core rev-parse --short HEAD)
+        fi
+        echo "libbox version: $core_version"
+        out="$RUNNER_TEMP/libbox"
+        rm -rf "$out" && mkdir -p "$out"
+        gomobile bind -v -o "$out/libbox.aar" -target "$LIBBOX_PLATFORM" -androidapi 24 \
+          -javapkg=io.nekohasekai -libname=box -trimpath -buildvcs=false \
+          -ldflags "-X github.com/sagernet/sing-box/constant.Version=$core_version -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid=" \
+          -tags "$tags" github.com/sagernet/sing-box/experimental/libbox
+        mkdir -p ../app/libs
+        cp "$out/libbox.aar" ../app/libs/libbox.aar
+        size=$(stat -c %s ../app/libs/libbox.aar)
+        so=$(unzip -l ../app/libs/libbox.aar | awk '/libbox\.so/ {print $1}')
         echo "libbox.aar: $size bytes, jni/arm64-v8a/libbox.so: $so bytes"
         {
           echo "### libbox (sing-box + Xray + mihomo)"

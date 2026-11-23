@@ -37,7 +37,7 @@
 | `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、界面 JNI（`jni_host.rs`）、客户端存储 JNI（`jni_store.rs`，供 Kotlin `database/CoreStore.kt`，并回调 `database/CoreKernel.kt`）、logcat 初始化，以及驱动 Slint 组件树的展示层（`app.rs`、`nav.rs`、`rows.rs`、`forms.rs`、`pages/`；主机截图工具 `examples/shot.rs`，`--features shot`） |
 | `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
 | `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |
-| `apps/android/core/` | libbox 的 Go 多内核适配与补丁（由 `.github/actions/setup-core` 和 `tools/patch_*.py` 叠加到 sing-box 源码） |
+| `apps/android/core/` | 独立 Go 模块 `github.com/koko123as/fk-box/apps/android/core`（`go.mod`/`go.sum` 固定 sing-box 与 Xray、libXray、mihomo 的模块图，sing-box `replace` 到打过补丁的 `.core/`）：libbox 的 Go 多内核适配与补丁（源码由 `.github/actions/setup-core` 和 `tools/patch_*.py` 叠加到 sing-box 的 `experimental/libbox`），gomobile 绑定与 Go 测试均在此模块中运行（[libbox.md](libbox.md#go-模块)） |
 | `vendor/` | 带 fk-box 补丁的 Slint crate（`FKBOX-PATCH.md`），经根 `Cargo.toml` 的 `[patch.crates-io]` 使用 |
 | `tools/`、`config/`、`examples/`、`licenses/` | 脚本、detekt 配置、示例与许可 |
 
