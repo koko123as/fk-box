@@ -23,7 +23,9 @@ Stage 1 (this document) adds only the contract and the Rust side:
   `decide`).
 
 Nothing is wired into the Android app or the Go code yet; `main`'s runtime
-behaviour is unchanged. The host side (Go: `box.Context`, the fkbrain
+behaviour is unchanged. Stage 2 (configuration import and the generated
+sing-box configuration, the plugin option contract) is
+[brain-config.md](brain-config.md). The host side (Go: `box.Context`, the fkbrain
 outbound, the cgo bridge) is later work.
 
 ## Why a crate of its own
@@ -173,8 +175,14 @@ can add a request id.
 
 ## Host prerequisites
 
-- Sniff before `decide` (sing-box `sniff` rules run in the host; the
-  sing-box importer returns them as host directives).
+- fkbrain sniffs before `decide`, itself. The generated configuration has no
+  `route.rules` ([brain-config.md](brain-config.md)), and without route rules
+  sing-box neither sniffs nor hijacks DNS, so fkbrain calls the public
+  `common/sniff.PeekStream` / `PeekPacket` on the connection it
+  takes over, and hands DNS traffic to the brain's DNS through
+  `protocol/dns.HandleStreamDNSRequest` / `NewDNSPacketConnection` (stage 3;
+  no patch). sing-box `sniff` rules of an imported configuration are host
+  directives the brain does not need, since fkbrain sniffs every connection.
 - Fill the meta from `adapter.InboundContext`: network, source, destination
   (FQDN → `domain` with `FKB_DOMAIN_FQDN`, otherwise the address and the
   sniffed domain), `ProcessInfo` (uid, package), inbound index, sniffed

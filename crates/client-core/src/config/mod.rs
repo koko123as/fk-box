@@ -5,3 +5,6 @@ pub mod content;
 pub mod service_settings;
 pub mod preferences;
 pub mod remote_servers;
+/// Subscriptions and share links into the brain's model and the minimal
+/// sing-box configuration of the single-kernel design (stage 2).
+pub mod brain;
