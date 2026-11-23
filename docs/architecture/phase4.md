@@ -40,8 +40,13 @@ native pages and the system capabilities.
      forwards their callbacks raw. Losing the service or switching the remote
      target stops every run. `STUNTestViewModel`, `NetworkQualityViewModel`
      and `TailscalePingViewModel` are deleted.
-   - **4e2** status subscriptions (Tailscale, OpenConnect, OpenVPN, USBIP,
-     Taildrop).
+   - **4e2** status subscriptions (Tailscale, OpenConnect, OpenVPN, USBIP).
+     mobile-ffi `tool_status.rs` keeps the lists and checks commands that
+     name a peer, exit node or USBIP server, adding the peer's details
+     (`peerInfo`) for the host; `sessions.rs` plans the `toolStatus` target.
+     Kotlin `bridge/BoxToolStatus.kt` opens the libbox subscriptions and
+     forwards converted updates; the four status ViewModels and
+     `SessionSlot` are gone. The Taildrop inbox stays for 4e3.
    - **4e3** `BoxBridge`, `database/` wrappers and the `BoxService` flow.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.

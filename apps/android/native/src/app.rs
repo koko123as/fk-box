@@ -248,6 +248,15 @@ pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>)
         c.pending.insert(id, Box::new(reply));
         id
     });
+    // A command naming a tool peer, exit node or USBIP server is checked
+    // against the status lists, and gets the peer's details (tool_status.rs).
+    let args = match with_runtime(|rt| rt.tool_status.prepare(method, args)) {
+        Ok(args) => args,
+        Err(error) => {
+            on_reply(id, false, &json!({ "v": error }).to_string());
+            return;
+        }
+    };
     if let Err(error) = host::invoke(id, method, &args.to_string()) {
         on_reply(id, false, &json!({ "v": error }).to_string());
     }
@@ -681,6 +690,11 @@ pub fn on_event(payload: &str) {
             let out = with_runtime(|rt| rt.stream(&value));
             run_outputs(out);
         }
+        // A tool status subscription's update (BoxToolStatus).
+        "toolStatus" => {
+            let out = with_runtime(|rt| rt.tool_status.event(&value));
+            run_outputs(out);
+        }
         // A libbox diagnostic's callback (BoxDiagnostics).
         "diagnostic" => {
             let out = with_runtime(|rt| rt.diagnostics.event(&value));
@@ -1039,7 +1053,7 @@ fn initialize() {
                 if result["lan"].is_object() {
                     d.lan = obj(&result["lan"]);
                 }
-                d.tool_state = obj(&result["tools"]);
+                d.tool_state = obj(&with_runtime(|rt| rt.tool_status.snapshot()));
                 // The diagnostics' defaults (STUN server, quality URL).
                 let (stun, quality) = with_runtime(|rt| {
                     use fkbox_mobile_ffi::diagnostics::Kind;

@@ -29,6 +29,7 @@ use std::collections::VecDeque;
 use serde_json::{json, Map, Value};
 
 use crate::diagnostics::Diagnostics;
+use crate::tool_status::ToolStatus;
 
 /// The most log lines waiting for the UI (the UI keeps no more).
 pub const LOG_LIMIT: usize = 3000;
@@ -89,6 +90,8 @@ struct Logs {
 pub struct Runtime {
     /// The STUN, network quality and Tailscale ping runs (diagnostics.rs).
     pub diagnostics: Diagnostics,
+    /// The Tailscale, OpenConnect, OpenVPN and USBIP lists (tool_status.rs).
+    pub tool_status: ToolStatus,
     /// Whether the service (local, or the remote session) is reachable, and
     /// the remote server's id (0 locally), as last reported.
     target: Option<(bool, i64)>,

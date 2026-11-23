@@ -63,6 +63,9 @@ pub struct Plan {
     pub connections: Target,
     pub log: Target,
     pub remote_monitor: Target,
+    /// The tool status subscriptions (Tailscale, OpenConnect, OpenVPN,
+    /// USBIP) and the outbound list the tool pages offer.
+    pub tool_status: Target,
 }
 
 fn target(connect: bool, remote: Option<i64>) -> Target {
@@ -87,6 +90,7 @@ pub fn plan(inputs: &Inputs) -> Plan {
             local_config: if remote.is_none() { inputs.local_config } else { None },
         },
         remote_monitor: target(remote.is_some() && inputs.foreground, remote),
+        tool_status: target(live, remote),
     }
 }
 
@@ -109,7 +113,7 @@ mod tests {
     #[test]
     fn mode_and_groups_follow_every_page_status_and_lists_follow_their_pages() {
         let p = plan(&local());
-        assert!(p.clash_mode.connect && p.groups.connect);
+        assert!(p.clash_mode.connect && p.groups.connect && p.tool_status.connect);
         assert!(!p.status.connect && !p.connections.connect && !p.log.connect && !p.remote_monitor.connect);
         let p = plan(&Inputs { traffic_visible: true, connections_visible: 2, logs_visible: true, ..local() });
         assert!(p.status.connect && p.connections.connect && p.log.connect);

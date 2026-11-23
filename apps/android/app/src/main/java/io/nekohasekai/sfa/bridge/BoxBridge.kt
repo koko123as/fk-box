@@ -245,7 +245,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             "systemAccentColor" to systemAccentColor(),
             "hostState" to hostState(),
             "settings" to settingsValue,
-            "tools" to toolBridge.snapshot(), "diagnostics" to toolBridge.diagnostics(),
+            "diagnostics" to toolBridge.diagnostics(),
             "intent" to activity.takeIntent(),
         )
     }
@@ -806,7 +806,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     internal fun submitBrowserResult(endpoint: String, challengeID: String, value: io.nekohasekai.sfa.backend.tools.OpenConnectBrowserResultData) {
         scope.launch {
             try {
-                require(toolBridge.openConnect.endpoint(endpoint)?.authChallenge?.id == challengeID) { "Authentication request expired" }
+                require(toolBridge.status.openConnectEndpoint(endpoint)?.authChallenge?.id == challengeID) { "Authentication request expired" }
                 // Keep this response on the session whose challenge was checked.
                 val client = CommandTarget.standaloneClient()
                 withContext(Dispatchers.IO) {

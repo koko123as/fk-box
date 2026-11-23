@@ -39,6 +39,7 @@ object CommandSessions {
         Connections("connections"),
         Log("log"),
         RemoteMonitor("remoteMonitor"),
+        ToolStatus("toolStatus"),
     }
 
     data class Target(val connect: Boolean = false, val remoteServerId: Long? = null, val localConfig: Long? = null)

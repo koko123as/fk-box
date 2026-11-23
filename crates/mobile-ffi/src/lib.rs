@@ -15,12 +15,15 @@
 //!   (dashboard, groups, connections, logs; phase 4d).
 //! - [`diagnostics`]: the STUN, network quality and Tailscale ping runs
 //!   (phase 4e).
+//! - [`tool_status`]: the Tailscale, OpenConnect, OpenVPN and USBIP status
+//!   lists, and the checks of commands that name their entries (phase 4e2).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
 pub mod diagnostics;
 pub mod runtime;
+pub mod tool_status;
 pub mod session;
 pub mod sessions;
 

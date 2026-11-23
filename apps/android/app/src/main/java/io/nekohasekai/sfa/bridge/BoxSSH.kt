@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.sfa.backend.tools.TailscaleStatusViewModel
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.terminal.DEFAULT_SSH_TERMINAL_TYPE
 import io.nekohasekai.sfa.terminal.TailscaleSSHPresentedSession
@@ -12,8 +11,7 @@ import kotlinx.coroutines.launch
 import java.io.Closeable
 
 /** The Slint UI owns presentation; the process-wide Ghostty store owns SSH. */
-internal class BoxSSH(scope: CoroutineScope, private val tailscale: TailscaleStatusViewModel,
-    private val emit: (String, Any?) -> Unit) : Closeable {
+internal class BoxSSH(scope: CoroutineScope, private val emit: (String, Any?) -> Unit) : Closeable {
     private val store = TailscaleSSHSessionStore
     private val watch = scope.launch {
         store.state.collectLatest { state ->
@@ -43,34 +41,34 @@ internal class BoxSSH(scope: CoroutineScope, private val tailscale: TailscaleSta
 
     private fun required(value: String?, key: String) = value ?: error("Missing terminal argument: $key")
 
-    private fun sshPeer(endpoint: String?, peerID: String?) =
-        (tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")).also { peer ->
-            require(peer.sshHostKeys.isNotEmpty()) { "Peer has no authenticated SSH host keys" }
-        }
+    // [peer] is the peerInfo mobile-ffi tool_status.rs checked (the peer
+    // exists and has SSH host keys) and added to the command.
 
-    fun options(endpoint: String?, peerID: String?): Map<String, Any?> {
-        val peer = sshPeer(endpoint, peerID)
+    fun options(peer: Map<String, Any?>): Map<String, Any?> {
+        val stableID = peer.string("stableID")
         return mapOf(
-            "username" to (Settings.tailscaleSSHRememberedUsernames[peer.stableID] ?: "root"),
-            "terminalType" to (Settings.tailscaleSSHRememberedTerminalTypes[peer.stableID] ?: DEFAULT_SSH_TERMINAL_TYPE),
-            "remember" to Settings.tailscaleSSHQuickConnectPeers.contains(peer.stableID),
+            "username" to (Settings.tailscaleSSHRememberedUsernames[stableID] ?: "root"),
+            "terminalType" to (Settings.tailscaleSSHRememberedTerminalTypes[stableID] ?: DEFAULT_SSH_TERMINAL_TYPE),
+            "remember" to Settings.tailscaleSSHQuickConnectPeers.contains(stableID),
         )
     }
 
-    fun start(endpoint: String?, peerID: String?, usernameArgument: String?, terminalTypeArgument: String?, remember: Boolean): Map<String, Any?> {
+    fun start(endpoint: String?, peer: Map<String, Any?>, usernameArgument: String?, terminalTypeArgument: String?, remember: Boolean): Map<String, Any?> {
         val endpointTag = required(endpoint, "endpoint")
-        val peer = sshPeer(endpoint, peerID)
+        val stableID = peer.string("stableID")
+        val hostKeys = (peer["sshHostKeys"] as? List<*>)?.filterIsInstance<String>().orEmpty()
+        require(hostKeys.isNotEmpty()) { "Peer has no authenticated SSH host keys" }
         val username = required(usernameArgument, "username").trim()
         val terminalType = terminalTypeArgument.orEmpty().trim().ifEmpty { DEFAULT_SSH_TERMINAL_TYPE }
         require(username.isNotEmpty() && username.length <= 256 && username.none { it.isISOControl() }) { "Invalid SSH username" }
         require(terminalType.length <= 128 && terminalType.matches(Regex("[A-Za-z0-9._+-]+"))) { "Invalid terminal type" }
-        val address = peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address")
-        Settings.tailscaleSSHRememberedUsernames = Settings.tailscaleSSHRememberedUsernames.toMutableMap().apply { put(peer.stableID, username) }
-        Settings.tailscaleSSHRememberedTerminalTypes = Settings.tailscaleSSHRememberedTerminalTypes.toMutableMap().apply { put(peer.stableID, terminalType) }
+        val address = peer["address"] as? String ?: error("Peer has no address")
+        Settings.tailscaleSSHRememberedUsernames = Settings.tailscaleSSHRememberedUsernames.toMutableMap().apply { put(stableID, username) }
+        Settings.tailscaleSSHRememberedTerminalTypes = Settings.tailscaleSSHRememberedTerminalTypes.toMutableMap().apply { put(stableID, terminalType) }
         Settings.tailscaleSSHQuickConnectPeers = Settings.tailscaleSSHQuickConnectPeers.toMutableSet().apply {
-            if (remember) add(peer.stableID) else remove(peer.stableID)
+            if (remember) add(stableID) else remove(stableID)
         }
-        store.addSession(TailscaleSSHPresentedSession(endpointTag, peer.hostName, address, username, terminalType, peer.sshHostKeys))
+        store.addSession(TailscaleSSHPresentedSession(endpointTag, peer.string("hostName"), address, username, terminalType, hostKeys))
         return snapshot()
     }
 
