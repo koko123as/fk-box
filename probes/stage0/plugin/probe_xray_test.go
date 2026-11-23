@@ -42,7 +42,11 @@ func startXHTTPServer(t *testing.T, port int) func() {
 				"xhttpSettings": map[string]any{"path": "/fk-stage0", "mode": "packet-up"},
 			},
 		}},
-		"outbounds": []any{map[string]any{"protocol": "freedom", "tag": "direct"}},
+		// Freedom behind a VLESS inbound blocks private targets by default
+		// (proxy/freedom getDefaultFinalRule); the fixture echo is on loopback.
+		"outbounds": []any{map[string]any{"protocol": "freedom", "tag": "direct", "settings": map[string]any{
+			"finalRules": []any{map[string]any{"action": "allow", "network": "tcp,udp"}},
+		}}},
 	})
 	if err != nil {
 		t.Fatal(err)
