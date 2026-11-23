@@ -1,0 +1,211 @@
+name: Stage 0 feasibility probe
+
+# Architecture probe only (probes/stage0, own go.mod). It does not build or
+# change the app, libbox or any release artifact.
+on:
+  push:
+    branches: [arch/stage0-probe]
+    paths:
+      - 'probes/stage0/**'
+      - '.github/workflows/stage0-probe.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: stage0-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  probe:
+    name: Probe (items 1-5, arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    defaults:
+      run:
+        shell: bash
+        working-directory: probes/stage0
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Read Go version
+        id: versions
+        working-directory: .
+        run: echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go_version }}
+          cache-dependency-path: probes/stage0/go.sum
+      - name: Rust toolchain
+        run: |
+          if ! command -v cargo >/dev/null; then
+            curl -fsSL https://sh.rustup.rs | sh -s -- -y --profile minimal
+            echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+            export PATH="$HOME/.cargo/bin:$PATH"
+          fi
+          uname -m; go version; cargo --version; rustc --version
+      - name: Build Rust decide callback (staticlib) and run its tests
+        working-directory: probes/stage0/rustcb
+        run: |
+          export PATH="$HOME/.cargo/bin:$PATH"
+          cargo test --quiet
+          cargo build --release
+          ls -l target/release/libfkrustcb.a
+      - name: Module graph is tidy and resolvable
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          go mod download
+          go mod verify
+          go list -m all > ../../probe-mods.txt
+          wc -l ../../probe-mods.txt
+      - name: Items 1-2 (sing-box registry, DNS transport, outbound by tag, brain routing)
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -o pipefail
+          go test -count=1 -v -ldflags=-checklinkname=0 ./plugin -run '^TestProbe(Registry|RegistryFreshContextRejects|ChainDialsByTag|BrainRoutesConnections)$' 2>&1 | tee ../../log-items12.txt
+      - name: Item 3 (mihomo mieru through sing-box dialer)
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -o pipefail
+          go test -count=1 -v -ldflags=-checklinkname=0 ./plugin -run '^TestProbeMihomoMieru$' 2>&1 | tee ../../log-item3.txt
+      - name: Item 4a (Xray XHTTP, RegisterDialerController, own process)
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -o pipefail
+          go test -count=1 -v -ldflags=-checklinkname=0 ./plugin -run '^TestXrayRegisterDialerController$' 2>&1 | tee ../../log-item4a.txt
+      - name: Item 4b (Xray XHTTP, UseAlternativeSystemDialer -> sing-box, own process)
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -o pipefail
+          go test -count=1 -v -ldflags=-checklinkname=0 ./plugin -run '^TestXrayXHTTPAlternativeDialer$' 2>&1 | tee ../../log-item4b.txt
+      - name: Item 5 (Go -> Rust C function pointer, latency)
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+          CGO_ENABLED: '1'
+        run: |
+          set -o pipefail
+          FK_LATENCY_OUT="$GITHUB_WORKSPACE/decide-latency.json" go test -count=1 -v -ldflags=-checklinkname=0 ./ffi -run '^TestFFI' 2>&1 | tee ../../log-item5.txt
+          go test -count=1 -ldflags=-checklinkname=0 ./ffi -run '^$' -bench . -benchtime=2s -benchmem 2>&1 | tee ../../log-item5-bench.txt
+          {
+            echo '### Item 5: decide latency (ubuntu-24.04-arm)'
+            echo '```'
+            grep -E '^LATENCY|^Benchmark' ../../log-item5.txt ../../log-item5-bench.txt | sed 's/^[^:]*://'
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Upstream go.mod files for item 6
+        if: always()
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          mkdir -p ../../gomods
+          for module in github.com/sagernet/sing-box github.com/xtls/xray-core github.com/metacubex/mihomo; do
+            version=$(go list -m -f '{{.Version}}' "$module")
+            path=$(go mod download -json "$module@$version" | jq -r .GoMod)
+            cp "$path" "../../gomods/$(basename "$module").go.mod"
+          done
+          cp go.mod go.sum ../../gomods/
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: stage0-probe
+          path: |
+            log-*.txt
+            decide-latency.json
+            probe-mods.txt
+            gomods/
+          if-no-files-found: warn
+
+  libbox-registry:
+    name: Item 1 in unpatched libbox (arm64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Read versions
+        id: versions
+        run: |
+          echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+          echo "core_version=$(sed -n 's/^CORE_VERSION=//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          repository: SagerNet/sing-box
+          ref: v${{ steps.versions.outputs.core_version }}
+          path: .core-clean
+          persist-credentials: false
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go_version }}
+          cache-dependency-path: .core-clean/go.sum
+      - name: Add the probe test file (no upstream file is modified)
+        run: |
+          cp probes/stage0/libboxinject/fkprobe_inject_test.go.in .core-clean/experimental/libbox/fkprobe_inject_test.go
+          git -C .core-clean status --porcelain
+          test "$(git -C .core-clean status --porcelain | grep -v '^?? experimental/libbox/fkprobe_inject_test.go$' | wc -l)" = 0
+      - name: Run
+        working-directory: .core-clean
+        env:
+          GOTOOLCHAIN: local
+        run: |
+          set -o pipefail
+          go test -count=1 -v -ldflags=-checklinkname=0 ./experimental/libbox -run '^TestFKProbeLibboxRegistry$' 2>&1 | tee ../log-libbox.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: stage0-libbox
+          path: log-libbox.txt
+
+  fkbox-modules:
+    name: Item 6 baseline (current multi-core module graph)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: ./.github/actions/setup-core
+        with:
+          cache-purpose: stage0-arm
+      - name: List the resolved modules
+        working-directory: .core
+        run: go list -m all > ../fkbox-mods.txt && wc -l ../fkbox-mods.txt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage0-fkbox-modules
+          path: |
+            fkbox-mods.txt
+            core-module-bumps*.txt
+
+  deps-report:
+    name: Item 6 report
+    needs: [probe, fkbox-modules]
+    if: always()
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          path: artifacts
+      - name: Build the conflict table
+        run: |
+          ls -R artifacts | head -50
+          fkbox=artifacts/stage0-fkbox-modules/fkbox-mods.txt
+          [ -f "$fkbox" ] || fkbox=""
+          python3 probes/stage0/tools/deps_report.py \
+            artifacts/stage0-probe/gomods/sing-box.go.mod \
+            artifacts/stage0-probe/gomods/xray-core.go.mod \
+            artifacts/stage0-probe/gomods/mihomo.go.mod \
+            artifacts/stage0-probe/probe-mods.txt $fkbox | tee deps-report.md
+          cat deps-report.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: stage0-deps-report
+          path: deps-report.md

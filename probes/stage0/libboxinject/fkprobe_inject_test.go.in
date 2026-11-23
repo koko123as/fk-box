@@ -1,0 +1,61 @@
+// Copied by the stage-0 workflow into an UNPATCHED sing-box checkout at
+// experimental/libbox/ (as a _test.go file only; no upstream file changes).
+// It checks whether libbox's own context can carry extra outbound / DNS
+// transport types.
+package libbox
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/adapter/outbound"
+	"github.com/sagernet/sing-box/dns"
+	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing/service"
+)
+
+type fkProbeOptions struct {
+	Marker string `json:"marker"`
+}
+
+type fkProbeDNSOptions struct {
+	Marker string `json:"marker"`
+}
+
+const fkProbeConfig = `{"outbounds":[{"type":"fkprobe","tag":"p","marker":"x"}],"dns":{"servers":[{"type":"fkprobedns","tag":"d","marker":"y"}]}}`
+
+func TestFKProbeLibboxRegistry(t *testing.T) {
+	// 1. Every baseContext call builds fresh include.*Registry() values
+	//    (config.go baseContext), so a package-external caller has nothing to
+	//    register into: CheckConfig / FormatConfig / NewCommandServer each
+	//    start from a new registry.
+	_, err := parseConfig(baseContext(nil), fkProbeConfig)
+	if err == nil || !strings.Contains(err.Error(), "fkprobe") {
+		t.Fatalf("expected unknown-type error, got %v", err)
+	}
+	if err = CheckConfig(fkProbeConfig); err == nil {
+		t.Fatal("CheckConfig accepted an unregistered type")
+	}
+	t.Logf("PROBE item1 libbox: baseContext/CheckConfig reject plugin types: %v", err)
+
+	// 2. The registries in one context are mutable pointers: registering into
+	//    the ones a given context holds (what CommandServer keeps in its
+	//    unexported ctx field and passes to daemon.StartOrReloadService) makes
+	//    that context accept the type. Reaching CommandServer.ctx requires code
+	//    in package libbox, i.e. a file added to the upstream tree.
+	ctx := baseContext(nil)
+	registry := service.FromContext[adapter.OutboundRegistry](ctx).(*outbound.Registry)
+	outbound.Register[fkProbeOptions](registry, "fkprobe", func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options fkProbeOptions) (adapter.Outbound, error) {
+		return nil, nil
+	})
+	dnsRegistry := service.FromContext[adapter.DNSTransportRegistry](ctx).(*dns.TransportRegistry)
+	dns.RegisterTransport[fkProbeDNSOptions](dnsRegistry, "fkprobedns", func(ctx context.Context, logger log.ContextLogger, tag string, options fkProbeDNSOptions) (adapter.DNSTransport, error) {
+		return nil, nil
+	})
+	if _, err = parseConfig(ctx, fkProbeConfig); err != nil {
+		t.Fatalf("injected types not parsed: %v", err)
+	}
+	t.Logf("PROBE item1 libbox: types registered into a baseContext's registries parse in that context")
+}
