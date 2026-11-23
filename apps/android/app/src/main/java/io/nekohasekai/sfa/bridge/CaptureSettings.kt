@@ -11,7 +11,7 @@ import java.security.KeyStore
 /**
  * Private capture settings, independent of profiles and their service revisions. The file, its
  * one-time upgrade, revision check and atomic writes are client-core's
- * (crates/client-core/src/capture.rs), which validates through the capture engine (libbox, via
+ * (crates/client-core/src/tools/capture.rs), which validates through the capture engine (libbox, via
  * [io.nekohasekai.sfa.database.CoreKernel]); only the retired Keystore key stays here.
  */
 internal class CaptureSettings(private val directory: File, private val retiredKeyAlias: String? = "b_box_http_debug_ca_v1") {

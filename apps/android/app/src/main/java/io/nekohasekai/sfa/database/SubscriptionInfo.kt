@@ -10,7 +10,7 @@ import kotlinx.serialization.json.put
  * Traffic and expiry a provider reports in `subscription-userinfo`
  * (`upload=..; download=..; total=..; expire=..`). Bytes and Unix seconds;
  * 0 means not reported, and an expire of 0 means no expiry. Parsed by
- * `fkbox-client-core` (crates/client-core/src/subscription.rs).
+ * `fkbox-client-core` (crates/client-core/src/subscription/mod.rs).
  */
 @Serializable
 data class SubscriptionInfo(

@@ -8,6 +8,7 @@
 //! When updates run is the platform's (WorkManager on Android); which
 //! profiles are due and how often to wake up is decided here.
 
+
 use serde::{Deserialize, Serialize};
 
 use crate::storage::Profile;

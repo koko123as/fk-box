@@ -3,11 +3,11 @@
 // editor and the QR code page. The add, form, details, order and
 // configuration pages are Rust-built rows (src/pages/profiles.rs).
 
-import { Theme, TextRole } from "../theme.slint";
-import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction, Motion } from "../globals.slint";
-import { App, Profiles, ProfileRow } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText, ListMotion, Entrance, Appear } from "../kit.slint";
+import { Theme, TextRole } from "../theme/theme.slint";
+import { Icons, Glyph } from "../icons/icons.slint";
+import { Nav, BarAction, Motion } from "../models/globals.slint";
+import { App, Profiles, ProfileRow } from "../models/data.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, TonalIconButton, Button, SelectionBadge, Card, EmptyState, TopBar, ScrollPage, SearchField, NativeTextInput, SelectableText, ListMotion, Entrance, Appear } from "../components/kit.slint";
 
 // A small status label (expiry, core): 0 neutral on secondary-container,
 // 1 warning, 2 error on their container roles; the text names the state.

@@ -128,7 +128,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     /**
      * Saves the profile form ([args] holds its fields and, when editing, its "id"):
-     * client-core (crates/client-core/src/profiles.rs) checks the form, fetches a new
+     * client-core (crates/client-core/src/config/profiles.rs) checks the form, fetches a new
      * subscription, splits a JSON array, prepares the content with its core (libbox,
      * through [CoreKernel]), writes the files and only the columns the form edits
      * (never the order). Returns the first saved profile's id.

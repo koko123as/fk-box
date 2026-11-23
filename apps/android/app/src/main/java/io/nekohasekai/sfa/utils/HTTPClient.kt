@@ -7,7 +7,7 @@ import java.util.Locale
 /**
  * Subscription User-Agents. The fetch itself is libbox's `UISubscriptionGet`,
  * run for client-core through `database/CoreKernel.kt`; its headers are parsed
- * in client-core (`crates/client-core/src/subscription.rs`).
+ * in client-core (`crates/client-core/src/subscription/mod.rs`).
  */
 object HTTPClient {
     val userAgent by lazy {

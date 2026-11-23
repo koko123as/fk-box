@@ -4,11 +4,11 @@
 // segmented buttons, suggestion chips, records, empty and error states,
 // laid out from rows. Every action goes back to Rust with the page and row keys.
 
-import { Theme, TextRole } from "../theme.slint";
-import { Icons, Glyph } from "../icons.slint";
-import { Nav, BarAction, Motion } from "../globals.slint";
-import { SettingRow, PageData } from "../data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Surface, Tap, ListMotion, Entrance, Appear } from "../kit.slint";
+import { Theme, TextRole } from "../theme/theme.slint";
+import { Icons, Glyph } from "../icons/icons.slint";
+import { Nav, BarAction, Motion } from "../models/globals.slint";
+import { SettingRow, PageData } from "../models/data.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, IconButton, Button, Switch, Radio, CheckBox, ListItem, SectionTitle, Footer, SectionGap, EmptyState, Field, TopBar, Card, Skeleton, SelectableText, SegmentedButton, FilterChip, StateLayer, Surface, Tap, ListMotion, Entrance, Appear } from "../components/kit.slint";
 
 export component RowView inherits Rectangle {
     in property <SettingRow> entry;
@@ -241,7 +241,7 @@ export component RowView inherits Rectangle {
                         height: 96px;
                         border-radius: Theme.corner-extra-large;
                         background: Theme.s.surface-container-highest;
-                        Image { source: @image-url("../box_icon.png"); width: 68px; height: 68px; }
+                        Image { source: @image-url("../icons/box_icon.png"); width: 68px; height: 68px; }
                     }
                 }
                 Rectangle { height: 20px; }

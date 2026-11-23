@@ -16,7 +16,7 @@ import java.util.UUID
 
 /**
  * The terminal (Ghostty) settings. Their values, checks and writes are
- * `fkbox-client-core` (crates/client-core/src/terminal.rs, which asks for the
+ * `fkbox-client-core` (crates/client-core/src/tools/terminal.rs, which asks for the
  * theme list and font checks through [io.nekohasekai.sfa.database.CoreKernel]);
  * this class keeps what is Android's: the bundled theme catalog and previews,
  * picking, importing and deleting font files. Every value client-core writes

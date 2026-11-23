@@ -88,7 +88,7 @@ internal object ProfileContent {
     )
 
     /**
-     * Saves a profile's configuration through client-core (crates/client-core/src/content.rs):
+     * Saves a profile's configuration through client-core (crates/client-core/src/config/content.rs):
      * [content] from an edit (refused when the file is no longer at [expectedRevision]), or with
      * [subscription] what the profile's subscription returns now, its provider metadata and the
      * update time. Client-core checks the revision, follows a JSON array's element, prepares the

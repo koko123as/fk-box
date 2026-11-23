@@ -48,30 +48,38 @@
 //! Phases: docs/architecture/phase2.md, docs/architecture/phase3.md.
 
 pub mod api;
-pub mod backup;
-pub mod capture;
-mod codec;
-pub mod connections;
-pub mod content;
-pub mod dashboard;
-pub mod geo;
-pub mod groups;
-pub mod ip_quality;
-pub mod legacy;
-pub mod logs;
-mod parcel;
-pub mod preferences;
-pub mod profile_array;
-pub mod profiles;
-pub mod remote_servers;
-pub mod routing;
-pub mod service_settings;
-pub mod sessions;
+pub mod config;
+pub mod connection;
+pub mod controller;
+pub mod geodata;
+pub mod rules;
 pub mod storage;
 pub mod subscription;
-pub mod terminal;
-pub mod updates;
-pub mod webdav;
+pub mod update;
+pub mod tools;
+
+pub use config::profiles;
+pub use config::profile_array;
+pub use config::content;
+pub use config::service_settings;
+pub use config::preferences;
+pub use config::remote_servers;
+pub use connection::connections;
+pub use connection::logs;
+pub use controller::groups;
+pub use controller::dashboard;
+pub use controller::sessions;
+pub use controller::ip_quality;
+pub use geodata::geo;
+pub use rules::routing;
+pub use storage::legacy;
+pub use storage::backup;
+pub use storage::webdav;
+pub(crate) use storage::parcel;
+pub(crate) use storage::codec;
+pub use update::updates;
+pub use tools::capture;
+pub use tools::terminal;
 
 /// What the UI needs from the platform: one asynchronous call into the host
 /// app. The UI sends `method` with JSON `args` under the request `id`; the

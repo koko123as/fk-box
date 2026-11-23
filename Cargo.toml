@@ -10,6 +10,23 @@ exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activ
 # Same feature resolver the single edition-2021 crate used before.
 resolver = "2"
 
+[workspace.package]
+version = "0.2.0"
+edition = "2021"
+license = "GPL-3.0-or-later"
+publish = false
+
+# Shared dependency versions (pinned Slint stays exact); members take them
+# with `{ workspace = true }` and add their own features.
+[workspace.dependencies]
+fkbox-client-core = { path = "crates/client-core" }
+fkbox-client-ui = { path = "crates/client-ui" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
+slint-build = "=1.19.0"
+jni = "0.22"
+
 [profile.release]
 opt-level = "s"
 lto = true

@@ -21,7 +21,7 @@ fn icon_table() -> &'static HashMap<String, (String, bool)> {
     static TABLE: std::sync::OnceLock<HashMap<String, (String, bool)>> = std::sync::OnceLock::new();
     TABLE.get_or_init(|| {
         let mut map = HashMap::new();
-        for line in include_str!("../ui/icons.slint").lines() {
+        for line in include_str!("../ui/icons/icons.slint").lines() {
             let line = line.trim();
             let Some(rest) = line.strip_prefix("out property <Glyph> ") else { continue };
             let Some((name, value)) = rest.split_once(':') else { continue };

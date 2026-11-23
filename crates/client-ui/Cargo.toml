@@ -2,20 +2,20 @@
 # The gettext domain of the bundled translations is the package name
 # (i18n/zh/LC_MESSAGES/fkbox-client-ui.po).
 name = "fkbox-client-ui"
-version = "0.2.0"
-edition = "2021"
-publish = false
-license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
 description = "FK-box user interface in Rust + Slint: pages, i18n and theme, shared by the platform shells (apps/android/native builds libfkui.so from it)."
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-fkbox-client-core = { path = "../client-core" }
+fkbox-client-core = { workspace = true }
 # No default backends: on Android the platform is the GameActivity backend below.
-slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+slint = { workspace = true }
+serde_json = { workspace = true }
 # QrCodeView (ui/QrCode.kt), ZXing Encoder at level L.
 qrcodegen = "1.8"
 # Material Color Utilities (spec 2021, as com.google.android.material.color.utilities).
@@ -55,4 +55,4 @@ i-slint-core = { version = "=1.19.0", default-features = false, features = ["std
 i-slint-renderer-skia = { version = "=1.19.0", default-features = false, optional = true }
 
 [build-dependencies]
-slint-build = "=1.19.0"
+slint-build = { workspace = true }

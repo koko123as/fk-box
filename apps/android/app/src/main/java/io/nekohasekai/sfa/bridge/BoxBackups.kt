@@ -22,7 +22,7 @@ import java.util.UUID
 /**
  * `bbox-1` backups and the WebDAV account. Packing, validation, the restore
  * (with its rollback) and the WebDAV flow are `fkbox-client-core`
- * (crates/client-core/src/backup.rs, webdav.rs), reached through
+ * (crates/client-core/src/storage/backup.rs, webdav.rs), reached through
  * [CoreStore.callKernel] so Rust can ask libbox and the Keystore for what it
  * needs ([io.nekohasekai.sfa.database.CoreKernel]). What stays here is
  * Android's part of a restore: applying the service settings (package query

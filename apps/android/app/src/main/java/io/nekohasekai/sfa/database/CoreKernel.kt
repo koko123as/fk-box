@@ -20,7 +20,7 @@ import kotlinx.serialization.json.put
 
 /**
  * The kernel layer as `fkbox-client-core` sees it (`content::Kernel` in
- * crates/client-core/src/content.rs): the subscription fetch, the split of a
+ * crates/client-core/src/config/content.rs): the subscription fetch, the split of a
  * JSON array of configs, an element's remarks, and conversion plus
  * validation by each core's own parser, all libbox (Go); and what backups,
  * WebDAV, the update check and the terminal settings need from Android

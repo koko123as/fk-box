@@ -12,6 +12,12 @@
 //! Schema versions are kept in `PRAGMA user_version` ([`SCHEMA_VERSION`]);
 //! [`Store::open`] creates or upgrades the schema in one transaction.
 
+pub mod legacy;
+pub mod backup;
+pub mod webdav;
+pub(crate) mod parcel;
+pub(crate) mod codec;
+
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};

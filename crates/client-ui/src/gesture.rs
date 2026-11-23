@@ -1,7 +1,7 @@
 //! Which axis a touch belongs to, decided before Slint's own gesture handlers
 //! see enough of it to take it.
 //!
-//! The home pages sit in a `SwipeGestureHandler` (ui/home.slint `Pages`). In
+//! The home pages sit in a `SwipeGestureHandler` (ui/mobile/android/home.slint `Pages`). In
 //! Slint 1.19 it takes over a touch as soon as the finger has moved 8 px
 //! horizontally and more than half as far horizontally as vertically, i.e.
 //! anything within about 63 degrees of horizontal, before the page's

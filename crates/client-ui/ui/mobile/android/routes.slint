@@ -4,16 +4,16 @@
 // of the destination it was pushed from, and a form is a card centred over a
 // scrim that dismisses it. Pages pushed inside a form stay in its card.
 
-import { Theme, TextRole } from "theme.slint";
-import { Icons } from "icons.slint";
-import { Nav, Route, Motion } from "globals.slint";
-import { T, ScrollPage, EmptyState } from "kit.slint";
-import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage, ServicesPage, ServicesManagePage } from "pages/dashboard.slint";
-import { ProxiesPage, NodeDetailsPage } from "pages/proxies.slint";
-import { ProfileRoutes } from "pages/profiles.slint";
-import { RowsPage } from "pages/rows.slint";
-import { AppearanceRoutes } from "pages/appearance.slint";
-import { Pages } from "data.slint";
+import { Theme, TextRole } from "../../theme/theme.slint";
+import { Icons } from "../../icons/icons.slint";
+import { Nav, Route, Motion } from "../../models/globals.slint";
+import { T, ScrollPage, EmptyState } from "../../components/kit.slint";
+import { MemoryPage, EgressPage, IntranetPage, NewLanProxyPage, ServicesPage, ServicesManagePage } from "../../pages/dashboard.slint";
+import { ProxiesPage, NodeDetailsPage } from "../../pages/proxies.slint";
+import { ProfileRoutes } from "../../pages/profiles.slint";
+import { RowsPage } from "../../pages/rows.slint";
+import { AppearanceRoutes } from "../../pages/appearance.slint";
+import { Pages } from "../../models/data.slint";
 
 // One route's page, by kind.
 component RoutePage inherits Rectangle {

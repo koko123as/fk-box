@@ -10,7 +10,7 @@ import org.junit.Test
 
 class CommandSessionsTest {
     @Test fun decodesEveryStreamOfThePlan() {
-        // As client-core sessions::plan serializes it (crates/client-core/src/sessions.rs).
+        // As client-core sessions::plan serializes it (crates/client-core/src/controller/sessions.rs).
         val plan = decodeSessionPlan(Json.parseToJsonElement(
             """{"clashMode":{"connect":true,"remoteServerId":null},"status":{"connect":false,"remoteServerId":null},
                "groups":{"connect":true,"remoteServerId":null},"connections":{"connect":false,"remoteServerId":null},

@@ -5,7 +5,7 @@ import io.nekohasekai.sfa.database.subscriptionInfo
 
 /**
  * The profile metadata the UI reads and a `bbox-1` backup carries. Backups are
- * packed, checked and restored by client-core (crates/client-core/src/backup.rs,
+ * packed, checked and restored by client-core (crates/client-core/src/storage/backup.rs,
  * `restore_wire_fields`, which also keeps a restored website only as an
  * absolute http/https address).
  */

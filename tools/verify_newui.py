@@ -69,28 +69,28 @@ for path in slint_ui.rglob("*.slint"):
     # file, the colour picker (appearance.slint) and the QR code.
     if path.name not in ("theme.slint", "appearance.slint") and re.search(r"#[0-9a-fA-F]{6}\b", source):
         errors.append(f"{rel}: literal hex color; use a Theme.s color role")
-theme = (slint_ui / "theme.slint").read_text()
+theme = (slint_ui / "theme" / "theme.slint").read_text()
 for token in ("surface-container-lowest", "surface-container-highest", "outline-variant", "on-tertiary-container",
               "corner-extra-small", "corner-extra-large", "state-pressed", "min-target",
               "display-large", "headline-small", "title-medium", "body-small", "label-large"):
     if token not in theme:
-        errors.append(f"crates/client-ui/ui/theme.slint: missing M3 token {token}")
-kit = (slint_ui / "kit.slint").read_text()
+        errors.append(f"crates/client-ui/ui/theme/theme.slint: missing M3 token {token}")
+kit = (slint_ui / "components" / "kit.slint").read_text()
 for component in ("StateLayer", "FocusRing", "Button", "IconButton", "Switch", "FilterChip", "SegmentedButton",
                   "Card", "ListItem", "Field", "SearchField", "TopBar", "Surface"):
     if not re.search(rf"export component {component}\b", kit):
-        errors.append(f"crates/client-ui/ui/kit.slint: missing M3 component {component}")
+        errors.append(f"crates/client-ui/ui/components/kit.slint: missing M3 component {component}")
 surface = next(((start, end) for name, start, end in component_spans(kit) if name == "Surface"), None)
 if surface and "background: Theme.level(root.level);" not in kit[surface[0]:surface[1]]:
-    errors.append("crates/client-ui/ui/kit.slint: Surface must be the opaque tonal surface role (Theme.level)")
+    errors.append("crates/client-ui/ui/components/kit.slint: Surface must be the opaque tonal surface role (Theme.level)")
 if not re.search(r"export component TopBar inherits Surface\b", kit):
-    errors.append("crates/client-ui/ui/kit.slint: the top app bar must be an opaque Surface (scrolled content under it)")
-home = (slint_ui / "home.slint").read_text()
+    errors.append("crates/client-ui/ui/components/kit.slint: the top app bar must be an opaque Surface (scrolled content under it)")
+home = (slint_ui / "mobile" / "android" / "home.slint").read_text()
 bar = re.search(r"bar := Surface \{(.*?)\n        \}", home, re.S)
 if not bar or "Nav.bar-margin" not in home or not re.search(r"elevation:\s*[1-3];", bar.group(1)):
-    errors.append("crates/client-ui/ui/home.slint: the phone navigation bar must be the floating opaque Surface with an elevation shadow")
-if "bar-margin + bar-height" not in (slint_ui / "globals.slint").read_text():
-    errors.append("crates/client-ui/ui/globals.slint: home-bottom must clear the floating bar")
+    errors.append("crates/client-ui/ui/mobile/android/home.slint: the phone navigation bar must be the floating opaque Surface with an elevation shadow")
+if "bar-margin + bar-height" not in (slint_ui / "models" / "globals.slint").read_text():
+    errors.append("crates/client-ui/ui/models/globals.slint: home-bottom must clear the floating bar")
 
 # Motion (flclash.md "动效"): every animation takes its duration and curve
 # from the Theme motion tokens, which theme.slint multiplies by the system's
@@ -125,19 +125,19 @@ for path in slint_ui.rglob("*.slint"):
             errors.append(f"{rel}: {match.group(1)}.restart() without the start() fallback "
                           f"(`if ({match.group(1)}.running) {{ ….restart(); }} else {{ ….start(); }}`)")
 if not re.search(r"in property <float> motion-scale", theme):
-    errors.append("crates/client-ui/ui/theme.slint: missing the motion-scale token (animator duration scale)")
+    errors.append("crates/client-ui/ui/theme/theme.slint: missing the motion-scale token (animator duration scale)")
 for name, value in re.findall(r"out property <duration> (motion-[\w-]+):\s*([^;]+);", theme):
     if not name.endswith("-period") and "* motion-scale" not in value:
-        errors.append(f"crates/client-ui/ui/theme.slint: {name} is not multiplied by motion-scale")
+        errors.append(f"crates/client-ui/ui/theme/theme.slint: {name} is not multiplied by motion-scale")
 for token in ("motion-short", "motion-medium", "motion-long", "easing-standard", "easing-emphasized", "easing-decelerate", "easing-back", "motion-on"):
     if not re.search(rf"\b{token}\b\s*:", theme):
-        errors.append(f"crates/client-ui/ui/theme.slint: missing motion token {token}")
+        errors.append(f"crates/client-ui/ui/theme/theme.slint: missing motion token {token}")
 if not re.search(r"export component Ripple\b", kit):
-    errors.append("crates/client-ui/ui/kit.slint: missing the Ripple component")
+    errors.append("crates/client-ui/ui/components/kit.slint: missing the Ripple component")
 for component in ("IconButton", "Button", "Card", "ListItem", "Tap"):
     span = next(((start, end) for name, start, end in component_spans(kit) if name == component), None)
     if span and "Ripple {" not in kit[span[0]:span[1]]:
-        errors.append(f"crates/client-ui/ui/kit.slint: {component} has no Ripple")
+        errors.append(f"crates/client-ui/ui/components/kit.slint: {component} has no Ripple")
 # Every tappable surface ripples: a TouchArea with a `clicked` handler in the
 # pages either sits next to a Ripple it drives (rip.down / rip.up) or is a
 # kit.slint Tap; the exceptions are the scrims and the snackbar that dismiss
@@ -169,14 +169,14 @@ for path in slint_ui.rglob("*.slint"):
 # List motion and the sheet's drag (flclash.md "动效").
 for component in ("ListMotion", "Entrance"):
     if not re.search(rf"export component {component}\b", kit):
-        errors.append(f"crates/client-ui/ui/kit.slint: missing the list motion component {component}")
+        errors.append(f"crates/client-ui/ui/components/kit.slint: missing the list motion component {component}")
 for page in ("pages/rows.slint", "pages/profiles.slint", "pages/proxies.slint"):
     if "ListMotion {" not in (slint_ui / page).read_text():
         errors.append(f"crates/client-ui/ui/{page}: the list does not animate added and removed items (ListMotion)")
-routes = (slint_ui / "routes.slint").read_text()
+routes = (slint_ui / "mobile" / "android" / "routes.slint").read_text()
 for token in ("Theme.sheet-close-fraction", "Theme.sheet-fling-velocity", "Theme.sheet-handle"):
     if token not in routes:
-        errors.append(f"crates/client-ui/ui/routes.slint: the phone sheet's drag does not use {token}")
+        errors.append(f"crates/client-ui/ui/mobile/android/routes.slint: the phone sheet's drag does not use {token}")
 if "set_motion_scale" not in (ROOT / "crates/client-ui/src/theme_apply.rs").read_text():
     errors.append("crates/client-ui/src/theme_apply.rs: the motion scale does not reach Theme")
 if "ANIMATOR_DURATION_SCALE" not in (native / "bridge/BoxActivity.kt").read_text():
@@ -184,10 +184,11 @@ if "ANIMATOR_DURATION_SCALE" not in (native / "bridge/BoxActivity.kt").read_text
 
 # Slint 1.19+; the vendored Skia renderer and Android backend are the same
 # release as the slint crate (FKBOX-PATCH.md).
-cargo = (ROOT / "crates/client-ui/Cargo.toml").read_text()
+# The pinned version lives in the workspace manifest ([workspace.dependencies]).
+cargo = (ROOT / "Cargo.toml").read_text()
 slint_version = re.search(r'^slint = \{ version = "=(\d+)\.(\d+)\.(\d+)"', cargo, re.M)
 if not slint_version or (int(slint_version.group(1)), int(slint_version.group(2))) < (1, 19):
-    errors.append("crates/client-ui/Cargo.toml: Slint 1.19 or newer is required")
+    errors.append("Cargo.toml: Slint 1.19 or newer is required in [workspace.dependencies]")
 else:
     version = ".".join(slint_version.groups())
     for crate in ("i-slint-renderer-skia", "i-slint-backend-android-activity", "i-slint-core"):

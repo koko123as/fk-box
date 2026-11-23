@@ -1,9 +1,9 @@
 [package]
 name = "fkbox-android"
-version = "0.2.0"
-edition = "2021"
-publish = false
-license = "GPL-3.0-or-later"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
 description = "FK-box Android shell: android_main, the JNI links to the Kotlin host (UI calls, client store) and logcat setup, around the Slint UI (fkbox-client-ui)."
 
 # libfkui.so, the library BoxActivity loads (android.app.lib_name = fkui).
@@ -13,13 +13,13 @@ crate-type = ["cdylib"]
 path = "src/lib.rs"
 
 [dependencies]
-fkbox-client-core = { path = "../../../crates/client-core" }
-fkbox-client-ui = { path = "../../../crates/client-ui" }
-slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
+fkbox-client-core = { workspace = true }
+fkbox-client-ui = { workspace = true }
+slint = { workspace = true }
 # The client store's JNI surface (src/store.rs) builds on every target, so it
 # is checked off Android too.
-jni = "0.22"
-serde_json = "1"
+jni = { workspace = true }
+serde_json = { workspace = true }
 
 [target.'cfg(target_os = "android")'.dependencies]
 i-slint-backend-android-activity = { version = "=1.19.0", features = ["aa-06", "game-activity"] }

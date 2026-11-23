@@ -1,5 +1,5 @@
 //! Text input through the platform's own text field. While a NativeTextInput
-//! (ui/kit.slint) has focus, the Kotlin host lays an android.widget.EditText
+//! (ui/components/kit.slint) has focus, the Kotlin host lays an android.widget.EditText
 //! over it (bridge/NativeEditor.kt): the cursor, selection, handles, context
 //! menu and input connection are the system's, and every change comes back
 //! here as an `ime` event that the field copies into its text. GameTextInput

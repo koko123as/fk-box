@@ -5,11 +5,11 @@
 // items, outlined text fields, the search bar and the small top app bar.
 // Colors, corners, type and spacing come from the tokens in theme.slint.
 
-import { Theme, TextRole } from "theme.slint";
-import { Icons, Glyph } from "icons.slint";
-import { Nav, BarAction, Keyword, NativeIme, Motion } from "globals.slint";
-import "fonts/MaterialIcons-Regular.ttf";
-import "fonts/MaterialIconsOutlined-Regular.otf";
+import { Theme, TextRole } from "../theme/theme.slint";
+import { Icons, Glyph } from "../icons/icons.slint";
+import { Nav, BarAction, Keyword, NativeIme, Motion } from "../models/globals.slint";
+import "../icons/fonts/MaterialIcons-Regular.ttf";
+import "../icons/fonts/MaterialIconsOutlined-Regular.otf";
 
 // A TextInput edited by the platform's own text field: on Android a native
 // EditText is laid over `frame` while it has focus, and this one only draws

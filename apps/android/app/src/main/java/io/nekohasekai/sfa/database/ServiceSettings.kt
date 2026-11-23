@@ -17,7 +17,7 @@ import kotlinx.serialization.json.put
 
 /**
  * The service settings as the settings pages and backups see them, kept by
- * `fkbox-client-core` (crates/client-core/src/service_settings.rs, with the
+ * `fkbox-client-core` (crates/client-core/src/config/service_settings.rs, with the
  * routing rule model in routing.rs and the geo policy in geo.rs): the
  * snapshot, validation, the write and the routing rule set a core compiles.
  *

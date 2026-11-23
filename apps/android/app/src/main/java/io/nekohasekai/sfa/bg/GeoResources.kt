@@ -364,7 +364,7 @@ object GeoResources {
 
 /**
  * The decisions behind [GeoResources], made by `fkbox-client-core`
- * (crates/client-core/src/geo.rs): which files a core needs, whether the
+ * (crates/client-core/src/geodata/geo.rs): which files a core needs, whether the
  * APK copy replaces an installed file, which files an automatic update
  * fetches and how often it runs, and the addresses the user set. The
  * bundled manifest and the bookkeeping records stay here with the files.

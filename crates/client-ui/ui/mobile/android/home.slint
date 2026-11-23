@@ -10,17 +10,17 @@
 // visible; Requests and Logs exist only while shown. On phones the floating
 // bar slides away while the page scrolls down.
 
-import { Theme, TextRole } from "theme.slint";
-import { Icons, Glyph } from "icons.slint";
-import { Nav, Motion } from "globals.slint";
-import { Icon, IconButton, T, StateLayer, Ripple, FocusRing, Surface } from "kit.slint";
-import { DashboardPage } from "pages/dashboard.slint";
-import { ProxiesPage } from "pages/proxies.slint";
-import { ProfilesPage } from "pages/profiles.slint";
-import { ToolsPage } from "pages/tools.slint";
-import { RequestsPage, LogsPage } from "pages/requests.slint";
-import { Look } from "pages/appearance.slint";
-import { Dash, Proxies } from "data.slint";
+import { Theme, TextRole } from "../../theme/theme.slint";
+import { Icons, Glyph } from "../../icons/icons.slint";
+import { Nav, Motion } from "../../models/globals.slint";
+import { Icon, IconButton, T, StateLayer, Ripple, FocusRing, Surface } from "../../components/kit.slint";
+import { DashboardPage } from "../../pages/dashboard.slint";
+import { ProxiesPage } from "../../pages/proxies.slint";
+import { ProfilesPage } from "../../pages/profiles.slint";
+import { ToolsPage } from "../../pages/tools.slint";
+import { RequestsPage, LogsPage } from "../../pages/requests.slint";
+import { Look } from "../../pages/appearance.slint";
+import { Dash, Proxies } from "../../models/data.slint";
 
 global Destinations {
     public pure function glyph(label: string) -> Glyph {
@@ -221,7 +221,7 @@ component Rail inherits Rectangle {
             padding-left: Nav.rail-extended ? 8px : 0px;
             spacing: 12px;
             Image {
-                source: @image-url("box_icon.png");
+                source: @image-url("../../icons/box_icon.png");
                 width: 40px;
                 height: 40px;
                 y: (parent.height - self.height) / 2;
