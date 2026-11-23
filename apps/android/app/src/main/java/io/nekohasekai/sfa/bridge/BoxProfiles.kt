@@ -4,6 +4,7 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.CoreSubscriptions
 import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileArray
 import io.nekohasekai.sfa.database.ProfileChange
@@ -16,7 +17,6 @@ import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.metadataAfter
 import io.nekohasekai.sfa.database.restoreSubscriptionMetadata
 import io.nekohasekai.sfa.utils.CommandTarget
-import io.nekohasekai.sfa.utils.HTTPClient
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONObject
 import java.io.File
@@ -100,7 +100,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     }
 
     private suspend fun writeContentLocked(id: Long, content: String, expectedRevision: String): Map<String, Any?> {
-        ProfileContent.replaceLocked(get(id), content, expectedRevision = expectedRevision, applySelected = applySelected)
+        ProfileContent.replaceLocked(id, content, expectedRevision = expectedRevision, applySelected = applySelected)
         return configLocked(id)
     }
 
@@ -165,7 +165,7 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
         // A newly created remote profile takes the provider's headers from its first fetch.
         val fetched = if (element != null) element.fetch else if (args["content"] !is String && id == 0L && url.isNotEmpty()) {
-            HTTPClient().use { it.getSubscription(url, declaredCore) }
+            CoreSubscriptions.fetch(url, declaredCore)
         } else {
             null
         }
@@ -273,10 +273,9 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     suspend fun update(id: Long) = mutex.withLock {
         val profile = get(id)
         require(profile.typed.type == TypedProfile.Type.Remote) { "Only remote profiles can be updated" }
-        val fetch = HTTPClient().use { it.getSubscription(validateUrl(profile.typed.remoteURL), profile.typed.core) }
-        val interval = profile.typed.autoUpdateInterval
-        ProfileContent.replaceLocked(profile, fetch.content, updatedAt = Date(), subscription = fetch, applySelected = applySelected)
-        if (profile.typed.autoUpdateInterval != interval) UpdateProfileWork.reconfigureUpdater()
+        validateUrl(profile.typed.remoteURL)
+        val result = ProfileContent.replaceLocked(id, subscription = true, applySelected = applySelected)
+        if (result.intervalChanged) UpdateProfileWork.reconfigureUpdater()
     }
 
     suspend fun delete(id: Long) = mutex.withLock {

@@ -32,8 +32,8 @@
 | --- | --- |
 | `Cargo.toml`、`Cargo.lock` | Rust workspace（成员见下），`[profile.release]` 与 `[patch.crates-io]` 在此 |
 | `crates/client-ui/` | `fkbox-client-ui`：Slint 页面、`ui/*.slint`、`i18n/`、主题与页面逻辑（平台无关部分） |
-| `crates/client-core/` | `fkbox-client-core`：平台无关业务层：界面所需的 `Host` trait、客户端存储（SQLite：服务设置、配置元数据、远程服务器、界面偏好）及其从 Room/SharedPreferences 的一次性导入；第二阶段计划见 [docs/architecture/phase2.md](docs/architecture/phase2.md) |
-| `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、界面 JNI（`host.rs`）、客户端存储 JNI（`store.rs`，供 Kotlin `database/CoreStore.kt`）与 logcat 初始化 |
+| `crates/client-core/` | `fkbox-client-core`：平台无关业务层：界面所需的 `Host` trait、客户端存储（SQLite：服务设置、配置元数据、远程服务器、界面偏好）及其从 Room/SharedPreferences 的一次性导入、订阅（响应头解析、自动更新策略、数组配置命名与跟随、配置内容保存流程，内核相关部分经平台的 `content::Kernel` 调 libbox）；第二阶段计划见 [docs/architecture/phase2.md](docs/architecture/phase2.md) |
+| `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、界面 JNI（`host.rs`）、客户端存储 JNI（`store.rs`，供 Kotlin `database/CoreStore.kt`，并回调 `database/CoreKernel.kt`）与 logcat 初始化 |
 | `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
 | `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |
 | `apps/android/core/` | libbox 的 Go 多内核适配与补丁（由 `.github/actions/setup-core` 和 `tools/patch_*.py` 叠加到 sing-box 源码） |

@@ -22,7 +22,7 @@ import java.io.File
  */
 object CoreStore {
     private const val TAG = "CoreStore"
-    private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
+    internal val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
     @Volatile private var opened = false
 
@@ -58,6 +58,17 @@ object CoreStore {
 
     fun call(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit): JsonElement = call(method, buildJsonObject(build))
 
+    /**
+     * A call that reaches the cores (subscription fetches, profile content
+     * saves): Rust calls back into [CoreKernel] on this thread, so it blocks
+     * for the fetch; call it off the main thread.
+     */
+    fun callKernel(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit): JsonElement {
+        ensureOpen()
+        val result = nativeCallKernel(method, buildJsonObject(build).toString(), CoreKernel) ?: return JsonNull
+        return json.parseToJsonElement(result)
+    }
+
     internal fun <T> decode(serializer: kotlinx.serialization.KSerializer<T>, element: JsonElement): T = json.decodeFromJsonElement(serializer, element)
 
     internal fun <T> encode(serializer: kotlinx.serialization.KSerializer<T>, value: T): JsonElement = json.encodeToJsonElement(serializer, value)
@@ -65,4 +76,6 @@ object CoreStore {
     @JvmStatic private external fun nativeOpen(storePath: String, profilesDb: String, settingsDb: String, uiPreferences: String, scratchDir: String): String?
 
     @JvmStatic private external fun nativeCall(method: String, args: String): String?
+
+    @JvmStatic private external fun nativeCallKernel(method: String, args: String, kernel: Any): String?
 }

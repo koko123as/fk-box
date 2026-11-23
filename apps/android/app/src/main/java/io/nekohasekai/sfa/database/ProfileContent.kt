@@ -3,10 +3,11 @@ package io.nekohasekai.sfa.database
 import android.util.AtomicFile
 import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.put
 import java.io.File
 import java.io.OutputStream
 import java.security.MessageDigest
-import java.util.Date
 import java.util.concurrent.atomic.AtomicLong
 
 /** Serializes foreground edits with the background subscription updater. */
@@ -66,18 +67,6 @@ internal object ProfileContent {
             entry.copy(content = prepared.content, core = prepared.core)
         }
 
-    /**
-     * A subscription that returns an array keeps each profile on its own element
-     * ([ProfileArray.select]); any other content is returned unchanged.
-     */
-    fun followArray(profileName: String, previous: String?, content: String): String {
-        val elements = splitArray(content) ?: return content
-        val savedRemarks = previous?.let { runCatching { Libbox.coreConfigRemarks(it) }.getOrNull() }.orEmpty()
-        val index = ProfileArray.select(elements.map { it.remarks }, savedRemarks, profileName)
-            ?: throw IllegalArgumentException("The subscription returned ${elements.size} configurations and none matches this profile")
-        return elements[index].content
-    }
-
     fun validate(core: String, content: String) {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
         Libbox.checkCoreConfig(core, content)
@@ -89,60 +78,79 @@ internal object ProfileContent {
     /** The core that runs [profile] with its saved [content]. */
     fun coreOf(profile: Profile, content: String): String = Libbox.resolveProfileCore(profile.typed.core, content)
 
-    /** Caller holds [mutex] until the save, service application and any recovery finish. */
-    suspend fun replaceLocked(
-        profile: Profile,
-        content: String,
-        expectedRevision: String? = null,
-        updatedAt: Date? = null,
-        subscription: SubscriptionFetch? = null,
-        applySelected: suspend (recover: Boolean) -> Unit,
-    ) {
-        val file = File(profile.typed.path)
-        val previous = if (file.exists()) file.readText() else null
-        if (expectedRevision != null) {
-            require(previous != null && revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
-        }
-        // A subscription serving a JSON array of configs: keep following this profile's element.
-        val incoming = if (subscription != null) followArray(profile.name, previous, content) else content
-        val cleaned = prepare(profile.typed.core, incoming).content
-        val changed = previous != cleaned
-        if (!changed && updatedAt == null && subscription == null) return
-        val savedAt = updatedAt ?: if (changed && profile.typed.type == TypedProfile.Type.Local) Date() else null
+    /** What a save did (client-core `content::Replaced`). */
+    @Serializable
+    data class Replaced(
+        val changed: Boolean = false,
+        val apply: Boolean = false,
+        val intervalChanged: Boolean = false,
+        val token: Long? = null,
+    )
 
-        val apply = changed && profile.id == Settings.selectedProfile
-        val previousUpdatedAt = Date(profile.typed.lastUpdated.time)
-        // Provider traffic/expiry/interval are saved and rolled back with the content.
-        val previousMetadata = profile.typed.subscriptionMetadata()
-        val nextMetadata = subscription?.let { profile.typed.metadataAfter(it) }
-        val metadataChanged = nextMetadata != null && nextMetadata != previousMetadata
+    /**
+     * Saves a profile's configuration through client-core (crates/client-core/src/content.rs):
+     * [content] from an edit (refused when the file is no longer at [expectedRevision]), or with
+     * [subscription] what the profile's subscription returns now, its provider metadata and the
+     * update time. Client-core checks the revision, follows a JSON array's element, prepares the
+     * content with the profile's core (libbox, through [CoreKernel]), writes the file atomically
+     * and updates only the row's update time and subscription columns, never its order or other
+     * fields. A change to the selected profile is applied to the service here; if that fails,
+     * client-core puts the file and the row back and the service is recovered.
+     *
+     * Caller holds [mutex] until the save, service application and any recovery finish.
+     */
+    suspend fun replaceLocked(
+        profileId: Long,
+        content: String? = null,
+        expectedRevision: String? = null,
+        subscription: Boolean = false,
+        applySelected: suspend (recover: Boolean) -> Unit,
+    ): Replaced {
         val previousMode = Settings.serviceMode
-        val restore = mutableListOf<suspend () -> Unit>()
-        if (changed) restore.add {
-            if (previous != null) write(file, previous)
-            else check(!file.exists() || file.delete()) { "Unable to restore profile file" }
+        var result = Replaced()
+        try {
+            ProfileChange.apply(
+                save = {
+                    result = CoreStore.decode(
+                        Replaced.serializer(),
+                        CoreStore.callKernel("content.replace") {
+                            put("id", profileId)
+                            if (content != null) put("content", content)
+                            if (expectedRevision != null) put("expectedRevision", expectedRevision)
+                            put("subscription", subscription)
+                            put("touch", subscription)
+                            put("selected", profileId == Settings.selectedProfile)
+                            put("now", System.currentTimeMillis())
+                        },
+                    )
+                    if (result.changed) writeGeneration.incrementAndGet()
+                },
+                restore = listOf<suspend () -> Unit>(
+                    {
+                        result.token?.let { token ->
+                            try {
+                                CoreStore.call("content.rollback") { put("token", token) }
+                            } finally {
+                                writeGeneration.incrementAndGet()
+                            }
+                        }
+                    },
+                    {
+                        if (result.apply) {
+                            if (Settings.serviceMode != previousMode) Settings.serviceMode = previousMode
+                            Settings.dataStore.flush()
+                        }
+                    },
+                ),
+                applyService = { recover -> if (result.apply) applySelected(recover) },
+            )
+        } finally {
+            result.token?.let { token ->
+                runCatching { CoreStore.call("content.finish") { put("token", token) } }
+                ProfileManager.notifyChanged()
+            }
         }
-        if (savedAt != null || metadataChanged) restore.add {
-            profile.typed.lastUpdated = previousUpdatedAt
-            profile.typed.restoreSubscriptionMetadata(previousMetadata)
-            check(ProfileManager.update(profile) == 1) { "Profile no longer exists" }
-        }
-        if (apply) restore.add {
-            if (Settings.serviceMode != previousMode) Settings.serviceMode = previousMode
-            Settings.dataStore.flush()
-        }
-        ProfileChange.apply(
-            save = {
-                if (changed) write(file, cleaned)
-                if (savedAt != null || metadataChanged) {
-                    if (savedAt != null) profile.typed.lastUpdated = savedAt
-                    if (nextMetadata != null) profile.typed.restoreSubscriptionMetadata(nextMetadata)
-                    check(ProfileManager.update(profile) == 1) { "Profile no longer exists" }
-                }
-            },
-            restore = restore,
-            applyService = { recover -> if (apply) applySelected(recover) },
-        )
+        return result
     }
 
     fun write(file: File, content: String) = write(file) { it.write(content.toByteArray()) }

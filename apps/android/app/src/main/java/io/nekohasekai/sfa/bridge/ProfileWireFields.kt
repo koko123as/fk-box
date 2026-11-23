@@ -1,9 +1,10 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.sfa.database.SubscriptionHeaders
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.subscriptionInfo
+import java.net.URI
 import java.util.Date
+import java.util.Locale
 
 /**
  * The profile metadata the UI reads and a `bbox-1` backup carries, kept in one
@@ -58,6 +59,21 @@ internal object ProfileWireFields {
         typed.download = count("download")
         typed.total = count("total")
         typed.expire = count("expire")
-        typed.webPageUrl = if (remote) SubscriptionHeaders.parseWebPageUrl(entry["webPageUrl"] as? String) else ""
+        typed.webPageUrl = if (remote) webPageUrl(entry["webPageUrl"] as? String) else ""
+    }
+
+    /**
+     * A backup's website, kept only as an absolute http/https address. Fetched
+     * headers are checked in client-core (`subscription::parse_web_page_url`);
+     * this guard for restored backups moves there with the backups (slice 2d).
+     */
+    private fun webPageUrl(value: String?): String {
+        val trimmed = value?.trim().orEmpty()
+        if (trimmed.isEmpty() || trimmed.length > 4096) return ""
+        val uri = runCatching { URI(trimmed) }.getOrNull() ?: return ""
+        val scheme = uri.scheme?.lowercase(Locale.ROOT)
+        if (scheme != "http" && scheme != "https") return ""
+        if (uri.host.isNullOrBlank()) return ""
+        return trimmed
     }
 }

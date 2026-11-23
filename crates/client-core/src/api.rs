@@ -1,12 +1,17 @@
-//! The store's call surface for a platform host: `method` with JSON `args`,
-//! answered with a JSON value. On Android the Kotlin service layer
-//! (`database/CoreStore.kt`) calls it over one JNI entry point, so the
-//! service keeps reading the selected profile and its settings at start
-//! without the UI running.
+//! The client layer's call surface for a platform host: `method` with JSON
+//! `args`, answered with a JSON value. On Android the Kotlin service layer
+//! (`database/CoreStore.kt`) calls it over JNI, so the service keeps reading
+//! the selected profile and its settings at start without the UI running.
+//!
+//! Calls that need the cores (a subscription fetch, a content save) take the
+//! platform's [`Kernel`] ([`call_with_kernel`]); the rest need only the store.
 
 use serde_json::{json, Map, Value};
 
+use crate::content::{self, Kernel, Replace};
+use crate::profile_array::{self, Element};
 use crate::storage::{Profile, RemoteServer, SettingValue, Store};
+use crate::subscription::{self, Fetch, Metadata};
 
 fn arg<'a>(args: &'a Value, key: &str) -> Result<&'a Value, String> {
     args.get(key).filter(|v| !v.is_null()).ok_or_else(|| format!("Missing argument: {key}"))
@@ -33,13 +38,65 @@ fn ids(args: &Value, key: &str) -> Result<Vec<i64>, String> {
         .collect()
 }
 
+fn parsed<T: for<'de> serde::Deserialize<'de>>(args: &Value, key: &str) -> Result<T, String> {
+    serde_json::from_value(arg(args, key)?.clone()).map_err(|e| format!("Invalid argument: {key}: {e}"))
+}
+
+fn to_json<T: serde::Serialize>(value: &T) -> Result<Value, String> {
+    serde_json::to_value(value).map_err(|e| e.to_string())
+}
+
 /// Runs one call. Errors are messages for the caller (thrown as exceptions
 /// on the Kotlin side).
 pub fn call(store: &Store, method: &str, args: &str) -> Result<String, String> {
+    dispatch(store, None, method, args)
+}
+
+/// [`call`] for a caller that can reach the cores through `kernel`.
+pub fn call_with_kernel(store: &Store, kernel: &mut dyn Kernel, method: &str, args: &str) -> Result<String, String> {
+    dispatch(store, Some(kernel), method, args)
+}
+
+fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: &str) -> Result<String, String> {
     let args: Value =
         if args.trim().is_empty() { Value::Null } else { serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))? };
     let e = |error: crate::storage::Error| error.0;
+    let kernel = move || kernel.ok_or_else(|| format!("{method} needs the kernel bridge"));
     let value = match method {
+        // -- subscriptions -------------------------------------------------
+        "subscription.fetch" => to_json(&content::fetch(kernel()?, text(&args, "url")?, text(&args, "core")?)?)?,
+        "subscription.metadataAfter" => {
+            let interval = arg(&args, "interval")?.as_i64().and_then(|v| i32::try_from(v).ok()).ok_or("Invalid argument: interval")?;
+            let user_set = arg(&args, "intervalUserSet")?.as_bool().ok_or("Invalid argument: intervalUserSet")?;
+            let fetch: Fetch = parsed(&args, "fetch")?;
+            to_json(&Metadata::after(interval, user_set, &fetch))?
+        }
+        "subscription.webPageUrl" => subscription::parse_web_page_url(args.get("value").and_then(Value::as_str).unwrap_or("")).into(),
+        "subscription.schedule" => to_json(&subscription::schedule(&store.profiles().map_err(e)?, id(&args, "now")?))?,
+        "subscription.due" => to_json(&subscription::due(&store.profiles().map_err(e)?, id(&args, "now")?))?,
+        "subscription.isDue" => {
+            store.profile(id(&args, "id")?).map_err(e)?.is_some_and(|p| subscription::is_due(&p, id(&args, "now").unwrap_or(0))).into()
+        }
+        "subscription.updateAll" => to_json(&subscription::update_all(&store.profiles().map_err(e)?))?,
+        "profileArray.entries" => {
+            let elements: Vec<Element> = parsed(&args, "elements")?;
+            to_json(&profile_array::entries(text(&args, "source")?, &elements))?
+        }
+        // -- profile content -----------------------------------------------
+        "content.replace" => {
+            let request: Replace = serde_json::from_value(args.clone()).map_err(|e| format!("Invalid arguments: {e}"))?;
+            to_json(&content::replace(store, kernel()?, request)?)?
+        }
+        "content.finish" => {
+            content::finish(store, id(&args, "token")? as u64);
+            Value::Null
+        }
+        "content.rollback" => {
+            content::rollback(store, id(&args, "token")? as u64)?;
+            Value::Null
+        }
+        "content.revision" => content::revision(text(&args, "content")?).into(),
+        // -- store ---------------------------------------------------------
         "settings.all" => {
             let mut out = Map::new();
             for (key, value) in store.settings().map_err(e)? {
@@ -171,6 +228,56 @@ mod tests {
         run(&store, "tx.rollback", Value::Null);
         assert_eq!(run(&store, "servers.list", Value::Null).as_array().unwrap().len(), 1);
         assert_eq!(run(&store, "meta.migration", Value::Null), Value::Null);
+    }
+
+    #[test]
+    fn subscription_policy_calls() {
+        let store = Store::open_in_memory().unwrap();
+        let now = 10_000_000_000_i64;
+        let a = run(&store, "profiles.insert", json!({"profile": {"type": 1, "autoUpdate": true, "autoUpdateInterval": 30, "lastUpdated": now - 3_600_000}}));
+        run(&store, "profiles.insert", json!({"profile": {"type": 1, "autoUpdateInterval": 30, "userOrder": 1}}));
+        assert_eq!(run(&store, "subscription.schedule", json!({"now": now})), json!({"intervalMinutes": 30, "initialDelaySeconds": 0}));
+        assert_eq!(run(&store, "subscription.due", json!({"now": now})), json!([a]));
+        assert_eq!(run(&store, "subscription.isDue", json!({"id": a, "now": now})), json!(true));
+        assert_eq!(run(&store, "subscription.isDue", json!({"id": 99, "now": now})), json!(false));
+        assert_eq!(run(&store, "subscription.updateAll", Value::Null).as_array().unwrap().len(), 2);
+        let metadata = run(
+            &store,
+            "subscription.metadataAfter",
+            json!({"interval": 60, "intervalUserSet": false, "fetch": {"info": {"upload": 1}, "updateIntervalMinutes": 5, "webPageUrl": "https://x.example"}}),
+        );
+        assert_eq!(
+            metadata,
+            json!({"upload": 1, "download": 0, "total": 0, "expire": 0, "webPageUrl": "https://x.example", "autoUpdateInterval": 15})
+        );
+        assert_eq!(run(&store, "subscription.webPageUrl", json!({"value": "javascript:1"})), json!(""));
+        let entries = run(&store, "profileArray.entries", json!({"source": "s", "elements": [{"remarks": "", "content": "{}", "core": "xray"}, {"remarks": "b", "content": "[]", "core": "xray"}]}));
+        assert_eq!(entries, json!([{"name": "s #1", "content": "{}", "core": "xray"}, {"name": "b", "content": "[]", "core": "xray"}]));
+        assert_eq!(run(&store, "content.revision", json!({"content": ""})).as_str().unwrap().len(), 64);
+        run(&store, "content.finish", json!({"token": 5}));
+        run(&store, "content.rollback", json!({"token": 5}));
+    }
+
+    #[test]
+    fn kernel_calls_need_the_bridge_and_use_it() {
+        let (store, _dir, id) = crate::content::tests::setup(true, Some("old"));
+        assert_eq!(call(&store, "content.replace", &json!({"id": id}).to_string()).unwrap_err(), "content.replace needs the kernel bridge");
+        let mut kernel = crate::content::tests::FakeKernel {
+            response: crate::subscription::Response { content: "new".into(), user_info: "total=3".into(), ..Default::default() },
+            ..Default::default()
+        };
+        let fetched: Value = serde_json::from_str(
+            &call_with_kernel(&store, &mut kernel, "subscription.fetch", &json!({"url": "https://e.example/s", "core": "auto"}).to_string()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(fetched["info"]["total"], json!(3));
+        assert!(call_with_kernel(&store, &mut kernel, "subscription.fetch", &json!({"url": "file:///x", "core": "auto"}).to_string()).is_err());
+        let args = json!({"id": id, "subscription": true, "touch": true, "selected": true, "now": 9});
+        let done: Value = serde_json::from_str(&call_with_kernel(&store, &mut kernel, "content.replace", &args.to_string()).unwrap()).unwrap();
+        assert_eq!((done["changed"].clone(), done["apply"].clone()), (json!(true), json!(true)));
+        let token = done["token"].as_i64().unwrap();
+        run(&store, "content.rollback", json!({"token": token}));
+        assert_eq!(store.profile(id).unwrap().unwrap().last_updated, 1_000);
     }
 
     #[test]
