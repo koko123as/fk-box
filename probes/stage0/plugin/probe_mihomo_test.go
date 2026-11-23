@@ -10,7 +10,7 @@ import (
 
 	M "github.com/sagernet/sing/common/metadata"
 
-	mihomoDialer "github.com/metacubex/mihomo/component/dialer"
+	mihomoGlobalDialer "github.com/metacubex/mihomo/component/dialer"
 	mihomoC "github.com/metacubex/mihomo/constant"
 	mihomoInbound "github.com/metacubex/mihomo/listener/inbound"
 )
@@ -111,7 +111,7 @@ func TestProbeMihomoMieru(t *testing.T) {
 	if platform.Protected() <= before {
 		t.Fatal("mieru socket was not protected by sing-box")
 	}
-	if mihomoDialer.DefaultSocketHook != nil {
+	if mihomoGlobalDialer.DefaultSocketHook != nil {
 		t.Fatal("unexpected global mihomo DefaultSocketHook")
 	}
 	t.Logf("PROBE item3 mihomo %s via sing-box dialer: echo ok, mihomo dials %d, protected sockets %d, DefaultSocketHook nil",
