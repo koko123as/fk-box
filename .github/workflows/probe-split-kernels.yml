@@ -2,10 +2,16 @@ name: Probe split kernels (throwaway)
 
 # Feasibility probe for docs/architecture/split-kernels.md: three unpatched
 # kernels, each its own -buildmode=c-shared library behind the C ABI in
-# probe/split-kernels/include/fk_kernel.h. Manual runs only; nothing here is
-# part of the app build.
+# probe/split-kernels/include/fk_kernel.h. Nothing here is part of the app
+# build. GitHub only dispatches workflows that exist on the default branch, so
+# besides workflow_dispatch this runs on pushes to the probe branch alone.
 on:
   workflow_dispatch:
+  push:
+    branches: [docs/split-kernels]
+    paths:
+      - probe/split-kernels/**
+      - .github/workflows/probe-split-kernels.yml
 
 permissions:
   contents: read
