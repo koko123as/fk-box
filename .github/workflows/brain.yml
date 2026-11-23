@@ -1,0 +1,102 @@
+name: Brain (rule engine and C ABI)
+
+# Stage 1 of the single-kernel design (docs/architecture/brain-ffi.md): the
+# rule engine in crates/client-core (rules::engine) and the C ABI crate
+# crates/brain-ffi. Tests, the ABI checks from C, the real geo data format
+# check and the decide() bench, on arm64.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/client-core/**'
+      - 'crates/brain-ffi/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/brain.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  brain:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal --component rustfmt
+          rustup default stable
+          rustc --version
+          gcc --version | head -1
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: .
+          key: brain
+
+      - name: Format of the new Rust sources
+        run: |
+          rustfmt --edition 2021 --check \
+            crates/brain-ffi/src/*.rs crates/brain-ffi/benches/*.rs \
+            crates/client-core/src/rules/engine/*.rs
+
+      - name: Header compiles as C11 (layout static asserts)
+        run: gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c crates/brain-ffi/include/fkbox_brain.h
+
+      # The geo files of the commit apps/android/app/geo-assets.properties
+      # pins, checked against its sha256 sums, kept in the runner only.
+      - name: Fetch the pinned geo data (not committed)
+        run: |
+          props=apps/android/app/geo-assets.properties
+          repo=$(sed -n 's/^GEO_REPOSITORY=//p' "$props")
+          commit=$(sed -n 's/^GEO_COMMIT=//p' "$props")
+          dir="$RUNNER_TEMP/geo"
+          mkdir -p "$dir"
+          for key in geosite geoip mmdb; do
+            line=$(sed -n "s/^$key=//p" "$props")
+            source=${line%%:*}
+            rest=${line#*:}
+            sha=${rest#*:}
+            curl -fsSL --retry 3 -o "$dir/$source" "https://raw.githubusercontent.com/$repo/$commit/$source"
+            echo "$sha  $dir/$source" | sha256sum -c -
+          done
+          ls -l "$dir"
+          echo "FKBOX_GEO_DIR=$dir" >> "$GITHUB_ENV"
+
+      - name: Unit tests (client-core, brain-ffi)
+        shell: bash
+        run: cargo test --locked -p fkbox-client-core -p fkbox-brain-ffi -- --nocapture --test-threads 4 2>&1 | tee "$RUNNER_TEMP/test.log"
+
+      - name: Test summary
+        if: always()
+        run: |
+          {
+            echo "### Unit tests"
+            echo
+            echo '```'
+            grep -E '^test result:|^running [0-9]+ tests|real geo|geoip\.(dat|metadb):' "$RUNNER_TEMP/test.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Static library linked from C (ABI smoke test)
+        run: |
+          cargo build --locked --release -p fkbox-brain-ffi --lib
+          ls -l target/release/libfkbox_brain_ffi.a
+          gcc -std=c11 -Wall -Wextra -Werror -I crates/brain-ffi/include \
+            crates/brain-ffi/tests/c/abi_smoke.c target/release/libfkbox_brain_ffi.a \
+            -lgcc_s -lutil -lrt -lpthread -lm -ldl -lc -o "$RUNNER_TEMP/abi_smoke"
+          "$RUNNER_TEMP/abi_smoke"
+
+      - name: decide() bench
+        run: |
+          nproc
+          BENCH_SUMMARY="$GITHUB_STEP_SUMMARY" cargo bench --locked -p fkbox-brain-ffi --bench decide

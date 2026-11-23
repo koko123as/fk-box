@@ -25,3 +25,12 @@ sha2 = "0.10"
 # Backup identities of profiles not named by a UUID (Java's
 # UUID.nameUUIDFromBytes, MD5).
 md5 = { package = "md-5", version = "0.10" }
+# Rule engine (rules::engine): compiled domain/keyword/regex matchers, the
+# Clash/mihomo YAML importer and the rule-set binary formats (sing-box SRS is
+# zlib, mihomo MRS is zstd; both decoders are pure Rust).
+regex = "1"
+aho-corasick = "1"
+idna = "1"
+serde_yaml = "0.9"
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
+ruzstd = "0.8"

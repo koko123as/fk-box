@@ -3,9 +3,10 @@
 #   crates/client-ui      Slint pages, i18n and theme (fkbox-client-ui)
 #   crates/client-core    platform-neutral business layer (fkbox-client-core)
 #   crates/mobile-ffi     mobile session, host contract, JSON call surface (fkbox-mobile-ffi)
+#   crates/brain-ffi      Rust brain behind a fixed C ABI for the Go kernel host (fkbox-brain-ffi)
 #   apps/android/native   Android cdylib, libfkui.so (fkbox-android)
 [workspace]
-members = ["crates/client-core", "crates/mobile-ffi", "crates/client-ui", "apps/android/native"]
+members = ["crates/client-core", "crates/mobile-ffi", "crates/brain-ffi", "crates/client-ui", "apps/android/native"]
 # The vendored Slint crates are patched in below, not built as members.
 exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity", "vendor/i-slint-core"]
 # Same feature resolver the single edition-2021 crate used before.

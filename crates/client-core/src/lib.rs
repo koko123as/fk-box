@@ -21,6 +21,9 @@
 //! - [`routing`]: the per-core routing rule model, its validation and its
 //!   stored and wire forms (compiling a set for a core stays in the kernel
 //!   layer).
+//! - [`rules::engine`]: the brain's rule engine (Clash/mihomo and sing-box
+//!   rules imported into one representation, compiled, decided per
+//!   connection); not wired into the app yet.
 //! - [`geo`]: the geo resource policy (which files a core needs, bundled
 //!   copy versus installed file, automatic update schedule, user addresses).
 //! - [`service_settings`]: the service settings snapshot the pages show,

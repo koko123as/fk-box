@@ -1,0 +1,21 @@
+[package]
+name = "fkbox-brain-ffi"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "FK-box routing brain behind a fixed C ABI: the Go kernel host (sing-box with the fkbrain plugin outbound) calls decide() for every new connection; the brain calls back into the host for start/stop/reload, probes, DNS exchanges and stats. Fixed-layout C structs, no JSON on the call path."
+
+[lib]
+path = "src/lib.rs"
+# rlib for the tests and the bench, staticlib for the Go host (cgo) to link.
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+fkbox-client-core = { workspace = true }
+# Lock-free rule snapshot: decide() loads it, reload swaps it atomically.
+arc-swap = "1"
+
+[[bench]]
+name = "decide"
+harness = false
