@@ -68,29 +68,39 @@ native pages and the system capabilities.
    - **4e3c** `database/` wrappers (awaiting a decision).
    - **4i** the `bg/` service host, in the shape of Clash-of-Rust's
      `TunnelService`, without touching the kernel:
-     - **4i1** the start and stop state machine: mobile-ffi `lifecycle.rs`
-       (`lifecycle.*` in `api.rs`) answers what a start request does in each
+     - **4i1** the start and stop state machine: mobile-ffi `service_state.rs`
+       (`serviceState.*` in `api.rs`) answers what a start request does in each
        service state (start, restart once stopped, or only repeat
        `startForeground`), when a stop goes ahead and what follows it, the
        empty-configuration check, how a failed step is alerted, whether a
        failed reload falls back to the last started configuration, the Wi-Fi
        permission, the alert text a page shows, and the foreground
        notification's title, text and traffic line (and whether it shows).
-       `bg/BoxService.kt`, `bg/ServiceNotification.kt` and `BoxActivity` keep
+       `bg/BoxService.kt`, `bg/SystemNotifications.kt` and `BoxActivity` keep
        the state, the libbox calls and the Android notification calls.
-     - **4i2** the VPN interface: mobile-ffi `tun.rs` (`tun.plan`) turns
+     - **4i2** the VPN interface: mobile-ffi `vpn_routing.rs` (`vpnRouting.plan`) turns
        libbox's `TunOptions` (converted to JSON in Kotlin) and the settings
        into the builder plan: session, MTU, metered, bypass, addresses, DNS
        servers, routes (`IpPrefix` routes and exclusions from Android 13,
        route ranges before), allowed and disallowed apps and the HTTP proxy.
        `bg/VPNService.kt` keeps `VpnService.Builder` and `establish`.
-     - **4i3** default network changes: mobile-ffi `network.rs`
-       (`network.*`) decides when the core is told to reconnect (a switch
+     - **4i3** default network changes: mobile-ffi `network_recovery.rs`
+       (`networkRecovery.*`) decides when the core is told to reconnect (a switch
        between two networks, not updates of the same one or a lost network),
        the system DNS line for the core and which `ConnectivityManager`
        callback tracks the default network per Android version.
        `bg/DefaultNetworkMonitor.kt` and `bg/DefaultNetworkListener.kt` keep
        the callbacks, link property reads and libbox calls.
+     - **4i4** the Clash-of-Rust layout: the mobile-ffi modules take its
+       names (`service_state.rs` for `protection_service_state.rs`,
+       `vpn_routing.rs` for `VpnRouting`, `network_recovery.rs`), with the
+       calls `serviceState.*`, `vpnRouting.plan` and `networkRecovery.*`. In
+       `bg/`, `CoreBridge.kt` holds the mobile-ffi call and the JSON readers,
+       `VpnRouting.kt` the `TunOptions` conversion and builder calls, and
+       `ServiceNotification` is `SystemNotifications`. The manifest
+       components (`.bg.VPNService`, `.bg.ProxyService`, `.bg.TileService`,
+       `.bg.BootReceiver`) keep their names, so the Always-on VPN setting
+       and a placed Quick Settings tile survive the update.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

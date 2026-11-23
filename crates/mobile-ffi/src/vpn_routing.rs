@@ -1,5 +1,5 @@
 //! The VPN interface the Kotlin `VPNService.openTun` builds (phase 4i2),
-//! called through [`crate::api`] (`tun.plan`): from libbox's `TunOptions`
+//! called through [`crate::api`] (`vpnRouting.plan`): from libbox's `TunOptions`
 //! (converted to JSON by the host, since the gomobile iterators stay in
 //! Kotlin) and the Android settings, which addresses, DNS servers, routes,
 //! excluded routes, allowed or disallowed apps, MTU and HTTP proxy go into

@@ -30,7 +30,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.database.CoreStore
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -38,9 +37,6 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.channels.actor
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.booleanOrNull
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 object DefaultNetworkListener {
@@ -164,16 +160,16 @@ object DefaultNetworkListener {
         }
     }
 
-    // mobile-ffi network.rs: which callback tracks the default network here.
+    // mobile-ffi network_recovery.rs: which callback tracks the default network here.
     private val plan by lazy {
-        CoreStore.call("network.callback") { put("sdk", Build.VERSION.SDK_INT) }.jsonObject
+        CoreBridge.call("networkRecovery.callback") { put("sdk", Build.VERSION.SDK_INT) }
     }
 
     private val request by lazy {
         NetworkRequest.Builder().apply {
             addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            if (plan["relaxed"]?.jsonPrimitive?.booleanOrNull == true) { // workarounds for OEM bugs
+            if (plan.bool("relaxed")) { // workarounds for OEM bugs
                 removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
             }
@@ -193,9 +189,9 @@ object DefaultNetworkListener {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/2df4c7d/services/core/java/com/android/server/ConnectivityService.java#887
      */
-    @SuppressLint("NewApi") // mobile-ffi network.rs picks each call by SDK level.
+    @SuppressLint("NewApi") // mobile-ffi network_recovery.rs picks each call by SDK level.
     private fun register() {
-        when (plan["kind"]?.jsonPrimitive?.content) {
+        when (plan.textOrNull("kind")) {
             "bestMatching" -> Application.connectivity.registerBestMatchingNetworkCallback(request, Callback, callbackHandler)
             // we want REQUEST here instead of LISTEN
             "request" -> Application.connectivity.requestNetwork(request, Callback, callbackHandler)

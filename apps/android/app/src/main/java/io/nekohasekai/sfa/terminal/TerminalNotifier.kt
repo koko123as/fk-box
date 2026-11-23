@@ -9,7 +9,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.nekohasekai.sfa.R
-import io.nekohasekai.sfa.bg.ServiceNotification
+import io.nekohasekai.sfa.bg.SystemNotifications
 import io.nekohasekai.sfa.compose.MainActivity
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -31,7 +31,7 @@ object TerminalNotifier {
             context,
             0,
             intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or ServiceNotification.flags,
+            PendingIntent.FLAG_UPDATE_CURRENT or SystemNotifications.flags,
         )
         val builder = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_menu)

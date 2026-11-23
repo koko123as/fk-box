@@ -1,5 +1,5 @@
 //! The start and stop state machine of the Kotlin `BoxService` (phase 4i1),
-//! called through [`crate::api`] (`lifecycle.*`): what a start request does
+//! called through [`crate::api`] (`serviceState.*`): what a start request does
 //! in each service state, when a stop goes ahead and what follows it, which
 //! profile checks end a start, how a failed step is classified for the
 //! alert, whether a failed reload falls back to the configuration that last

@@ -58,7 +58,7 @@ internal class BackgroundProfileService(private val context: Context) : ServiceC
                 check(VpnService.prepare(context) == null) { context.getString(R.string.error_missing_vpn_permission) }
             }
             if (Settings.dynamicNotification) {
-                check(ServiceNotification.checkPermission()) { context.getString(R.string.notification_permission_required_description) }
+                check(SystemNotifications.checkPermission()) { context.getString(R.string.notification_permission_required_description) }
             }
             recoveryRequired = true
             stopAndWait()

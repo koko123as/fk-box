@@ -19,7 +19,6 @@ import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.CommandClient
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -27,11 +26,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
-class ServiceNotification(private val status: MutableLiveData<Status>, private val service: Service) :
+class SystemNotifications(private val status: MutableLiveData<Status>, private val service: Service) :
     BroadcastReceiver(),
     CommandClient.Handler {
     companion object {
@@ -88,15 +85,15 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     // (an idle "0 B/s" line would otherwise be re-posted every second).
     @Volatile private var lastContent: String? = null
 
-    /** The notification for [profileName] while [phase] (`starting`, `started`); mobile-ffi lifecycle.rs words it. */
+    /** The notification for [profileName] while [phase] (`starting`, `started`); mobile-ffi service_state.rs words it. */
     fun show(profileName: String, phase: String) {
-        show(CoreStore.call("lifecycle.notification") { put("profile", profileName); put("phase", phase) }.jsonObject)
+        show(CoreBridge.call("serviceState.notification") { put("profile", profileName); put("phase", phase) })
     }
 
-    /** A notification as mobile-ffi lifecycle.rs answers it: `title` and the `text` string resource. */
+    /** A notification as mobile-ffi service_state.rs answers it: `title` and the `text` string resource. */
     fun show(content: JsonObject) {
-        val title = content["title"]!!.jsonPrimitive.content
-        val text = if (content["text"]?.jsonPrimitive?.content == "status_started") R.string.status_started else R.string.status_starting
+        val title = content.text("title")
+        val text = if (content.textOrNull("text") == "status_started") R.string.status_started else R.string.status_starting
         lastContent = null
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             Application.notification.createNotificationChannel(
@@ -116,10 +113,10 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     }
 
     suspend fun start() {
-        val shown = CoreStore.call("lifecycle.trafficShown") {
+        val shown = CoreBridge.call("serviceState.trafficShown") {
             put("enabled", Settings.dynamicNotification)
             put("permitted", checkPermission())
-        }.jsonObject["shown"]?.jsonPrimitive?.content == "true"
+        }.bool("shown")
         if (shown) {
             commandClient.connect()
             withContext(Dispatchers.Main) {
@@ -140,13 +137,13 @@ class ServiceNotification(private val status: MutableLiveData<Status>, private v
     }
 
     override fun updateStatus(status: StatusMessage) {
-        val line = CoreStore.call("lifecycle.trafficText") {
+        val line = CoreBridge.call("serviceState.trafficText") {
             put("uplink", Libbox.formatBytes(status.uplink))
             put("downlink", Libbox.formatBytes(status.downlink))
             put("last", lastContent)
-        }.jsonObject
-        if (line["post"]?.jsonPrimitive?.content != "true") return
-        val content = line["text"]!!.jsonPrimitive.content
+        }
+        if (!line.bool("post")) return
+        val content = line.text("text")
         lastContent = content
         Application.notificationManager.notify(
             notificationId,

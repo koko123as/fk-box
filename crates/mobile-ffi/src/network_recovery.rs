@@ -1,6 +1,6 @@
 //! What the Kotlin `DefaultNetworkMonitor` and `DefaultNetworkListener` do
 //! when the default network changes (phase 4i3), called through
-//! [`crate::api`] (`network.*`): whether the core is told to reconnect, the
+//! [`crate::api`] (`networkRecovery.*`): whether the core is told to reconnect, the
 //! system DNS line handed to the core, and which `ConnectivityManager`
 //! callback tracks the default network on each Android version. Kotlin keeps
 //! the callbacks, the link property reads and the libbox calls.

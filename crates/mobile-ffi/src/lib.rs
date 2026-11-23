@@ -22,10 +22,10 @@
 //!   visibility the Kotlin `BoxBridge` kept (phase 4e3b).
 //! - [`service`]: the routing status, geo notice and per-app package
 //!   decisions of the Kotlin `BoxService` start (phase 4e3b).
-//! - [`lifecycle`]: the `BoxService` start and stop state machine, alerts
+//! - [`service_state`]: the `BoxService` start and stop state machine, alerts
 //!   and foreground notification content (phase 4i1).
-//! - [`tun`]: what the VPN interface is built with (phase 4i2).
-//! - [`network`]: default network changes: reconnects, system DNS and the
+//! - [`vpn_routing`]: what the VPN interface is built with (phase 4i2).
+//! - [`network_recovery`]: default network changes: reconnects, system DNS and the
 //!   callback kind (phase 4i3).
 //!
 //! Layout follows docs/architecture/phase4.md.
@@ -33,15 +33,15 @@
 pub mod api;
 pub mod bridge;
 pub mod diagnostics;
-pub mod lifecycle;
-pub mod network;
+pub mod network_recovery;
 pub mod runtime;
 pub mod service;
-pub mod taildrop;
-pub mod tool_status;
-pub mod tun;
+pub mod service_state;
 pub mod session;
 pub mod sessions;
+pub mod taildrop;
+pub mod tool_status;
+pub mod vpn_routing;
 
 /// What the UI needs from the platform: one asynchronous call into the host
 /// app. The UI sends `method` with JSON `args` under the request `id`; the

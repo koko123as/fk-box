@@ -109,7 +109,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private val status = MutableLiveData(Status.Stopped)
     private val binder = ServiceBinder(status)
-    private val notification = ServiceNotification(status, service)
+    private val notification = SystemNotifications(status, service)
     private lateinit var commandServer: CommandServer
     private var receiverRegistered = false
     private val receiver =
@@ -177,8 +177,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 if (stopRequested) return@withContext
                 notification.show(lastProfileName, "started")
                 notification.start()
-                val started = life("startSucceeded") { put("stopRequested", stopRequested); put("profile", lastProfileName) }
-                started.int("status")?.let { status.value = Status.entries[it] }
+                val started = state("startSucceeded") { put("stopRequested", stopRequested); put("profile", lastProfileName) }
+                started.intOrNull("status")?.let { status.value = Status.entries[it] }
             }
         } catch (e: Exception) {
             failStart("service", e)
@@ -212,9 +212,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
         } catch (e: Exception) {
             val previous = lastStarted
-            // mobile-ffi lifecycle.rs: fall back when the profile or its routing
+            // mobile-ffi service_state.rs: fall back when the profile or its routing
             // rules changed since the last good start.
-            val fallback = life("reloadFallback") {
+            val fallback = state("reloadFallback") {
                 put("previous", previous?.let {
                     buildJsonObject {
                         put("profileId", it.profileId)
@@ -251,21 +251,21 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private data class Selected(val id: Long, val profile: io.nekohasekai.sfa.database.Profile, val content: String)
 
-    /** mobile-ffi lifecycle.rs (`lifecycle.*`): the start and stop decisions. */
-    private fun life(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}): JsonObject =
-        CoreStore.call("lifecycle.$method", build).jsonObject
+    /** mobile-ffi service_state.rs (`serviceState.*`): the start and stop decisions. */
+    private fun state(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
+        CoreBridge.call("serviceState.$method", build)
 
     /** The selected profile and its content, or null after the empty configuration alert. */
     private suspend fun selectedProfile(): Selected? {
         val id = Settings.selectedProfile
         val profile = if (id == -1L) null else ProfileManager.get(id)
         val content = profile?.let { File(it.typed.path).readText() }
-        val check = life("profileCheck") {
+        val check = state("profileCheck") {
             put("selected", id)
             put("found", profile != null)
             put("blank", content.isNullOrBlank())
         }
-        check.int("alert")?.let {
+        check.intOrNull("alert")?.let {
             stopAndAlert(Alert.entries[it])
             return null
         }
@@ -275,19 +275,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     /** False when the core reads the Wi-Fi state without the permission it needs. */
     private fun wifiPermitted(): Boolean {
         if (!commandServer.needWIFIState()) return true
-        val permission = life("wifiPermission") { put("sdk", Build.VERSION.SDK_INT) }.string("permission")!!
+        val permission = state("wifiPermission") { put("sdk", Build.VERSION.SDK_INT) }.string("permission")!!
         return service.hasPermission(permission)
     }
 
     /** A failed start step ([stage]: commandServer, core, service), alerted as mobile-ffi classifies it. */
     private suspend fun failStart(stage: String, error: Exception) {
-        val failure = life("startFailure") { put("stage", stage); put("stopRequested", stopRequested) }
-        stopAndAlert(Alert.entries[failure.int("alert")!!], error.message)
+        val failure = state("startFailure") { put("stage", stage); put("stopRequested", stopRequested) }
+        stopAndAlert(Alert.entries[failure.int("alert")], error.message)
     }
-
-    private fun JsonObject.int(key: String): Int? = (get(key) as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toIntOrNull()
-
-    private fun JsonObject.bool(key: String): Boolean = (get(key) as? JsonPrimitive)?.content == "true"
 
     /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */
     private fun currentRouting(declaredCore: String, content: String): String? = runCatching {
@@ -412,10 +408,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun stopService() {
-        val stop = life("stopRequest") { put("status", status.value!!.ordinal) }
+        val stop = state("stopRequest") { put("status", status.value!!.ordinal) }
         if (!stop.bool("stop")) return
         stopRequested = true
-        status.value = Status.entries[stop.int("status")!!]
+        status.value = Status.entries[stop.int("status")]
         if (receiverRegistered) {
             service.unregisterReceiver(receiver)
             receiverRegistered = false
@@ -439,8 +435,8 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             Settings.startedByUser = false
             Settings.dataStore.flush()
             withContext(Dispatchers.Main) {
-                val finished = life("stopFinished") { put("restartAfterStop", restartAfterStop) }
-                status.value = Status.entries[finished.int("status")!!]
+                val finished = state("stopFinished") { put("restartAfterStop", restartAfterStop) }
+                status.value = Status.entries[finished.int("status")]
                 if (finished.bool("restart")) {
                     restartAfterStop = false
                     onStartCommand()
@@ -495,10 +491,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("SameReturnValue")
     internal fun onStartCommand(): Int {
-        // mobile-ffi lifecycle.rs: a start while stopping restarts once stopped;
+        // mobile-ffi service_state.rs: a start while stopping restarts once stopped;
         // a start while starting or started only repeats startForeground, which
         // a start through startForegroundService needs within seconds.
-        val start = life("startCommand") {
+        val start = state("startCommand") {
             put("status", status.value!!.ordinal)
             put("profile", lastProfileName)
         }
@@ -512,7 +508,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             else -> return Service.START_STICKY
         }
         stopRequested = false
-        status.value = Status.entries[start.int("status")!!]
+        status.value = Status.entries[start.int("status")]
 
         if (!receiverRegistered) {
             ContextCompat.registerReceiver(
@@ -575,7 +571,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                         setAction(Action.OPEN_URL).setData(Uri.parse(notification.openURL))
                         setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                     },
-                    ServiceNotification.flags,
+                    SystemNotifications.flags,
                 ),
             )
         }

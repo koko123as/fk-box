@@ -19,7 +19,7 @@ import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
-import io.nekohasekai.sfa.bg.ServiceNotification
+import io.nekohasekai.sfa.bg.SystemNotifications
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -507,7 +507,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 Application.application.setupLibbox()
                 Settings.dataStore.initialize()
                 require(Settings.selectedProfile != -1L) { getString(R.string.error_empty_configuration) }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !ServiceNotification.checkPermission()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !SystemNotifications.checkPermission()) {
                     if (!notificationPermissionRequested) {
                         notificationPermissionRequested = true
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -697,9 +697,9 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     private fun handleServiceAlert(type: Alert, message: String?) {
-        // mobile-ffi lifecycle.rs: the location alert retries after the
+        // mobile-ffi service_state.rs: the location alert retries after the
         // permission; the others show the service's message or a fallback.
-        val alert = io.nekohasekai.sfa.database.CoreStore.call("lifecycle.alertText") {
+        val alert = io.nekohasekai.sfa.database.CoreStore.call("serviceState.alertText") {
             put("type", type.ordinal)
             put("message", message)
         }.jsonObject
