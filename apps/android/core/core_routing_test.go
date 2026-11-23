@@ -1,6 +1,7 @@
 package libbox
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,8 +10,10 @@ import (
 	"testing"
 	"time"
 
+	mihomoProviderConst "github.com/metacubex/mihomo/constant/provider"
 	mihomoRules "github.com/metacubex/mihomo/rules"
 	mihomoRC "github.com/metacubex/mihomo/rules/common"
+	mihomoProvider "github.com/metacubex/mihomo/rules/provider"
 	"go.yaml.in/yaml/v3"
 )
 
@@ -354,9 +357,17 @@ func TestCoreRoutingMihomo(t *testing.T) {
 	if raw.RuleProvider[provider]["behavior"] != "domain" || !strings.Contains(joined, "RULE-SET,"+provider+",REJECT") {
 		t.Fatalf("list provider: %v", raw.RuleProvider)
 	}
-	data, err := os.ReadFile(filepath.Join(GeoDataDir(), mihomoRoutingDir, routingListHash(testRoutingListURL)+"-domain.txt"))
-	if err != nil || !strings.Contains(string(data), "+.ads.example.com\n") || !strings.Contains(string(data), "\nhosts.example.org\n") {
-		t.Fatalf("provider file: %q %v", data, err)
+	if raw.RuleProvider[provider]["format"] != "mrs" || raw.RuleProvider[provider]["path"] != "./"+mihomoRoutingDir+"/"+routingListHash(testRoutingListURL)+"-domain.mrs" {
+		t.Fatalf("list provider format: %v", raw.RuleProvider[provider])
+	}
+	data, err := os.ReadFile(filepath.Join(GeoDataDir(), mihomoRoutingDir, routingListHash(testRoutingListURL)+"-domain.mrs"))
+	if err != nil {
+		t.Fatalf("provider file: %v", err)
+	}
+	// Read the set back through mihomo's own converter (mrs -> text).
+	var dump bytes.Buffer
+	if err := mihomoProvider.ConvertToMrs(data, mihomoProviderConst.Domain, mihomoProviderConst.MrsRule, &dump); err != nil || !strings.Contains(dump.String(), "+.ads.example.com\n") || !strings.Contains(dump.String(), "hosts.example.org\n") {
+		t.Fatalf("provider file: %q %v", dump.String(), err)
 	}
 	// The profile's other keys are kept.
 	var root map[string]any

@@ -9,18 +9,25 @@ package libbox
 // as ClashMetaForAndroid does. Downloaded rule lists are written as local
 // rule-provider files in the mihomo home directory (domain, ipcidr and
 // classical behaviors), so large lists use mihomo's own set matchers.
+// Domain and ipcidr parts are compiled to mrs with mihomo's own converter
+// (rules/provider.ConvertToMrs, as `mihomo convert-ruleset` and FlClash do):
+// mihomo then reads the finished set instead of building it from text at
+// every start, which skips the builder's transient heap. Classical rules have
+// no mrs form and stay text; a part the converter rejects falls back to text.
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
 
+	mihomoProviderConst "github.com/metacubex/mihomo/constant/provider"
+	mihomoProvider "github.com/metacubex/mihomo/rules/provider"
 	"go.yaml.in/yaml/v3"
 )
 
 const mihomoRoutingDir = "fk-routing"
-
 
 func yamlMapValue(mapping *yaml.Node, key string) *yaml.Node {
 	if mapping == nil || mapping.Kind != yaml.MappingNode {
@@ -185,13 +192,19 @@ func (p *mihomoProviders) list(list *routingList) ([]mihomoRuleProvider, error) 
 			continue
 		}
 		name := "fk-list-" + list.hash + "-" + item.behavior
-		relative := "./" + mihomoRoutingDir + "/" + list.hash + "-" + item.behavior + ".txt"
+		text := []byte(strings.Join(item.lines, "\n") + "\n")
+		format, data := "text", text
+		if compiled, ok := mihomoCompileMrs(item.behavior, text); ok {
+			format, data = "mrs", compiled
+		}
+		file := list.hash + "-" + item.behavior + "." + map[string]string{"text": "txt", "mrs": "mrs"}[format]
+		relative := "./" + mihomoRoutingDir + "/" + file
 		if !p.written[name] {
-			path := filepath.Join(p.home, mihomoRoutingDir, list.hash+"-"+item.behavior+".txt")
+			path := filepath.Join(p.home, mihomoRoutingDir, file)
 			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 				return nil, err
 			}
-			if err := os.WriteFile(path, []byte(strings.Join(item.lines, "\n")+"\n"), 0o644); err != nil {
+			if err := os.WriteFile(path, data, 0o644); err != nil {
 				return nil, err
 			}
 			p.written[name] = true
@@ -199,10 +212,29 @@ func (p *mihomoProviders) list(list *routingList) ([]mihomoRuleProvider, error) 
 		if p.used[name] && p.added[name] == nil {
 			return nil, fmt.Errorf("rule-provider %s already exists in the profile", name)
 		}
-		p.added[name] = map[string]any{"type": "file", "behavior": item.behavior, "format": "text", "path": relative}
+		p.added[name] = map[string]any{"type": "file", "behavior": item.behavior, "format": format, "path": relative}
 		names = append(names, mihomoRuleProvider{name, item.behavior})
 	}
 	return names, nil
+}
+
+// mihomoCompileMrs converts a text domain or ipcidr list to mrs; classical
+// lists, and lists the converter rejects (e.g. no usable entry), report false.
+func mihomoCompileMrs(behavior string, text []byte) ([]byte, bool) {
+	var kind mihomoProviderConst.RuleBehavior
+	switch behavior {
+	case "domain":
+		kind = mihomoProviderConst.Domain
+	case "ipcidr":
+		kind = mihomoProviderConst.IPCIDR
+	default:
+		return nil, false
+	}
+	var out bytes.Buffer
+	if err := mihomoProvider.ConvertToMrs(text, kind, mihomoProviderConst.TextRule, &out); err != nil {
+		return nil, false
+	}
+	return out.Bytes(), true
 }
 
 func mihomoLine(matcher string, conditions []string, target string, params string) string {
