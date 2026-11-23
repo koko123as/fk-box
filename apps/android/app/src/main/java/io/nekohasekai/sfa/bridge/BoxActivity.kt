@@ -147,7 +147,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 reply(true, SlintHost.wire(null))
                 return@launch
             }
-            // Calls the activity answers itself (the Compose UI used the context directly).
+            // Calls the activity answers itself: they need its context or window.
             when (method) {
                 "locale" -> {
                     val locale = resources.configuration.locales[0]
@@ -412,8 +412,8 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         SystemFonts.write(this)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // The UI draws its own navigation bar surface under the gesture inset, as
-        // Compose's NavigationBar did; no translucent system scrim over it.
+        // The Slint UI draws its own navigation bar surface under the gesture
+        // inset; no translucent system scrim over it.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false

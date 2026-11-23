@@ -124,7 +124,7 @@
 
 ## 2e-3 设计要点
 
-- **日志**：client-core `logs.rs` 持有日志记录（去 ANSI、递增 ID、3000 条环形、默认等级标签）。Kotlin `LogViewModel` 只在单线程通道里暂存新行、清空与等级变化（`LogEventBuffer`，同样以 3000 行为上限）；`BoxBridge.flushLogs` 在日志页可见时最多每秒发一次 `logEvents`（`reset`、`defaultLogLevel`、`entries`）。原来每次恢复可见要重新编码整份快照，现在界面自己保留记录，只发新增。`LogStream.kt`、`LogBuffer` 及其 JVM 测试已删，用例改为 Rust 测试；`LogLevel` 枚举保留给仪器测试比较默认等级。
+- **日志**：client-core `logs.rs` 持有日志记录（去 ANSI、递增 ID、3000 条环形、默认等级标签）。Kotlin `LogViewModel` 只在单线程通道里暂存新行、清空与等级变化（`LogEventBuffer`，同样以 3000 行为上限；阶段 4d 起 `LogViewModel` 与 `LogEventBuffer` 已删，这部分在 `crates/mobile-ffi/src/runtime.rs`）；`BoxBridge.flushLogs` 在日志页可见时最多每秒发一次 `logEvents`（`reset`、`defaultLogLevel`、`entries`）。原来每次恢复可见要重新编码整份快照，现在界面自己保留记录，只发新增。`LogStream.kt`、`LogBuffer` 及其 JVM 测试已删，用例改为 Rust 测试；`LogLevel` 枚举保留给仪器测试比较默认等级。
 - **仪表盘**：client-core `dashboard.rs` 从 Kotlin 上报的原值推导显示（`trafficAvailable`、仅可切换时的 `modes`、仅本地服务的 `systemProxyAvailable`、远程会话优先的 `startedAt`）；已是显示形态的值（截图工具）原样通过。
 - **代理组**：`backend/model/Groups.kt` 已删，`GroupsViewModel` 直接把 libbox `OutboundGroup` 转为界面读取的映射。选择节点、测速、切换模式的检查移到 client-core `groups.rs`，界面在调用宿主前检查（选择失败仍静默忽略，测速与模式报错）；`BoxBridge.selectOutbound`/`urlTest`/`setMode` 不再重复检查。
 - **schema**：未改，`user_version` 不变。

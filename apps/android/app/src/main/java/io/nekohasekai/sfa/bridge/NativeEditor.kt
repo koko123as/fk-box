@@ -45,8 +45,9 @@ class NativeEditor(private val activity: BoxActivity) {
     private val closeQuietly = Runnable { close(notify = false) }
 
     // API 33+: Back can arrive through OnBackInvokedDispatcher (always on
-    // Android 16+ with targetSdk 36+), never reaching dispatchKeyEvent. Above
-    // the Slint backend's PRIORITY_DEFAULT callback while the editor is open.
+    // Android 16+ at this app's targetSdk), never reaching dispatchKeyEvent.
+    // Registered above the Slint backend's PRIORITY_DEFAULT callback (API 34+)
+    // while the editor is open.
     private val backCallback: Any? = if (Build.VERSION.SDK_INT >= 33) android.window.OnBackInvokedCallback { close(notify = true) } else null
     private var backRegistered = false
 

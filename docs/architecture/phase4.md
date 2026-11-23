@@ -15,7 +15,7 @@ native pages and the system capabilities.
 | `crates/client-ui` | Slint only: `ui/` split into `components/`, `icons/`, `models/`, `pages/`, `theme/`, `mobile/android/`; Rust keeps fonts and model types. |
 | `apps/android/native` | Android cdylib: JNI, presentation/page controllers, session worker. |
 | `apps/android/app` | Kotlin host: Activity, VpnService/foreground service, notifications, tiles, permissions, app list and icons, files, Keystore, Shizuku, WorkManager, and the native pages (terminal, QR scanner, OpenConnect WebView, editor). |
-| `apps/android/core` | Go kernel bridge as its own module (`go.mod`), using the upstream exported API instead of overlaying the sing-box tree. |
+| `apps/android/core` | Go kernel bridge, unchanged: still overlaid on the sing-box tree (`.core/`) with its current exported API. The kernel is not touched in phase 4 (4f and 4h abandoned). |
 
 ## Slices
 
@@ -101,8 +101,17 @@ native pages and the system capabilities.
        components (`.bg.VPNService`, `.bg.ProxyService`, `.bg.TileService`,
        `.bg.BootReceiver`) keep their names, so the Always-on VPN setting
        and a placed Quick Settings tile survive the update.
-6. **4f** `apps/android/core` as its own Go module.
-7. **4g** cleanup, docs, release APK.
+6. **4f** `apps/android/core` as its own Go module: **abandoned** (draft PR #51
+   is not merged). The kernel stays as it is: no Go source, libbox build,
+   dependency, `.core/`, `vendor/` or exported API changes.
+7. **4h** a JSON call interface on the Go side: **abandoned** for the same
+   reason; Kotlin keeps converting the gomobile objects. The JSON storage of
+   draft PR #50 is abandoned too: storage stays Rust SQLite
+   (`files/fkbox/client.db`).
+8. **4g** cleanup and docs: stale comments in `CoreStore.kt`, `NativeUi.kt`,
+   `NativeEditor.kt` and `BoxActivity.kt` (the Compose UI is gone, the store
+   also answers the `bg/` decisions), no `LogEventBuffer` or
+   `LogEventBufferTest` left, the abandoned slices marked here. The release
+   APK is the `build-apk.yml` artifact; nothing is tagged or published.
 
-4d and 4f change kernel communication and packaging; they need a device pass
-on top of CI.
+4d changes kernel communication; it and 4i need a device pass on top of CI.

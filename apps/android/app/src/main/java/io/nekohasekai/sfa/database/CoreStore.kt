@@ -13,8 +13,11 @@ import java.io.File
 /**
  * The client store of `fkbox-client-core` (crates/client-core): service
  * settings, profile metadata, remote servers and interface preferences in one
- * SQLite file, shared with the Rust UI in libfkui.so. [Settings],
- * [ProfileManager] and [RemoteServerManager] read and write it through [call].
+ * SQLite file (`files/fkbox/client.db`), shared with the Rust UI in
+ * libfkui.so. [Settings], [ProfileManager] and [RemoteServerManager] read and
+ * write it through [call], and the service host asks the same dispatch
+ * (crates/mobile-ffi/src/api.rs) for its decisions through `bg/CoreBridge.kt`
+ * (`serviceState.*`, `vpnRouting.plan`, `networkRecovery.*`).
  *
  * The first call opens it (loading libfkui.so if the UI has not) and runs the
  * one-time import of the Room databases and the `flclash_ui` preferences (and,
