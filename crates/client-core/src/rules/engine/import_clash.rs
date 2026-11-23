@@ -259,7 +259,8 @@ pub fn parse_rule(raw: &str, opts: &ClashOptions) -> Result<Rule, String> {
     let (cond, target) = match parts.tp.as_str() {
         "" => return Err("empty rule".into()),
         "SUB-RULE" => {
-            let children = logic_children(&format!("({})", parts.payload))?;
+            let wrapped = format!("({})", parts.payload);
+            let children = logic_children(&wrapped)?;
             if children.len() != 1 {
                 return Err("SUB-RULE must contain exactly one rule".into());
             }
