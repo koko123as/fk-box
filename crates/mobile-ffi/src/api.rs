@@ -1,6 +1,6 @@
 //! The client layer's call surface for a platform host: `method` with JSON
 //! `args`, answered with a JSON value. On Android the Kotlin service layer
-//! (`database/CoreStore.kt`) calls it over JNI, so the service keeps reading
+//! (`database/CoreStore.kt`) calls it over JNI (through `apps/android/native`), so the service keeps reading
 //! the selected profile and its settings at start without the UI running.
 //!
 //! Calls that need the cores (a subscription fetch, a content save) take the
@@ -8,12 +8,14 @@
 
 use serde_json::{json, Map, Value};
 
-use crate::content::{self, Kernel, Replace};
-use crate::service_settings::{self, Written};
-use crate::{backup, capture, geo, ip_quality, profiles, remote_servers, routing, sessions, terminal, updates, webdav};
-use crate::profile_array::{self, Element};
-use crate::storage::{Profile, RemoteServer, SettingValue, Store};
-use crate::subscription::{self, Fetch, Metadata};
+use fkbox_client_core::content::{self, Kernel, Replace};
+use fkbox_client_core::service_settings::{self, Written};
+use fkbox_client_core::{backup, capture, geo, ip_quality, profiles, remote_servers, routing, terminal, updates, webdav};
+
+use crate::sessions;
+use fkbox_client_core::profile_array::{self, Element};
+use fkbox_client_core::storage::{Profile, RemoteServer, SettingValue, Store};
+use fkbox_client_core::subscription::{self, Fetch, Metadata};
 
 fn arg<'a>(args: &'a Value, key: &str) -> Result<&'a Value, String> {
     args.get(key).filter(|v| !v.is_null()).ok_or_else(|| format!("Missing argument: {key}"))
@@ -79,7 +81,7 @@ pub fn call_with_kernel(store: &Store, kernel: &mut dyn Kernel, method: &str, ar
 fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: &str) -> Result<String, String> {
     let args: Value =
         if args.trim().is_empty() { Value::Null } else { serde_json::from_str(args).map_err(|e| format!("Invalid arguments: {e}"))? };
-    let e = |error: crate::storage::Error| error.0;
+    let e = |error: fkbox_client_core::storage::Error| error.0;
     let has_kernel = kernel.is_some();
     let kernel = move || kernel.ok_or_else(|| format!("{method} needs the kernel bridge"));
     let value = match method {
@@ -326,7 +328,7 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
             store.rollback().map_err(e)?;
             Value::Null
         }
-        "meta.migration" => store.meta(crate::legacy::MIGRATION_KEY).map_err(e)?.map(Value::String).unwrap_or(Value::Null),
+        "meta.migration" => store.meta(fkbox_client_core::legacy::MIGRATION_KEY).map_err(e)?.map(Value::String).unwrap_or(Value::Null),
         _ => return Err(format!("Unknown store call: {method}")),
     };
     Ok(value.to_string())
@@ -419,10 +421,10 @@ mod tests {
 
     #[test]
     fn kernel_calls_need_the_bridge_and_use_it() {
-        let (store, _dir, id) = crate::content::tests::setup(true, Some("old"));
+        let (store, _dir, id) = fkbox_client_core::content::tests::setup(true, Some("old"));
         assert_eq!(call(&store, "content.replace", &json!({"id": id}).to_string()).unwrap_err(), "content.replace needs the kernel bridge");
-        let mut kernel = crate::content::tests::FakeKernel {
-            response: crate::subscription::Response { content: "new".into(), user_info: "total=3".into(), ..Default::default() },
+        let mut kernel = fkbox_client_core::content::tests::FakeKernel {
+            response: fkbox_client_core::subscription::Response { content: "new".into(), user_info: "total=3".into(), ..Default::default() },
             ..Default::default()
         };
         let fetched: Value = serde_json::from_str(
@@ -485,9 +487,9 @@ mod tests {
         for method in ["webdav.account", "webdav.check", "updates.check", "backup.create"] {
             assert_eq!(call(&store, method, "{}").unwrap_err(), format!("{method} needs the kernel bridge"));
         }
-        let mut dav = crate::webdav::tests::Dav::default();
+        let mut dav = fkbox_client_core::webdav::tests::Dav::default();
         let saved: Value = serde_json::from_str(
-            &call_with_kernel(&store, &mut dav, "webdav.save", &json!({"value": crate::webdav::tests::account_value()}).to_string()).unwrap(),
+            &call_with_kernel(&store, &mut dav, "webdav.save", &json!({"value": fkbox_client_core::webdav::tests::account_value()}).to_string()).unwrap(),
         )
         .unwrap();
         assert_eq!(saved["password"], json!("pw"));

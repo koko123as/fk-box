@@ -63,7 +63,7 @@ class DashboardViewModel :
     override fun createInitialState() = DashboardUiState()
 
     init {
-        // When each subscription runs: client-core sessions.rs.
+        // When each subscription runs: mobile-ffi sessions.rs.
         modeClient.follow(viewModelScope, CommandSessions.Stream.ClashMode)
         // A fresh status subscription reports the current values at once, so
         // a page shown again starts from them.

@@ -25,7 +25,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 /**
- * Which libbox command subscriptions run. The rules are client-core
+ * Which libbox command subscriptions run. The rules are mobile-ffi
  * `sessions.rs` (`sessions.plan`); this object reports what it sees (app and
  * screen state, the service, the remote session, the loaded configuration,
  * which pages are shown) and each [CommandClient] follows its stream's
@@ -120,7 +120,7 @@ fun CommandClient.follow(scope: CoroutineScope, stream: CommandSessions.Stream) 
     }
 }
 
-/** client-core `sessions::Plan` as each stream's target; missing streams stay disconnected. */
+/** mobile-ffi `sessions::Plan` as each stream's target; missing streams stay disconnected. */
 internal fun decodeSessionPlan(result: JsonElement): Map<CommandSessions.Stream, CommandSessions.Target> {
     val plan = result as? JsonObject ?: return emptyMap()
     return CommandSessions.Stream.entries.associateWith { stream ->

@@ -44,7 +44,7 @@ class ConnectionsViewModel :
     override fun createInitialState() = ConnectionsUiState()
 
     init {
-        // When to subscribe: client-core sessions.rs (the connection pages shown).
+        // When to subscribe: mobile-ffi sessions.rs (the connection pages shown).
         commandClient.follow(viewModelScope, CommandSessions.Stream.Connections)
     }
 

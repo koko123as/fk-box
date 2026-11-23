@@ -1,11 +1,11 @@
-//! The UI's link to the platform host ([`fkbox_client_core::Host`]). The
+//! The UI's link to the platform host ([`fkbox_mobile_ffi::NativeHost`]). The
 //! platform shell registers its host before the event loop starts
 //! (apps/android/native: the JNI link to BoxActivity); every call the pages
 //! make goes through [invoke].
 
 use std::sync::OnceLock;
 
-use fkbox_client_core::Host;
+use fkbox_mobile_ffi::NativeHost as Host;
 
 static HOST: OnceLock<Box<dyn Host>> = OnceLock::new();
 

@@ -2,9 +2,10 @@
 # apps/<platform>/ (platform shells):
 #   crates/client-ui      Slint pages, i18n and theme (fkbox-client-ui)
 #   crates/client-core    platform-neutral business layer (fkbox-client-core)
+#   crates/mobile-ffi     mobile session, host contract, JSON call surface (fkbox-mobile-ffi)
 #   apps/android/native   Android cdylib, libfkui.so (fkbox-android)
 [workspace]
-members = ["crates/client-core", "crates/client-ui", "apps/android/native"]
+members = ["crates/client-core", "crates/mobile-ffi", "crates/client-ui", "apps/android/native"]
 # The vendored Slint crates are patched in below, not built as members.
 exclude = ["vendor/i-slint-renderer-skia", "vendor/i-slint-backend-android-activity", "vendor/i-slint-core"]
 # Same feature resolver the single edition-2021 crate used before.
@@ -20,6 +21,7 @@ publish = false
 # with `{ workspace = true }` and add their own features.
 [workspace.dependencies]
 fkbox-client-core = { path = "crates/client-core" }
+fkbox-mobile-ffi = { path = "crates/mobile-ffi" }
 fkbox-client-ui = { path = "crates/client-ui" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }

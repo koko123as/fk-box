@@ -232,14 +232,17 @@ pub fn download(store: &Store, kernel: &mut dyn Kernel) -> Result<String, String
     request(kernel, &account, "GET", &file, "", false)
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod tests {
+    // With `test-support` only the fixtures are used, not the tests here.
+    #![allow(dead_code)]
     use super::*;
 
     /// Encrypts by prefixing, answers requests from `responses` (method →
     /// status, content) and records them.
     #[derive(Default)]
-    pub(crate) struct Dav {
+    pub struct Dav {
         pub requests: Vec<Value>,
         pub statuses: std::collections::HashMap<String, i64>,
         pub file: String,
@@ -264,7 +267,7 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn account_value() -> Map<String, Value> {
+    pub fn account_value() -> Map<String, Value> {
         json!({"uri": "https://dav.example/remote.php/dav/files/me/", "user": "me", "password": "pw", "fileName": "fk box.json"})
             .as_object()
             .unwrap()

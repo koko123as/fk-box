@@ -14,6 +14,7 @@ path = "src/lib.rs"
 
 [dependencies]
 fkbox-client-core = { workspace = true }
+fkbox-mobile-ffi = { workspace = true }
 fkbox-client-ui = { workspace = true }
 slint = { workspace = true }
 # The client store's JNI surface (src/store.rs) builds on every target, so it

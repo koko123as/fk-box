@@ -40,7 +40,7 @@ object RemoteControlManager : CommandClient.Handler {
         }
         restored = true
         // The monitor runs for a remote session in the foreground and is
-        // renewed for a new server (client-core sessions.rs). Started here,
+        // renewed for a new server (mobile-ffi sessions.rs). Started here,
         // after this object is set up, since the plan reads its flows.
         monitorClient.follow(scope, CommandSessions.Stream.RemoteMonitor)
         scope.launch {

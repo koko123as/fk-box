@@ -83,7 +83,7 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 备份读取/传输上限为 64 MiB，WebDAV 账号与流程在 client-core [webdav.rs](crates/client-core/src/storage/webdav.rs)（请求经核心扩展，密码由 Keystore 加密）；取消文件选择和未确认上传不能报告成功。HTTP 行为见 [libbox.md](libbox.md)。
 
-原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接（各命令订阅何时连接由 client-core `sessions.rs` 决定，见 [docs/architecture/phase3.md](docs/architecture/phase3.md)），内核在每次订阅时重放已保存的行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
+原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接（各命令订阅何时连接由 mobile-ffi `sessions.rs` 决定，见 [docs/architecture/phase3.md](docs/architecture/phase3.md)），内核在每次订阅时重放已保存的行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
 
 连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序转为增量（只有 NEW 和带快照的 CLOSED 经 JNI 读取连接），暂存到桥接最多每秒发送一次 `connectionEvents`；界面用 client-core [connections.rs](crates/client-core/src/connection/connections.rs) 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射并算出列表与仪表盘计数：UPDATE 按增量更新该行，关闭 5 分钟后淘汰，DNS 连接不显示；本地服务的 DNS 计数仍取内核自己的统计，远程会话按连接列表计数。
 

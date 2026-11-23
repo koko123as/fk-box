@@ -9,6 +9,11 @@ description = "FK-box platform-neutral client layer: the Host contract between t
 [lib]
 path = "src/lib.rs"
 
+[features]
+# Exposes the store/kernel/WebDAV test fixtures to dependent crates' tests
+# (fkbox-mobile-ffi's api tests).
+test-support = []
+
 [dependencies]
 # SQLite compiled in, so every platform shell gets the same engine and the
 # store never depends on a system libsqlite3.

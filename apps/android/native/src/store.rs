@@ -1,11 +1,11 @@
-//! The process's client store ([`fkbox_client_core::storage::Store`]) and its
-//! JNI surface for the Kotlin service layer (`database/CoreStore.kt`).
+//! JNI surface of the mobile session's client store
+//! ([`fkbox_mobile_ffi::session`]) for the Kotlin service layer
+//! (`database/CoreStore.kt`): argument conversion only.
 //!
-//! Kotlin opens the store on first use (`nativeOpen`, with the app's paths),
-//! which also runs the one-time import of the Room databases; the UI takes
-//! the same instance in `android_main` ([`store`]), so the process has one
-//! connection to the file. libfkui.so is loaded by `CoreStore` before the
-//! activity exists, so the service can start (boot, tile) without the UI.
+//! Kotlin opens the store on first use (`nativeOpen`, with the app's paths);
+//! the UI takes the same instance in `android_main` ([`store`]). libfkui.so
+//! is loaded by `CoreStore` before the activity exists, so the service can
+//! start (boot, tile) without the UI.
 //!
 //! Calls that need the cores (`nativeCallKernel`: subscription fetches and
 //! profile content saves, `fkbox_client_core::content`) get the Kotlin
@@ -13,7 +13,6 @@
 //! into it on the same thread, and it runs libbox in Go.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 
 use jni::errors::ThrowRuntimeExAndDefault;
 use jni::objects::{JClass, JObject, JString, JValue};
@@ -21,59 +20,10 @@ use jni::{jni_sig, jni_str, EnvUnowned};
 use serde_json::Value;
 
 use fkbox_client_core::content::Kernel;
-use fkbox_client_core::legacy::{self, Outcome, Sources};
-use fkbox_client_core::{api, storage::Store};
+use fkbox_client_core::legacy::Sources;
+use fkbox_mobile_ffi::session;
 
-static STORE: Mutex<Option<Arc<Store>>> = Mutex::new(None);
-
-/// The store Kotlin opened, if it has.
-pub fn store() -> Option<Arc<Store>> {
-    STORE.lock().unwrap_or_else(|e| e.into_inner()).clone()
-}
-
-/// Opens the store at `path` (once per process; later calls return the
-/// summary of an import already recorded) and imports the earlier storage:
-/// the Room databases and interface preferences (`sources`), and the WebDAV
-/// account from SharedPreferences `bbox_webdav` (`webdav`, its own one-time
-/// import, phase 2d) and the dashboard's IP quality cache from
-/// `dashboard_ip_quality` beside it (phase 2e).
-pub fn open(path: PathBuf, sources: Sources, webdav: PathBuf) -> Result<String, String> {
-    let mut slot = STORE.lock().unwrap_or_else(|e| e.into_inner());
-    let store = match slot.as_ref() {
-        Some(store) => store.clone(),
-        None => {
-            let store = Arc::new(Store::open(&path).map_err(|e| e.0)?);
-            *slot = Some(store.clone());
-            store
-        }
-    };
-    drop(slot);
-    // An import failure is reported, not fatal: the store stays empty and
-    // unmarked, and the next start tries again.
-    let summary = match legacy::migrate(&store, &sources) {
-        Ok(Outcome::AlreadyDone(summary)) => summary,
-        Ok(Outcome::Done(summary)) => serde_json::to_string(&summary).unwrap_or_default(),
-        Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
-    };
-    let webdav_path = webdav;
-    let webdav = match legacy::migrate_webdav(&store, &webdav_path, &sources.scratch_dir) {
-        Ok(summary) => summary,
-        Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
-    };
-    // The dashboard's IP quality cache sits next to `bbox_webdav` in
-    // shared_prefs (phase 2e, its own one-time import).
-    let quality_xml = webdav_path.with_file_name("dashboard_ip_quality.xml");
-    let quality = match fkbox_client_core::ip_quality::migrate(&store, &quality_xml, &sources.scratch_dir) {
-        Ok(summary) => summary,
-        Err(error) => serde_json::json!({ "status": "failed", "error": error.0 }).to_string(),
-    };
-    Ok(format!("{summary}; webdav: {webdav}; ipQuality: {quality}"))
-}
-
-fn call(method: &str, args: &str) -> Result<String, String> {
-    let store = store().ok_or("The client store is not open")?;
-    api::call(&store, method, args)
-}
+pub use fkbox_mobile_ffi::session::store;
 
 /// The Kotlin kernel bridge passed with a call: `CoreKernel.call(method,
 /// argsJson)` answers `{"ok": value}` or `{"error": message}`.
@@ -158,7 +108,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'lo
             scratch_dir: scratch_dir.try_to_string(env)?.into(),
         };
         let webdav = PathBuf::from(webdav_preferences.try_to_string(env)?);
-        Ok(open(path, sources, webdav))
+        Ok(session::open(path, sources, webdav))
     })
 }
 
@@ -172,7 +122,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeCall<'lo
     jni_string(&mut env, |env| {
         let method = method.try_to_string(env)?;
         let args = args.try_to_string(env)?;
-        Ok(call(&method, &args))
+        Ok(session::call(&method, &args))
     })
 }
 
@@ -187,8 +137,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeCallKern
     jni_string(&mut env, |env| {
         let method = method.try_to_string(env)?;
         let args = args.try_to_string(env)?;
-        let Some(store) = store() else { return Ok(Err("The client store is not open".to_string())) };
         let mut kernel = JniKernel { env, bridge: &kernel };
-        Ok(api::call_with_kernel(&store, &mut kernel, &method, &args))
+        Ok(session::call_with_kernel(&mut kernel, &method, &args))
     })
 }

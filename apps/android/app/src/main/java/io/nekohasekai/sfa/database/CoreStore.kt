@@ -51,7 +51,7 @@ object CoreStore {
         }
     }
 
-    /** One store call (crates/client-core/src/api.rs); a failure throws with the store's message. */
+    /** One store call (crates/mobile-ffi/src/api.rs); a failure throws with the store's message. */
     fun call(method: String, args: JsonObject = JsonObject(emptyMap())): JsonElement {
         ensureOpen()
         val result = nativeCall(method, args.toString()) ?: return JsonNull

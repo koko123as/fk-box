@@ -1,5 +1,5 @@
 //! The JNI link to the Kotlin host (BoxActivity), the UI's
-//! `fkbox_client_core::Host` on Android. Rust calls
+//! `fkbox_mobile_ffi::NativeHost` on Android. Rust calls
 //! `BoxActivity.slintCall(id, method, argsJson)`; Kotlin answers through the
 //! `SlintHost.nativeReply` / `SlintHost.nativeEvent` natives below.
 //!
@@ -14,7 +14,7 @@ use jni::refs::Global;
 use jni::sys::{jboolean, jlong, jobject};
 use jni::{jni_sig, jni_str, EnvUnowned, JavaVM};
 
-use fkbox_client_core::Host as UiHost;
+use fkbox_mobile_ffi::NativeHost as UiHost;
 use fkbox_client_ui::platform as ui;
 
 struct Host {

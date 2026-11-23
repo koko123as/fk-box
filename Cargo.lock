@@ -1073,6 +1073,7 @@ dependencies = [
  "android_logger",
  "fkbox-client-core",
  "fkbox-client-ui",
+ "fkbox-mobile-ffi",
  "i-slint-backend-android-activity",
  "jni 0.22.4",
  "log",
@@ -1096,6 +1097,7 @@ name = "fkbox-client-ui"
 version = "0.2.0"
 dependencies = [
  "fkbox-client-core",
+ "fkbox-mobile-ffi",
  "i-slint-common",
  "i-slint-core",
  "i-slint-renderer-skia",
@@ -1107,6 +1109,15 @@ dependencies = [
  "serde_json",
  "slint",
  "slint-build",
+]
+
+[[package]]
+name = "fkbox-mobile-ffi"
+version = "0.2.0"
+dependencies = [
+ "fkbox-client-core",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

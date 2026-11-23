@@ -26,7 +26,7 @@ class GroupsViewModel : BaseViewModel<GroupsUiState>(), CommandClient.Handler {
     private val updateSequence = java.util.concurrent.atomic.AtomicLong()
 
     init {
-        // When to subscribe: client-core sessions.rs.
+        // When to subscribe: mobile-ffi sessions.rs.
         commandClient.follow(viewModelScope, CommandSessions.Stream.Groups)
     }
 

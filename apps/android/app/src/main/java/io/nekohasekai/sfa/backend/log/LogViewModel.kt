@@ -34,7 +34,7 @@ class LogViewModel :
         )
 
     // The log stream is only subscribed while the Logs page is shown (and,
-    // locally, renewed on every configuration load; client-core sessions.rs);
+    // locally, renewed on every configuration load; mobile-ffi sessions.rs);
     // the service replays its saved lines (with a reset) on every subscribe.
     init {
         commandClient.follow(viewModelScope, CommandSessions.Stream.Log)

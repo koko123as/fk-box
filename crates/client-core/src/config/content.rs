@@ -333,15 +333,18 @@ pub fn rollback(store: &Store, token: u64) -> Result<(), String> {
     }
 }
 
-#[cfg(test)]
-pub(crate) mod tests {
+#[cfg(any(test, feature = "test-support"))]
+#[doc(hidden)]
+pub mod tests {
+    // With `test-support` only the fixtures are used, not the tests here.
+    #![allow(dead_code)]
     use super::*;
     use crate::storage::Profile;
 
     /// A kernel without cores: `prepare` trims and refuses "bad", `split`
     /// reads a "[a|b]" list of `remarks=content` elements.
     #[derive(Default)]
-    pub(crate) struct FakeKernel {
+    pub struct FakeKernel {
         pub response: Response,
         pub calls: Vec<String>,
         pub fail_fetch: bool,
@@ -374,7 +377,7 @@ pub(crate) mod tests {
         }
     }
 
-    pub(crate) fn setup(remote: bool, content: Option<&str>) -> (Store, tempdir::Dir, i64) {
+    pub fn setup(remote: bool, content: Option<&str>) -> (Store, tempdir::Dir, i64) {
         let dir = tempdir::Dir::new();
         let path = dir.0.join("configs/p.json");
         if let Some(content) = content {
@@ -397,7 +400,8 @@ pub(crate) mod tests {
         (store, dir, id)
     }
 
-    pub(crate) mod tempdir {
+    #[allow(clippy::new_without_default)]
+    pub mod tempdir {
         pub struct Dir(pub std::path::PathBuf);
         impl Dir {
             pub fn new() -> Dir {

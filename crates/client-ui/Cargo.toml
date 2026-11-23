@@ -13,6 +13,7 @@ path = "src/lib.rs"
 
 [dependencies]
 fkbox-client-core = { workspace = true }
+fkbox-mobile-ffi = { workspace = true }
 # No default backends: on Android the platform is the GameActivity backend below.
 slint = { workspace = true }
 serde_json = { workspace = true }

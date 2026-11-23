@@ -1,0 +1,31 @@
+//! FK-box mobile session, shared by the mobile platform shells
+//! (`apps/android/native` today). It sits between the platform-neutral
+//! business layer (`fkbox-client-core`) and a shell's FFI glue, and holds no
+//! JNI, Slint or Android SDK code:
+//!
+//! - [`NativeHost`]: what the UI needs from the platform, one asynchronous
+//!   call into the host app.
+//! - [`session`]: the process's client store and its one-time imports of the
+//!   earlier Android storage.
+//! - [`api`]: the JSON call surface the platform host calls (method + JSON
+//!   args, answered with JSON).
+//! - [`sessions`]: which libbox command subscriptions run, and to which
+//!   target (the host keeps the clients).
+//!
+//! Layout follows docs/architecture/phase4.md.
+
+pub mod api;
+pub mod session;
+pub mod sessions;
+
+/// What the UI needs from the platform: one asynchronous call into the host
+/// app. The UI sends `method` with JSON `args` under the request `id`; the
+/// host answers later through the UI's reply entry point with the same `id`
+/// (on Android, `SlintHost.nativeReply`), and pushes unsolicited events
+/// through its event entry point (`SlintHost.nativeEvent`).
+///
+/// `invoke` only delivers the call. An `Err` means it could not be delivered
+/// (no host attached, the host threw); the message is shown to the user.
+pub trait NativeHost: Send + Sync {
+    fn invoke(&self, id: i64, method: &str, args: &str) -> Result<(), String>;
+}
