@@ -32,7 +32,17 @@ native pages and the system capabilities.
    `ConnectionsViewModel` and `LogViewModel`. A Rust gRPC client for the
    command server (option A) stays possible later.
 5. **4e** host slimming: `BoxBridge`, the wire classes, the `database/`
-   wrappers and `BoxService` business flow move to Rust.
+   wrappers and `BoxService` business flow move to Rust, in steps:
+   - **4e1** diagnostics: `crates/mobile-ffi/src/diagnostics.rs` runs STUN,
+     network quality (with the metered-network confirmation) and Tailscale
+     ping, and drops callbacks of cancelled or replaced runs; Kotlin's
+     `bridge/BoxDiagnostics.kt` only starts and closes the libbox objects and
+     forwards their callbacks raw. Losing the service or switching the remote
+     target stops every run. `STUNTestViewModel`, `NetworkQualityViewModel`
+     and `TailscalePingViewModel` are deleted.
+   - **4e2** status subscriptions (Tailscale, OpenConnect, OpenVPN, USBIP,
+     Taildrop).
+   - **4e3** `BoxBridge`, `database/` wrappers and the `BoxService` flow.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

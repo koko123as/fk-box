@@ -681,6 +681,11 @@ pub fn on_event(payload: &str) {
             let out = with_runtime(|rt| rt.stream(&value));
             run_outputs(out);
         }
+        // A libbox diagnostic's callback (BoxDiagnostics).
+        "diagnostic" => {
+            let out = with_runtime(|rt| rt.diagnostics.event(&value));
+            run_outputs(out);
+        }
         "hostState" => {
             let out = with_runtime(|rt| rt.host_state(&value));
             run_outputs(out);
@@ -723,8 +728,70 @@ pub fn run_outputs(out: Vec<fkbox_mobile_ffi::runtime::Output>) {
                 });
             }
             Output::LogsPending => schedule_logs(),
+            Output::Host(method, args) => act(method, args),
+            Output::Error(message) => report(&message),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Diagnostics (mobile-ffi diagnostics.rs; the host runs the libbox tests)
+// ---------------------------------------------------------------------------
+
+fn diagnostics_then(f: impl FnOnce(&mut fkbox_mobile_ffi::runtime::Runtime) -> Result<Vec<fkbox_mobile_ffi::runtime::Output>, String>) {
+    match with_runtime(f) {
+        Ok(out) => run_outputs(out),
+        Err(error) => report(&error),
+    }
+}
+
+/// Starts a STUN test (through `outbound` while the service runs).
+pub fn start_stun(server: &str, outbound: &str) {
+    diagnostics_then(|rt| {
+        let service = rt.service_available();
+        rt.diagnostics.start_stun(server, outbound, service)
+    });
+}
+
+/// Starts a network quality test (`url`, `outbound`, `serial`, `http3`,
+/// `seconds`), after a confirmation on a metered network.
+pub fn start_quality(args: Value) {
+    if with_runtime(|rt| rt.diagnostics.running(fkbox_mobile_ffi::diagnostics::Kind::Quality)) {
+        report("A network quality test is already running");
+        return;
+    }
+    call("tools.metered", json!({}), move |result| {
+        let metered = result.as_ref().ok().and_then(Value::as_bool).unwrap_or(false);
+        diagnostics_then(|rt| {
+            let service = rt.service_available();
+            rt.diagnostics.start_quality(args, metered, service)
+        });
+    });
+}
+
+/// The metered-network warning was answered (`start`: run the test).
+pub fn confirm_quality(start: bool) {
+    let out = with_runtime(|rt| {
+        let service = rt.service_available();
+        rt.diagnostics.confirm_quality(start, service)
+    });
+    run_outputs(out);
+}
+
+/// Pings a Tailscale peer's first address through its endpoint.
+pub fn start_ping(endpoint: &str, address: &str) {
+    let out = with_runtime(|rt| rt.diagnostics.start_ping(endpoint, address));
+    run_outputs(out);
+}
+
+/// Stops a diagnostic: "stun", "quality" or "ping".
+pub fn stop_diagnostic(kind: &str) {
+    let Some(kind) = fkbox_mobile_ffi::diagnostics::Kind::from_key(kind) else { return };
+    if !with_runtime(|rt| rt.diagnostics.running(kind)) {
+        return;
+    }
+    let out = with_runtime(|rt| rt.diagnostics.cancel(kind));
+    run_outputs(out);
 }
 
 const LOGS_INTERVAL_MILLIS: i64 = 1000;
@@ -973,8 +1040,14 @@ fn initialize() {
                     d.lan = obj(&result["lan"]);
                 }
                 d.tool_state = obj(&result["tools"]);
-                d.stun = obj(&result["diagnostics"]["stun"]);
-                d.quality = obj(&result["diagnostics"]["quality"]);
+                // The diagnostics' defaults (STUN server, quality URL).
+                let (stun, quality) = with_runtime(|rt| {
+                    use fkbox_mobile_ffi::diagnostics::Kind;
+                    rt.diagnostics.defaults(&result["diagnostics"]);
+                    (rt.diagnostics.state(Kind::Stun).clone(), rt.diagnostics.state(Kind::Quality).clone())
+                });
+                d.stun = obj(&stun);
+                d.quality = obj(&quality);
                 if let Some(intent) = result["intent"].as_str() {
                     d.pending_intents.push_back(intent.to_string());
                 }

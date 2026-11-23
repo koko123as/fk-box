@@ -28,6 +28,8 @@ use std::collections::VecDeque;
 
 use serde_json::{json, Map, Value};
 
+use crate::diagnostics::Diagnostics;
+
 /// The most log lines waiting for the UI (the UI keeps no more).
 pub const LOG_LIMIT: usize = 3000;
 
@@ -50,6 +52,11 @@ pub enum Output {
     /// Log lines wait: drain them with [`Runtime::drain_logs`] (the UI
     /// throttles how often).
     LogsPending,
+    /// A host command to send, its failure reported (`tools.runDiagnostic`,
+    /// `tools.cancelDiagnostic`).
+    Host(&'static str, Value),
+    /// An error to show.
+    Error(String),
 }
 
 #[derive(Debug, Default)]
@@ -80,6 +87,11 @@ struct Logs {
 
 #[derive(Debug, Default)]
 pub struct Runtime {
+    /// The STUN, network quality and Tailscale ping runs (diagnostics.rs).
+    pub diagnostics: Diagnostics,
+    /// Whether the service (local, or the remote session) is reachable, and
+    /// the remote server's id (0 locally), as last reported.
+    target: Option<(bool, i64)>,
     dashboard: Dashboard,
     groups: Vec<Value>,
     foreground: bool,
@@ -101,6 +113,12 @@ impl Runtime {
 
     fn started(&self) -> bool {
         self.dashboard.status == "Started"
+    }
+
+    /// Whether the service the tools act on is reachable: the remote session
+    /// when one is chosen, otherwise the local service.
+    pub fn service_available(&self) -> bool {
+        if self.remote() { self.dashboard.remote_connected } else { self.started() }
     }
 
     /// The dashboard as the host's `DashboardUiState.toWire` sent it (the
@@ -176,6 +194,14 @@ impl Runtime {
             _ => false,
         };
         let remote = self.remote();
+        // Losing the service or switching to another target stops the
+        // diagnostics (the old BoxTools collector).
+        let target = (self.service_available(), state["remoteId"].as_i64().unwrap_or(0));
+        if let Some(previous) = self.target.replace(target) {
+            if previous != target && (previous.1 != target.1 || !target.0) {
+                out.extend(self.diagnostics.cancel_all());
+            }
+        }
         if changed {
             match self.dashboard.status.as_str() {
                 "Started" => out.push(Output::Probe(Probe { local: !remote, notes: true })),
@@ -452,6 +478,24 @@ mod tests {
         let batch = rt.drain_logs().unwrap();
         assert_eq!(batch["reset"], true);
         assert_eq!(batch["entries"], json!([]));
+    }
+
+    #[test]
+    fn losing_the_service_or_switching_target_stops_diagnostics() {
+        let mut rt = Runtime::new();
+        rt.host_state(&state("Started", Value::Null));
+        rt.diagnostics.start_stun("s", "", true).unwrap();
+        let out = rt.host_state(&state("Stopped", Value::Null));
+        assert!(out.iter().any(|o| matches!(o, Output::Host("tools.cancelDiagnostic", _))));
+        rt.host_state(&state("Started", Value::Null));
+        rt.diagnostics.start_ping("ts", "a");
+        // Selecting a remote server (connected) switches the target.
+        let mut remote = state("Started", json!("Server"));
+        remote["remoteId"] = json!(7);
+        remote["remoteConnected"] = json!(true);
+        let out = rt.host_state(&remote);
+        assert!(out.iter().any(|o| matches!(o, Output::Host("tools.cancelDiagnostic", _))));
+        assert!(rt.service_available());
     }
 
     #[test]

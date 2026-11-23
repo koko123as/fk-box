@@ -438,6 +438,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         "status" to activity.serviceStatus.value.name,
         "selectedProfileId" to Settings.selectedProfile,
         "remote" to RemoteControlManager.remoteServer.value?.displayName,
+        "remoteId" to RemoteControlManager.remoteServer.value?.id,
         "remoteConnected" to RemoteControlManager.isConnected.value,
         "remoteStartedAt" to RemoteControlManager.startedAt.value,
     )

@@ -2,16 +2,11 @@ package io.nekohasekai.sfa.bridge
 
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.sfa.backend.tools.MaxRuntimeOption
-import io.nekohasekai.sfa.backend.tools.NetworkQualityViewModel
 import io.nekohasekai.sfa.backend.tools.OpenConnectStatusViewModel
 import io.nekohasekai.sfa.backend.tools.OpenVPNStatusViewModel
-import io.nekohasekai.sfa.backend.tools.STUNTestViewModel
 import io.nekohasekai.sfa.backend.tools.TaildropFiles
 import io.nekohasekai.sfa.backend.tools.TaildropSendManager
 import io.nekohasekai.sfa.backend.tools.TaildropViewModel
-import io.nekohasekai.sfa.backend.tools.TailscalePingViewModel
 import io.nekohasekai.sfa.backend.tools.TailscaleStatusViewModel
 import io.nekohasekai.sfa.backend.usbip.USBIPStatusViewModel
 import io.nekohasekai.sfa.constant.Status
@@ -35,9 +30,8 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     val openConnect = provider[OpenConnectStatusViewModel::class.java]
     private val openVPN = provider[OpenVPNStatusViewModel::class.java]
     private val usb = provider[USBIPStatusViewModel::class.java]
-    private val stun = provider[STUNTestViewModel::class.java]
-    private val quality = provider[NetworkQualityViewModel::class.java]
-    private val ping = provider[TailscalePingViewModel::class.java]
+    /** STUN, network quality and Tailscale ping (mobile-ffi diagnostics.rs decides when). */
+    val diagnostics = BoxDiagnostics(activity, scope, emit)
     private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
     private val usbController = BoxUsb(activity)
@@ -69,9 +63,6 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
                 usb.cancel()
                 outbounds.disconnect()
                 if (sessionKey != target || !available) {
-                    stun.onVpnDisconnected()
-                    quality.onVpnDisconnected()
-                    ping.stopPing()
                     inbox.cancel()
                     inboxTag = null
                 }
@@ -92,9 +83,6 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         jobs += scope.launch { openConnect.uiState.collect { emit("tools", snapshot()) } }
         jobs += scope.launch { openVPN.uiState.collect { emit("tools", snapshot()) } }
         jobs += scope.launch { usb.uiState.collect { emit("tools", snapshot()) } }
-        jobs += scope.launch { stun.uiState.collect { emit("stun", it.toWire() + mapOf("mapping" to Libbox.formatNATMapping(it.natMapping), "filtering" to Libbox.formatNATFiltering(it.natFiltering))) } }
-        jobs += scope.launch { quality.uiState.collect { emit("quality", it.toWire()) } }
-        jobs += scope.launch { ping.uiState.collect { emit("ping", it.toWire()) } }
         jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
         jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
             emit("transfers", sessions.map { session ->
@@ -117,34 +105,9 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         "usbip" to usb.uiState.value.servers.map { it.toWire() },
     )
 
-    fun diagnostics(): Map<String, Any?> = mapOf("quality" to quality.uiState.value.toWire(), "stun" to stun.uiState.value.toWire())
+    fun diagnostics(): Map<String, Any?> = diagnostics.defaults()
 
     private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
-
-    suspend fun startStun(server: String?, outbound: String?) {
-        require(!stun.uiState.value.isRunning) { "A STUN test is already running" }
-        stun.updateServer(required(server, "server"))
-        stun.selectOutbound(outbound ?: "")
-        stun.startTest(running)
-    }
-
-    suspend fun stopStun() { stun.cancelTest() }
-
-    suspend fun startQuality(url: String?, outbound: String?, serial: Boolean, http3: Boolean, seconds: Int?) {
-        require(!quality.uiState.value.isRunning) { "A network quality test is already running" }
-        quality.updateConfigURL(BoxProfiles.validateUrl(required(url, "url")))
-        quality.selectOutbound(outbound ?: "")
-        quality.setSerial(serial)
-        quality.setHttp3(http3)
-        quality.setMaxRuntime(if (seconds == 60) MaxRuntimeOption.SIXTY else MaxRuntimeOption.THIRTY)
-        quality.requestStartTest(activity, running)
-    }
-
-    suspend fun confirmQuality() { quality.confirmMeteredStart(running) }
-
-    suspend fun dismissQuality() { quality.dismissMeteredWarning() }
-
-    suspend fun stopQuality() { quality.cancelTest() }
 
     suspend fun setTailscaleExitNode(endpointTag: String?, peer: String?) {
         val endpoint = tailscale.endpoint(required(endpointTag, "endpoint")) ?: error("Endpoint no longer exists")
@@ -156,14 +119,6 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     suspend fun tailscaleLogout(endpoint: String?) {
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().tailscaleLogout(required(endpoint, "endpoint")) }
     }
-
-    suspend fun tailscalePing(endpoint: String?, peerID: String?) {
-        val peer = tailscale.peer(required(endpoint, "endpoint"), required(peerID, "peer")) ?: error("Peer no longer exists")
-        ping.stopPing()
-        ping.startPing(required(endpoint, "endpoint"), peer.tailscaleIPs.firstOrNull() ?: error("Peer has no address"))
-    }
-
-    suspend fun stopTailscalePing() { ping.stopPing() }
 
     suspend fun subscribeTaildrop(endpoint: String?) {
         inboxTag = required(endpoint, "endpoint")
@@ -258,9 +213,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         usb.cancel()
         outbounds.disconnect()
         inbox.cancel()
-        ping.stopPing()
-        stun.cancelTest()
-        quality.cancelTest()
+        diagnostics.close()
         usbController.close()
         ssh.close()
     }

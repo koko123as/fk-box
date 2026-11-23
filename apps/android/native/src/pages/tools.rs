@@ -122,7 +122,7 @@ fn open_diagnostics(quality: bool) {
         Rc::new(RefCell::new(Diag { address: initial, outbound: String::new(), serial: false, http3: false, seconds: 30, asking: false }));
     let a = st.clone();
     let id = rows::push(move || diagnostics_page(&a, quality));
-    nav::on_closed(id, move || app::act(if quality { "tools.stopQuality" } else { "tools.stopStun" }, json!({})));
+    nav::on_closed(id, move || app::stop_diagnostic(if quality { "quality" } else { "stun" }));
 }
 
 fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
@@ -150,9 +150,8 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
                 "Start",
                 false,
                 move |ok| {
-                    app::act_then(if ok { "tools.confirmQuality" } else { "tools.dismissQuality" }, json!({}), move |_| {
-                        a.borrow_mut().asking = false
-                    });
+                    app::confirm_quality(ok);
+                    a.borrow_mut().asking = false;
                 },
             );
         });
@@ -213,16 +212,15 @@ fn diagnostics_page(st: &Rc<RefCell<Diag>>, quality: bool) -> Page {
     let a = st.clone();
     let mut start = Row::button(&tr(if running { "Stop" } else { "Start" }), 0, move || {
         if running {
-            app::act(if quality { "tools.stopQuality" } else { "tools.stopStun" }, json!({}));
+            app::stop_diagnostic(if quality { "quality" } else { "stun" });
         } else {
             let d = a.borrow();
             if quality {
-                app::act(
-                    "tools.startQuality",
+                app::start_quality(
                     json!({ "url": d.address.trim(), "outbound": d.outbound, "serial": d.serial, "http3": d.http3, "seconds": d.seconds }),
                 );
             } else {
-                app::act("tools.startStun", json!({ "server": d.address.trim(), "outbound": d.outbound }));
+                app::start_stun(d.address.trim(), &d.outbound);
             }
         }
     })
@@ -874,7 +872,7 @@ fn open_peer(endpoint: String, id: String) {
     let route = rows::push(move || peer_page(&endpoint, &id, &p));
     nav::on_closed(route, move || {
         if *ping.borrow() {
-            app::act("tools.stopTailscalePing", json!({}));
+            app::stop_diagnostic("ping");
         }
     });
 }
@@ -895,10 +893,13 @@ fn peer_page(endpoint_tag: &str, id: &str, ping: &Rc<RefCell<bool>>) -> Page {
         ("Upload", format::bytes(num(&peer["txBytes"]))),
     ]);
     rows.push(Row::gap());
-    let (e, i, p) = (endpoint_tag.to_string(), id.to_string(), ping.clone());
-    rows.push(Row::item("Ping").key("ping").on(move |_| {
-        *p.borrow_mut() = true;
-        app::act("tools.tailscalePing", json!({ "endpoint": e, "peer": i }));
+    let (e, address, p) = (endpoint_tag.to_string(), strings(&peer["tailscaleIPs"]).into_iter().next(), ping.clone());
+    rows.push(Row::item("Ping").key("ping").on(move |_| match &address {
+        Some(address) => {
+            *p.borrow_mut() = true;
+            app::start_ping(&e, address);
+        }
+        None => app::report("Peer has no address"),
     }));
     if !strings(&peer["sshHostKeys"]).is_empty() {
         let (e, i, n) = (endpoint_tag.to_string(), id.to_string(), peer_name(&peer));

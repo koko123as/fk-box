@@ -13,10 +13,13 @@
 //!   target (the host keeps the clients).
 //! - [`runtime`]: what the UI makes of the forwarded libbox command streams
 //!   (dashboard, groups, connections, logs; phase 4d).
+//! - [`diagnostics`]: the STUN, network quality and Tailscale ping runs
+//!   (phase 4e).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
+pub mod diagnostics;
 pub mod runtime;
 pub mod session;
 pub mod sessions;
