@@ -5,7 +5,7 @@
 
 // Not formatted here: the file belongs to the vendored crate.
 #[rustfmt::skip]
-#[path = "../../../vendor/i-slint-backend-android-activity/fkbox_ime.rs"]
+#[path = "../../../../vendor/i-slint-backend-android-activity/fkbox_ime.rs"]
 mod fkbox_ime;
 
 use fkbox_ime::*;

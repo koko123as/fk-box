@@ -20,7 +20,7 @@ import android.widget.FrameLayout
 import org.json.JSONObject
 
 /**
- * The system's own text field for the Slint UI (crates/client-ui/src/native_ime.rs):
+ * The system's own text field for the Slint UI (apps/android/native/src/native_ime.rs):
  * while a NativeTextInput has focus, an [EditText] lies over it with the same
  * font size, colour and alignment and a transparent background, and the Slint
  * field stops drawing its text. Cursor placement, selection handles, the

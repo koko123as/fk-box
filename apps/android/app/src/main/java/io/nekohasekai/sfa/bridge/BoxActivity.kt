@@ -733,5 +733,5 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 }
 
-/** Bridge calls NativeUi answers (crates/client-ui/src/nav.rs). */
+/** Bridge calls NativeUi answers (apps/android/native/src/nav.rs). */
 private val NATIVE_UI = setOf("menuShow", "menuHide", "dialogShow", "dialogHide", "dialogError", "toast", "textViewer")

@@ -37,7 +37,7 @@ import org.json.JSONObject
 
 /**
  * The platform's own menus, dialogs, messages and text selection for the
- * Slint UI (crates/client-ui/src/nav.rs): Rust keeps what each one means and what
+ * Slint UI (apps/android/native/src/nav.rs): Rust keeps what each one means and what
  * happens on a pick; this only shows them and reports back as `ui` events.
  */
 class NativeUi(private val activity: BoxActivity) {

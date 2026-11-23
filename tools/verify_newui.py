@@ -177,8 +177,8 @@ routes = (slint_ui / "mobile" / "android" / "routes.slint").read_text()
 for token in ("Theme.sheet-close-fraction", "Theme.sheet-fling-velocity", "Theme.sheet-handle"):
     if token not in routes:
         errors.append(f"crates/client-ui/ui/mobile/android/routes.slint: the phone sheet's drag does not use {token}")
-if "set_motion_scale" not in (ROOT / "crates/client-ui/src/theme_apply.rs").read_text():
-    errors.append("crates/client-ui/src/theme_apply.rs: the motion scale does not reach Theme")
+if "set_motion_scale" not in (ROOT / "apps/android/native/src/theme_apply.rs").read_text():
+    errors.append("apps/android/native/src/theme_apply.rs: the motion scale does not reach Theme")
 if "ANIMATOR_DURATION_SCALE" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity.kt: the host must send Settings.Global.ANIMATOR_DURATION_SCALE")
 
