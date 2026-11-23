@@ -41,7 +41,7 @@
 | `vendor/` | 带 fk-box 补丁的 Slint crate（`FKBOX-PATCH.md`），经根 `Cargo.toml` 的 `[patch.crates-io]` 使用 |
 | `scripts/` | 构建、核心补丁、发布与源码检查脚本（`python3 scripts/<名称>.py`，在仓库根目录运行） |
 | `resources/` | 非代码资源：`config/`（detekt 配置）、`licenses/`（组件许可文本）、`flclash-manifest.json`（FlClash 来源清单） |
-| `docs/` | 设计与差异文档：[app.md](docs/app.md)、[libbox.md](docs/libbox.md)、[flclash.md](docs/flclash.md)、[slint-manifest.md](docs/slint-manifest.md)、`architecture/` |
+| `docs/` | 设计与差异文档：[app.md](docs/app.md)、[libbox.md](docs/libbox.md)、[flclash.md](docs/flclash.md)、[slint-manifest.md](docs/slint-manifest.md)、`architecture/`（内核拆分设计草案见 [split-kernels.md](docs/architecture/split-kernels.md)，未实施） |
 | `examples/` | 配置示例 |
 | `version.properties` | 应用与核心版本（留在仓库根目录，CI 与 Gradle 都从这里读取） |
 
