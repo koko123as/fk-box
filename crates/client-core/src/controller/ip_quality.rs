@@ -102,14 +102,11 @@ pub fn migrate(store: &Store, xml: &Path, scratch_dir: &Path) -> StoreResult<Str
         format!("imported {}", imported.len())
     };
     let summary = serde_json::json!({ "status": status }).to_string();
-    store.transaction(|tx| {
+    store.transaction(|data| {
         if status.starts_with("imported") {
-            tx.execute(
-                "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
-                rusqlite::params![PREF_KEY, Value::Object(imported.clone()).to_string()],
-            )?;
+            data.set_preference(PREF_KEY, &Value::Object(imported.clone()).to_string());
         }
-        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", rusqlite::params![MIGRATION_KEY, summary])?;
+        data.set_meta(MIGRATION_KEY, &summary);
         Ok(())
     })?;
     Ok(summary)

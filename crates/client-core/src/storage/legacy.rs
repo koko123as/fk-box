@@ -20,7 +20,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::parcel;
-use crate::storage::{self, Error, Profile, RemoteServer, Result, SettingValue, Store, PREF_BACKUP_ORIGIN, PREF_UI};
+use crate::storage::{Error, Profile, RemoteServer, Result, SettingValue, Store, PREF_BACKUP_ORIGIN, PREF_UI};
 
 /// The meta key holding the import's result ([`Summary`] as JSON).
 pub const MIGRATION_KEY: &str = "legacy_import";
@@ -101,48 +101,32 @@ pub fn migrate(store: &Store, sources: &Sources) -> Result<Outcome> {
     let mut summary = Summary::new(if legacy.is_empty() { "none" } else { "imported" });
     summary.profiles_schema = legacy.profiles_schema;
     summary.skipped = legacy.skipped.clone();
-    store.transaction(|tx| {
+    store.transaction(|data| {
         for profile in &legacy.profiles {
-            storage::insert_profile(tx, profile)?;
+            data.insert_profile(profile)?;
         }
         for server in &legacy.servers {
-            storage::insert_remote_server(tx, server)?;
+            data.insert_remote_server(server)?;
         }
         // Room's AUTOINCREMENT counters, so an id deleted before the upgrade
         // is not handed out again (interface preferences key folds by id).
-        for (table, seq) in [("profiles", legacy.profiles_seq), ("remote_servers", legacy.servers_seq)] {
-            if seq > 0 {
-                let current: Option<i64> =
-                    tx.query_row("SELECT seq FROM sqlite_sequence WHERE name = ?1", [table], |r| r.get(0)).optional()?;
-                match current {
-                    Some(current) if current >= seq => {}
-                    Some(_) => {
-                        tx.execute("UPDATE sqlite_sequence SET seq = ?2 WHERE name = ?1", rusqlite::params![table, seq])?;
-                    }
-                    None => {
-                        tx.execute("INSERT INTO sqlite_sequence (name, seq) VALUES (?1, ?2)", rusqlite::params![table, seq])?;
-                    }
-                }
-            }
-        }
+        data.reserve_profile_ids(legacy.profiles_seq);
+        data.reserve_remote_server_ids(legacy.servers_seq);
         for (key, value) in &legacy.settings {
-            storage::put_setting(tx, key, value)?;
+            data.put_setting(key, value);
         }
         if let Some(value) = &legacy.ui_preferences {
-            tx.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)", rusqlite::params![PREF_UI, value])?;
+            data.set_preference(PREF_UI, value);
         }
         if let Some(origin) = &legacy.backup_origin {
-            tx.execute("INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)", rusqlite::params![PREF_BACKUP_ORIGIN, origin])?;
+            data.set_preference(PREF_BACKUP_ORIGIN, origin);
         }
         summary.profiles = legacy.profiles.len();
         summary.remote_servers = legacy.servers.len();
         summary.settings = legacy.settings.len();
         summary.preferences = legacy.ui_preferences.is_some();
         summary.backup_origin = legacy.backup_origin.is_some();
-        tx.execute(
-            "INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)",
-            rusqlite::params![MIGRATION_KEY, serde_json::to_string(&summary)?],
-        )?;
+        data.set_meta(MIGRATION_KEY, &serde_json::to_string(&summary)?);
         Ok(())
     })?;
     Ok(Outcome::Done(summary))
@@ -185,14 +169,11 @@ pub fn migrate_webdav(store: &Store, xml: &Path, scratch_dir: &Path) -> Result<S
         Some(_) => "imported",
     };
     let summary = serde_json::json!({ "status": status }).to_string();
-    store.transaction(|tx| {
+    store.transaction(|data| {
         if status == "imported" {
-            tx.execute(
-                "INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)",
-                rusqlite::params![crate::webdav::PREF_KEY, value.as_deref().unwrap_or_default()],
-            )?;
+            data.set_preference(crate::webdav::PREF_KEY, value.as_deref().unwrap_or_default());
         }
-        tx.execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", rusqlite::params![WEBDAV_MIGRATION_KEY, summary])?;
+        data.set_meta(WEBDAV_MIGRATION_KEY, &summary);
         Ok(())
     })?;
     Ok(summary)
@@ -755,7 +736,7 @@ pub(crate) mod tests {
     #[test]
     fn survives_reopening_the_store_file() {
         let fixture = fixture("reopen", 3);
-        let path = fixture.dir.join("files/fkbox/client.db");
+        let path = fixture.dir.join("files/fkbox");
         {
             let store = Store::open(&path).unwrap();
             migrate(&store, &fixture.sources).unwrap();

@@ -92,7 +92,7 @@ fn jni_string<'local>(
 pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'local>(
     mut env: EnvUnowned<'local>,
     _class: JClass<'local>,
-    store_path: JString<'local>,
+    store_dir: JString<'local>,
     profiles_db: JString<'local>,
     settings_db: JString<'local>,
     ui_preferences: JString<'local>,
@@ -100,7 +100,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'lo
     scratch_dir: JString<'local>,
 ) -> JObject<'local> {
     jni_string(&mut env, |env| {
-        let path = PathBuf::from(store_path.try_to_string(env)?);
+        let dir = PathBuf::from(store_dir.try_to_string(env)?);
         let sources = Sources {
             profiles_db: profiles_db.try_to_string(env)?.into(),
             settings_db: settings_db.try_to_string(env)?.into(),
@@ -108,7 +108,7 @@ pub extern "system" fn Java_io_nekohasekai_sfa_database_CoreStore_nativeOpen<'lo
             scratch_dir: scratch_dir.try_to_string(env)?.into(),
         };
         let webdav = PathBuf::from(webdav_preferences.try_to_string(env)?);
-        Ok(session::open(path, sources, webdav))
+        Ok(session::open(dir, sources, webdav))
     })
 }
 

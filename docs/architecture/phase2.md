@@ -65,7 +65,7 @@
 ## 2a 设计要点
 
 - **存储**：`client-core::storage::Store`，rusqlite（内置 SQLite），文件 `<filesDir>/fkbox/client.db`，WAL；表 `meta`（含 `schema_version`、迁移标记）、`settings`（键、类型码、JSON 值，类型码沿用 `KeyValueEntity`）、`profiles`（Room 字段展开为列，另有内核解析缓存）、`remote_servers`、`preferences`（界面偏好 JSON 与备份身份）。路径由平台外壳以构造参数传入，不在 `client-core` 中写死。
-- **进程内唯一实例**：`libfkui.so` 中只有一个 `Store`（单连接加锁），由 Kotlin 首次访问时经 JNI 打开（`Application` 进程即使没有界面也能用），Rust 界面在 `android_main` 中取用同一实例，避免同一进程内两份 SQLite 对同一文件加锁。
+- **进程内唯一实例**：`libfkui.so` 中只有一个 `Store`（单连接加锁），由 Kotlin 首次访问时经 JNI 打开（`Application` 进程即使没有界面也能用），Rust 界面在 `android_main` 中取用同一实例，避免同一进程内两份 SQLite 对同一文件加锁。（4e3c 起存储改为 Rust 管理的 JSON 文件，`client.db` 只作一次性导入来源，见 [phase4.md](phase4.md)。）
 - **迁移**：只在新存储尚无数据时执行；先把旧库（含 `-wal`/`-shm`）复制到临时目录再读，原文件不修改；整个导入在一个事务内完成并写入迁移标记，重复执行无副作用。旧库保留不删，作为本版本的回退（降级到旧版本时旧版仍读取原数据）。
 - **Kotlin 面**：`Settings`、`ProfileManager`、`RemoteServerManager` 的接口不变，内部改为 `CoreStore`（JNI）；VPN 服务启动时读取已选配置和设置的路径不变。
 

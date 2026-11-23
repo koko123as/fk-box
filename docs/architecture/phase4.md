@@ -65,7 +65,24 @@ native pages and the system capabilities.
      (`service.*` in `api.rs`) shapes the routing status and decides its
      notice, the geo data notice and the per-app package lists for
      `bg/BoxService.kt`. Kotlin keeps the Android calls only.
-   - **4e3c** `database/` wrappers (awaiting a decision).
+   - **4e3c** the client store as Rust-owned JSON files, as Clash-of-Rust's
+     mobile layer keeps `profiles.json` and `settings.json`:
+     `client-core::storage::Store` keeps `files/fkbox/profiles.json`
+     (profiles, last id handed out) and `settings.json` (typed settings,
+     raw preferences, remote servers, import markers) in memory and writes
+     a changed file to a temporary file, flushes it and renames it over the
+     old one; a `begin`/`commit` transaction writes once at commit and
+     `rollback` restores the snapshot. Rust owns the schema (`version` 2),
+     defaults, ids (never reused) and ordering. The SQLite `client.db` of
+     the phase 2-4e3b builds is imported once from a copy
+     (`storage/sqlite_import.rs`, markers of the earlier imports included)
+     and left on disk for a downgrade; the Room/SharedPreferences import
+     (`storage/legacy.rs`) still covers older releases. mobile-ffi
+     `session.rs` names the directory and runs the imports; Kotlin only
+     passes the paths (`CoreStore`, `Path.CLIENT_STORE_DIR`). Still in
+     Kotlin `database/`: the typed models and wrappers over the store calls
+     (`Settings`, `ProfileManager`, `TypedProfile`, `ProfileContent`, the
+     settings cache `StorePreferenceDataStore`), next to move (4e3d).
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

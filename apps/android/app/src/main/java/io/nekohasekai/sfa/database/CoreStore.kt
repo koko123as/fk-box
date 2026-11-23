@@ -12,14 +12,16 @@ import java.io.File
 
 /**
  * The client store of `fkbox-client-core` (crates/client-core): service
- * settings, profile metadata, remote servers and interface preferences in one
- * SQLite file, shared with the Rust UI in libfkui.so. [Settings],
+ * settings, profile metadata, remote servers and interface preferences in
+ * JSON files Rust owns (`files/fkbox/profiles.json`, `settings.json`),
+ * shared with the Rust UI in libfkui.so. [Settings],
  * [ProfileManager] and [RemoteServerManager] read and write it through [call].
  *
  * The first call opens it (loading libfkui.so if the UI has not) and runs the
- * one-time import of the Room databases and the `flclash_ui` preferences (and,
- * separately, of the `bbox_webdav` account). The old files are left as they
- * were, so an older release still finds them.
+ * one-time imports in Rust: the SQLite `client.db` of earlier builds, the Room
+ * databases and the `flclash_ui` preferences (and, separately, the
+ * `bbox_webdav` account). The old files are left as they were, so an older
+ * release still finds them.
  */
 object CoreStore {
     private const val TAG = "CoreStore"
@@ -39,7 +41,7 @@ object CoreStore {
             val app = Application.application
             val dataDir = File(app.applicationInfo.dataDir)
             migration = nativeOpen(
-                File(app.filesDir, Path.CLIENT_STORE_PATH).path,
+                File(app.filesDir, Path.CLIENT_STORE_DIR).path,
                 app.getDatabasePath(Path.PROFILES_DATABASE_PATH).path,
                 app.getDatabasePath(Path.SETTINGS_DATABASE_PATH).path,
                 File(dataDir, "shared_prefs/${Path.UI_PREFERENCES_NAME}.xml").path,
@@ -75,7 +77,7 @@ object CoreStore {
 
     internal fun <T> encode(serializer: kotlinx.serialization.KSerializer<T>, value: T): JsonElement = json.encodeToJsonElement(serializer, value)
 
-    @JvmStatic private external fun nativeOpen(storePath: String, profilesDb: String, settingsDb: String, uiPreferences: String, webdavPreferences: String, scratchDir: String): String?
+    @JvmStatic private external fun nativeOpen(storeDir: String, profilesDb: String, settingsDb: String, uiPreferences: String, webdavPreferences: String, scratchDir: String): String?
 
     @JvmStatic private external fun nativeCall(method: String, args: String): String?
 

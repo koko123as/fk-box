@@ -1,36 +1,55 @@
-//! The client store: one SQLite file holding the service settings, the
-//! profile list (metadata only; each profile's configuration stays in its own
-//! file at [`Profile::path`]), the remote control servers and the interface
-//! preferences.
+//! The client store: the service settings, the profile list (metadata only;
+//! each profile's configuration stays in its own file at [`Profile::path`]),
+//! the remote control servers and the interface preferences, kept as two
+//! JSON files in one directory the platform shell names, as Clash-of-Rust's
+//! mobile layer keeps `profiles.json` and `settings.json`:
 //!
-//! One [`Store`] per process: it owns a single connection behind a mutex, so
-//! the UI and the platform host (on Android the Kotlin service layer, through
-//! [`crate::api`]) share it instead of opening the file twice. The location
-//! comes from the platform shell ([`Store::open`]); nothing here knows a
-//! platform path.
+//! - `profiles.json`: [`ProfilesFile`], the profiles and the last id handed out;
+//! - `settings.json`: [`SettingsFile`], typed settings, raw preferences
+//!   (interface preferences, backup identity, WebDAV account, caches), the
+//!   remote servers and the `meta` markers of the one-time imports.
 //!
-//! Schema versions are kept in `PRAGMA user_version` ([`SCHEMA_VERSION`]);
-//! [`Store::open`] creates or upgrades the schema in one transaction.
+//! One [`Store`] per process: it keeps both files in memory behind a mutex,
+//! so the UI and the platform host (on Android the Kotlin service layer,
+//! through [`crate::api`]) share it. Every change is applied to a copy, the
+//! copy is written (temporary file, flush, rename) and only then replaces
+//! the state, so a failed write leaves memory and disk as they were. Inside
+//! a [`Store::begin`] transaction changes stay in memory until
+//! [`Store::commit`] writes them; [`Store::rollback`] puts the snapshot back.
+//!
+//! Upgrades: a store directory without the JSON files but with the SQLite
+//! `client.db` of the phase 2-4e3b builds is imported once from a copy of it
+//! ([`sqlite_import`]); the file is left as it was for a downgrade. The Room
+//! databases of older releases are imported by [`legacy`].
 
 pub mod legacy;
 pub mod backup;
 pub mod webdav;
+pub mod sqlite_import;
 pub(crate) mod parcel;
 pub(crate) mod codec;
 
-use std::path::Path;
+use std::collections::BTreeMap;
+use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Mutex, MutexGuard};
 
-use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::subscription::{Fetch, Metadata};
 
-/// The schema this build writes. 1: settings, profiles, remote_servers,
-/// preferences and meta (phase 2a).
-pub const SCHEMA_VERSION: i64 = 1;
+/// The JSON schema this build writes (`version` in both files). 1 was the
+/// SQLite `client.db` (`PRAGMA user_version`); 2 is the JSON files.
+pub const SCHEMA_VERSION: i64 = 2;
+
+/// The profile list file in the store directory.
+pub const PROFILES_FILE: &str = "profiles.json";
+/// The settings file in the store directory.
+pub const SETTINGS_FILE: &str = "settings.json";
+/// The SQLite store of earlier builds, imported once ([`sqlite_import`]).
+pub const SQLITE_FILE: &str = "client.db";
 
 /// The core an `auto` profile resolves to when its content has not been
 /// resolved yet, as the Kotlin host defaulted (`Profile.resolvedCore`).
@@ -258,8 +277,176 @@ pub const PREF_UI: &str = "ui";
 /// The preferences-table key of the backup identity (BoxBackups.origin).
 pub const PREF_BACKUP_ORIGIN: &str = "backupOrigin";
 
+/// One stored setting: its kind code ([`SettingValue::kind`]) and JSON value.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct StoredSetting {
+    #[serde(rename = "t")]
+    pub kind: i64,
+    #[serde(rename = "v")]
+    pub value: Value,
+}
+
+/// `profiles.json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct ProfilesFile {
+    pub version: i64,
+    /// The highest id ever handed out: ids are never reused (as Room's and
+    /// SQLite's AUTOINCREMENT), since interface preferences key folds by id.
+    pub last_id: i64,
+    pub profiles: Vec<Profile>,
+}
+
+impl Default for ProfilesFile {
+    fn default() -> Self {
+        ProfilesFile { version: SCHEMA_VERSION, last_id: 0, profiles: Vec::new() }
+    }
+}
+
+/// `settings.json`.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(default, rename_all = "camelCase")]
+pub struct SettingsFile {
+    pub version: i64,
+    pub settings: BTreeMap<String, StoredSetting>,
+    /// Raw values: the interface preferences ([`PREF_UI`]), the backup
+    /// identity, the WebDAV account, the IP quality cache.
+    pub preferences: BTreeMap<String, String>,
+    pub remote_servers: Vec<RemoteServer>,
+    pub last_remote_server_id: i64,
+    /// Markers and results of the one-time imports.
+    pub meta: BTreeMap<String, String>,
+}
+
+impl Default for SettingsFile {
+    fn default() -> Self {
+        SettingsFile {
+            version: SCHEMA_VERSION,
+            settings: BTreeMap::new(),
+            preferences: BTreeMap::new(),
+            remote_servers: Vec::new(),
+            last_remote_server_id: 0,
+            meta: BTreeMap::new(),
+        }
+    }
+}
+
+/// Everything the store holds; changed through [`Store`] (and, for the
+/// one-time imports, [`Store::transaction`]).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Data {
+    pub profiles: ProfilesFile,
+    pub settings: SettingsFile,
+}
+
+impl Data {
+    fn is_empty(&self) -> bool {
+        self.profiles.profiles.is_empty()
+            && self.settings.settings.is_empty()
+            && self.settings.remote_servers.is_empty()
+            && self.settings.preferences.is_empty()
+    }
+
+    fn profile_mut(&mut self, id: i64) -> Option<&mut Profile> {
+        self.profiles.profiles.iter_mut().find(|p| p.id == id)
+    }
+
+    fn profile(&self, id: i64) -> Option<&Profile> {
+        self.profiles.profiles.iter().find(|p| p.id == id)
+    }
+
+    pub fn set_meta(&mut self, key: &str, value: &str) {
+        self.settings.meta.insert(key.to_string(), value.to_string());
+    }
+
+    pub fn set_preference(&mut self, key: &str, value: &str) {
+        self.settings.preferences.insert(key.to_string(), value.to_string());
+    }
+
+    pub fn put_setting(&mut self, key: &str, value: &SettingValue) {
+        self.settings.settings.insert(key.to_string(), StoredSetting { kind: value.kind(), value: value.to_json() });
+    }
+
+    /// Inserts `profile` under a new id when its id is 0, otherwise under
+    /// that id, which must be free; returns the id.
+    pub fn insert_profile(&mut self, profile: &Profile) -> Result<i64> {
+        validate_profile(profile)?;
+        let id = if profile.id > 0 {
+            if self.profile(profile.id).is_some() {
+                return Err(Error(format!("store: profile {} already exists", profile.id)));
+            }
+            profile.id
+        } else {
+            self.profiles.profiles.iter().map(|p| p.id).max().unwrap_or(0).max(self.profiles.last_id) + 1
+        };
+        self.profiles.last_id = self.profiles.last_id.max(id);
+        self.profiles.profiles.push(Profile { id, ..profile.clone() });
+        Ok(id)
+    }
+
+    /// Raises the profile id counter to at least `seq` (an import keeping
+    /// the ids its source already handed out).
+    pub fn reserve_profile_ids(&mut self, seq: i64) {
+        self.profiles.last_id = self.profiles.last_id.max(seq);
+    }
+
+    pub fn insert_remote_server(&mut self, server: &RemoteServer) -> Result<i64> {
+        let servers = &mut self.settings;
+        let id = if server.id > 0 {
+            if servers.remote_servers.iter().any(|s| s.id == server.id) {
+                return Err(Error(format!("store: remote server {} already exists", server.id)));
+            }
+            server.id
+        } else {
+            servers.remote_servers.iter().map(|s| s.id).max().unwrap_or(0).max(servers.last_remote_server_id) + 1
+        };
+        servers.last_remote_server_id = servers.last_remote_server_id.max(id);
+        servers.remote_servers.push(RemoteServer { id, ..server.clone() });
+        Ok(id)
+    }
+
+    pub fn reserve_remote_server_ids(&mut self, seq: i64) {
+        self.settings.last_remote_server_id = self.settings.last_remote_server_id.max(seq);
+    }
+
+    fn content_state(&self, id: i64) -> Option<ContentState> {
+        self.profile(id).map(|p| ContentState {
+            last_updated: p.last_updated,
+            metadata: Metadata {
+                upload: p.upload,
+                download: p.download,
+                total: p.total,
+                expire: p.expire,
+                web_page_url: p.web_page_url.clone(),
+                auto_update_interval: p.auto_update_interval,
+            },
+        })
+    }
+
+    fn write_content_state(&mut self, id: i64, state: &ContentState) -> bool {
+        let Some(p) = self.profile_mut(id) else { return false };
+        let m = &state.metadata;
+        p.last_updated = state.last_updated;
+        p.upload = m.upload;
+        p.download = m.download;
+        p.total = m.total;
+        p.expire = m.expire;
+        p.web_page_url = m.web_page_url.clone();
+        p.auto_update_interval = m.auto_update_interval;
+        true
+    }
+}
+
+struct State {
+    data: Data,
+    /// The state at [`Store::begin`], put back by [`Store::rollback`].
+    snapshot: Option<Data>,
+}
+
 pub struct Store {
-    conn: Mutex<Connection>,
+    /// The store directory; None for a store in memory only.
+    dir: Option<PathBuf>,
+    state: Mutex<State>,
     in_transaction: AtomicBool,
     /// Content saves waiting for the platform to apply them to the running
     /// service, kept so a failed application can be rolled back
@@ -296,42 +483,74 @@ pub struct FormColumns {
     pub metadata: Option<Metadata>,
 }
 
-const PROFILE_COLUMNS: &str = "id, user_order, name, icon, path, kind, remote_url, last_updated, auto_update, auto_update_interval, core, \
-     upload, download, total, expire, web_page_url, interval_user_set, resolved_core, resolved_stamp";
-
 impl Store {
-    /// Opens (creating when absent) the store at `path` and brings its schema
-    /// to [`SCHEMA_VERSION`]. The parent directory is created.
-    pub fn open(path: &Path) -> Result<Store> {
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| Error(format!("store: create {}: {e}", parent.display())))?;
+    /// Opens (creating when absent) the store in the directory `dir`. When
+    /// the directory has no JSON files yet but holds the SQLite store of an
+    /// earlier build, that is imported first ([`sqlite_import`]).
+    pub fn open(dir: &Path) -> Result<Store> {
+        std::fs::create_dir_all(dir).map_err(|e| Error(format!("store: create {}: {e}", dir.display())))?;
+        let profiles_path = dir.join(PROFILES_FILE);
+        let settings_path = dir.join(SETTINGS_FILE);
+        let data = if profiles_path.exists() || settings_path.exists() {
+            Data { profiles: read_file(&profiles_path)?, settings: read_file(&settings_path)? }
+        } else {
+            let data = sqlite_import::import(dir)?;
+            // Written right away (even when empty), so the import runs once.
+            write_files(dir, &data, None)?;
+            data
+        };
+        for version in [data.profiles.version, data.settings.version] {
+            if version > SCHEMA_VERSION {
+                return Err(Error(format!("store: schema {version} is newer than this build ({SCHEMA_VERSION})")));
+            }
         }
-        let conn = Connection::open(path)?;
-        // WAL: the UI thread reads while the service layer writes, and a
-        // crash mid-write leaves the last committed state.
-        conn.pragma_update(None, "journal_mode", "WAL")?;
-        conn.pragma_update(None, "synchronous", "NORMAL")?;
-        conn.busy_timeout(std::time::Duration::from_secs(5))?;
-        Self::with_connection(conn)
+        Ok(Self::with_data(Some(dir.to_path_buf()), data))
     }
 
     /// A store that lives in memory only (tests, the screenshot harness).
     pub fn open_in_memory() -> Result<Store> {
-        Self::with_connection(Connection::open_in_memory()?)
+        Ok(Self::with_data(None, Data::default()))
     }
 
-    fn with_connection(mut conn: Connection) -> Result<Store> {
-        conn.pragma_update(None, "foreign_keys", "ON")?;
-        migrate_schema(&mut conn)?;
-        Ok(Store { conn: Mutex::new(conn), in_transaction: AtomicBool::new(false), pending: Default::default() })
+    fn with_data(dir: Option<PathBuf>, mut data: Data) -> Store {
+        data.profiles.version = SCHEMA_VERSION;
+        data.settings.version = SCHEMA_VERSION;
+        Store { dir, state: Mutex::new(State { data, snapshot: None }), in_transaction: AtomicBool::new(false), pending: Default::default() }
     }
 
-    fn conn(&self) -> MutexGuard<'_, Connection> {
-        self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    fn state(&self) -> MutexGuard<'_, State> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The store directory (None in memory).
+    pub fn dir(&self) -> Option<&Path> {
+        self.dir.as_deref()
     }
 
     pub fn schema_version(&self) -> Result<i64> {
-        Ok(self.conn().pragma_query_value(None, "user_version", |row| row.get(0))?)
+        Ok(self.state().data.profiles.version)
+    }
+
+    fn read<T>(&self, f: impl FnOnce(&Data) -> T) -> T {
+        f(&self.state().data)
+    }
+
+    /// Applies `f` to a copy of the state; on success the copy is written
+    /// (unless a transaction is open, which writes at commit) and replaces
+    /// the state. An error leaves both as they were.
+    fn write<T>(&self, f: impl FnOnce(&mut Data) -> Result<T>) -> Result<T> {
+        let mut state = self.state();
+        let mut next = state.data.clone();
+        let value = f(&mut next)?;
+        if next != state.data {
+            if state.snapshot.is_none() {
+                if let Some(dir) = &self.dir {
+                    write_files(dir, &next, Some(&state.data))?;
+                }
+            }
+            state.data = next;
+        }
+        Ok(value)
     }
 
     // -- transactions ------------------------------------------------------
@@ -339,33 +558,41 @@ impl Store {
     /// Starts a transaction that spans several calls (a backup restore puts
     /// many profiles back as one change). Only one at a time.
     pub fn begin(&self) -> Result<()> {
+        let mut state = self.state();
         if self.in_transaction.swap(true, Ordering::SeqCst) {
             return Err(Error("store: a transaction is already open".into()));
         }
-        if let Err(error) = self.conn().execute_batch("BEGIN IMMEDIATE") {
-            self.in_transaction.store(false, Ordering::SeqCst);
-            return Err(error.into());
-        }
+        state.snapshot = Some(state.data.clone());
         Ok(())
     }
 
+    /// Writes what changed since [`Store::begin`]. A failed write keeps the
+    /// transaction open (the caller rolls it back).
     pub fn commit(&self) -> Result<()> {
-        self.end("COMMIT")
-    }
-
-    pub fn rollback(&self) -> Result<()> {
-        self.end("ROLLBACK")
-    }
-
-    fn end(&self, statement: &str) -> Result<()> {
+        let mut state = self.state();
         if !self.in_transaction.load(Ordering::SeqCst) {
             return Err(Error("store: no transaction is open".into()));
         }
-        let result = self.conn().execute_batch(statement);
-        if result.is_ok() || statement == "ROLLBACK" {
-            self.in_transaction.store(false, Ordering::SeqCst);
+        if let (Some(dir), Some(snapshot)) = (&self.dir, &state.snapshot) {
+            if *snapshot != state.data {
+                write_files(dir, &state.data, Some(snapshot))?;
+            }
         }
-        Ok(result?)
+        state.snapshot = None;
+        self.in_transaction.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+
+    pub fn rollback(&self) -> Result<()> {
+        let mut state = self.state();
+        if !self.in_transaction.load(Ordering::SeqCst) {
+            return Err(Error("store: no transaction is open".into()));
+        }
+        if let Some(snapshot) = state.snapshot.take() {
+            state.data = snapshot;
+        }
+        self.in_transaction.store(false, Ordering::SeqCst);
+        Ok(())
     }
 
     /// True while a [`Store::begin`] transaction is open; writes from
@@ -374,112 +601,89 @@ impl Store {
         self.in_transaction.load(Ordering::SeqCst)
     }
 
+    /// Runs `f` on a copy of the state and writes it as one change (the
+    /// one-time imports). Refused while a [`Store::begin`] transaction is open.
+    pub(crate) fn transaction<T>(&self, f: impl FnOnce(&mut Data) -> Result<T>) -> Result<T> {
+        if self.in_transaction() {
+            return Err(Error("store: a transaction is already open".into()));
+        }
+        self.write(f)
+    }
+
     // -- meta ----------------------------------------------------------------
 
     pub fn meta(&self, key: &str) -> Result<Option<String>> {
-        Ok(self.conn().query_row("SELECT value FROM meta WHERE key = ?1", [key], |r| r.get(0)).optional()?)
+        Ok(self.read(|d| d.settings.meta.get(key).cloned()))
     }
 
     pub fn set_meta(&self, key: &str, value: &str) -> Result<()> {
-        self.conn().execute("INSERT OR REPLACE INTO meta (key, value) VALUES (?1, ?2)", params![key, value])?;
-        Ok(())
+        self.write(|d| {
+            d.set_meta(key, value);
+            Ok(())
+        })
     }
 
     /// True when the store holds none of the user's data yet (only `meta`).
     pub fn is_empty(&self) -> Result<bool> {
-        let conn = self.conn();
-        let count: i64 = conn.query_row(
-            "SELECT (SELECT COUNT(*) FROM settings) + (SELECT COUNT(*) FROM profiles) + \
-             (SELECT COUNT(*) FROM remote_servers) + (SELECT COUNT(*) FROM preferences)",
-            [],
-            |r| r.get(0),
-        )?;
-        Ok(count == 0)
-    }
-
-    /// Runs `f` on the connection inside one transaction (the legacy import).
-    pub(crate) fn transaction<T>(&self, f: impl FnOnce(&rusqlite::Transaction<'_>) -> Result<T>) -> Result<T> {
-        if self.in_transaction() {
-            return Err(Error("store: a transaction is already open".into()));
-        }
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        let value = f(&tx)?;
-        tx.commit()?;
-        Ok(value)
+        Ok(self.read(Data::is_empty))
     }
 
     // -- settings ------------------------------------------------------------
 
     pub fn settings(&self) -> Result<Vec<(String, SettingValue)>> {
-        let conn = self.conn();
-        let mut statement = conn.prepare("SELECT key, kind, value FROM settings ORDER BY key")?;
-        let rows = statement.query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?, r.get::<_, String>(2)?)))?;
-        let mut out = Vec::new();
-        for row in rows {
-            let (key, kind, text) = row?;
-            let value = SettingValue::from_json(kind, &serde_json::from_str(&text)?)?;
-            out.push((key, value));
-        }
-        Ok(out)
+        let stored = self.read(|d| d.settings.settings.clone());
+        stored.into_iter().map(|(key, s)| Ok((key, SettingValue::from_json(s.kind, &s.value)?))).collect()
     }
 
     pub fn setting(&self, key: &str) -> Result<Option<SettingValue>> {
-        let row: Option<(i64, String)> =
-            self.conn().query_row("SELECT kind, value FROM settings WHERE key = ?1", [key], |r| Ok((r.get(0)?, r.get(1)?))).optional()?;
-        match row {
-            Some((kind, text)) => Ok(Some(SettingValue::from_json(kind, &serde_json::from_str(&text)?)?)),
+        match self.read(|d| d.settings.settings.get(key).cloned()) {
+            Some(s) => Ok(Some(SettingValue::from_json(s.kind, &s.value)?)),
             None => Ok(None),
         }
     }
 
     pub fn put_setting(&self, key: &str, value: &SettingValue) -> Result<()> {
-        put_setting(&self.conn(), key, value)
+        self.write(|d| {
+            d.put_setting(key, value);
+            Ok(())
+        })
     }
 
-    /// Writes several settings as one change. Inside a [`Store::begin`]
-    /// transaction (a backup restore) they join it; otherwise they get their
-    /// own, so either all are written or none.
+    /// Writes several settings as one change (inside a [`Store::begin`]
+    /// transaction, as part of it).
     pub fn put_settings(&self, entries: &[(String, SettingValue)]) -> Result<()> {
-        let mut conn = self.conn();
-        if self.in_transaction() {
+        self.write(|d| {
             for (key, value) in entries {
-                put_setting(&conn, key, value)?;
+                d.put_setting(key, value);
             }
-            return Ok(());
-        }
-        let tx = conn.transaction()?;
-        for (key, value) in entries {
-            put_setting(&tx, key, value)?;
-        }
-        tx.commit()?;
-        Ok(())
+            Ok(())
+        })
     }
 
     pub fn remove_setting(&self, key: &str) -> Result<()> {
-        self.conn().execute("DELETE FROM settings WHERE key = ?1", [key])?;
-        Ok(())
+        self.write(|d| {
+            d.settings.settings.remove(key);
+            Ok(())
+        })
     }
 
     // -- profiles ------------------------------------------------------------
 
     /// Every profile in the user's order.
     pub fn profiles(&self) -> Result<Vec<Profile>> {
-        let conn = self.conn();
-        let mut statement = conn.prepare(&format!("SELECT {PROFILE_COLUMNS} FROM profiles ORDER BY user_order ASC, id ASC"))?;
-        let rows = statement.query_map([], profile_from_row)?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        let mut profiles = self.read(|d| d.profiles.profiles.clone());
+        profiles.sort_by_key(|p| (p.user_order, p.id));
+        Ok(profiles)
     }
 
     pub fn profile(&self, id: i64) -> Result<Option<Profile>> {
-        let conn = self.conn();
-        Ok(conn.query_row(&format!("SELECT {PROFILE_COLUMNS} FROM profiles WHERE id = ?1"), [id], profile_from_row).optional()?)
+        Ok(self.read(|d| d.profile(id).cloned()))
     }
 
     /// Inserts `profile` and returns its id: a new one when `profile.id` is 0,
     /// otherwise that id (a restore or rollback putting a profile back).
     pub fn insert_profile(&self, profile: &Profile) -> Result<i64> {
-        insert_profile(&self.conn(), profile)
+        self.write(|d| d.insert_profile(profile))
     }
 
     /// Writes every field of `profile` except its order, which only changes
@@ -487,85 +691,57 @@ impl Store {
     /// a copy read before a reorder does not undo it. Returns the rows changed.
     pub fn update_profile(&self, profile: &Profile, write_order: bool) -> Result<usize> {
         validate_profile(profile)?;
-        let conn = self.conn();
-        let changed = conn.execute(
-            "UPDATE profiles SET name = ?2, icon = ?3, path = ?4, kind = ?5, remote_url = ?6, last_updated = ?7, \
-             auto_update = ?8, auto_update_interval = ?9, core = ?10, upload = ?11, download = ?12, total = ?13, \
-             expire = ?14, web_page_url = ?15, interval_user_set = ?16, resolved_core = ?17, resolved_stamp = ?18, \
-             user_order = CASE WHEN ?19 THEN ?20 ELSE user_order END WHERE id = ?1",
-            params![
-                profile.id,
-                profile.name,
-                profile.icon,
-                profile.path,
-                profile.kind,
-                profile.remote_url,
-                profile.last_updated,
-                profile.auto_update,
-                profile.auto_update_interval,
-                profile.core,
-                profile.upload,
-                profile.download,
-                profile.total,
-                profile.expire,
-                profile.web_page_url,
-                profile.interval_user_set,
-                profile.resolved_core,
-                profile.resolved_stamp,
-                write_order,
-                profile.user_order,
-            ],
-        )?;
-        Ok(changed)
+        self.write(|d| {
+            let Some(stored) = d.profile_mut(profile.id) else { return Ok(0) };
+            let order = if write_order { profile.user_order } else { stored.user_order };
+            *stored = Profile { user_order: order, ..profile.clone() };
+            Ok(1)
+        })
     }
 
     pub fn delete_profiles(&self, ids: &[i64]) -> Result<usize> {
-        let conn = self.conn();
-        let mut changed = 0;
-        for id in ids {
-            changed += conn.execute("DELETE FROM profiles WHERE id = ?1", [id])?;
-        }
-        Ok(changed)
+        self.write(|d| {
+            let before = d.profiles.profiles.len();
+            d.profiles.profiles.retain(|p| !ids.contains(&p.id));
+            Ok(before - d.profiles.profiles.len())
+        })
     }
 
     /// The order a new profile takes: after the last one (0 for the first).
     pub fn next_profile_order(&self) -> Result<i64> {
-        Ok(self.conn().query_row("SELECT COALESCE(MAX(user_order) + 1, 0) FROM profiles", [], |r| r.get(0))?)
+        Ok(self.read(|d| d.profiles.profiles.iter().map(|p| p.user_order + 1).max().unwrap_or(0)))
     }
 
     /// Puts the profiles in the order of `ids`, which must name every profile
     /// exactly once (the list may have changed since the caller read it).
     pub fn reorder_profiles(&self, ids: &[i64]) -> Result<()> {
-        let mut conn = self.conn();
-        let tx = conn.transaction()?;
-        let mut current: Vec<i64> = {
-            let mut statement = tx.prepare("SELECT id FROM profiles")?;
-            let rows = statement.query_map([], |r| r.get(0))?;
-            rows.collect::<rusqlite::Result<Vec<i64>>>()?
-        };
-        let mut wanted = ids.to_vec();
-        current.sort_unstable();
-        wanted.sort_unstable();
-        wanted.dedup();
-        if wanted.len() != ids.len() || wanted != current {
-            return Err(Error("Profile list changed; refresh and retry".into()));
-        }
-        for (index, id) in ids.iter().enumerate() {
-            tx.execute("UPDATE profiles SET user_order = ?2 WHERE id = ?1", params![id, index as i64])?;
-        }
-        tx.commit()?;
-        Ok(())
+        self.write(|d| {
+            let mut current: Vec<i64> = d.profiles.profiles.iter().map(|p| p.id).collect();
+            let mut wanted = ids.to_vec();
+            current.sort_unstable();
+            wanted.sort_unstable();
+            wanted.dedup();
+            if wanted.len() != ids.len() || wanted != current {
+                return Err(Error("Profile list changed; refresh and retry".into()));
+            }
+            for (index, id) in ids.iter().enumerate() {
+                if let Some(p) = d.profile_mut(*id) {
+                    p.user_order = index as i64;
+                }
+            }
+            Ok(())
+        })
     }
 
     /// The [`ContentState`] of a profile, None when it does not exist.
     pub fn content_state(&self, id: i64) -> Result<Option<ContentState>> {
-        Ok(content_state(&self.conn(), id)?)
+        Ok(self.read(|d| d.content_state(id)))
     }
 
-    /// Records a save of a profile's content in its row: `last_updated` when
-    /// given, and the subscription metadata of `fetch` when given, its update
-    /// interval decided against the row's own `interval_user_set` as read in
-    /// the same locked step. Only the [`ContentState`] columns are written.
+    /// Records a save of a profile's content: `last_updated` when given, and
+    /// the subscription metadata of `fetch` when given, its update interval
+    /// decided against the profile's own `interval_user_set` as read in the
+    /// same locked step. Only the [`ContentState`] fields are written.
     /// Returns the state before and after, or None when the profile no
     /// longer exists.
     pub fn record_content_save(
@@ -574,61 +750,54 @@ impl Store {
         last_updated: Option<i64>,
         fetch: Option<&Fetch>,
     ) -> Result<Option<(ContentState, ContentState)>> {
-        let conn = self.conn();
-        let Some(before) = content_state(&conn, id)? else { return Ok(None) };
-        let user_set: bool = conn.query_row("SELECT interval_user_set FROM profiles WHERE id = ?1", [id], |r| r.get(0))?;
-        let after = ContentState {
-            last_updated: last_updated.unwrap_or(before.last_updated),
-            metadata: match fetch {
-                Some(fetch) => Metadata::after(before.metadata.auto_update_interval, user_set, fetch),
-                None => before.metadata.clone(),
-            },
-        };
-        if after != before {
-            write_content_state(&conn, id, &after)?;
-        }
-        Ok(Some((before, after)))
+        self.write(|d| {
+            let Some(before) = d.content_state(id) else { return Ok(None) };
+            let user_set = d.profile(id).map(|p| p.interval_user_set).unwrap_or(false);
+            let after = ContentState {
+                last_updated: last_updated.unwrap_or(before.last_updated),
+                metadata: match fetch {
+                    Some(fetch) => Metadata::after(before.metadata.auto_update_interval, user_set, fetch),
+                    None => before.metadata.clone(),
+                },
+            };
+            if after != before {
+                d.write_content_state(id, &after);
+            }
+            Ok(Some((before, after)))
+        })
     }
 
     /// Puts a [`ContentState`] back (a failed save rolled back). False when
     /// the profile no longer exists.
     pub fn restore_content_state(&self, id: i64, state: &ContentState) -> Result<bool> {
-        Ok(write_content_state(&self.conn(), id, state)? == 1)
+        self.write(|d| Ok(d.write_content_state(id, state)))
     }
 
-    /// The columns a profile form edits ([`FormColumns`]), None when the
+    /// The fields a profile form edits ([`FormColumns`]), None when the
     /// profile does not exist.
     pub fn form_columns(&self, id: i64) -> Result<Option<FormColumns>> {
-        let conn = self.conn();
-        Ok(conn
-            .query_row(
-                "SELECT name, core, kind, remote_url, auto_update, auto_update_interval, interval_user_set, \
-                 upload, download, total, expire, web_page_url FROM profiles WHERE id = ?1",
-                [id],
-                |r| {
-                    Ok(FormColumns {
-                        name: r.get(0)?,
-                        core: r.get(1)?,
-                        kind: r.get(2)?,
-                        remote_url: r.get(3)?,
-                        auto_update: r.get(4)?,
-                        auto_update_interval: r.get(5)?,
-                        interval_user_set: r.get(6)?,
-                        metadata: Some(Metadata {
-                            upload: r.get(7)?,
-                            download: r.get(8)?,
-                            total: r.get(9)?,
-                            expire: r.get(10)?,
-                            web_page_url: r.get(11)?,
-                            auto_update_interval: r.get(5)?,
-                        }),
-                    })
-                },
-            )
-            .optional()?)
+        Ok(self.read(|d| {
+            d.profile(id).map(|p| FormColumns {
+                name: p.name.clone(),
+                core: p.core.clone(),
+                kind: p.kind,
+                remote_url: p.remote_url.clone(),
+                auto_update: p.auto_update,
+                auto_update_interval: p.auto_update_interval,
+                interval_user_set: p.interval_user_set,
+                metadata: Some(Metadata {
+                    upload: p.upload,
+                    download: p.download,
+                    total: p.total,
+                    expire: p.expire,
+                    web_page_url: p.web_page_url.clone(),
+                    auto_update_interval: p.auto_update_interval,
+                }),
+            })
+        }))
     }
 
-    /// Writes the columns a profile form edits, and nothing else: the order,
+    /// Writes the fields a profile form edits, and nothing else: the order,
     /// the file path, the update time and the resolved core stay as they
     /// are. The subscription metadata is written only when `columns`
     /// carries it. False when the profile no longer exists.
@@ -639,88 +808,94 @@ impl Store {
         if columns.kind != 0 && columns.kind != 1 {
             return Err(Error(format!("Invalid profile type: {}", columns.kind)));
         }
-        let conn = self.conn();
-        let changed = conn.execute(
-            "UPDATE profiles SET name = ?2, core = ?3, kind = ?4, remote_url = ?5, auto_update = ?6, \
-             auto_update_interval = ?7, interval_user_set = ?8 WHERE id = ?1",
-            params![
-                id,
-                columns.name,
-                columns.core,
-                columns.kind,
-                columns.remote_url,
-                columns.auto_update,
-                columns.auto_update_interval,
-                columns.interval_user_set
-            ],
-        )?;
-        if changed == 1 {
+        self.write(|d| {
+            let Some(p) = d.profile_mut(id) else { return Ok(false) };
+            p.name = columns.name.clone();
+            p.core = columns.core.clone();
+            p.kind = columns.kind;
+            p.remote_url = columns.remote_url.clone();
+            p.auto_update = columns.auto_update;
+            p.auto_update_interval = columns.auto_update_interval;
+            p.interval_user_set = columns.interval_user_set;
             if let Some(m) = &columns.metadata {
-                conn.execute(
-                    "UPDATE profiles SET upload = ?2, download = ?3, total = ?4, expire = ?5, web_page_url = ?6 WHERE id = ?1",
-                    params![id, m.upload, m.download, m.total, m.expire, m.web_page_url],
-                )?;
+                p.upload = m.upload;
+                p.download = m.download;
+                p.total = m.total;
+                p.expire = m.expire;
+                p.web_page_url = m.web_page_url.clone();
             }
-        }
-        Ok(changed == 1)
+            Ok(true)
+        })
     }
 
     /// Records the core a profile's content resolved to for the file `stamp`.
     pub fn set_resolved_core(&self, id: i64, core: &str, stamp: &str) -> Result<()> {
-        self.conn().execute("UPDATE profiles SET resolved_core = ?2, resolved_stamp = ?3 WHERE id = ?1", params![id, core, stamp])?;
-        Ok(())
+        self.write(|d| {
+            if let Some(p) = d.profile_mut(id) {
+                p.resolved_core = core.to_string();
+                p.resolved_stamp = stamp.to_string();
+            }
+            Ok(())
+        })
     }
 
     // -- remote servers ------------------------------------------------------
 
     pub fn remote_servers(&self) -> Result<Vec<RemoteServer>> {
-        let conn = self.conn();
-        let mut statement = conn.prepare("SELECT id, user_order, name, url, secret FROM remote_servers ORDER BY user_order ASC, id ASC")?;
-        let rows = statement.query_map([], server_from_row)?;
-        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+        let mut servers = self.read(|d| d.settings.remote_servers.clone());
+        servers.sort_by_key(|s| (s.user_order, s.id));
+        Ok(servers)
     }
 
     pub fn remote_server(&self, id: i64) -> Result<Option<RemoteServer>> {
-        Ok(self
-            .conn()
-            .query_row("SELECT id, user_order, name, url, secret FROM remote_servers WHERE id = ?1", [id], server_from_row)
-            .optional()?)
+        Ok(self.read(|d| d.settings.remote_servers.iter().find(|s| s.id == id).cloned()))
     }
 
     pub fn insert_remote_server(&self, server: &RemoteServer) -> Result<i64> {
-        insert_remote_server(&self.conn(), server)
+        self.write(|d| d.insert_remote_server(server))
     }
 
     pub fn update_remote_server(&self, server: &RemoteServer) -> Result<usize> {
-        Ok(self.conn().execute(
-            "UPDATE remote_servers SET user_order = ?2, name = ?3, url = ?4, secret = ?5 WHERE id = ?1",
-            params![server.id, server.user_order, server.name, server.url, server.secret],
-        )?)
+        self.write(|d| match d.settings.remote_servers.iter_mut().find(|s| s.id == server.id) {
+            Some(stored) => {
+                *stored = server.clone();
+                Ok(1)
+            }
+            None => Ok(0),
+        })
     }
 
     pub fn delete_remote_server(&self, id: i64) -> Result<usize> {
-        Ok(self.conn().execute("DELETE FROM remote_servers WHERE id = ?1", [id])?)
+        self.write(|d| {
+            let before = d.settings.remote_servers.len();
+            d.settings.remote_servers.retain(|s| s.id != id);
+            Ok(before - d.settings.remote_servers.len())
+        })
     }
 
     pub fn next_remote_server_order(&self) -> Result<i64> {
-        Ok(self.conn().query_row("SELECT COALESCE(MAX(user_order) + 1, 0) FROM remote_servers", [], |r| r.get(0))?)
+        Ok(self.read(|d| d.settings.remote_servers.iter().map(|s| s.user_order + 1).max().unwrap_or(0)))
     }
 
     // -- preferences ---------------------------------------------------------
 
     /// A raw preferences value (`None` when unset).
     pub fn preference(&self, key: &str) -> Result<Option<String>> {
-        Ok(self.conn().query_row("SELECT value FROM preferences WHERE key = ?1", [key], |r| r.get(0)).optional()?)
+        Ok(self.read(|d| d.settings.preferences.get(key).cloned()))
     }
 
     pub fn set_preference(&self, key: &str, value: &str) -> Result<()> {
-        self.conn().execute("INSERT OR REPLACE INTO preferences (key, value) VALUES (?1, ?2)", params![key, value])?;
-        Ok(())
+        self.write(|d| {
+            d.set_preference(key, value);
+            Ok(())
+        })
     }
 
     pub fn remove_preference(&self, key: &str) -> Result<()> {
-        self.conn().execute("DELETE FROM preferences WHERE key = ?1", [key])?;
-        Ok(())
+        self.write(|d| {
+            d.settings.preferences.remove(key);
+            Ok(())
+        })
     }
 
     /// The interface preferences as stored (unvalidated; an unreadable value
@@ -772,83 +947,6 @@ impl Store {
     }
 }
 
-fn migrate_schema(conn: &mut Connection) -> Result<()> {
-    let version: i64 = conn.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    if version > SCHEMA_VERSION {
-        return Err(Error(format!("store: schema {version} is newer than this build ({SCHEMA_VERSION})")));
-    }
-    if version == SCHEMA_VERSION {
-        return Ok(());
-    }
-    let tx = conn.transaction()?;
-    if version < 1 {
-        tx.execute_batch(
-            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY NOT NULL, kind INTEGER NOT NULL, value TEXT NOT NULL);
-             CREATE TABLE IF NOT EXISTS profiles (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                 user_order INTEGER NOT NULL DEFAULT 0,
-                 name TEXT NOT NULL DEFAULT '',
-                 icon TEXT DEFAULT NULL,
-                 path TEXT NOT NULL DEFAULT '',
-                 kind INTEGER NOT NULL DEFAULT 0,
-                 remote_url TEXT NOT NULL DEFAULT '',
-                 last_updated INTEGER NOT NULL DEFAULT 0,
-                 auto_update INTEGER NOT NULL DEFAULT 0,
-                 auto_update_interval INTEGER NOT NULL DEFAULT 60,
-                 core TEXT NOT NULL DEFAULT 'auto',
-                 upload INTEGER NOT NULL DEFAULT 0,
-                 download INTEGER NOT NULL DEFAULT 0,
-                 total INTEGER NOT NULL DEFAULT 0,
-                 expire INTEGER NOT NULL DEFAULT 0,
-                 web_page_url TEXT NOT NULL DEFAULT '',
-                 interval_user_set INTEGER NOT NULL DEFAULT 0,
-                 resolved_core TEXT NOT NULL DEFAULT '',
-                 resolved_stamp TEXT NOT NULL DEFAULT '');
-             CREATE TABLE IF NOT EXISTS remote_servers (
-                 id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                 user_order INTEGER NOT NULL DEFAULT 0,
-                 name TEXT NOT NULL DEFAULT '',
-                 url TEXT NOT NULL DEFAULT '',
-                 secret TEXT NOT NULL DEFAULT '');
-             CREATE TABLE IF NOT EXISTS preferences (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);",
-        )?;
-    }
-    tx.pragma_update(None, "user_version", SCHEMA_VERSION)?;
-    tx.commit()?;
-    Ok(())
-}
-
-fn content_state(conn: &Connection, id: i64) -> rusqlite::Result<Option<ContentState>> {
-    conn.query_row(
-        "SELECT last_updated, upload, download, total, expire, web_page_url, auto_update_interval FROM profiles WHERE id = ?1",
-        [id],
-        |r| {
-            Ok(ContentState {
-                last_updated: r.get(0)?,
-                metadata: Metadata {
-                    upload: r.get(1)?,
-                    download: r.get(2)?,
-                    total: r.get(3)?,
-                    expire: r.get(4)?,
-                    web_page_url: r.get(5)?,
-                    auto_update_interval: r.get(6)?,
-                },
-            })
-        },
-    )
-    .optional()
-}
-
-fn write_content_state(conn: &Connection, id: i64, state: &ContentState) -> rusqlite::Result<usize> {
-    let m = &state.metadata;
-    conn.execute(
-        "UPDATE profiles SET last_updated = ?2, upload = ?3, download = ?4, total = ?5, expire = ?6, web_page_url = ?7, \
-         auto_update_interval = ?8 WHERE id = ?1",
-        params![id, state.last_updated, m.upload, m.download, m.total, m.expire, m.web_page_url, m.auto_update_interval],
-    )
-}
-
 fn validate_profile(profile: &Profile) -> Result<()> {
     if !CORES.contains(&profile.core.as_str()) {
         return Err(Error(format!("Unknown core: {}", profile.core)));
@@ -859,79 +957,58 @@ fn validate_profile(profile: &Profile) -> Result<()> {
     Ok(())
 }
 
-pub(crate) fn put_setting(conn: &Connection, key: &str, value: &SettingValue) -> Result<()> {
-    conn.execute(
-        "INSERT OR REPLACE INTO settings (key, kind, value) VALUES (?1, ?2, ?3)",
-        params![key, value.kind(), value.to_json().to_string()],
-    )?;
+
+fn read_file<T: Default + serde::de::DeserializeOwned>(path: &Path) -> Result<T> {
+    match std::fs::read(path) {
+        Ok(bytes) => serde_json::from_slice(&bytes).map_err(|e| Error(format!("store: {}: {e}", path.display()))),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(T::default()),
+        Err(e) => Err(Error(format!("store: read {}: {e}", path.display()))),
+    }
+}
+
+/// Writes the files of `data` that differ from `before` (all when None):
+/// each to a temporary file that is flushed to disk, then renamed over the
+/// old one. Both temporaries are complete before either rename, so a crash
+/// leaves each file whole (old or new).
+fn write_files(dir: &Path, data: &Data, before: Option<&Data>) -> Result<()> {
+    let mut staged: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let mut stage = |name: &str, bytes: Vec<u8>| -> Result<()> {
+        let path = dir.join(name);
+        let temp = dir.join(format!(".{name}.tmp"));
+        let written = std::fs::File::create(&temp).and_then(|mut file| {
+            file.write_all(&bytes)?;
+            file.sync_all()
+        });
+        if let Err(e) = written {
+            let _ = std::fs::remove_file(&temp);
+            return Err(Error(format!("store: write {}: {e}", temp.display())));
+        }
+        staged.push((temp, path));
+        Ok(())
+    };
+    let result = (|| {
+        if before.map_or(true, |b| b.settings != data.settings) {
+            stage(SETTINGS_FILE, serde_json::to_vec_pretty(&data.settings)?)?;
+        }
+        if before.map_or(true, |b| b.profiles != data.profiles) {
+            stage(PROFILES_FILE, serde_json::to_vec_pretty(&data.profiles)?)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        for (temp, _) in &staged {
+            let _ = std::fs::remove_file(temp);
+        }
+        return Err(error);
+    }
+    for (temp, path) in &staged {
+        std::fs::rename(temp, path).map_err(|e| Error(format!("store: rename {}: {e}", path.display())))?;
+    }
+    // The renames themselves reach the disk with the directory.
+    if let Ok(dir) = std::fs::File::open(dir) {
+        let _ = dir.sync_all();
+    }
     Ok(())
-}
-
-pub(crate) fn insert_profile(conn: &Connection, profile: &Profile) -> Result<i64> {
-    validate_profile(profile)?;
-    conn.execute(
-        "INSERT INTO profiles (id, user_order, name, icon, path, kind, remote_url, last_updated, auto_update, \
-         auto_update_interval, core, upload, download, total, expire, web_page_url, interval_user_set, resolved_core, resolved_stamp) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
-        params![
-            if profile.id > 0 { Some(profile.id) } else { None },
-            profile.user_order,
-            profile.name,
-            profile.icon,
-            profile.path,
-            profile.kind,
-            profile.remote_url,
-            profile.last_updated,
-            profile.auto_update,
-            profile.auto_update_interval,
-            profile.core,
-            profile.upload,
-            profile.download,
-            profile.total,
-            profile.expire,
-            profile.web_page_url,
-            profile.interval_user_set,
-            profile.resolved_core,
-            profile.resolved_stamp,
-        ],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-pub(crate) fn insert_remote_server(conn: &Connection, server: &RemoteServer) -> Result<i64> {
-    conn.execute(
-        "INSERT INTO remote_servers (id, user_order, name, url, secret) VALUES (?1, ?2, ?3, ?4, ?5)",
-        params![if server.id > 0 { Some(server.id) } else { None }, server.user_order, server.name, server.url, server.secret],
-    )?;
-    Ok(conn.last_insert_rowid())
-}
-
-fn profile_from_row(r: &Row<'_>) -> rusqlite::Result<Profile> {
-    Ok(Profile {
-        id: r.get(0)?,
-        user_order: r.get(1)?,
-        name: r.get(2)?,
-        icon: r.get(3)?,
-        path: r.get(4)?,
-        kind: r.get(5)?,
-        remote_url: r.get(6)?,
-        last_updated: r.get(7)?,
-        auto_update: r.get(8)?,
-        auto_update_interval: r.get(9)?,
-        core: r.get(10)?,
-        upload: r.get(11)?,
-        download: r.get(12)?,
-        total: r.get(13)?,
-        expire: r.get(14)?,
-        web_page_url: r.get(15)?,
-        interval_user_set: r.get(16)?,
-        resolved_core: r.get(17)?,
-        resolved_stamp: r.get(18)?,
-    })
-}
-
-fn server_from_row(r: &Row<'_>) -> rusqlite::Result<RemoteServer> {
-    Ok(RemoteServer { id: r.get(0)?, user_order: r.get(1)?, name: r.get(2)?, url: r.get(3)?, secret: r.get(4)? })
 }
 
 #[cfg(test)]
@@ -951,28 +1028,76 @@ mod tests {
     }
 
     #[test]
-    fn reopening_a_file_keeps_data_and_schema() {
+    fn reopening_the_directory_keeps_data_and_schema() {
         let dir = crate::legacy::tests::scratch("reopen");
-        let path = dir.join("fkbox/client.db");
+        let path = dir.join("fkbox");
         {
             let store = Store::open(&path).unwrap();
             store.put_setting("selected_profile", &SettingValue::Long(7)).unwrap();
+            store.insert_profile(&profile("a")).unwrap();
         }
         let store = Store::open(&path).unwrap();
         assert_eq!(store.schema_version().unwrap(), SCHEMA_VERSION);
         assert_eq!(store.setting("selected_profile").unwrap(), Some(SettingValue::Long(7)));
+        assert_eq!(store.profiles().unwrap()[0].name, "a");
+        // Plain, readable JSON like Clash-of-Rust's files.
+        let settings: Value = serde_json::from_slice(&std::fs::read(path.join(SETTINGS_FILE)).unwrap()).unwrap();
+        assert_eq!(settings["settings"]["selected_profile"], json!({"t": 3, "v": 7}));
+        let profiles: Value = serde_json::from_slice(&std::fs::read(path.join(PROFILES_FILE)).unwrap()).unwrap();
+        assert_eq!((profiles["version"].as_i64(), profiles["lastId"].as_i64()), (Some(SCHEMA_VERSION), Some(1)));
+        // No temporary files are left behind.
+        let names: Vec<String> = std::fs::read_dir(&path).unwrap().map(|e| e.unwrap().file_name().to_string_lossy().into_owned()).collect();
+        assert!(names.iter().all(|n| !n.ends_with(".tmp")), "{names:?}");
         std::fs::remove_dir_all(dir).unwrap();
     }
 
     #[test]
     fn a_newer_schema_is_refused() {
         let dir = crate::legacy::tests::scratch("newer");
-        let path = dir.join("client.db");
-        {
-            let conn = Connection::open(&path).unwrap();
-            conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1).unwrap();
-        }
-        assert!(Store::open(&path).is_err());
+        std::fs::write(dir.join(PROFILES_FILE), json!({"version": SCHEMA_VERSION + 1}).to_string()).unwrap();
+        assert!(Store::open(&dir).is_err());
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn an_unreadable_file_is_an_error_and_is_kept() {
+        let dir = crate::legacy::tests::scratch("unreadable");
+        std::fs::write(dir.join(SETTINGS_FILE), "{ not json").unwrap();
+        assert!(Store::open(&dir).is_err());
+        assert_eq!(std::fs::read_to_string(dir.join(SETTINGS_FILE)).unwrap(), "{ not json");
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_failed_write_leaves_memory_and_disk_unchanged() {
+        let dir = crate::legacy::tests::scratch("failed-write");
+        let store = Store::open(&dir).unwrap();
+        store.put_setting("kept", &SettingValue::Bool(true)).unwrap();
+        // A directory where the temporary file goes makes the write fail.
+        std::fs::create_dir(dir.join(format!(".{SETTINGS_FILE}.tmp"))).unwrap();
+        assert!(store.put_setting("lost", &SettingValue::Bool(true)).is_err());
+        assert_eq!(store.setting("lost").unwrap(), None);
+        std::fs::remove_dir(dir.join(format!(".{SETTINGS_FILE}.tmp"))).unwrap();
+        let reopened = Store::open(&dir).unwrap();
+        assert_eq!(reopened.setting("kept").unwrap(), Some(SettingValue::Bool(true)));
+        assert_eq!(reopened.setting("lost").unwrap(), None);
+        std::fs::remove_dir_all(dir).unwrap();
+    }
+
+    #[test]
+    fn a_transaction_writes_at_commit_only() {
+        let dir = crate::legacy::tests::scratch("tx-files");
+        let store = Store::open(&dir).unwrap();
+        store.begin().unwrap();
+        store.insert_profile(&profile("pending")).unwrap();
+        assert_eq!(Store::open(&dir).unwrap().profiles().unwrap().len(), 0, "not written before commit");
+        store.commit().unwrap();
+        assert_eq!(Store::open(&dir).unwrap().profiles().unwrap().len(), 1);
+        store.begin().unwrap();
+        store.delete_profiles(&[1]).unwrap();
+        store.rollback().unwrap();
+        assert_eq!(store.profiles().unwrap().len(), 1);
+        assert_eq!(Store::open(&dir).unwrap().profiles().unwrap().len(), 1);
         std::fs::remove_dir_all(dir).unwrap();
     }
 

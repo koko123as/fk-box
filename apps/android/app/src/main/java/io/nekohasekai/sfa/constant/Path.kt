@@ -2,7 +2,8 @@ package io.nekohasekai.sfa.constant
 
 object Path {
     /** The client store (crates/client-core), under filesDir. */
-    const val CLIENT_STORE_PATH = "fkbox/client.db"
+    /** The client store directory (profiles.json, settings.json; client.db of earlier builds is imported once). */
+    const val CLIENT_STORE_DIR = "fkbox"
 
     // Read once by the client store's import; left in place for older releases.
     const val SETTINGS_DATABASE_PATH = "settings.db"

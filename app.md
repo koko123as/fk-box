@@ -51,7 +51,7 @@
 
 ### 客户端存储与旧数据导入
 
-设置、配置列表元数据、远程控制服务器、界面偏好与备份身份存于 `crates/client-core` 的 SQLite 存储（`files/fkbox/client.db`，`PRAGMA user_version` 为结构版本）。`libfkui.so` 中只有一个存储实例：Kotlin `CoreStore` 首次访问时加载 `libfkui.so` 并打开（服务在没有界面时也能启动），Rust 界面使用同一实例，直接读配置列表与界面偏好、写偏好与排序，远程控制服务器的列表与表单保存也直接读写（地址校验在 client-core `remote_servers.rs`）；涉及配置内容或服务的修改仍经 Kotlin，之后发送不带载荷的 `profiles` 事件，界面重新读取。配置的“解析内核”由 Kotlin（libbox 检测）按文件大小与修改时间缓存到存储中。
+设置、配置列表元数据、远程控制服务器、界面偏好与备份身份存于 `crates/client-core` 管理的 JSON 文件（`files/fkbox/profiles.json`、`settings.json`，`version` 为结构版本，写入先写临时文件再重命名）；早期构建的 SQLite `files/fkbox/client.db` 首次启动时从副本导入一次，原文件保留供降级（见 [docs/architecture/phase4.md](docs/architecture/phase4.md)）。`libfkui.so` 中只有一个存储实例：Kotlin `CoreStore` 首次访问时加载 `libfkui.so` 并打开（服务在没有界面时也能启动），Rust 界面使用同一实例，直接读配置列表与界面偏好、写偏好与排序，远程控制服务器的列表与表单保存也直接读写（地址校验在 client-core `remote_servers.rs`）；涉及配置内容或服务的修改仍经 Kotlin，之后发送不带载荷的 `profiles` 事件，界面重新读取。配置的“解析内核”由 Kotlin（libbox 检测）按文件大小与修改时间缓存到存储中。
 
 首次打开时，若存储为空，从旧 Room `profiles.db`（结构 1–3，`typed` 列为 `TypedProfile` Parcel）、`settings.db`（`KeyValueEntity`）和 SharedPreferences `flclash_ui` 导入：原文件（含 `-wal`/`-shm`）先复制到缓存目录再读取，原文件不改；导入在一个事务内完成并写入标记 `legacy_import`，配置 ID 与 AUTOINCREMENT 计数保持不变，已选配置等设置因此继续有效。导入失败不写标记，存储保持为空，下次启动重试；存储已有数据时不导入。旧文件保留到后续版本，降级到旧版本时旧版本读取的是升级前的数据。
 

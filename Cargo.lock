@@ -1115,6 +1115,7 @@ name = "fkbox-mobile-ffi"
 version = "0.2.0"
 dependencies = [
  "fkbox-client-core",
+ "rusqlite",
  "serde",
  "serde_json",
 ]
