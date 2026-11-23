@@ -205,11 +205,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     suspend fun serviceReload0() {
         val (selectedProfileId, profile, content) = selectedProfile() ?: return
-        lastProfileName = profile.name
         lastReloadFellBack = false
         try {
             val routing = startOrReloadCore(content, profile.typed.core)
             lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
+            // The notification names the running profile: retitle it when the reload
+            // switched profiles (a failed reload keeps the previous name).
+            if (profile.name != lastProfileName) {
+                lastProfileName = profile.name
+                // notify() is thread-safe; no hop to Main, since a reload can block a caller there.
+                notification.retitle(lastProfileName)
+            }
         } catch (e: Exception) {
             val previous = lastStarted
             // mobile-ffi service_state.rs: fall back when the profile or its routing

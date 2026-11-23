@@ -112,6 +112,19 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
         )
     }
 
+    /**
+     * Retitles the running notification for [profileName] after a reload switched
+     * profiles, keeping the traffic line it shows (or the started text before one).
+     */
+    fun retitle(profileName: String) {
+        val title = CoreBridge.call("serviceState.notification") { put("profile", profileName); put("phase", "started") }.text("title")
+        val text = lastContent ?: service.getString(R.string.status_started)
+        Application.notificationManager.notify(
+            notificationId,
+            notificationBuilder.setContentTitle(title).setContentText(text).build(),
+        )
+    }
+
     suspend fun start() {
         val shown = CoreBridge.call("serviceState.trafficShown") {
             put("enabled", Settings.dynamicNotification)
