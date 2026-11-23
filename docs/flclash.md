@@ -1,12 +1,12 @@
 # 界面说明（Material Design 3 界面，FlClash 仅作布局参考）
 
-本文记录界面的实现方式、布局来源和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](AGENTS.md)。
+本文记录界面的实现方式、布局来源和适配范围。Android 后端差异见 [app.md](app.md)，核心扩展见 [libbox.md](libbox.md)，维护约束见 [AGENTS.md](../AGENTS.md)。
 
 `ui/plain` 起界面改为朴素的 Material 3 风格；`ui/m3-rewrite` 按 [skydashnet/material-design-3-ui-skill](https://github.com/skydashnet/material-design-3-ui-skill)（v1.1.1）把视觉层重写为完整的 Material Design 3 系统（见下文“Material Design 3 界面约定”）。各页面的分区、顺序、按钮位置、底部四个目的地（仪表盘、代理、配置、工具）和平板侧栏仍按原 FlClash 布局；FlClash 提供页面布局、信息组织以及动效与交互手感的参考（动效用 Slint 重新实现，见下文“动效”），不提供控件、字形、形状或特效。FlClash 的来源与 GPL-3.0 许可保留。
 
 ## Rust + Slint 实现
 
-界面由 Rust + Slint 实现，位于 [crates/client-ui/](crates/client-ui/)：`ui/*.slint` 为布局，`src/` 为状态投影与页面逻辑，编译为 `libfkui.so`，由 Kotlin 的 `bridge/BoxActivity.kt`（GameActivity）加载；命令与事件经 `bridge/BoxBridge.kt` 和 `bridge/SlintHost.kt`（JNI）往返。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `MainActivity`、`ShareActivity` 和扫码用的 `qr/`；扫码相机、Ghostty 终端和 OpenConnect 登录 WebView 是 `bridge/NativePages.kt` 中的原生 Activity。仓库不含 Flutter/Dart 代码，最初按 FlClash 的 Flutter 页面翻译、随后的 Compose 实现均可在 Git 历史中查看；逐文件的 Compose → Slint 对应与已知差异见 [slint-manifest.md](slint-manifest.md)。页面对应关系：
+界面由 Rust + Slint 实现，位于 [crates/client-ui/](../crates/client-ui/)：`ui/*.slint` 为布局，`src/` 为状态投影与页面逻辑，编译为 `libfkui.so`，由 Kotlin 的 `bridge/BoxActivity.kt`（GameActivity）加载；命令与事件经 `bridge/BoxBridge.kt` 和 `bridge/SlintHost.kt`（JNI）往返。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `MainActivity`、`ShareActivity` 和扫码用的 `qr/`；扫码相机、Ghostty 终端和 OpenConnect 登录 WebView 是 `bridge/NativePages.kt` 中的原生 Activity。仓库不含 Flutter/Dart 代码，最初按 FlClash 的 Flutter 页面翻译、随后的 Compose 实现均可在 Git 历史中查看；逐文件的 Compose → Slint 对应与已知差异见 [slint-manifest.md](slint-manifest.md)。页面对应关系：
 
 | 原 Flutter 页面 | Slint 实现（`crates/client-ui/` 下） |
 | --- | --- |
@@ -36,18 +36,18 @@
 - 阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条），并只经 `Theme.shadow-blur/offset/color` 令牌设置；常规层级用 surface 色调区分。不使用 `backdrop-blur`、液态玻璃着色器、`RuntimeShader`/AGSL 或其他模糊滤镜（`blur()`）。动效见下文“动效”；无页内拖动返回。
 - 图标为 Material Icons 字体（`ui/icons/fonts/`），`ui/icons/icons.slint` 按用途命名映射，Rust 端按名称查表（`src/nav.rs` 的 `glyph`）。
 - 界面文字经 `@tr()`（Slint）与 `src/i18n.rs` 的 `tr()`（Rust）翻译，简体中文表为 `crates/client-ui/i18n/zh/LC_MESSAGES/fkbox-client-ui.po`；Rust 源码中不写死中文。
-- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体，并有“页面切换”（滑动/淡入，界面偏好 `tabMotion`，默认滑动）；旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
+- 外观页保留主题色（含自定义取色）、配色风格、纯黑模式、明暗跟随和字号/字体，并有“页面切换”（滑动/淡入，界面偏好 `tabMotion`，默认滑动）；旧设置与备份中的 `appearanceStyle`、`liquidGlass`、`tabAnimation`、`floatingNavigation`、`sidebarExpanded` 键在读取和恢复时丢弃（[BoxPreferences.kt](../apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/BoxPreferences.kt)）。
 - 保留的自绘内容均为功能性：网络速度折线图（`ui/pages/dashboard.slint`）、二维码（`src/pages/profiles.rs`，qrcodegen）、颜色选择器的色板/色谱/滑条，以及订阅额度和进度条。
-- [tools/verify_newui.py](tools/verify_newui.py) 在 CI 中检查上述约束的源码部分（界面入口、Compose/Flutter 已删除、禁用的特效与依赖、任何 `.slint` 中不出现 `backdrop-blur` 属性或已删除的 `Glass`/玻璃令牌、`Surface` 为不透明色调表面、顶部应用栏继承 `Surface`、手机导航栏为带阴影的悬浮 `Surface` 且 `home-bottom` 留出栏高、页面中带点按处理的 TouchArea 都驱动水波纹（或为 `Tap`，遮罩/消息条除外）、列表动效组件与三个列表的接入、底部表单拖动使用 `Theme.sheet-*` 令牌、Slint ≥ 1.19 且两个 vendored crate 与之同版本、阴影只经令牌、页面不写十六进制颜色、M3 令牌与组件存在）。
+- [scripts/verify_newui.py](../scripts/verify_newui.py) 在 CI 中检查上述约束的源码部分（界面入口、Compose/Flutter 已删除、禁用的特效与依赖、任何 `.slint` 中不出现 `backdrop-blur` 属性或已删除的 `Glass`/玻璃令牌、`Surface` 为不透明色调表面、顶部应用栏继承 `Surface`、手机导航栏为带阴影的悬浮 `Surface` 且 `home-bottom` 留出栏高、页面中带点按处理的 TouchArea 都驱动水波纹（或为 `Tap`，遮罩/消息条除外）、列表动效组件与三个列表的接入、底部表单拖动使用 `Theme.sheet-*` 令牌、Slint ≥ 1.19 且两个 vendored crate 与之同版本、阴影只经令牌、页面不写十六进制颜色、M3 令牌与组件存在）。
 
 ## 动效
 
 参考 FlClash v0.9.3 的动效与交互手感（`lib/pages/home.dart` 的 PageView 与底栏、`lib/ui/list_item.dart` 的 OpenContainer、`lib/views/proxies/list.dart` 的展开、`lib/views/dashboard/edit.dart` 的编辑晃动与让位、`dashboard/widgets/current_outbound.dart` 的 ease-out-back 形变，以及 `context.motionDuration`/`disableAnimations`），在 Slint 中重新实现；不做背景模糊、磨砂或液态玻璃。
 
-- 令牌（`ui/theme/theme.slint`）：时长 `motion-short` 150 ms、`motion-medium` 300 ms、`motion-long` 450 ms、淡出 `motion-exit` 90 ms／淡入 `motion-enter` 210 ms（自 `motion-enter-scale` 0.92 放大）、分页 `motion-tab` 300 ms、页面推入/返回 `motion-route` 200 ms、底部表单 `motion-sheet` 300 ms、对话框 `motion-dialog` 404 ms（自 `motion-dialog-scale` 1.2 倍）、水波纹 `motion-ripple` 450 ms／`motion-ripple-fade` 150 ms、错峰 `motion-stagger` 30 ms（最多 `motion-stagger-items` 8 项）、编辑让位 `motion-yield` 260 ms 与出现 `motion-appear` 200 ms、晃动周期 `motion-sway-period` 3600 ms（0.7°、1.25 px）；曲线 `easing-standard`／`easing-emphasized` cubic-bezier(0.2, 0, 0, 1)、`easing-decelerate`、`easing-accelerate`、`easing-back`（ease-out-back），手动推进的进度用 `Theme.ease-out`/`ease-out-back`/`progress`。组件中不写死时长或曲线：`tools/verify_newui.py` 检查 `animate` 块的 duration/delay 只用 `Theme.motion-*`、easing 只用 `Theme.easing-*`、`animation-tick()` 的周期只用令牌、主题外不出现 `cubic-bezier(`。
+- 令牌（`ui/theme/theme.slint`）：时长 `motion-short` 150 ms、`motion-medium` 300 ms、`motion-long` 450 ms、淡出 `motion-exit` 90 ms／淡入 `motion-enter` 210 ms（自 `motion-enter-scale` 0.92 放大）、分页 `motion-tab` 300 ms、页面推入/返回 `motion-route` 200 ms、底部表单 `motion-sheet` 300 ms、对话框 `motion-dialog` 404 ms（自 `motion-dialog-scale` 1.2 倍）、水波纹 `motion-ripple` 450 ms／`motion-ripple-fade` 150 ms、错峰 `motion-stagger` 30 ms（最多 `motion-stagger-items` 8 项）、编辑让位 `motion-yield` 260 ms 与出现 `motion-appear` 200 ms、晃动周期 `motion-sway-period` 3600 ms（0.7°、1.25 px）；曲线 `easing-standard`／`easing-emphasized` cubic-bezier(0.2, 0, 0, 1)、`easing-decelerate`、`easing-accelerate`、`easing-back`（ease-out-back），手动推进的进度用 `Theme.ease-out`/`ease-out-back`/`progress`。组件中不写死时长或曲线：`scripts/verify_newui.py` 检查 `animate` 块的 duration/delay 只用 `Theme.motion-*`、easing 只用 `Theme.easing-*`、`animation-tick()` 的周期只用令牌、主题外不出现 `cubic-bezier(`。
 - 减少动画：Android 宿主（`BoxActivity`）读取 `Settings.Global.ANIMATOR_DURATION_SCALE`，随 `locale` 回复（`animatorScale`）及回到前台时的 `motion` 事件传入；Rust 端 `theme_apply::set_motion_scale` 写入 `Theme.motion-scale`，除周期类令牌外所有时长都乘以该系数；为 0（开发者选项关闭动画或无障碍“移除动画”）时所有变化立即完成，`Theme.motion-on` 为假时不画水波纹、编辑晃动和容器变换。不依赖 Slint 自带的减少动画查询。
 - 状态过渡：状态层、按钮、图标按钮、开关（滑块位置与尺寸）、单选/复选、筛选纸片、分段按钮、卡片和导航项的颜色与尺寸按 `motion-short`/`motion-medium` 过渡；导航指示器选中时从中心展开，导航图标在描边/填充两图标间交叉淡化并放大（填充图标用 ease-out-back）。
-- 水波纹：`kit.slint` 的 `Ripple` 在 TouchArea 的 pointer-event 按下时从按下点扩散（`centered` 时从中心），剪裁到表面圆角，松开后淡出；只在存在时读取 `animation-tick()`。`kit.slint` 的 `Tap` 把状态层、水波纹和 TouchArea 合为一体，供页面中自行处理点按的表面使用。所有可点按的行与按钮都有水波纹：按钮、图标按钮、卡片、仪表盘面板、可点击列表项、筛选纸片、分段按钮（含出站模式）、导航项、菜单项、启停按钮、对话框选项、代理分组标签、节点延迟、记录行及其筛选标签、可折叠分组标题、内网代理行、服务行、出口 IP/内网地址、国家徽标重试、仪表盘编辑的移除徽标和色板（`tools/verify_newui.py` 检查页面中的点按处理都带水波纹，遮罩、消息条和表单行聚焦除外）。
+- 水波纹：`kit.slint` 的 `Ripple` 在 TouchArea 的 pointer-event 按下时从按下点扩散（`centered` 时从中心），剪裁到表面圆角，松开后淡出；只在存在时读取 `animation-tick()`。`kit.slint` 的 `Tap` 把状态层、水波纹和 TouchArea 合为一体，供页面中自行处理点按的表面使用。所有可点按的行与按钮都有水波纹：按钮、图标按钮、卡片、仪表盘面板、可点击列表项、筛选纸片、分段按钮（含出站模式）、导航项、菜单项、启停按钮、对话框选项、代理分组标签、节点延迟、记录行及其筛选标签、可折叠分组标题、内网代理行、服务行、出口 IP/内网地址、国家徽标重试、仪表盘编辑的移除徽标和色板（`scripts/verify_newui.py` 检查页面中的点按处理都带水波纹，遮罩、消息条和表单行聚焦除外）。
 - 底栏：手机首页的悬浮底栏（不透明）固定在手势区上方，滚动时不再隐藏（用户要求固定）；消息条始终位于底栏上方。
 - 手势方向：每次触摸在分发给 Slint 之前先判定方向（`src/gesture.rs`，Android 后端的触摸观察器调用）：手指移动 6 px 后，横向位移不超过纵向 1.5 倍的触摸视为滚动，设置 `Motion.vertical-lock`，首页翻页的 SwipeGestureHandler 在手指抬起前保持禁用。Slint 1.19 的 SwipeGestureHandler 在横向 8 px 且横向大于纵向一半时就接管触摸（约 63° 以内都算横向），稍斜的上下滑动会被翻页抢走而页面不动（“划不动”）。
 - 首页切换：手机默认滑动分页（类似 PageView）：点按目的地时旧页滑出、新页滑入（跨多个目的地时只移动这两页），水平拖动带入相邻页，松手超过四分之一宽度即切换，否则回弹，首尾页拖动有阻尼；仪表盘编辑中和代理页的分组标签模式下不响应水平拖动。外观页可改为淡入（fade-through：旧页淡出 90 ms，新页淡入并自 0.92 放大 210 ms）；侧栏窗口总是淡入。核心页面常驻，只有当前页与正在移动的页可见；`Motion.pages-moving` 标记移动中，截图测试检查它总会复位。
@@ -66,11 +66,11 @@
 
 布局参考固定为 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（`be84736605527034689c95bf27828ff27d912c5e`，2026-11-04），最初翻译依据为 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`）。服务状态按该版本迁入（规则移植到 `apps/android/core/ui_service_check.go`，界面见下文仪表盘一节）；DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 页面及其后的 Compose 实现均不再使用。
 
-[flclash-manifest.json](flclash-manifest.json) 记录参考版本、原生适配（`adaptedNativeFiles`：`apps/android/core/ui_egress.go` 对 FlClash IP 查询的适配，用 sing-box 路由和 libbox HTTP 替换原传输）和补充参考（`supplementalReferences`：MITM dev、地理数据资源页设计）。原 Flutter 导入的逐文件清单可在 `6902a3d` 的 `flclash-manifest.json` 中查看。
+[flclash-manifest.json](../resources/flclash-manifest.json) 记录参考版本、原生适配（`adaptedNativeFiles`：`apps/android/core/ui_egress.go` 对 FlClash IP 查询的适配，用 sing-box 路由和 libbox HTTP 替换原传输）和补充参考（`supplementalReferences`：MITM dev、地理数据资源页设计）。原 Flutter 导入的逐文件清单可在 `6902a3d` 的 `flclash-manifest.json` 中查看。
 
 请求/MITM 功能另参考 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)（[`f544861`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计、[`1a7556d`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合）。该 dev 源码的 `FEATURE_MITM` 默认关闭，B-box 自行实现 sing-box 路由上的 TLS 接管。
 
-FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [Twemoji-LICENSE.md](licenses/Twemoji-LICENSE.md)。
+FlClash 许可保留在 [licenses/LICENSE](../resources/licenses/LICENSE)，字体归属见 [Twemoji-LICENSE.md](../resources/licenses/Twemoji-LICENSE.md)。
 
 ## 界面复用与业务适配
 
@@ -150,7 +150,7 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 ### 状态卡片与出口查询
 
-查询来源、字段解析及质量判定参考上述固定版本。IP 竞速由 [ui_egress.go](apps/android/core/ui_egress.go) 负责：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
+查询来源、字段解析及质量判定参考上述固定版本。IP 竞速由 [ui_egress.go](../apps/android/core/ui_egress.go) 负责：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
 
 质量查询在 `apps/android/native/src/pages/egress.rs` 中依次分批使用 ident.me/ip-api.com/IPQuery、IPLocate、ipapi.is、proxycheck.io；等待一秒或当前请求全部失败后进入后续批次，单请求最多八秒。保留参考版组织/ASN 解析、显式类型优先、住宅类型推断及 Tor/abuser 质量规则。
 
@@ -171,6 +171,6 @@ FlClash 许可保留在 [licenses/LICENSE](licenses/LICENSE)，字体归属见 [
 
 ## 验证与升级参考版本
 
-当前界面检查为 [verify_newui.py](tools/verify_newui.py) 的 Slint 界面源码约束、[build-apk.yml](.github/workflows/build-apk.yml) 的 Rust 单元测试（`cargo test --workspace --lib`）（由 [newui.yml](.github/workflows/newui.yml) 和 [build-debug-apk.yml](.github/workflows/build-debug-apk.yml) 运行），以及 [newui-android.yml](.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)。Slint 页面可用 `ui-slint` 的 `shot` 特性在主机上按手机尺寸渲染截图（`examples/shot.rs`，软件渲染器）；`shot-skia` 特性加 `SHOT_RENDERER=skia` 改用 Android 所用的 Skia 渲染器（CPU 光栅化），阴影与抗锯齿与设备一致。CI 不做像素比较；Material Design 3 重写（`ui/m3-rewrite`）只在主机截图中检查过，尚未在实机上做视觉验收；去掉背景模糊后的滚动帧率、水波纹、列表增删动画与底部表单拖动的手感同样未在设备上验证。删除 `flutter/` 前的 Flutter 测试与截图记录可在 Git 历史中查看，不代表当前源码已通过同等测试。
+当前界面检查为 [verify_newui.py](../scripts/verify_newui.py) 的 Slint 界面源码约束、[build-apk.yml](../.github/workflows/build-apk.yml) 的 Rust 单元测试（`cargo test --workspace --lib`）（由 [newui.yml](../.github/workflows/newui.yml) 和 [build-debug-apk.yml](../.github/workflows/build-debug-apk.yml) 运行），以及 [newui-android.yml](../.github/workflows/newui-android.yml) 的 JVM 测试与模拟器 UI smoke，见 [app.md](app.md#验证与历史记录)。Slint 页面可用 `ui-slint` 的 `shot` 特性在主机上按手机尺寸渲染截图（`examples/shot.rs`，软件渲染器）；`shot-skia` 特性加 `SHOT_RENDERER=skia` 改用 Android 所用的 Skia 渲染器（CPU 光栅化），阴影与抗锯齿与设备一致。CI 不做像素比较；Material Design 3 重写（`ui/m3-rewrite`）只在主机截图中检查过，尚未在实机上做视觉验收；去掉背景模糊后的滚动帧率、水波纹、列表增删动画与底部表单拖动的手感同样未在设备上验证。删除 `flutter/` 前的 Flutter 测试与截图记录可在 Git 历史中查看，不代表当前源码已通过同等测试。
 
 升级布局参考版本时核对页面布局、信息组织与动效时序，不迁入控件、字形或特效；同步审查来源清单和许可，按实际 Actions 运行记录结果。

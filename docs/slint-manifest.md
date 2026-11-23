@@ -106,7 +106,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
 - Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).
-  The UI does not use 1.19's `backdrop-blur` (tools/verify_newui.py forbids it). Edition /
+  The UI does not use 1.19's `backdrop-blur` (scripts/verify_newui.py forbids it). Edition /
   project-file support is not adopted (the crate keeps the default edition).
 - `vendor/i-slint-renderer-skia` (1.19.0 + FKBOX-PATCH.md): a 32 MB GPU resource cache and
   the purge hook. The font-data patch of the 1.18.1 copy is retired: upstream 1.19 builds typefaces

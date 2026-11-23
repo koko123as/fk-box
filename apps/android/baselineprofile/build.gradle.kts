@@ -1,6 +1,6 @@
 // Baseline Profile generator for the app (Macrobenchmark BaselineProfileRule).
 // Only part of the build with -PbaselineProfile=true (settings.gradle.kts), so
-// regular and release builds never configure it. See app.md, "Baseline Profile".
+// regular and release builds never configure it. See docs/app.md, "Baseline Profile".
 plugins {
     id("com.android.test")
     id("org.jetbrains.kotlin.android")

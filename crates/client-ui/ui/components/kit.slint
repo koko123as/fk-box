@@ -311,7 +311,7 @@ export component Ripple inherits Rectangle {
 // surface-container role (Theme.level) and `elevation` (0–3) the shadow
 // where M3 gives the component one (Theme.shadow-*). No blur: nothing in
 // the UI reads back what lies under a surface (no backdrop-blur,
-// tools/verify_newui.py), so content scrolling under it costs no per-frame
+// scripts/verify_newui.py), so content scrolling under it costs no per-frame
 // filter, and moving or scaling it is cheap.
 export component Surface inherits Rectangle {
     in property <int> level: 2;
@@ -380,7 +380,7 @@ export component Tap inherits Rectangle {
     }
 }
 
-// List motion (FlClash's list feel, flclash.md "动效"): ListMotion watches a
+// List motion (FlClash's list feel, docs/flclash.md "动效"): ListMotion watches a
 // list's length and says whether its items may move now, Entrance plays an
 // item's way in, and the lists use them like this: an item created while
 // `adding` grows into its place (height or a short rise) as it fades in; the

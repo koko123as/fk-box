@@ -33,7 +33,7 @@ for path in (ROOT / "apps/android/app/src").rglob("*.kt"):
 if re.search(r"androidx\.compose|kotlin\.plugin\.compose|compose\s*=\s*true|graphics-shapes", (ROOT / "apps/android/app/build.gradle.kts").read_text()):
     errors.append("apps/android/app/build.gradle.kts: Compose or retired shape dependency")
 
-# The Material Design 3 UI (ui/m3-rewrite, flclash.md "Material Design 3 界面约定"):
+# The Material Design 3 UI (ui/m3-rewrite, docs/flclash.md "Material Design 3 界面约定"):
 # opaque tonal surfaces only. No shaders, liquid glass, blur filters or
 # backdrop blur anywhere in the Slint sources: a surface that blurs what
 # scrolls under it re-reads and filters that content every frame. Floating
@@ -92,7 +92,7 @@ if not bar or "Nav.bar-margin" not in home or not re.search(r"elevation:\s*[1-3]
 if "bar-margin + bar-height" not in (slint_ui / "models" / "globals.slint").read_text():
     errors.append("crates/client-ui/ui/models/globals.slint: home-bottom must clear the floating bar")
 
-# Motion (flclash.md "动效"): every animation takes its duration and curve
+# Motion (docs/flclash.md "动效"): every animation takes its duration and curve
 # from the Theme motion tokens, which theme.slint multiplies by the system's
 # animator duration scale (Android's ANIMATOR_DURATION_SCALE, sent by the host;
 # 0 turns motion off); presses ripple through kit.slint's Ripple.
@@ -166,7 +166,7 @@ for path in slint_ui.rglob("*.slint"):
         if not any(action.startswith(p.rstrip(";")) for p in plain_taps):
             line = source.count("\n", 0, match.start()) + 1
             errors.append(f"{path.relative_to(ROOT)}:{line}: a tappable TouchArea without a ripple; use kit.slint Tap ({action})")
-# List motion and the sheet's drag (flclash.md "动效").
+# List motion and the sheet's drag (docs/flclash.md "动效").
 for component in ("ListMotion", "Entrance"):
     if not re.search(rf"export component {component}\b", kit):
         errors.append(f"crates/client-ui/ui/components/kit.slint: missing the list motion component {component}")
@@ -202,7 +202,7 @@ for path in (ROOT / "apps/android/app/src").rglob("*.kt"):
     source = path.read_text()
     if re.search(r"\bio\.flutter\.|sfa\.compose\.(?:screen|navigation|component)\b|sfa\.update\b", source):
         errors.append(f"{path.relative_to(ROOT)}: Flutter embedding or retired UI/update dependency")
-for path in (ROOT / "apps/android/app/build.gradle.kts", ROOT / "build.gradle.kts", ROOT / "settings.gradle.kts"):
+for path in (ROOT / "apps/android/app/build.gradle.kts", ROOT / "apps/android/build.gradle.kts", ROOT / "apps/android/settings.gradle.kts"):
     if re.search(r"flutter_(?:debug|release)|flutter/build|navigation-fragment|sora-editor|app-update-ktx", path.read_text()):
         errors.append(f"{path.name}: Flutter AAR or retired UI/update build dependency")
 for path in (ROOT / ".github").rglob("*.yml"):
@@ -215,13 +215,13 @@ for directory in (native / "update", native / "compat", ROOT / "apps/android/app
     for path in directory.rglob("*"):
         if path.is_file():
             errors.append(f"{path.relative_to(ROOT)}: retired source remains")
-for retired in ("apps/android/core/option/httpdebug.go", "tools/ebpf", "apps/android/core/httpdebug/wire.go",
+for retired in ("apps/android/core/option/httpdebug.go", "scripts/ebpf", "apps/android/core/httpdebug/wire.go",
                 "apps/android/app/src/main/java/io/nekohasekai/sfa/bg/RootCaptureSession.kt"):
     path = ROOT / retired
     if path.is_file() or path.is_dir() and any(item.is_file() for item in path.rglob("*")):
         errors.append(f"{retired}: retired capture implementation remains")
 
-manifest = json.loads((ROOT / "flclash-manifest.json").read_text())
+manifest = json.loads((ROOT / "resources/flclash-manifest.json").read_text())
 for reference in manifest.get("supplementalReferences", []):
     if not re.fullmatch(r"[0-9a-f]{40}", reference["commit"]):
         errors.append("Supplemental FlClash reference must pin a complete commit")
@@ -235,8 +235,8 @@ for reference in manifest.get("supplementalReferences", []):
             elif source["usage"] == "verbatim" and hashlib.sha256(path.read_bytes()).hexdigest() != source["sourceSHA256"]:
                 errors.append(f"Changed verbatim supplemental import: {local}")
 for license_file in ("LICENSE",):
-    if not (ROOT / "licenses" / license_file).is_file():
-        errors.append(f"licenses/{license_file} must be kept")
+    if not (ROOT / "resources/licenses" / license_file).is_file():
+        errors.append(f"resources/licenses/{license_file} must be kept")
 if errors:
     raise SystemExit("\n".join(errors))
 print("Slint UI entry points, Compose and Flutter removal, Material Design 3 UI, opaque surfaces (no blur), motion and capture removal guards passed")

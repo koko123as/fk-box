@@ -1,7 +1,7 @@
 package libbox
 
 // FK-box: the dashboard's DNS query count. sing-box counts in its DNS router
-// (tools/patch_dns_count.py, libbox/dns/ui_query_count.go): every message it
+// (scripts/patch_dns_count.py, libbox/dns/ui_query_count.go): every message it
 // answers, including hijack-dns queries that never become connections.
 // Xray (port-53 datagrams through the TUN tracker) and mihomo (its dns-hijack
 // service) add to uiOtherDNSQueries from core_xray_track.go / core_service.go.

@@ -46,8 +46,12 @@ fun getProps(propName: String): String {
     return ""
 }
 
+// The Gradle root is apps/android/; the repository root (Cargo workspace,
+// version.properties, vendor/) is two levels above it.
+val repoRoot: File = rootProject.projectDir.resolve("../..").canonicalFile
+
 fun getVersionProps(propName: String): String {
-    val propsFile = rootProject.file("version.properties")
+    val propsFile = repoRoot.resolve("version.properties")
     if (propsFile.exists()) {
         val props = Properties()
         props.load(FileInputStream(propsFile))
@@ -203,7 +207,7 @@ android {
 }
 
 /**
- * Geo data for Xray and mihomo (assets/geo, see app.md "地理数据资源"): the
+ * Geo data for Xray and mihomo (assets/geo, see docs/app.md "地理数据资源"): the
  * resources listed in GEO_BUNDLED of geo-assets.properties are downloaded once
  * into a shared cache, checked against their SHA-256 sums and copied into the
  * APK. manifest.json lists them under "files" (the app extracts them when a
@@ -372,7 +376,7 @@ dependencies {
     implementation("io.github.sagernet:libghostty-android-extras:$libghosttyVersion")
 }
 
-val playCredentialsJSON = rootProject.file("service-account-credentials.json")
+val playCredentialsJSON = repoRoot.resolve("service-account-credentials.json")
 if (playCredentialsJSON.exists()) {
     play {
         serviceAccountCredentials.set(playCredentialsJSON)
@@ -419,16 +423,16 @@ spotless {
 // -PskipRustUi=true when the library is already staged.
 val rustUiOut = layout.buildDirectory.dir("rustJniLibs")
 val buildRustUi = tasks.register<Exec>("buildRustUi") {
-    val crate = rootProject.file("apps/android/native")
+    val crate = rootProject.file("native")
     workingDir = crate
     // Everything the library is compiled from: the Android shell, the shared
     // crates (Slint markup, the translations bundled by build.rs), the vendored
     // backend and renderer, and the workspace manifest and lock file.
     inputs.dir(crate.resolve("src"))
     inputs.file(crate.resolve("Cargo.toml"))
-    inputs.dir(rootProject.file("crates"))
-    inputs.dir(rootProject.file("vendor"))
-    inputs.files(rootProject.file("Cargo.toml"), rootProject.file("Cargo.lock"))
+    inputs.dir(repoRoot.resolve("crates"))
+    inputs.dir(repoRoot.resolve("vendor"))
+    inputs.files(repoRoot.resolve("Cargo.toml"), repoRoot.resolve("Cargo.lock"))
     inputs.property("abis", apkAbis)
     outputs.dir(rustUiOut)
     val targets = apkAbis.flatMap { listOf("-t", it) }

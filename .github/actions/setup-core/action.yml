@@ -72,10 +72,10 @@ runs:
       run: |
         git -C .core apply --check ../apps/android/core/libbox-no-legacy.patch
         git -C .core apply ../apps/android/core/libbox-no-legacy.patch
-        python3 tools/patch_sing_tun.py .core
-        python3 tools/patch_httpdebug.py .core
-        python3 tools/patch_multicore.py .core
-        python3 tools/patch_dns_count.py .core
+        python3 scripts/patch_sing_tun.py .core
+        python3 scripts/patch_httpdebug.py .core
+        python3 scripts/patch_multicore.py .core
+        python3 scripts/patch_dns_count.py .core
         cp apps/android/core/ui_*.go .core/experimental/libbox/
     - name: Resolve the pinned HTTP rewrite runtime
       shell: bash

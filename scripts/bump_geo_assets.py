@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pin the bundled geo data (apps/android/app/geo-assets.properties) to a meta-rules-dat commit.
 
-Usage: python3 tools/bump_geo_assets.py [<commit>] [--dry-run]
+Usage: python3 scripts/bump_geo_assets.py [<commit>] [--dry-run]
 
 Without a commit the current head of the release branch is used. Each file is
 downloaded once to compute its SHA-256; nothing is written into the

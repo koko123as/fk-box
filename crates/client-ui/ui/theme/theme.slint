@@ -152,7 +152,7 @@ export global Theme {
 
     // Motion (M3 easing and duration tokens; the timings after FlClash's
     // motion). Every animation in the UI takes its duration and curve from
-    // here (tools/verify_newui.py). `motion-scale` is the system's animator
+    // here (scripts/verify_newui.py). `motion-scale` is the system's animator
     // duration scale (Settings.Global.ANIMATOR_DURATION_SCALE, sent by the
     // Android host, src/theme_apply.rs `set_motion_scale`); every duration is
     // multiplied by it, so 0 ("animations off") makes every change instant and
@@ -320,7 +320,7 @@ export global Theme {
     // bar, the rows' foot bar): levels 1–3 as blur and offset. Routine
     // hierarchy uses the tonal surface roles instead. Surfaces are opaque:
     // nothing in the UI blurs or reads back what lies under it (no
-    // backdrop-blur; tools/verify_newui.py), so scrolling content under a
+    // backdrop-blur; scripts/verify_newui.py), so scrolling content under a
     // floating surface costs no per-frame filter.
     public pure function shadow-blur(l: int) -> length {
         if (l <= 0) { return 0px; }

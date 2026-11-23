@@ -159,7 +159,7 @@ class ProfileRecoveryTest {
 
     @Test fun routedMITMUsesKeystoreAndTheOriginalOutbound() {
         val arguments = InstrumentationRegistry.getArguments()
-        val originPort = arguments.getString("mitmOriginPort")?.toInt() ?: error("Run with tools/android_smoke.py TLS fixture")
+        val originPort = arguments.getString("mitmOriginPort")?.toInt() ?: error("Run with scripts/android_smoke.py TLS fixture")
         val originCA = android.util.Base64.decode(arguments.getString("mitmOriginCA"), android.util.Base64.DEFAULT).toString(Charsets.US_ASCII)
         withRunningProfile { activity, profiles, id ->
             val directory = File(activity.cacheDir, "mitm-route-${UUID.randomUUID()}").apply { mkdirs() }
