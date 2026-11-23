@@ -94,8 +94,10 @@ jobs:
           python3 -m http.server 18080 --bind 127.0.0.1 --directory /tmp/fkprobe/www > /dev/null 2>&1 &
           sleep 1
           { echo "### Two kernel libraries in one process"; echo "| A + B | exit | result |"; echo "|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
-          two() { timeout 90 ./out/harness two "$@" > out/two.log 2>&1; rc=$?
-            cat out/two.log
+          # Xray leaves its API socket behind when the process exits without fk_stop.
+          two() { rm -f /tmp/fkprobe/xray/xray.sock /tmp/fkprobe/two/mihomo.sock
+            timeout 90 ./out/harness two "$@" > out/two.log 2>&1; rc=$?
+            cat out/two.log; cp out/two.log "out/two-$(basename $1 .so)-$(basename $3 .so)-$i.log"
             line=$(grep -E 'RESULT|fatal error|SIGSEGV|panic' out/two.log | head -1)
             echo "| $(basename $1) + $(basename $3) | $rc | ${line:-no RESULT line (killed by signal $((rc > 128 ? rc - 128 : 0)))} |" >> "$GITHUB_STEP_SUMMARY"; }
           for i in 1 2 3; do
