@@ -27,22 +27,18 @@ HSPLio/nekohasekai/sfa/bridge/BoxActivity**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxBridge**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxDashboard**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxProfiles**;->**(**)**
-HSPLio/nekohasekai/sfa/bridge/BoxSettings**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/BoxPreferences**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/DashboardConfigCache**;->**(**)**
-HSPLio/nekohasekai/sfa/bridge/LogStream**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/ProfileWireFields**;->**(**)**
 HSPLio/nekohasekai/sfa/bridge/VisiblePolling**;->**(**)**
 
 # State models and command clients
 HSPLio/nekohasekai/sfa/backend/base/**;->**(**)**
-HSPLio/nekohasekai/sfa/backend/dashboard/**;->**(**)**
-HSPLio/nekohasekai/sfa/backend/log/**;->**(**)**
 HSPLio/nekohasekai/sfa/backend/model/**;->**(**)**
-HSPLio/nekohasekai/sfa/backend/connections/**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/CommandClient**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/CommandTarget**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
+HSPLio/nekohasekai/sfa/utils/CommandSessions**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 
 # UI kit and theme

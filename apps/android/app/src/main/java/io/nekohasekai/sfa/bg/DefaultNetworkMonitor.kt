@@ -4,6 +4,8 @@ import android.net.Network
 import io.nekohasekai.libbox.InterfaceUpdateListener
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
+import kotlinx.serialization.json.longOrNull
+import kotlinx.serialization.json.put
 import java.net.NetworkInterface
 
 object DefaultNetworkMonitor {
@@ -11,21 +13,23 @@ object DefaultNetworkMonitor {
     var defaultNetwork: Network? = null
     private var listener: InterfaceUpdateListener? = null
 
-    // The last non-null default network, to tell a switch (Wi-Fi to cellular)
-    // from the property updates the same network reports all the time.
-    private var lastNetwork: Network? = null
+    // The handle of the last non-null default network, to tell a switch (Wi-Fi
+    // to cellular) from the property updates the same network reports all the
+    // time (mobile-ffi network_recovery.rs decides).
+    private var lastNetwork: Long? = null
 
     suspend fun start() {
         DefaultNetworkListener.start(this) {
             defaultNetwork = it
             checkDefaultInterfaceUpdate(it)
             pushSystemDNS()
-            if (it != null) {
-                val previous = lastNetwork
-                lastNetwork = it
-                if (previous != null && previous != it) {
-                    runCatching { Libbox.coreDefaultNetworkChanged() }
-                }
+            val update = CoreBridge.call("networkRecovery.update") {
+                put("network", it?.networkHandle)
+                put("last", lastNetwork)
+            }
+            lastNetwork = update.longOrNull("last")
+            if (update.bool("reconnect")) {
+                runCatching { Libbox.coreDefaultNetworkChanged() }
             }
         }
         defaultNetwork = Application.connectivity.activeNetwork
@@ -40,7 +44,8 @@ object DefaultNetworkMonitor {
     fun pushSystemDNS() {
         val network = defaultNetwork ?: return
         val servers = runCatching { Application.connectivity.getLinkProperties(network)?.dnsServers }.getOrNull() ?: return
-        Libbox.updateCoreSystemDNS(servers.mapNotNull { it.hostAddress?.substringBefore('%') }.joinToString(","))
+        val line = CoreBridge.call("networkRecovery.systemDns") { put("servers", CoreBridge.strings(servers.mapNotNull { it.hostAddress })) }
+        Libbox.updateCoreSystemDNS(line.text("dns"))
     }
 
     fun setListener(listener: InterfaceUpdateListener?) {

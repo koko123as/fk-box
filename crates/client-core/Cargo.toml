@@ -1,19 +1,27 @@
 [package]
 name = "fkbox-client-core"
-version = "0.2.0"
-edition = "2021"
-publish = false
-license = "GPL-3.0-or-later"
-description = "FK-box platform-neutral client layer: the Host contract between the UI and a platform shell, the client store (settings, profile metadata, remote servers, interface preferences) with its one-time import from the Android app's Room databases, and subscriptions (provider headers, update policy, the profile save flow)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "FK-box platform-neutral client layer: the Host contract between the UI and a platform shell, the client store (settings, profile metadata, remote servers, interface preferences) with its one-time import from the Android app's Room databases, subscriptions (provider headers, update policy, the profile save flow), the routing rule model, the geo resource policy, the service settings, backups, the WebDAV account, the update check and the terminal settings."
 
 [lib]
 path = "src/lib.rs"
+
+[features]
+# Exposes the store/kernel/WebDAV test fixtures to dependent crates' tests
+# (fkbox-mobile-ffi's api tests).
+test-support = []
 
 [dependencies]
 # SQLite compiled in, so every platform shell gets the same engine and the
 # store never depends on a system libsqlite3.
 rusqlite = { version = "0.43", features = ["bundled"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 # Profile revisions (SHA-256 of the content, as the edit forms carry them).
 sha2 = "0.10"
+# Backup identities of profiles not named by a UUID (Java's
+# UUID.nameUUIDFromBytes, MD5).
+md5 = { package = "md-5", version = "0.10" }

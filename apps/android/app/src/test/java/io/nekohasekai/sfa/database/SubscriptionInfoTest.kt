@@ -9,7 +9,7 @@ import java.util.Date
 
 class SubscriptionInfoTest {
     // Header parsing and the metadata a fetch leaves are tested in Rust
-    // (crates/client-core/src/subscription.rs).
+    // (crates/client-core/src/subscription/mod.rs).
 
     @Test fun usedAndRemainingSaturate() {
         val quota = SubscriptionInfo(upload = 30, download = 70, total = 200)

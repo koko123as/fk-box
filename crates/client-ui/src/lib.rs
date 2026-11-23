@@ -1,68 +1,17 @@
-//! FK-box UI in Rust + Slint. The profile list and interface preferences come
-//! from the client store (fkbox-client-core, src/store.rs); everything else
-//! from the Kotlin bridge. This library draws the pages (a code-level port
-//! of the Jetpack Compose UI, compose/*) and drives them from BoxBridge events.
-//! A platform shell (apps/android/native, libfkui.so) runs it through
-//! [platform].
+//! FK-box user interface: the Slint component tree (`ui/`, compiled by
+//! build.rs), its translations (`i18n/`), the Material 3 color schemes and
+//! the fonts. It holds no page logic: the presentation controllers that fill
+//! the Slint models and handle their callbacks live in the platform shell
+//! (`apps/android/native`, libfkui.so), following docs/architecture/phase4.md.
 
 #![cfg_attr(not(target_os = "android"), allow(dead_code))]
 
 slint::include_modules!();
 
-mod app;
-mod fonts;
-mod format;
-mod forms;
-mod gesture;
-mod host;
-mod i18n;
-#[cfg(test)]
-mod ime_tests;
-mod memory;
-mod native_ime;
-mod nav;
-mod pages;
-mod records;
-mod rows;
-#[cfg(all(not(target_os = "android"), feature = "shot"))]
-pub mod shot;
-mod store;
-mod theme;
-mod theme_apply;
+pub mod fonts;
+pub mod i18n;
+pub mod theme;
 
-/// What a platform shell calls into the UI: register its host, start the
-/// event loop, and hand over host replies and events, touches and fonts.
-pub mod platform {
-    pub use crate::app::{on_event, on_reply, run};
-    #[cfg(target_os = "android")]
-    pub use crate::fonts::install as install_fonts;
-    pub use crate::gesture::{touch, Phase};
-    pub use crate::guarded;
-    pub use crate::host::set_host;
-    pub use crate::i18n::tr;
-    pub use crate::store::set_store_provider;
-}
-
-/// Runs one host event, reply or deferred callback. A panic in it is logged
-/// instead of unwinding into the event loop, where android-activity would
-/// close the activity. Only the handler is skipped: the page state it touches
-/// is held in RefCells that are released on unwind, and the next event or
-/// refresh rebuilds what the handler would have shown.
-pub fn guarded(kind: &str, handler: impl FnOnce()) {
-    if let Err(panic) = std::panic::catch_unwind(std::panic::AssertUnwindSafe(handler)) {
-        let message = panic
-            .downcast_ref::<&str>()
-            .map(|s| s.to_string())
-            .or_else(|| panic.downcast_ref::<String>().cloned())
-            .unwrap_or_else(|| "unknown panic".into());
-        #[cfg(target_os = "android")]
-        log::error!("{kind} handler panicked: {message}");
-        #[cfg(not(target_os = "android"))]
-        eprintln!("{kind} handler panicked: {message}");
-    }
-}
-
-/// Runs `handler` on the next event loop turn, under [`guarded`].
-pub(crate) fn defer(kind: &'static str, handler: impl FnOnce() + 'static) {
-    slint::Timer::single_shot(std::time::Duration::ZERO, move || guarded(kind, handler));
-}
+/// The icon name table (`ui/icons/icons.slint`); the shell reads each glyph
+/// by name from it.
+pub const ICONS_SLINT: &str = include_str!("../ui/icons/icons.slint");

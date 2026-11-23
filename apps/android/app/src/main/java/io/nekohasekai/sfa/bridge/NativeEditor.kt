@@ -20,7 +20,7 @@ import android.widget.FrameLayout
 import org.json.JSONObject
 
 /**
- * The system's own text field for the Slint UI (crates/client-ui/src/native_ime.rs):
+ * The system's own text field for the Slint UI (apps/android/native/src/native_ime.rs):
  * while a NativeTextInput has focus, an [EditText] lies over it with the same
  * font size, colour and alignment and a transparent background, and the Slint
  * field stops drawing its text. Cursor placement, selection handles, the
@@ -45,8 +45,9 @@ class NativeEditor(private val activity: BoxActivity) {
     private val closeQuietly = Runnable { close(notify = false) }
 
     // API 33+: Back can arrive through OnBackInvokedDispatcher (always on
-    // Android 16+ with targetSdk 36+), never reaching dispatchKeyEvent. Above
-    // the Slint backend's PRIORITY_DEFAULT callback while the editor is open.
+    // Android 16+ at this app's targetSdk), never reaching dispatchKeyEvent.
+    // Registered above the Slint backend's PRIORITY_DEFAULT callback (API 34+)
+    // while the editor is open.
     private val backCallback: Any? = if (Build.VERSION.SDK_INT >= 33) android.window.OnBackInvokedCallback { close(notify = true) } else null
     private var backRegistered = false
 

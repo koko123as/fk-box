@@ -4,13 +4,13 @@
 // dialog and the snackbar.
 // Rust (src/app.rs, src/nav.rs, src/pages/*.rs) owns all state.
 
-import { Theme, TextRole, Scheme } from "theme.slint";
-import { Icons, Glyph } from "icons.slint";
-import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec, Motion } from "globals.slint";
-import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
-import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, StateLayer, Ripple, Surface, Tap, Appear } from "kit.slint";
-import { HomePage } from "home.slint";
-import { RouteHost } from "routes.slint";
+import { Theme, TextRole, Scheme } from "theme/theme.slint";
+import { Icons, Glyph } from "icons/icons.slint";
+import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec, Motion } from "models/globals.slint";
+import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "models/data.slint";
+import { Mid, Icon, T, Spinner, ProgressBar, Button, Field, Radio, EmptyState, StateLayer, Ripple, Surface, Tap, Appear } from "components/kit.slint";
+import { HomePage } from "mobile/android/home.slint";
+import { RouteHost } from "mobile/android/routes.slint";
 import { Look, Swatch } from "pages/appearance.slint";
 
 export { Theme, Scheme, TextRole, Nav, Motion, MenuItem, BarAction, Route, Keyword, Glyph, Icons, NativeIme, NativeImeSpec }
@@ -25,7 +25,7 @@ component Splash inherits Rectangle {
         HorizontalLayout {
             alignment: center;
             Image {
-                source: @image-url("box_icon.png");
+                source: @image-url("icons/box_icon.png");
                 width: 96px;
                 height: 96px;
             }

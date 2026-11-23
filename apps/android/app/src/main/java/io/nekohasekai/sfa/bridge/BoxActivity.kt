@@ -8,25 +8,25 @@ import android.net.VpnService
 import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.activity.enableEdgeToEdge
+import com.google.androidgamesdk.GameActivity
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.bg.ServiceConnection
-import io.nekohasekai.sfa.bg.ServiceNotification
-import com.google.androidgamesdk.GameActivity
-import kotlinx.coroutines.CancellationException
+import io.nekohasekai.sfa.bg.SystemNotifications
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.ktx.hasPermission
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
@@ -35,6 +35,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.io.ByteArrayOutputStream
 
 open class BoxActivity : GameActivity(), ServiceConnection.Callback {
@@ -144,7 +147,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 reply(true, SlintHost.wire(null))
                 return@launch
             }
-            // Calls the activity answers itself (the Compose UI used the context directly).
+            // Calls the activity answers itself: they need its context or window.
             when (method) {
                 "locale" -> {
                     val locale = resources.configuration.locales[0]
@@ -409,8 +412,8 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         SystemFonts.write(this)
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        // The UI draws its own navigation bar surface under the gesture inset, as
-        // Compose's NavigationBar did; no translucent system scrim over it.
+        // The Slint UI draws its own navigation bar surface under the gesture
+        // inset; no translucent system scrim over it.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
             window.isStatusBarContrastEnforced = false
@@ -504,7 +507,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                 Application.application.setupLibbox()
                 Settings.dataStore.initialize()
                 require(Settings.selectedProfile != -1L) { getString(R.string.error_empty_configuration) }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !ServiceNotification.checkPermission()) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !SystemNotifications.checkPermission()) {
                     if (!notificationPermissionRequested) {
                         notificationPermissionRequested = true
                         notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
@@ -694,19 +697,25 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     private fun handleServiceAlert(type: Alert, message: String?) {
-        if (type == Alert.RequestLocationPermission) {
+        // mobile-ffi service_state.rs: the location alert retries after the
+        // permission; the others show the service's message or a fallback.
+        val alert = io.nekohasekai.sfa.database.CoreStore.call("serviceState.alertText") {
+            put("type", type.ordinal)
+            put("message", message)
+        }.jsonObject
+        if (alert["permission"]?.jsonPrimitive?.content == "true") {
             startPending = true
             locationPermissionLauncher.launch(arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION))
             return
         }
         startPending = false
-        val description = message ?: getString(
-            when (type) {
-                Alert.RequestVPNPermission -> R.string.error_missing_vpn_permission
-                Alert.RequestNotificationPermission -> R.string.notification_permission_required_description
-                Alert.EmptyConfiguration -> R.string.error_empty_configuration
-                Alert.StartCommandServer -> R.string.error_start_command_server
-                Alert.CreateService -> R.string.error_create_service
+        val description = (alert["message"] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content ?: getString(
+            when (alert["fallback"]?.jsonPrimitive?.content) {
+                "error_missing_vpn_permission" -> R.string.error_missing_vpn_permission
+                "notification_permission_required_description" -> R.string.notification_permission_required_description
+                "error_empty_configuration" -> R.string.error_empty_configuration
+                "error_start_command_server" -> R.string.error_start_command_server
+                "error_create_service" -> R.string.error_create_service
                 else -> R.string.error_start_service
             },
         )
@@ -733,5 +742,5 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 }
 
-/** Bridge calls NativeUi answers (crates/client-ui/src/nav.rs). */
+/** Bridge calls NativeUi answers (apps/android/native/src/nav.rs). */
 private val NATIVE_UI = setOf("menuShow", "menuHide", "dialogShow", "dialogHide", "dialogError", "toast", "textViewer")

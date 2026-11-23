@@ -1,92 +1,31 @@
 package io.nekohasekai.sfa.bridge
 
-import android.util.Base64
 import io.github.sagernet.libghostty.GhosttyTheme
 import io.github.sagernet.libghostty.extras.GhosttyFontStore
 import io.github.sagernet.libghostty.extras.GhosttyThemeStore
+import io.nekohasekai.sfa.database.CoreStore
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.put
 import java.io.File
 import java.util.UUID
 
+/**
+ * The terminal (Ghostty) settings. Their values, checks and writes are
+ * `fkbox-client-core` (crates/client-core/src/tools/terminal.rs, which asks for the
+ * theme list and font checks through [io.nekohasekai.sfa.database.CoreKernel]);
+ * this class keeps what is Android's: the bundled theme catalog and previews,
+ * picking, importing and deleting font files. Every value client-core writes
+ * is put in the settings cache, which the terminal reads.
+ */
 internal class BoxTerminalSettings(private val activity: BoxActivity) {
-    fun snapshot(): Map<String, Any?> = mapOf(
-        "lightTheme" to Settings.tailscaleSSHLightTheme, "darkTheme" to Settings.tailscaleSSHDarkTheme,
-        "lightConfig" to Settings.tailscaleSSHLightConfig, "darkConfig" to Settings.tailscaleSSHDarkConfig,
-        "fontFollowTheme" to Settings.tailscaleSSHFontFollowTheme, "fontFamily" to Settings.tailscaleSSHFontFamily,
-        "fontPath" to Settings.tailscaleSSHCustomFontPath, "fontSize" to Settings.tailscaleSSHFontSize,
+    fun snapshot(): Map<String, Any?> = plainMap(CoreStore.call("terminal.snapshot")) + mapOf(
         "defaultLightTheme" to GhosttyThemeStore.DEFAULT_LIGHT_THEME, "defaultDarkTheme" to GhosttyThemeStore.DEFAULT_DARK_THEME,
     )
-
-    fun backupSnapshot(): Map<String, Any?> {
-        val result = snapshot().filterKeys { it !in setOf("fontPath", "defaultLightTheme", "defaultDarkTheme") }.toMutableMap()
-        val path = Settings.tailscaleSSHCustomFontPath
-        if (path.isNotEmpty()) {
-            val file = File(path)
-            require(file.isFile && file.length() <= 16 * 1024 * 1024) { "Imported terminal font is unavailable or too large" }
-            result["font"] = mapOf("name" to file.name, "content" to Base64.encodeToString(file.readBytes(), Base64.NO_WRAP))
-        }
-        return result
-    }
-
-    suspend fun validateBackup(value: Map<String, Any?>) {
-        val required = setOf("lightTheme", "darkTheme", "lightConfig", "darkConfig", "fontFollowTheme", "fontFamily", "fontSize")
-        require(value.keys.containsAll(required) && (value.keys - required - "font").isEmpty()) { "Invalid terminal backup" }
-        for (key in listOf("lightTheme", "darkTheme")) {
-            val name = value[key] as? String ?: error("Invalid terminal theme")
-            require(name.isEmpty() || name in GhosttyThemeStore.listThemes(activity, key == "darkTheme")) { "Unknown Ghostty theme" }
-        }
-        for (key in listOf("lightConfig", "darkConfig")) require((value[key] as? String)?.length?.let { it <= 256 * 1024 } == true) { "Invalid terminal configuration" }
-        require(value["fontFollowTheme"] is Boolean && (value["fontFamily"] as? String)?.length?.let { it <= 128 } == true) { "Invalid terminal font options" }
-        val size = value["fontSize"] as? Number ?: error("Invalid terminal font size")
-        require(size.toDouble() == size.toInt().toDouble() && size.toInt() in 8..48) { "Font size must be 8–48" }
-        value["font"]?.let { font ->
-            require(font is Map<*, *> && font.keys == setOf("name", "content")) { "Invalid terminal font backup" }
-            val name = font["name"] as? String ?: error("Invalid terminal font name")
-            require(name.length in 1..128 && name.none { it == '/' || it == '\\' || it.code < 32 } &&
-                name.substringAfterLast('.').lowercase() in setOf("ttf", "otf", "ttc", "otc")) { "Invalid terminal font name" }
-            fontBytes(font)
-        }
-    }
-
-    private fun fontBytes(font: Map<*, *>): ByteArray {
-        val content = font["content"] as? String ?: error("Invalid terminal font content")
-        require(content.length <= 24 * 1024 * 1024) { "Terminal font exceeds 16 MiB" }
-        val bytes = Base64.decode(content, Base64.DEFAULT)
-        require(bytes.size <= 16 * 1024 * 1024) { "Terminal font exceeds 16 MiB" }
-        return bytes
-    }
-
-    suspend fun restoreBackup(value: Map<String, Any?>): File? {
-        validateBackup(value)
-        var fontFile: File? = null
-        try {
-            val font = value["font"] as? Map<*, *>
-            if (font != null) {
-                val name = font["name"] as String
-                val extension = name.substringAfterLast('.').lowercase()
-                fontFile = File(File(activity.filesDir, "fonts").apply { mkdirs() },
-                    "${name.substringBeforeLast('.').take(40)}-${UUID.randomUUID().toString().take(8)}.$extension")
-                fontFile.writeBytes(fontBytes(font))
-                require(GhosttyFontStore.loadTypeface(fontFile.path) != null) { "Invalid font file" }
-            }
-            restoreState(value + ("fontPath" to (fontFile?.path ?: "")))
-            return fontFile
-        } catch (error: Exception) { fontFile?.delete(); throw error }
-    }
-
-    suspend fun restoreState(value: Map<String, Any?>) {
-        Settings.tailscaleSSHLightTheme = value["lightTheme"] as String
-        Settings.tailscaleSSHDarkTheme = value["darkTheme"] as String
-        Settings.tailscaleSSHLightConfig = value["lightConfig"] as String
-        Settings.tailscaleSSHDarkConfig = value["darkConfig"] as String
-        Settings.tailscaleSSHFontFollowTheme = value["fontFollowTheme"] as Boolean
-        Settings.tailscaleSSHFontFamily = value["fontFamily"] as String
-        Settings.tailscaleSSHCustomFontPath = value["fontPath"] as String
-        Settings.tailscaleSSHFontSize = (value["fontSize"] as Number).toInt()
-        Settings.dataStore.flush()
-    }
 
     suspend fun themes(dark: Boolean): List<Map<String, Any?>> = withContext(Dispatchers.IO) {
         GhosttyThemeStore.listThemes(activity, dark).map { name ->
@@ -112,9 +51,7 @@ internal class BoxTerminalSettings(private val activity: BoxActivity) {
                 file.writeBytes(bytes)
                 require(GhosttyFontStore.loadTypeface(file.path) != null) { "Invalid font file" }
             } catch (e: Exception) { file.delete(); throw e }
-            Settings.tailscaleSSHCustomFontPath = file.path
-            Settings.tailscaleSSHFontFamily = ""
-            Settings.tailscaleSSHFontFollowTheme = false
+            ServiceSettings.adopt(CoreStore.call("terminal.useFont") { put("path", file.path) }.jsonObject.getValue("written"))
             snapshot()
         }
     }
@@ -123,49 +60,24 @@ internal class BoxTerminalSettings(private val activity: BoxActivity) {
         withContext(Dispatchers.IO) {
             val font = GhosttyFontStore.listImportedFonts(activity).firstOrNull { it.path == path } ?: error("Font no longer exists")
             check(File(font.path).delete()) { "Unable to delete font" }
-            if (Settings.tailscaleSSHCustomFontPath == font.path) Settings.tailscaleSSHCustomFontPath = ""
+            ServiceSettings.adopt(CoreStore.call("terminal.fontDeleted") { put("path", font.path) }.jsonObject.getValue("written"))
         }
         return snapshot()
     }
 
     /** One terminal setting: [key] names the setting, as in a backup. */
-    suspend fun set(key: String?, value: Any?): Map<String, Any?> {
-        when (key) {
-            "lightTheme", "darkTheme" -> {
-                val name = value as? String ?: error("Invalid theme")
-                val dark = key == "darkTheme"
-                require(name.isEmpty() || withContext(Dispatchers.IO) { name in GhosttyThemeStore.listThemes(activity, dark) }) { "Unknown Ghostty theme" }
-                if (dark) Settings.tailscaleSSHDarkTheme = name else Settings.tailscaleSSHLightTheme = name
-            }
-            "lightConfig", "darkConfig" -> {
-                val config = value as? String ?: error("Invalid configuration")
-                require(config.length <= 256 * 1024) { "Configuration is too large" }
-                if (key == "darkConfig") Settings.tailscaleSSHDarkConfig = config else Settings.tailscaleSSHLightConfig = config
-            }
-            "fontFollowTheme" -> Settings.tailscaleSSHFontFollowTheme = value as? Boolean ?: error("Invalid font option")
-            "fontSize" -> {
-                val size = value as? Number ?: error("Invalid font size")
-                require(size.toDouble() == size.toInt().toDouble() && size.toInt() in 8..48) { "Font size must be 8–48" }
-                Settings.tailscaleSSHFontSize = size.toInt()
-            }
-            "fontFamily" -> {
-                val name = value as? String ?: error("Invalid font")
-                require(name.length <= 128) { "Invalid font" }
-                Settings.tailscaleSSHFontFamily = name
-                Settings.tailscaleSSHCustomFontPath = ""
-                Settings.tailscaleSSHFontFollowTheme = false
-            }
-            "fontPath" -> {
-                val path = value as? String ?: error("Invalid font")
-                require(withContext(Dispatchers.IO) { GhosttyFontStore.listImportedFonts(activity).any { it.path == path } }) { "Unknown imported font" }
-                Settings.tailscaleSSHCustomFontPath = path
-                Settings.tailscaleSSHFontFamily = ""
-                Settings.tailscaleSSHFontFollowTheme = false
-            }
-            else -> error("Unknown terminal setting")
-        }
-        return snapshot()
+    suspend fun set(key: String?, value: Any?): Map<String, Any?> = withContext(Dispatchers.IO) {
+        Settings.dataStore.flush()
+        val result = CoreStore.callKernel("terminal.set") {
+            put("key", key ?: "")
+            put("value", ServiceSettings.element(value))
+        }.jsonObject
+        ServiceSettings.adopt(result.getValue("written"))
+        snapshot()
     }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun plainMap(element: JsonElement): Map<String, Any?> = ServiceSettings.plain(element) as Map<String, Any?>
 
     private fun themeWire(theme: GhosttyTheme?): Map<String, Any?> = mapOf(
         "foreground" to theme?.foreground?.toLong()?.and(0xffffffffL),

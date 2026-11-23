@@ -5,8 +5,8 @@ import android.util.Log
 import io.nekohasekai.libbox.GeoUpdate
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.TypedProfile
+import io.nekohasekai.sfa.database.CoreStore
+import io.nekohasekai.sfa.database.ServiceSettings
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -22,9 +22,17 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.boolean
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.io.File
 import java.io.FileNotFoundException
-import java.net.URI
 import java.security.MessageDigest
 
 /**
@@ -67,7 +75,11 @@ object GeoResources {
 
     fun defaultUrl(name: String): String = Libbox.geoResourceDefaultURL(name)
 
-    fun url(name: String): String = GeoPolicy.decodeUrls(Settings.geoUrls)[name]?.takeIf { it.isNotBlank() } ?: defaultUrl(name)
+    /** The user's address for [name] (client-core geo::url), else libbox's default. */
+    fun url(name: String): String = CoreStore.call("geo.url") {
+        put("name", name)
+        put("defaultUrl", defaultUrl(name))
+    }.jsonPrimitive.content
 
     private fun dir(): File = File(Libbox.geoDataDir())
 
@@ -144,7 +156,7 @@ object GeoResources {
     private suspend fun downloadMissingLocked(dir: File, name: String, bundle: GeoPolicy.Bundle?, deadline: Long): String? {
         val pinned = bundle?.remote?.get(name)?.let { it.url to it.sha256 }
         val configured = url(name) to ""
-        val custom = GeoPolicy.decodeUrls(Settings.geoUrls)[name] != null
+        val custom = name in GeoPolicy.customUrls()
         val attempts = (if (custom) listOf(configured, pinned) else listOf(pinned, configured)).filterNotNull().distinctBy { it.first }
         var failure = "not available"
         for ((index, attempt) in attempts.withIndex()) {
@@ -243,9 +255,9 @@ object GeoResources {
         null
     }
 
-    private fun readState(dir: File): Map<String, GeoPolicy.Installed> = GeoPolicy.decodeState(
-        runCatching { File(dir, STATE_FILE).readText() }.getOrDefault(""),
-    )
+    private fun readStateText(dir: File): String = runCatching { File(dir, STATE_FILE).readText() }.getOrDefault("")
+
+    private fun readState(dir: File): Map<String, GeoPolicy.Installed> = GeoPolicy.decodeState(readStateText(dir))
 
     private fun writeState(dir: File, state: Map<String, GeoPolicy.Installed>) {
         val target = File(dir, STATE_FILE)
@@ -326,33 +338,37 @@ object GeoResources {
     }
 
     /**
-     * Installed resources whose last check is older than [intervalHours]. A
+     * Installed resources whose last check is older than the update interval
+     * (client-core geo::due, which reads the interval from the settings). A
      * file no core has needed yet is left for its first use, so automatic
      * updates never fetch data nothing reads.
      */
-    suspend fun due(intervalHours: Int): List<String> = withContext(Dispatchers.IO) {
+    suspend fun due(): List<String> = withContext(Dispatchers.IO) {
         mutex.withLock {
             val dir = dir()
-            val state = readState(dir)
-            names.filter { installed(dir, it) && GeoPolicy.isDue(state[it]?.checked ?: 0L, intervalHours, System.currentTimeMillis()) }
+            GeoPolicy.due(readStateText(dir), names.filter { installed(dir, it) }, System.currentTimeMillis())
         }
     }
 
+    /** Sets or clears (empty, or the default) [name]'s address through client-core (geo::set_url). */
     fun setUrl(name: String, url: String) {
         require(name in names) { "Unknown geo resource: $name" }
-        val value = url.trim()
-        val urls = GeoPolicy.decodeUrls(Settings.geoUrls).toMutableMap()
-        if (value.isEmpty() || value == defaultUrl(name)) {
-            urls.remove(name)
-        } else {
-            require(GeoPolicy.validUrl(value)) { "Not a valid HTTP or HTTPS URL" }
-            urls[name] = value
+        val result = CoreStore.call("geo.setUrl") {
+            put("name", name)
+            put("url", url)
+            put("defaultUrl", defaultUrl(name))
         }
-        Settings.geoUrls = GeoPolicy.encodeUrls(urls)
+        ServiceSettings.adopt(result.jsonObject.getValue("written"))
     }
 }
 
-/** The decisions behind [GeoResources], free of Android and libbox for unit tests. */
+/**
+ * The decisions behind [GeoResources], made by `fkbox-client-core`
+ * (crates/client-core/src/geodata/geo.rs): which files a core needs, whether the
+ * APK copy replaces an installed file, which files an automatic update
+ * fetches and how often it runs, and the addresses the user set. The
+ * bundled manifest and the bookkeeping records stay here with the files.
+ */
 object GeoPolicy {
     const val GEOIP = "geoip"
     const val GEOSITE = "geosite"
@@ -370,7 +386,6 @@ object GeoPolicy {
 
     private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
     private val stateSerializer by lazy { MapSerializer(String.serializer(), Installed.serializer()) }
-    private val urlsSerializer = MapSerializer(String.serializer(), String.serializer())
 
     @Serializable
     data class BundledFile(val file: String, val sha256: String, val size: Long = 0)
@@ -404,58 +419,38 @@ object GeoPolicy {
         val lastModified: String = "",
     )
 
-    /**
-     * Whether the bundled copy should replace what is installed. A missing file
-     * is always restored; otherwise the bundle only replaces data older than
-     * itself, so a newer download (or a file mihomo fetched) is never
-     * overwritten, while an app upgrade with a newer bundle replaces an older
-     * bundled or downloaded file.
-     */
-    fun shouldExtract(exists: Boolean, installed: Installed?, bundledSha256: String, bundleTime: Long, fileModified: Long): Boolean {
-        if (!exists) return true
-        if (installed == null) return fileModified in 1 until bundleTime
-        if (installed.sha256 == bundledSha256) return false
-        return installed.time < bundleTime
+    /** Whether the bundled copy should replace what is installed (client-core geo::should_extract). */
+    fun shouldExtract(exists: Boolean, installed: Installed?, bundledSha256: String, bundleTime: Long, fileModified: Long): Boolean =
+        CoreStore.call("geo.shouldExtract") {
+            put("exists", exists)
+            put("installed", installed?.let { CoreStore.encode(Installed.serializer(), it) } ?: JsonNull)
+            put("bundledSha256", bundledSha256)
+            put("bundleTime", bundleTime)
+            put("fileModified", fileModified)
+        }.jsonPrimitive.boolean
+
+    /** The resources [core] reads for [text], its profile plus the routing rules compiled for it (geo::needed). */
+    fun needed(core: String, text: String): Set<String> = CoreStore.call("geo.needed") {
+        put("core", core)
+        put("text", text)
+    }.jsonArray.map { it.jsonPrimitive.content }.toSet()
+
+    /** Of the [installed] resources, those an automatic update fetches now (geo::due, interval from the settings). */
+    fun due(state: String, installed: List<String>, now: Long): List<String> = CoreStore.call("geo.due") {
+        put("state", state)
+        put("installed", JsonArray(installed.map(::JsonPrimitive)))
+        put("now", now)
+    }.jsonArray.map { it.jsonPrimitive.content }
+
+    /** Whether the automatic update is on, and its period in hours (at least one). */
+    data class Schedule(val enabled: Boolean, val intervalHours: Int)
+
+    fun schedule(): Schedule = CoreStore.call("geo.schedule").jsonObject.let {
+        Schedule(it.getValue("enabled").jsonPrimitive.boolean, it.getValue("intervalHours").jsonPrimitive.int)
     }
 
-    /**
-     * The resources [core] reads for [text] (its profile content plus the
-     * routing rules compiled for it). sing-box uses rule sets, none of these.
-     * Xray loads geoip.dat / geosite.dat only for the geoip:/geosite: (or
-     * ext:geoip.dat:…) entries it is given. mihomo may read GeoSite and the
-     * MMDB lazily (GEOSITE/GEOIP rules, DNS fallback-filter), so both bundled
-     * files are always prepared; ASN.mmdb only for IP-ASN rules and geoip.dat
-     * only in geodata-mode. A reference this check misses still has mihomo's
-     * own download or the Resources page to fall back on.
-     */
-    fun needed(core: String, text: String): Set<String> {
-        val lower = text.lowercase()
-        return when (core) {
-            TypedProfile.CORE_XRAY -> buildSet {
-                if ("geosite:" in lower || "geosite.dat" in lower) add(GEOSITE)
-                if ("geoip:" in lower || "geoip.dat" in lower) add(GEOIP)
-            }
-            TypedProfile.CORE_MIHOMO -> buildSet {
-                add(GEOSITE)
-                add(MMDB)
-                if ("ip-asn" in lower) add(ASN)
-                if (GEODATA_MODE.containsMatchIn(lower)) add(GEOIP)
-            }
-            else -> emptySet()
-        }
-    }
-
-    private val GEODATA_MODE = Regex("""geodata-mode["']?\s*:\s*true""")
-
-    fun isDue(lastChecked: Long, intervalHours: Int, now: Long): Boolean =
-        lastChecked <= 0L || now - lastChecked >= intervalHours.coerceAtLeast(1) * 3_600_000L
-
-    fun validUrl(value: String): Boolean = try {
-        val uri = URI(value)
-        (uri.scheme == "http" || uri.scheme == "https") && !uri.host.isNullOrEmpty()
-    } catch (_: Exception) {
-        false
-    }
+    /** The addresses the user set, by resource. */
+    fun customUrls(): Map<String, String> = CoreStore.call("geo.custom").jsonObject.mapValues { it.value.jsonPrimitive.content }
 
     fun decodeState(text: String): Map<String, Installed> = if (text.isBlank()) emptyMap() else try {
         json.decodeFromString(stateSerializer, text)
@@ -464,12 +459,4 @@ object GeoPolicy {
     }
 
     fun encodeState(state: Map<String, Installed>): String = json.encodeToString(stateSerializer, state)
-
-    fun decodeUrls(text: String): Map<String, String> = if (text.isBlank()) emptyMap() else try {
-        json.decodeFromString(urlsSerializer, text).filter { (name, url) -> name in setOf(GEOIP, GEOSITE, MMDB, ASN) && validUrl(url) }
-    } catch (_: Exception) {
-        emptyMap()
-    }
-
-    fun encodeUrls(urls: Map<String, String>): String = if (urls.isEmpty()) "" else json.encodeToString(urlsSerializer, urls.toSortedMap())
 }

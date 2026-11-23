@@ -13,12 +13,16 @@ import java.io.File
 /**
  * The client store of `fkbox-client-core` (crates/client-core): service
  * settings, profile metadata, remote servers and interface preferences in one
- * SQLite file, shared with the Rust UI in libfkui.so. [Settings],
- * [ProfileManager] and [RemoteServerManager] read and write it through [call].
+ * SQLite file (`files/fkbox/client.db`), shared with the Rust UI in
+ * libfkui.so. [Settings], [ProfileManager] and [RemoteServerManager] read and
+ * write it through [call], and the service host asks the same dispatch
+ * (crates/mobile-ffi/src/api.rs) for its decisions through `bg/CoreBridge.kt`
+ * (`serviceState.*`, `vpnRouting.plan`, `networkRecovery.*`).
  *
  * The first call opens it (loading libfkui.so if the UI has not) and runs the
- * one-time import of the Room databases and the `flclash_ui` preferences. The
- * old files are left as they were, so an older release still finds them.
+ * one-time import of the Room databases and the `flclash_ui` preferences (and,
+ * separately, of the `bbox_webdav` account). The old files are left as they
+ * were, so an older release still finds them.
  */
 object CoreStore {
     private const val TAG = "CoreStore"
@@ -42,6 +46,7 @@ object CoreStore {
                 app.getDatabasePath(Path.PROFILES_DATABASE_PATH).path,
                 app.getDatabasePath(Path.SETTINGS_DATABASE_PATH).path,
                 File(dataDir, "shared_prefs/${Path.UI_PREFERENCES_NAME}.xml").path,
+                File(dataDir, "shared_prefs/${Path.WEBDAV_PREFERENCES_NAME}.xml").path,
                 app.cacheDir.path,
             ) ?: ""
             Log.i(TAG, "client store opened; legacy import: $migration")
@@ -49,7 +54,7 @@ object CoreStore {
         }
     }
 
-    /** One store call (crates/client-core/src/api.rs); a failure throws with the store's message. */
+    /** One store call (crates/mobile-ffi/src/api.rs); a failure throws with the store's message. */
     fun call(method: String, args: JsonObject = JsonObject(emptyMap())): JsonElement {
         ensureOpen()
         val result = nativeCall(method, args.toString()) ?: return JsonNull
@@ -73,7 +78,7 @@ object CoreStore {
 
     internal fun <T> encode(serializer: kotlinx.serialization.KSerializer<T>, value: T): JsonElement = json.encodeToJsonElement(serializer, value)
 
-    @JvmStatic private external fun nativeOpen(storePath: String, profilesDb: String, settingsDb: String, uiPreferences: String, scratchDir: String): String?
+    @JvmStatic private external fun nativeOpen(storePath: String, profilesDb: String, settingsDb: String, uiPreferences: String, webdavPreferences: String, scratchDir: String): String?
 
     @JvmStatic private external fun nativeCall(method: String, args: String): String?
 

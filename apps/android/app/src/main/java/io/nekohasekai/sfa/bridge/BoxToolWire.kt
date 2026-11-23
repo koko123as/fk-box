@@ -13,12 +13,6 @@ import io.nekohasekai.sfa.backend.tools.OpenConnectEndpointData
 import io.nekohasekai.sfa.backend.tools.OpenVPNChallengeData
 import io.nekohasekai.sfa.backend.tools.OpenVPNTunnelInfoData
 import io.nekohasekai.sfa.backend.tools.OpenVPNEndpointData
-import io.nekohasekai.sfa.backend.tools.TaildropFileData
-import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
-import io.nekohasekai.sfa.backend.tools.TaildropInboxState
-import io.nekohasekai.sfa.backend.tools.TailscalePingState
-import io.nekohasekai.sfa.backend.tools.STUNTestState
-import io.nekohasekai.sfa.backend.tools.NetworkQualityState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
 import io.nekohasekai.sfa.backend.usbip.UsbipServerData
@@ -140,57 +134,6 @@ internal fun OpenVPNEndpointData.toWire(): Map<String, Any?> = mapOf(
     "challenge" to challenge?.toWire(),
     "error" to error,
     "tunnelInfo" to tunnelInfo?.toWire(),
-)
-
-internal fun TaildropFileData.toWire(): Map<String, Any?> = mapOf(
-    "name" to name,
-    "size" to size,
-    "senderName" to senderName,
-)
-
-internal fun TaildropReceivingFileData.toWire(): Map<String, Any?> = mapOf(
-    "name" to name,
-    "size" to size,
-    "receivedBytes" to receivedBytes,
-    "senderID" to senderID,
-    "senderName" to senderName,
-)
-
-internal fun TaildropInboxState.toWire(): Map<String, Any?> = mapOf(
-    "files" to files.map { it.toWire() },
-    "receiving" to receiving.map { it.toWire() },
-)
-
-internal fun TailscalePingState.toWire(): Map<String, Any?> = mapOf(
-    "isRunning" to isRunning,
-    "latencyMs" to latencyMs,
-    "isDirect" to isDirect,
-    "derpRegionCode" to derpRegionCode,
-    "endpoint" to endpoint,
-    "error" to error,
-)
-
-internal fun STUNTestState.toWire(): Map<String, Any?> = mapOf(
-    "phase" to phase,
-    "externalAddr" to externalAddr,
-    "latencyMs" to latencyMs,
-    "natTypeSupported" to natTypeSupported,
-    "isRunning" to isRunning,
-    "server" to server,
-)
-
-internal fun NetworkQualityState.toWire(): Map<String, Any?> = mapOf(
-    "phase" to phase,
-    "idleLatencyMs" to idleLatencyMs,
-    "downloadCapacity" to downloadCapacity,
-    "uploadCapacity" to uploadCapacity,
-    "downloadRPM" to downloadRPM,
-    "uploadRPM" to uploadRPM,
-    "isRunning" to isRunning,
-    "configURL" to configURL,
-    "serial" to serial,
-    "http3" to http3,
-    "showMeteredWarning" to showMeteredWarning,
 )
 
 internal fun UsbSharedInterfaceData.toWire(): Map<String, Any?> = mapOf(

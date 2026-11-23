@@ -20,7 +20,7 @@
 
 package io.nekohasekai.sfa.bg
 
-import android.annotation.TargetApi
+import android.annotation.SuppressLint
 import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
@@ -37,6 +37,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.ObsoleteCoroutinesApi
 import kotlinx.coroutines.channels.actor
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.put
 
 object DefaultNetworkListener {
     private sealed class NetworkMessage {
@@ -159,15 +160,21 @@ object DefaultNetworkListener {
         }
     }
 
-    private val request =
+    // mobile-ffi network_recovery.rs: which callback tracks the default network here.
+    private val plan by lazy {
+        CoreBridge.call("networkRecovery.callback") { put("sdk", Build.VERSION.SDK_INT) }
+    }
+
+    private val request by lazy {
         NetworkRequest.Builder().apply {
             addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             addCapability(NetworkCapabilities.NET_CAPABILITY_NOT_RESTRICTED)
-            if (Build.VERSION.SDK_INT == 23) { // workarounds for OEM bugs
+            if (plan.bool("relaxed")) { // workarounds for OEM bugs
                 removeCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
                 removeCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL)
             }
         }.build()
+    }
     private val callbackHandler by lazy {
         Handler(HandlerThread("network-callback").apply { start() }.looper)
     }
@@ -182,30 +189,13 @@ object DefaultNetworkListener {
      *
      * Source: https://android.googlesource.com/platform/frameworks/base/+/2df4c7d/services/core/java/com/android/server/ConnectivityService.java#887
      */
+    @SuppressLint("NewApi") // mobile-ffi network_recovery.rs picks each call by SDK level.
     private fun register() {
-        when (Build.VERSION.SDK_INT) {
-            in 31..Int.MAX_VALUE ->
-                @TargetApi(31)
-                {
-                    Application.connectivity.registerBestMatchingNetworkCallback(
-                        request,
-                        Callback,
-                        callbackHandler,
-                    )
-                }
-
-            in 28 until 31 ->
-                @TargetApi(28)
-                { // we want REQUEST here instead of LISTEN
-                    Application.connectivity.requestNetwork(request, Callback, callbackHandler)
-                }
-
-            in 26 until 28 ->
-                @TargetApi(26)
-                {
-                    Application.connectivity.registerDefaultNetworkCallback(Callback, callbackHandler)
-                }
-
+        when (plan.textOrNull("kind")) {
+            "bestMatching" -> Application.connectivity.registerBestMatchingNetworkCallback(request, Callback, callbackHandler)
+            // we want REQUEST here instead of LISTEN
+            "request" -> Application.connectivity.requestNetwork(request, Callback, callbackHandler)
+            "defaultHandler" -> Application.connectivity.registerDefaultNetworkCallback(Callback, callbackHandler)
             // 24 and 25 (minSdk 24).
             else -> Application.connectivity.registerDefaultNetworkCallback(Callback)
         }

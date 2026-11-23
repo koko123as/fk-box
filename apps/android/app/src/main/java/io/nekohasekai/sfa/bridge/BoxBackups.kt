@@ -1,299 +1,125 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.UpdateProfileWork
+import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.CoreStore
-import io.nekohasekai.sfa.database.Profile
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
-import io.nekohasekai.sfa.database.RemoteServer
-import io.nekohasekai.sfa.database.RemoteServerManager
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
-import org.json.JSONObject
-import java.io.File
 import java.util.UUID
 
+/**
+ * `bbox-1` backups and the WebDAV account. Packing, validation, the restore
+ * (with its rollback) and the WebDAV flow are `fkbox-client-core`
+ * (crates/client-core/src/storage/backup.rs, webdav.rs), reached through
+ * [CoreStore.callKernel] so Rust can ask libbox and the Keystore for what it
+ * needs ([io.nekohasekai.sfa.database.CoreKernel]). What stays here is
+ * Android's part of a restore: applying the service settings (package query
+ * mode, app scans), putting the written values in the settings cache,
+ * applying the selected profile to the running service and recovering it
+ * when that fails.
+ */
 internal class BoxBackups(
     private val activity: BoxActivity,
-    private val readSettings: () -> Map<String, Any?>,
     private val writeSettings: suspend (Map<String, Any?>) -> Unit,
     private val applySelected: suspend (restart: Boolean, recover: Boolean) -> Unit,
     private val publish: suspend () -> Unit,
     private val emit: (String, Any?) -> Unit,
-    private val webdav: BoxWebDAV,
 ) {
-    private val terminal = BoxTerminalSettings(activity)
-
-    private fun origin(): String = CoreStore.call("backup.origin") { put("generated", UUID.randomUUID().toString()) }.jsonPrimitive.content
-    private fun profileKey(profile: Profile, origin: String): String {
-        val name = File(profile.typed.path).nameWithoutExtension
-        return runCatching { UUID.fromString(name).toString().takeIf { it == name } }.getOrNull()
-            ?: UUID.nameUUIDFromBytes("$origin:${profile.id}".toByteArray()).toString()
-    }
-    /** The interface preferences in the client store, as the UI reads them. */
-    private fun readPreferences(): Map<String, Any?> = jsonObject(JSONObject(CoreStore.call("preferences.get").toString()))
-    private fun rawPreferences(): String = CoreStore.call("preferences.raw").toString()
-    private fun writePreferences(values: Map<String, Any?>) {
-        CoreStore.call("preferences.replace") { put("values", Json.parseToJsonElement(JSONObject(values).toString())) }
-    }
-    private fun restoreRawPreferences(text: String) {
-        val values = runCatching { BoxPreferences.validate(jsonObject(JSONObject(text))) }.getOrDefault(emptyMap())
-        writePreferences(values)
-    }
-    private fun editableSettings() = readSettings().filterKeys { it !in setOf("batteryExempt", "perAppManagedList") }
-
-    suspend fun create(): Map<String, Any?> = ProfileContent.mutex.withLock {
-        val origin = origin()
-        var size = 0L
-        val profiles = ProfileManager.list().map { profile ->
-            val file = File(profile.typed.path)
-            size += file.length()
-            require(size <= MAX_BYTES) { "Backup exceeds 64 MiB" }
-            val content = file.readText()
-            ProfileContent.validate(ProfileContent.coreOf(profile, content), content)
-            profile.toWire() + mapOf("key" to profileKey(profile, origin), "content" to content)
-        }
-        val backup = mapOf("format" to "bbox-1", "origin" to origin, "createdAt" to System.currentTimeMillis(),
-            "selectedProfile" to Settings.selectedProfile, "profiles" to profiles,
-            "preferences" to readPreferences(), "settings" to editableSettings(),
-            "terminal" to terminal.backupSnapshot(), "webdav" to webdav.snapshot(),
-            "servers" to RemoteServerManager.list().map { mapOf("name" to it.name, "url" to it.url, "secret" to it.secret) })
-        encode(backup)
-        backup
+    /** A backup of everything, as the text written to a file. */
+    suspend fun create(): String = ProfileContent.mutex.withLock {
+        Settings.dataStore.flush()
+        CoreStore.callKernel("backup.create") { put("generated", UUID.randomUUID().toString()) }.jsonPrimitive.content
     }
 
-    // The backup read last, kept here until it is restored or replaced, so the
-    // UI only carries its token and summary across JNI.
-    private var stagedToken: String? = null
-    private var stagedBackup: Map<String, Any?>? = null
+    /**
+     * Reads and checks a backup and keeps it in client-core; returns its
+     * token and summary (`profileCount`) for [restore].
+     */
+    fun read(text: String, scope: String): Map<String, Any?> =
+        plainMap(CoreStore.callKernel("backup.read") { put("text", text); put("scope", scope) })
 
-    @Synchronized
-    fun stage(backup: Map<String, Any?>): Map<String, Any?> {
-        val token = UUID.randomUUID().toString()
-        stagedToken = token
-        stagedBackup = backup
-        return mapOf("token" to token, "profileCount" to rows(backup["profiles"]).size)
+    fun webdavAccount(): Map<String, Any?>? = CoreStore.callKernel("webdav.account") {}.takeIf { it !is JsonNull }?.let(::plainMap)
+
+    /** Saves the WebDAV account, or removes it when [value] is null; returns what is saved. */
+    fun setWebdavAccount(value: Map<String, Any?>?): Map<String, Any?>? =
+        CoreStore.callKernel("webdav.save") { put("value", ServiceSettings.element(value)) }.takeIf { it !is JsonNull }?.let(::plainMap)
+
+    fun checkWebdav(): Boolean = CoreStore.callKernel("webdav.check") {}.jsonPrimitive.content == "true"
+
+    suspend fun uploadWebdav(): Boolean = ProfileContent.mutex.withLock {
+        Settings.dataStore.flush()
+        CoreStore.callKernel("webdav.upload") { put("generated", UUID.randomUUID().toString()) }
+        true
     }
 
-    @Synchronized
-    fun staged(token: String): Map<String, Any?>? = stagedBackup.takeIf { stagedToken == token }
+    fun readWebdav(scope: String): Map<String, Any?> = plainMap(CoreStore.callKernel("webdav.read") { put("scope", scope) })
 
-    fun encode(backup: Map<String, Any?>): ByteArray = JSONObject(backup).toString().toByteArray().also {
-        require(it.size <= MAX_BYTES) { "Backup exceeds 64 MiB" }
-    }
-
-    suspend fun read(bytes: ByteArray, scope: String): Map<String, Any?> {
-        require(bytes.size <= MAX_BYTES) { "Backup exceeds 64 MiB" }
-        val backup = jsonObject(JSONObject(bytes.toString(Charsets.UTF_8)))
-        validate(backup, scope)
-        return backup
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    private suspend fun validate(backup: Map<String, Any?>, scope: String): List<Map<String, Any?>> {
-        require(scope in setOf("all", "profiles")) { "Invalid restore scope" }
-        require(backup["format"] == "bbox-1") { "Unsupported B-box backup format" }
-        backup["origin"]?.let { require(validUUID(it)) { "Invalid backup origin" } }
-        backup["createdAt"]?.let { require(integer(it, 0)) { "Invalid backup timestamp" } }
-        val entries = rows(backup["profiles"] ?: error("Backup has no profiles"))
-        require(entries.size <= 1000) { "Backup contains too many profiles" }
-        entries.forEach { entry ->
-            require((entry["name"] as? String)?.let { it.isNotBlank() && it.length <= 4096 } == true) { "Profile name is required" }
-            ProfileWireFields.validate(entry)
-            val content = entry["content"] as? String ?: error("Missing profile content")
-            // Each profile is checked by the core it declares; old backups declare none (auto).
-            ProfileContent.validate(Libbox.resolveProfileCore(ProfileWireFields.declaredCore(entry), content), content)
-            require(entry["url"] == null || entry["url"] is String) { "Invalid profile URL" }
-            val url = entry["url"] as? String ?: ""
-            if (url.isNotEmpty()) BoxProfiles.validateUrl(url)
-            entry["key"]?.let { require(validUUID(it)) { "Invalid profile backup identity" } }
-            entry["id"]?.let { require(integer(it, 1)) { "Invalid profile ID" } }
-            entry["interval"]?.let { require(it is Number && it.toDouble() == it.toInt().toDouble() && it.toInt() >= 15) { "Invalid update interval" } }
-            entry["autoUpdate"]?.let { require(it is Boolean) { "Invalid auto update option" } }
-            entry["updatedAt"]?.let { require(integer(it, 0)) { "Invalid update timestamp" } }
-        }
-        val keys = entries.mapNotNull { it["key"] }
-        val ids = entries.mapNotNull { (it["id"] as? Number)?.toLong() }
-        require(keys.distinct().size == keys.size && ids.distinct().size == ids.size) { "Backup contains duplicate profiles" }
-        backup["selectedProfile"]?.let {
-            require(integer(it, -1) && ((it as Number).toLong() == -1L || it.toLong() in ids)) { "Invalid selected profile" }
-        }
-        encode(backup)
-        if (scope == "all") {
-            BoxPreferences.validate(objectValue(backup, "preferences") ?: emptyMap())
-            BoxSettings.validate(objectValue(backup, "settings") ?: emptyMap())
-            val servers = rows(backup["servers"])
-            require(servers.size <= 1000) { "Too many remote servers" }
-            servers.forEach {
-                require(it["name"] is String && (it["url"] as? String)?.let(RemoteServer::validateURL) != null) { "Invalid remote server" }
-                require(it["secret"] == null || it["secret"] is String) { "Invalid remote secret" }
-            }
-            val identities = servers.map { RemoteServer.validateURL(it["url"] as String) to it["name"] }
-            require(identities.distinct().size == identities.size) { "Backup contains duplicate remote servers" }
-            objectValue(backup, "terminal")?.let { terminal.validateBackup(it) }
-            objectValue(backup, "webdav")?.let(BoxWebDAV::validate)
-        }
-        return entries
-    }
-
-    @Suppress("UNCHECKED_CAST")
-    suspend fun restore(backup: Map<String, Any?>, scope: String, strategy: String): Int {
-        require(strategy in setOf("Compatible", "Override")) { "Invalid restore strategy" }
-        val entries = validate(backup, scope)
+    /**
+     * Restores the backup read under [token]. client-core writes the store
+     * and the files in one step; then the service settings are applied and
+     * the selected profile is applied to the service. When that fails,
+     * client-core puts everything back, the earlier service settings are
+     * applied again and a running service is recovered.
+     */
+    suspend fun restore(token: String, scope: String, strategy: String): Int {
         val count = ProfileContent.mutex.withLock {
-            val wasRunning = activity.serviceStatus.value == io.nekohasekai.sfa.constant.Status.Started
-            val oldProfiles = ProfileManager.list()
-            val oldServers = RemoteServerManager.list()
-            val oldSelection = Settings.selectedProfile
-            val oldPreferences = rawPreferences()
-            val oldSettings = editableSettings()
-            val oldTerminal = terminal.snapshot()
-            val oldWebDAV = webdav.snapshot()
-            val workDir = File(activity.cacheDir, "restore-${UUID.randomUUID()}")
-            check(workDir.mkdirs()) { "Unable to stage restore" }
-            val originals = mutableMapOf<File, File?>()
-            var newFont: File? = null
-            var cleanup = true
-            fun keepOriginal(file: File) {
-                if (originals.containsKey(file)) return
-                originals[file] = if (file.exists()) file.copyTo(File(workDir, originals.size.toString())) else null
-            }
+            val wasRunning = activity.serviceStatus.value == Status.Started
+            Settings.dataStore.flush()
+            val result = CoreStore.callKernel("backup.restore") {
+                put("token", token)
+                put("scope", scope)
+                put("strategy", strategy)
+                put("filesDir", activity.filesDir.path)
+                put("cacheDir", activity.cacheDir.path)
+            }.jsonObject
+            val restoreToken = result.getValue("token").jsonPrimitive.long
+            ServiceSettings.adopt(result.getValue("written"))
+            ProfileManager.notifyChanged()
             try {
-                val mapping = mutableMapOf<Long, Long>()
-                val restored = mutableListOf<Profile>()
-                val byKey = oldProfiles.associateBy { profileKey(it, origin()) }
-                var nextOrder = (oldProfiles.maxOfOrNull { it.userOrder } ?: -1L) + 1
-                ProfileManager.transaction {
-                    entries.forEachIndexed { index, entry ->
-                        val key = entry["key"] as? String
-                        val existing = key?.let(byKey::get) ?: if (backup["origin"] == origin()) oldProfiles.firstOrNull { it.id == (entry["id"] as? Number)?.toLong() } else null
-                        val profile = existing?.let(::copyProfile) ?: Profile()
-                        val file = existing?.let { File(it.typed.path) } ?: File(File(activity.filesDir, "configs").apply { mkdirs() }, "${key ?: UUID.randomUUID()}.json")
-                        keepOriginal(file)
-                        ProfileContent.write(file, entry["content"] as String)
-                        profile.name = (entry["name"] as String).trim()
-                        profile.typed.path = file.path
-                        ProfileWireFields.restore(profile.typed, entry)
-                        profile.userOrder = if (strategy == "Override") index.toLong() else existing?.userOrder ?: nextOrder++
-                        if (existing == null) ProfileManager.create(profile) else ProfileManager.update(profile)
-                        restored.add(profile)
-                        (entry["id"] as? Number)?.toLong()?.let { mapping[it] = profile.id }
-                    }
-                    if (strategy == "Override") ProfileManager.delete(oldProfiles.filter { old -> restored.none { it.id == old.id } })
-                    if (scope == "all") {
-                        val keptServers = mutableSetOf<Long>()
-                        for ((index, entry) in rows(backup["servers"]).withIndex()) {
-                            val url = RemoteServer.validateURL(entry["url"] as String)!!
-                            val existing = oldServers.firstOrNull { RemoteServer.normalizeURL(it.url) == url && it.name == entry["name"] }
-                            val server = RemoteServer(existing?.id ?: 0L, existing?.userOrder ?: 0L,
-                                entry["name"] as String, url, entry["secret"] as? String ?: "")
-                            if (existing == null) RemoteServerManager.create(server) else RemoteServerManager.update(server)
-                            if (strategy == "Override") {
-                                server.userOrder = index.toLong()
-                                RemoteServerManager.update(server)
-                            }
-                            keptServers.add(server.id)
-                        }
-                        if (strategy == "Override") oldServers.filter { it.id !in keptServers }.forEach { RemoteServerManager.delete(it) }
-                    }
-                }
-                val current = ProfileManager.list()
-                val backupSelection = (backup["selectedProfile"] as? Number)?.toLong()
-                Settings.selectedProfile = if (scope == "all" && backupSelection == -1L) -1L else
-                    (if (scope == "all") mapping[backupSelection] else null)
-                        ?: oldSelection.takeIf { selection -> current.any { it.id == selection } }
-                        ?: restored.firstOrNull()?.id ?: -1L
-                if (scope == "all") {
-                    writeSettings(backup["settings"] as? Map<String, Any?> ?: emptyMap())
-                    (backup["terminal"] as? Map<String, Any?>)?.let { newFont = terminal.restoreBackup(it) }
-                    if (backup.containsKey("webdav")) webdav.save(objectValue(backup, "webdav"))
-                    val restoredPreferences = BoxPreferences.validate(backup["preferences"] as? Map<String, Any?> ?: emptyMap()).toMutableMap()
-                    val folds = restoredPreferences["proxyUnfolded"] as? Map<String, Any?>
-                    if (folds != null) restoredPreferences["proxyUnfolded"] = folds.entries.associate { (key, value) ->
-                        val id = key.removePrefix("local:").toLongOrNull()
-                        (if (key.startsWith("local:") && id != null && mapping.containsKey(id)) "local:${mapping[id]}" else key) to value
-                    }
-                    writePreferences(restoredPreferences)
-                }
+                result["settings"]?.takeIf { it !is JsonNull }?.let { writeSettings(plainMap(it)) }
                 Settings.dataStore.flush()
                 applySelected(scope == "all", false)
-                val keptPaths = current.map { it.typed.path }.toSet()
                 publish()
                 emit("preferences", null)
-                if (strategy == "Override") oldProfiles.filter { it.typed.path !in keptPaths }.forEach { runCatching { File(it.typed.path).delete() } }
-                restored.size
+                CoreStore.call("backup.finish") { put("token", restoreToken) }
+                result.getValue("count").jsonPrimitive.int
             } catch (error: Exception) {
                 withContext(NonCancellable) {
                     suspend fun attempt(task: suspend () -> Unit) {
-                        try { task() } catch (rollback: Exception) { cleanup = false; error.addSuppressed(rollback) }
+                        try { task() } catch (rollback: Exception) { error.addSuppressed(rollback) }
                     }
                     attempt {
-                        ProfileManager.transaction {
-                            ProfileManager.delete(ProfileManager.list().filter { now -> oldProfiles.none { it.id == now.id } })
-                            for (profile in oldProfiles) if (ProfileManager.get(profile.id) == null) ProfileManager.create(profile) else ProfileManager.update(profile, forceOrder = true)
-                            if (scope == "all") {
-                                RemoteServerManager.list().filter { now -> oldServers.none { it.id == now.id } }.forEach { RemoteServerManager.delete(it) }
-                                for (server in oldServers) if (RemoteServerManager.get(server.id) == null) {
-                                    val copy = RemoteServer(server.id, server.userOrder, server.name, server.url, server.secret)
-                                    RemoteServerManager.create(copy)
-                                    copy.userOrder = server.userOrder
-                                    RemoteServerManager.update(copy)
-                                } else RemoteServerManager.update(server)
-                            }
-                        }
+                        ServiceSettings.adopt(CoreStore.call("backup.rollback") { put("token", restoreToken) }.jsonObject.getValue("written"))
+                        ProfileManager.notifyChanged()
                     }
-                    for ((file, original) in originals) attempt {
-                        if (original == null) { if (file.exists()) check(file.delete()) } else restoreFile(file, original)
-                    }
-                    Settings.selectedProfile = oldSelection
-                    if (scope == "all") {
-                        attempt { writeSettings(oldSettings) }
-                        attempt { terminal.restoreState(oldTerminal) }
-                        attempt { webdav.save(oldWebDAV) }
-                        attempt { restoreRawPreferences(oldPreferences) }
-                    }
-                    newFont?.delete()
+                    result["previousSettings"]?.takeIf { it !is JsonNull }?.let { previous -> attempt { writeSettings(plainMap(previous)) } }
                     attempt { Settings.dataStore.flush() }
                     if (wasRunning) attempt { applySelected(true, true) }
                     attempt { publish(); emit("preferences", null) }
                 }
                 throw error
-            } finally { if (cleanup) workDir.deleteRecursively() }
-        }
-        UpdateProfileWork.reconfigureUpdater()
-        synchronized(this) {
-            if (stagedBackup === backup) {
-                stagedToken = null
-                stagedBackup = null
             }
         }
+        UpdateProfileWork.reconfigureUpdater()
         return count
     }
 
     companion object {
         const val MAX_BYTES = 64 * 1024 * 1024
-        private fun validUUID(value: Any?) = value is String && runCatching { UUID.fromString(value).toString() == value }.getOrDefault(false)
-        private fun integer(value: Any?, minimum: Long): Boolean = value is Number && value.toDouble().isFinite() &&
-            value.toDouble() == value.toLong().toDouble() && value.toLong() >= minimum && value.toDouble() <= 9007199254740991.0
-        @Suppress("UNCHECKED_CAST")
-        private fun rows(value: Any?): List<Map<String, Any?>> = if (value == null) emptyList() else
-            (value as? List<*>)?.map { it as? Map<String, Any?> ?: error("Invalid backup entry") } ?: error("Invalid backup list")
 
         @Suppress("UNCHECKED_CAST")
-        private fun objectValue(backup: Map<String, Any?>, key: String): Map<String, Any?>? = backup[key]?.let {
-            it as? Map<String, Any?> ?: error("Invalid backup $key")
-        }
-
-        // Every TypedProfile field, so a restore over an existing profile cannot drop its core.
-        private fun copyProfile(profile: Profile) = Profile(profile.id, profile.userOrder, profile.name, profile.icon, profile.typed.copy())
-        private fun restoreFile(file: File, original: File) {
-            ProfileContent.write(file) { output -> original.inputStream().use { it.copyTo(output) } }
-        }
+        private fun plainMap(element: JsonElement): Map<String, Any?> = ServiceSettings.plain(element) as Map<String, Any?>
     }
 }

@@ -2,57 +2,33 @@
 # The gettext domain of the bundled translations is the package name
 # (i18n/zh/LC_MESSAGES/fkbox-client-ui.po).
 name = "fkbox-client-ui"
-version = "0.2.0"
-edition = "2021"
-publish = false
-license = "GPL-3.0-or-later"
-description = "FK-box user interface in Rust + Slint: pages, i18n and theme, shared by the platform shells (apps/android/native builds libfkui.so from it)."
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+license.workspace = true
+description = "FK-box user interface in Slint: the component tree (ui/), translations, Material 3 color schemes and fonts. No page logic; the platform shells (apps/android/native) drive it."
 
 [lib]
 path = "src/lib.rs"
 
 [dependencies]
-fkbox-client-core = { path = "../client-core" }
-# No default backends: on Android the platform is the GameActivity backend below.
-slint = { version = "=1.19.0", default-features = false, features = ["std", "compat-1-2", "unstable-fontique-012"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-# QrCodeView (ui/QrCode.kt), ZXing Encoder at level L.
-qrcodegen = "1.8"
+# No default backends: on Android the platform is the GameActivity backend in apps/android/native.
+slint = { workspace = true }
+# The font spec file (src/fonts.rs).
+serde_json = { workspace = true }
 # Material Color Utilities (spec 2021, as com.google.android.material.color.utilities).
 material-colors = "=0.5.0"
 # System font files are mapped, not read into the heap (src/fonts.rs).
 memmap2 = "0.9"
-# App icons are decoded here, not through slint::Image::load_from_path, whose
-# process-wide path cache kept up to 5 MB of icons after the app list closed.
-png = "0.18"
-# The harness loads fontconfig at run time (no headers needed to build it).
-i-slint-common = { version = "=1.19.0", optional = true, features = ["fontconfig-dlopen"] }
 
-[features]
-# Host-only screenshot harness (src/shot.rs, examples/shot.rs): the software renderer
-# draws the pages at phone size from fixture data, for visual checks without a device.
-shot = ["slint/renderer-software", "dep:i-slint-common"]
-# The harness drawing with the (vendored) Skia renderer instead, rasterized on the CPU: the
-# renderer Android uses, so the glass surfaces' backdrop-blur shows (SHOT_RENDERER=skia).
-shot-skia = ["shot", "dep:i-slint-renderer-skia"]
-
-[[example]]
-name = "shot"
-required-features = ["shot"]
-
-# The Android backend, JNI and logcat setup live in apps/android/native.
 [target.'cfg(target_os = "android")'.dependencies]
 log = "0.4"
-# The Skia renderer the backend draws with (vendored, see [patch.crates-io]):
-# its FK-box purge hook releases caches when an image-heavy page closes.
-i-slint-renderer-skia = { version = "=1.19.0", default-features = false }
 # PNG decoding for app icons (PackageIcon) rendered by the native side.
 i-slint-core = { version = "=1.19.0", default-features = false, features = ["std", "image-decoders", "shared-parley"] }
 
 # Host builds (unit tests) need the same image support the Android backend enables.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 i-slint-core = { version = "=1.19.0", default-features = false, features = ["std", "image-decoders", "svg", "shared-parley"] }
-i-slint-renderer-skia = { version = "=1.19.0", default-features = false, optional = true }
 
 [build-dependencies]
-slint-build = "=1.19.0"
+slint-build = { workspace = true }

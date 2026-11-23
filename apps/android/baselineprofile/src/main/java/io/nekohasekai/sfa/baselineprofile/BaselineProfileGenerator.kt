@@ -23,7 +23,7 @@ import org.junit.runner.RunWith
  * The Rust + Slint UI draws its own widgets and has no accessibility tree, so
  * UIAutomator cannot find "Dashboard" or "Tools" by text. The destinations are
  * tapped by position instead: on a phone (narrower than 600 dp) the floating
- * navigation bar (crates/client-ui/ui/globals.slint: 64 dp high, 12 dp margin, above the
+ * navigation bar (crates/client-ui/ui/models/globals.slint: 64 dp high, 12 dp margin, above the
  * system navigation bar) holds four evenly spaced destinations; on wider
  * windows the rail (88 dp wide) lists them from the top.
  */

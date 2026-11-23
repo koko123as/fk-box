@@ -1,10 +1,10 @@
 // A light main file for local type checks of the Rust side (build.rs with
 // FKUI_LIGHT=1): the same globals and structs as app.slint, no pages.
 
-import { Theme, TextRole, Scheme } from "theme.slint";
-import { Icons, Glyph } from "icons.slint";
-import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec } from "globals.slint";
-import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "data.slint";
+import { Theme, TextRole, Scheme } from "theme/theme.slint";
+import { Icons, Glyph } from "icons/icons.slint";
+import { Nav, MenuItem, BarAction, Route, Keyword, NativeIme, NativeImeSpec } from "models/globals.slint";
+import { App, Dash, Proxies, Profiles, Pages, PageData, ModeItem, Note, KeyValue, DashCell, DashRow, ServiceItem, NodeRow, GroupRow, ProfileRow, SettingRow } from "models/data.slint";
 import { Look, Swatch } from "pages/appearance.slint";
 
 export { Theme, Scheme, TextRole, Nav, MenuItem, BarAction, Route, Keyword, Glyph, Icons, Look, Swatch, NativeIme, NativeImeSpec }

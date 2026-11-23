@@ -17,8 +17,8 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 
 | # | Compose file (main) | Rust / Slint replacement | Status | Notes |
 |---|---|---|---|---|
-| 1 | BoxApp.kt | `ui/app.slint`, `ui/globals.slint`, `src/nav.rs`, `src/theme_apply.rs` | done | Frame, bottom bar / rail, routes, back handling, snackbar |
-| 2 | BoxController.kt | `src/app.rs`, `src/host.rs` (JNI side: `apps/android/native/src/host.rs`), `src/format.rs`, `ui/data.slint`; Kotlin `bridge/SlintHost.kt` | done | State projection + JNI dispatch (`slintCall` / `nativeReply`) |
+| 1 | BoxApp.kt | `ui/app.slint`, `ui/models/globals.slint`, `src/nav.rs`, `src/theme_apply.rs` | done | Frame, bottom bar / rail, routes, back handling, snackbar |
+| 2 | BoxController.kt | `src/app.rs`, `src/host.rs` (JNI side: `apps/android/native/src/host.rs`), `src/format.rs`, `ui/models/data.slint`; Kotlin `bridge/SlintHost.kt` | done | State projection + JNI dispatch (`slintCall` / `nativeReply`) |
 | 3 | BoxStrings.kt | `src/i18n.rs` | done | 711 zh strings |
 | 4 | MainActivity.kt | Kotlin `bridge/BoxActivity.kt` (GameActivity, `lib_name=fkui`) | kept | Entry Activity stays Kotlin |
 | 5 | ShareActivity.kt | Kotlin `ShareActivity : BoxActivity` + `src/pages/tools.rs::open_share` (opened from `profiles.rs` intent handling) | done | ACTION_SEND / SEND_MULTIPLE → Taildrop share page |
@@ -29,7 +29,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 | 10 | pages/DashboardEditor.kt | `src/pages/dashboard.rs`, `ui/pages/dashboard.slint` | done | |
 | 11 | pages/DashboardGrid.kt | `src/pages/dashboard.rs`, `ui/pages/dashboard.slint` | done | |
 | 12 | pages/DashboardPage.kt | `src/pages/dashboard.rs`, `ui/pages/dashboard.slint` | done | All cards, memory, LAN IP, LAN proxy |
-| 13 | pages/HomePage.kt | `ui/home.slint`, `ui/app.slint` | done | |
+| 13 | pages/HomePage.kt | `ui/mobile/android/home.slint`, `ui/app.slint` | done | |
 | 14 | pages/ProfileEditor.kt | `src/pages/profiles.rs`, `ui/pages/profiles.slint` | done | Code editor |
 | 15 | pages/ProfilesPage.kt | `src/pages/profiles.rs`, `ui/pages/profiles.slint` | done | Grid, add menu/page, reorder, details, QR; scan → native `ScanActivity` |
 | 16 | pages/ProxiesPage.kt | `src/pages/proxies.rs`, `ui/pages/proxies.slint` | done | |
@@ -44,25 +44,25 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
 | 25 | pages/ToolsPage.kt | `src/pages/tools.rs`, `ui/pages/tools.slint` | done | |
 | 26 | qr/QRCodeSmartCrop.kt | Kotlin, used by `NativePages.kt` `ScanActivity` | kept | Camera frame decoding stays Kotlin |
 | 27 | qr/ZxingQRCodeAnalyzer.kt | Kotlin, used by `NativePages.kt` `ScanActivity` | kept | Camera frame decoding stays Kotlin |
-| 28 | theme/Color.kt | `src/theme.rs`, `ui/theme.slint` | done | MCU seed schemes |
-| 29 | theme/Shape.kt | `ui/theme.slint` | done | |
-| 30 | theme/Theme.kt | `src/theme.rs`, `src/theme_apply.rs`, `ui/theme.slint` | done | |
-| 31 | theme/Type.kt | `ui/theme.slint`, `ui/fonts` | done | |
-| 32 | ui/AppIcons.kt | `ui/icons.slint`, `ui/kit.slint` (Material icon font) + Kotlin `appIcon` dispatch | done | |
-| 33 | ui/Card.kt | `ui/kit.slint`, `ui/pages/rows.slint` | done | |
+| 28 | theme/Color.kt | `src/theme.rs`, `ui/theme/theme.slint` | done | MCU seed schemes |
+| 29 | theme/Shape.kt | `ui/theme/theme.slint` | done | |
+| 30 | theme/Theme.kt | `src/theme.rs`, `src/theme_apply.rs`, `ui/theme/theme.slint` | done | |
+| 31 | theme/Type.kt | `ui/theme/theme.slint`, `ui/icons/fonts` | done | |
+| 32 | ui/AppIcons.kt | `ui/icons/icons.slint`, `ui/components/kit.slint` (Material icon font) + Kotlin `appIcon` dispatch | done | |
+| 33 | ui/Card.kt | `ui/components/kit.slint`, `ui/pages/rows.slint` | done | |
 | 34 | ui/Dialog.kt | `ui/app.slint`, `src/nav.rs` | done | |
-| 35 | ui/Forms.kt | `src/forms.rs`, `ui/kit.slint`, `ui/pages/rows.slint` | done | |
-| 36 | ui/Kit.kt | `ui/kit.slint`, `ui/pages/rows.slint` | done | |
-| 37 | ui/Layout.kt | `ui/kit.slint`, `ui/globals.slint`, `src/rows.rs` | done | |
+| 35 | ui/Forms.kt | `src/forms.rs`, `ui/components/kit.slint`, `ui/pages/rows.slint` | done | |
+| 36 | ui/Kit.kt | `ui/components/kit.slint`, `ui/pages/rows.slint` | done | |
+| 37 | ui/Layout.kt | `ui/components/kit.slint`, `ui/models/globals.slint`, `src/rows.rs` | done | |
 | 38 | ui/LineChart.kt | `ui/pages/dashboard.slint`, `src/pages/dashboard.rs` | done | |
-| 39 | ui/Navigator.kt | `src/nav.rs`, `ui/routes.slint` | done | |
-| 40 | ui/NullStatus.kt | `ui/kit.slint` | done | |
+| 39 | ui/Navigator.kt | `src/nav.rs`, `ui/mobile/android/routes.slint` | done | |
+| 40 | ui/NullStatus.kt | `ui/components/kit.slint` | done | |
 | 41 | ui/Popup.kt | `ui/app.slint`, `src/nav.rs` | done | Menus |
 | 42 | ui/QrCode.kt | `src/pages/profiles.rs` (qrcodegen), `ui/pages/profiles.slint` | done | |
 | 43 | ui/QuickEdit.kt | `src/forms.rs`, `ui/pages/rows.slint` | done | |
 | 44 | ui/RecordFilter.kt | `src/records.rs` | done | |
 | 45 | ui/Records.kt | `src/records.rs`, `ui/pages/requests.slint` | done | |
-| 46 | ui/Scaffold.kt | `src/rows.rs`, `ui/kit.slint`, `ui/globals.slint` | done | Title bar, actions, foot bar |
+| 46 | ui/Scaffold.kt | `src/rows.rs`, `ui/components/kit.slint`, `ui/models/globals.slint` | done | Title bar, actions, foot bar |
 | 47 | ui/Sortable.kt | `src/rows.rs` (sort rows), `src/pages/profiles.rs` | done | Reorder by drag handles / sort rows |
 
 ## Known non-1:1 items
@@ -84,7 +84,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   16 dp from the sides and 12 dp above the gesture inset, an opaque surface-container with a
   level 2 shadow; home pages scroll their content under it and pad its end by `Nav.home-bottom`.
   The top app bar turns to the opaque surface-container role once content scrolls under it; menus,
-  dialogs and the rows' foot bar are opaque tonal surfaces too (`ui/kit.slint` `Surface`). Nothing
+  dialogs and the rows' foot bar are opaque tonal surfaces too (`ui/components/kit.slint` `Surface`). Nothing
   uses `backdrop-blur` (the earlier glass surfaces were removed for scrolling cost).
   The visual layer otherwise follows Material Design 3 (see flclash.md "Material Design 3 界面约定").
 - Routing rule editor: the Apps field opens the installed-app list used by Access control
@@ -102,7 +102,7 @@ Status: **done** = ported feature-for-feature (not yet verified on device);
   stack (TextRunShaper, API 31+) which files it draws sans-serif, Chinese and monospace with and
   writes `files/fkui-fonts.json`; `src/fonts.rs` registers them memory-mapped as Slint's
   sans-serif / system-ui / monospace families. Below API 31 fontique's /system/fonts defaults apply.
-- JetBrains Mono is no longer bundled (neither in `crates/client-ui/ui/fonts` nor `res/font`); code and
+- JetBrains Mono is no longer bundled (neither in `crates/client-ui/ui/icons/fonts` nor `res/font`); code and
   terminal text use the system monospace face. Compose's `JetBrainsMono` now aliases
   `FontFamily.Monospace`.
 - Slint 1.19.0 (2026-11-16; `slint`, `slint-build`, `i-slint-core`, `i-slint-common` pinned with `=`).

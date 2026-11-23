@@ -4,25 +4,26 @@ import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.database.CoreSubscriptions
 import io.nekohasekai.sfa.database.Profile
-import io.nekohasekai.sfa.database.ProfileArray
 import io.nekohasekai.sfa.database.ProfileChange
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.database.SubscriptionFetch
-import io.nekohasekai.sfa.database.SubscriptionMetadata
 import io.nekohasekai.sfa.database.TypedProfile
-import io.nekohasekai.sfa.database.metadataAfter
-import io.nekohasekai.sfa.database.restoreSubscriptionMetadata
 import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.sync.withLock
+import io.nekohasekai.sfa.database.CoreStore
+import io.nekohasekai.sfa.database.ServiceSettings
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import org.json.JSONObject
 import java.io.File
 import java.net.URI
-import java.util.Date
-import java.util.UUID
 
 internal class BoxProfiles(private val applySelected: suspend (recover: Boolean) -> Unit) {
     private val mutex = ProfileContent.mutex
@@ -125,7 +126,16 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         )
     }
 
-    suspend fun save(args: Map<String, Any?>): Long = mutex.withLock { saveLocked(args) }
+    /**
+     * Saves the profile form ([args] holds its fields and, when editing, its "id"):
+     * client-core (crates/client-core/src/config/profiles.rs) checks the form, fetches a new
+     * subscription, splits a JSON array, prepares the content with its core (libbox,
+     * through [CoreKernel]), writes the files and only the columns the form edits
+     * (never the order). Returns the first saved profile's id.
+     */
+    suspend fun save(args: Map<String, Any?>): Long = mutex.withLock {
+        saved("profiles.save") { put("profile", ServiceSettings.element(args)) }.first()
+    }
 
     /**
      * Creates one local profile per entry of a split JSON array of configs
@@ -133,141 +143,57 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
      * bad element saves nothing. Returns the new profile ids in order.
      */
     suspend fun saveAll(args: Map<String, Any?>): List<Long> = mutex.withLock {
-        val declaredCore = (args["core"] as? String) ?: TypedProfile.CORE_AUTO
-        require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
-        val entries = (args["entries"] as? List<*>).orEmpty().map { item ->
-            val entry = item as? Map<*, *> ?: error("Invalid configuration entry")
-            ProfileArray.Entry(entry["name"] as? String ?: "", entry["content"] as? String ?: "", entry["core"] as? String ?: "")
+        saved("profiles.saveAll") {
+            put("entries", ServiceSettings.element(args["entries"] ?: emptyList<Any?>()))
+            put("core", (args["core"] as? String) ?: TypedProfile.CORE_AUTO)
         }
-        require(entries.isNotEmpty()) { "No configurations to import" }
-        entries.forEachIndexed { index, entry ->
-            require(entry.name.isNotBlank()) { "Configuration ${index + 1} has no name" }
-            runCatching { ProfileContent.prepare(declaredCore, entry.content) }.onFailure {
-                throw IllegalArgumentException("Configuration ${index + 1} (${entry.name}): ${it.message}", it)
-            }
-        }
-        entries.map { entry -> saveLocked(mapOf("name" to entry.name, "content" to entry.content, "core" to declaredCore)) }
     }
 
-    /** One element of a split array, with the fetch it came from (null for local content). */
-    private class ArrayElement(val fetch: SubscriptionFetch?)
+    /** What a client-core form save returned (`profiles::Saved`). */
+    @Serializable
+    private data class Saved(val ids: List<Long> = emptyList(), val apply: Boolean = false, val written: JsonElement = JsonArray(emptyList()), val token: Long? = null)
 
-    private suspend fun saveLocked(args: Map<String, Any?>, element: ArrayElement? = null): Long {
-        val id = (args["id"] as? Number)?.toLong() ?: 0L
-        val profile = if (id == 0L) Profile() else get(id)
-        val name = (args["name"] as? String)?.trim().orEmpty()
-        require(name.isNotEmpty()) { "A profile name is required" }
-        val url = (args["url"] as? String)?.trim().orEmpty()
-        if (url.isNotEmpty()) validateUrl(url)
-        val interval = (args["interval"] as? Number)?.toInt() ?: 60
-        require(interval >= 15) { "Update interval must be at least 15 minutes" }
-        val declaredCore = (args["core"] as? String) ?: profile.typed.core
-        require(declaredCore in TypedProfile.CORES) { "Unknown core: $declaredCore" }
-        // A newly created remote profile takes the provider's headers from its first fetch.
-        val fetched = if (element != null) element.fetch else if (args["content"] !is String && id == 0L && url.isNotEmpty()) {
-            CoreSubscriptions.fetch(url, declaredCore)
-        } else {
-            null
-        }
-        val incomingContent = args["content"] as? String ?: if (fetched != null) {
-            fetched.content
-        } else if (id != 0L) {
-            File(profile.typed.path).readText()
-        } else {
-            // An empty local profile starts on its own core, or the first core
-            // left on when auto (so turning sing-box off never blocks creation).
-            emptyProfileContent(if (declaredCore == TypedProfile.CORE_AUTO) Settings.autoFetchCore() else declaredCore)
-        }
-        if (id == 0L && element == null) {
-            // A JSON array of configs becomes one profile per element; a subscription URL is
-            // shared by all of them, and each update keeps following its own element.
-            ProfileContent.splitArray(incomingContent)?.let { elements ->
-                val entries = ProfileContent.prepareArray(declaredCore, name, elements)
-                return entries.map { entry ->
-                    saveLocked(args + mapOf("name" to entry.name, "content" to entry.content), ArrayElement(fetched))
-                }.first()
-            }
-        }
-        val prepared = ProfileContent.prepare(declaredCore, incomingContent)
-        val content = prepared.content
-        val file = if (id == 0L) {
-            val extension = if (prepared.core == TypedProfile.CORE_MIHOMO) "yaml" else "json"
-            File(Application.application.filesDir, "configs/${UUID.randomUUID()}.$extension").also { it.parentFile!!.mkdirs() }
-        } else {
-            File(profile.typed.path)
-        }
-        val oldContent = if (file.exists()) file.readText() else null
-        // An edit that carries the revision it was opened at is refused when the
-        // file changed since (another editor, a subscription update).
-        (args["revision"] as? String)?.let { expected ->
-            require(oldContent != null && revision(oldContent) == expected) { "Configuration changed; reload it before saving" }
-        }
-        val previousUrl = profile.typed.remoteURL
-        // Everything an edit changes, to put back if saving or applying fails.
-        val previousName = profile.name
-        val previousTyped = profile.typed.copy()
-        write(file, content)
-        profile.name = name
-        profile.typed.core = declaredCore
-        profile.typed.path = file.path
-        profile.typed.type = if (url.isEmpty()) TypedProfile.Type.Local else TypedProfile.Type.Remote
-        profile.typed.remoteURL = url
-        profile.typed.autoUpdate = url.isNotEmpty() && args["autoUpdate"] == true
-        // Edits keep a choice already made; the form reports whether the interval field was touched.
-        profile.typed.intervalUserSet = profile.typed.intervalUserSet || args["intervalEdited"] == true ||
-            (id != 0L && interval != profile.typed.autoUpdateInterval)
-        profile.typed.autoUpdateInterval = interval
-        if (url.isEmpty() || (id != 0L && url != previousUrl)) {
-            // Traffic and expiry belonged to the old subscription; the next fetch reports the new one.
-            profile.typed.restoreSubscriptionMetadata(SubscriptionMetadata(0L, 0L, 0L, 0L, "", interval))
-        } else if (fetched != null) {
-            profile.typed.restoreSubscriptionMetadata(profile.typed.metadataAfter(fetched))
-        }
-        if (id == 0L) {
-            val importedAt = (args["updatedAt"] as? Number)?.toLong()?.takeIf { it >= 0L }
-            profile.typed.lastUpdated = if (url.isNotEmpty() && args["content"] is String && importedAt != null) Date(importedAt) else Date()
-        }
-        var stored = false
-        var applyAttempted = false
-        val previousSelection = Settings.selectedProfile
+    /**
+     * Runs a client-core form save, then the Android side: the selection it wrote enters the
+     * settings cache, the updater is rescheduled and a change to the selected profile is applied
+     * to the service. If applying fails, client-core puts the files, rows and selection back and
+     * the service is recovered on the previous configuration. Caller holds [mutex].
+     */
+    private suspend fun saved(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit): List<Long> {
+        val previousMode = Settings.serviceMode
+        val result = CoreStore.decode(Saved.serializer(), CoreStore.callKernel(method) {
+            build()
+            put("configsDir", File(Application.application.filesDir, "configs").path)
+            put("now", System.currentTimeMillis())
+        })
         try {
-            if (id == 0L) {
-                profile.userOrder = ProfileManager.nextOrder()
-                ProfileManager.create(profile, andSelect = Settings.selectedProfile == -1L)
-            } else {
-                ProfileManager.update(profile)
-            }
-            stored = true
-            UpdateProfileWork.reconfigureUpdater()
-            if (profile.id == Settings.selectedProfile && content != oldContent) {
-                applyAttempted = true
-                applySelected(false)
-            }
-        } catch (e: Exception) {
-            // Roll back the file and the profile row, then bring the service
-            // back on the previous configuration, as ProfileChange does.
-            kotlinx.coroutines.withContext(kotlinx.coroutines.NonCancellable) {
-                fun attempt(task: () -> Unit) = runCatching(task).exceptionOrNull()?.let(e::addSuppressed)
-                attempt { if (oldContent != null) write(file, oldContent) else check(!file.exists() || file.delete()) }
-                if (stored) {
-                    if (id == 0L) {
-                        runCatching { ProfileManager.delete(profile) }.exceptionOrNull()?.let(e::addSuppressed)
-                        if (Settings.selectedProfile != previousSelection) {
-                            Settings.selectedProfile = previousSelection
-                            runCatching { Settings.dataStore.flush() }.exceptionOrNull()?.let(e::addSuppressed)
+            ProfileChange.apply(
+                save = {
+                    ServiceSettings.adopt(result.written)
+                    UpdateProfileWork.reconfigureUpdater()
+                },
+                restore = listOf<suspend () -> Unit>(
+                    {
+                        result.token?.let { token ->
+                            val undone = CoreStore.call("profiles.rollback") { put("token", token) }.jsonObject
+                            ServiceSettings.adopt(undone.getValue("written"))
+                            UpdateProfileWork.reconfigureUpdater()
                         }
-                    } else {
-                        profile.name = previousName
-                        profile.typed = previousTyped
-                        runCatching { ProfileManager.update(profile) }.exceptionOrNull()?.let(e::addSuppressed)
-                    }
-                    runCatching { UpdateProfileWork.reconfigureUpdater() }.exceptionOrNull()?.let(e::addSuppressed)
-                }
-                if (applyAttempted) runCatching { applySelected(true) }.exceptionOrNull()?.let(e::addSuppressed)
-            }
-            throw e
+                    },
+                    {
+                        if (result.apply) {
+                            if (Settings.serviceMode != previousMode) Settings.serviceMode = previousMode
+                            Settings.dataStore.flush()
+                        }
+                    },
+                ),
+                applyService = { recover -> if (result.apply) applySelected(recover) },
+            )
+        } finally {
+            result.token?.let { token -> runCatching { CoreStore.call("profiles.finish") { put("token", token) } } }
+            ProfileManager.notifyChanged()
         }
-        return profile.id
+        return result.ids
     }
 
     suspend fun update(id: Long) = mutex.withLock {
@@ -278,15 +204,12 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         if (result.intervalChanged) UpdateProfileWork.reconfigureUpdater()
     }
 
+    /** Deletes a profile and its file (client-core); deleting the selected one applies the next. */
     suspend fun delete(id: Long) = mutex.withLock {
-        val profile = get(id)
-        ProfileManager.delete(profile)
-        File(profile.typed.path).delete()
-        if (Settings.selectedProfile == id) {
-            Settings.selectedProfile = ProfileManager.list().firstOrNull()?.id ?: -1L
-            Settings.dataStore.flush()
-            applySelected(false)
-        }
+        val deleted = CoreStore.call("profiles.remove") { put("id", id) }.jsonObject
+        ServiceSettings.adopt(deleted.getValue("written"))
+        ProfileManager.notifyChanged()
+        if (deleted["apply"]?.jsonPrimitive?.booleanOrNull == true) applySelected(false)
         UpdateProfileWork.reconfigureUpdater()
     }
 
@@ -366,9 +289,3 @@ internal fun Profile.toWire(): Map<String, Any> = mapOf(
     "id" to id,
     "name" to name,
 ) + ProfileWireFields.export(typed) + mapOf("resolvedCore" to resolvedCore())
-
-private fun emptyProfileContent(core: String): String = when (core) {
-    TypedProfile.CORE_XRAY -> "{\n  \"outbounds\": [\n    {\n      \"protocol\": \"freedom\",\n      \"tag\": \"direct\"\n    }\n  ]\n}\n"
-    TypedProfile.CORE_MIHOMO -> "mode: rule\nproxies: []\nproxy-groups: []\nrules:\n  - MATCH,DIRECT\n"
-    else -> "{}"
-}

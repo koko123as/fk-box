@@ -10,10 +10,11 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Encrypts small secrets (account passwords kept in SharedPreferences) with an
- * AES-GCM key held in the Android Keystore, so the stored value is useless
- * without this app's key on this device. Values written before this existed
- * are plain text; [isEncrypted] tells them apart for a one-time migration.
+ * Encrypts small secrets (the WebDAV password kept in client-core's store,
+ * which calls this through `CoreKernel`'s `secret.*`) with an AES-GCM key held
+ * in the Android Keystore, so the stored value is useless without this app's
+ * key on this device. Values written before this existed are plain text and
+ * carry no `enc1:` prefix; client-core encrypts them on first read.
  */
 internal object SecretBox {
     private const val KEYSTORE = "AndroidKeyStore"

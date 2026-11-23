@@ -1,112 +1,43 @@
-//! The JNI link to the Kotlin host (BoxActivity), the UI's
-//! `fkbox_client_core::Host` on Android. Rust calls
-//! `BoxActivity.slintCall(id, method, argsJson)`; Kotlin answers through the
-//! `SlintHost.nativeReply` / `SlintHost.nativeEvent` natives below.
-//!
-//! Uses the same `jni` version (0.22) as the Slint Android backend, so the
-//! process has one JavaVM singleton and one copy of the crate.
+//! The UI's link to the platform host ([`fkbox_mobile_ffi::NativeHost`]). The
+//! platform shell registers its host before the event loop starts
+//! (apps/android/native: the JNI link to BoxActivity); every call the pages
+//! make goes through [invoke].
 
-use std::sync::Mutex;
+use std::sync::OnceLock;
 
-use jni::errors::LogErrorAndDefault;
-use jni::objects::{JClass, JObject, JString, JValue};
-use jni::refs::Global;
-use jni::sys::{jboolean, jlong, jobject};
-use jni::{jni_sig, jni_str, EnvUnowned, JavaVM};
+use fkbox_mobile_ffi::NativeHost as Host;
 
-use fkbox_client_core::Host as UiHost;
-use fkbox_client_ui::platform as ui;
+static HOST: OnceLock<Box<dyn Host>> = OnceLock::new();
 
-struct Host {
-    vm: JavaVM,
-    activity: Global<JObject<'static>>,
-}
-
-static HOST: Mutex<Option<Host>> = Mutex::new(None);
-
-pub fn init(vm_ptr: *mut std::ffi::c_void, activity_ptr: *mut std::ffi::c_void) -> Result<(), String> {
-    if vm_ptr.is_null() || activity_ptr.is_null() {
-        return Err("no Java VM or activity".into());
-    }
-    // The JavaVM singleton the Slint backend initializes too.
-    let vm = unsafe { JavaVM::from_raw(vm_ptr.cast()) };
-    let activity = vm
-        .attach_current_thread(|env| -> jni::errors::Result<_> {
-            let object = unsafe { JObject::from_raw(env, activity_ptr as jobject) };
-            env.new_global_ref(object)
-        })
-        .map_err(|e| e.to_string())?;
-    *HOST.lock().unwrap_or_else(|e| e.into_inner()) = Some(Host { vm, activity });
-    Ok(())
-}
-
-/// Drops the activity reference when the activity's native main returns
-/// (the activity finished or was destroyed), so the finished Activity is
-/// not kept alive by a JNI global reference. A later `init` (a new
-/// activity in the same process) installs the new one.
-pub fn release() {
-    let host = HOST.lock().unwrap_or_else(|e| e.into_inner()).take();
-    drop(host);
-}
-
-/// The Kotlin host as the UI's [UiHost]: every call goes to the activity
-/// installed by [init].
-pub struct AndroidHost;
-
-impl UiHost for AndroidHost {
-    fn invoke(&self, id: i64, method: &str, args: &str) -> Result<(), String> {
-        invoke(id, method, args)
-    }
+/// Installs the platform host. The first one stays for the process: on
+/// Android it reaches whichever activity is attached at the time of the call.
+pub fn set_host(host: Box<dyn Host>) {
+    let _ = HOST.set(host);
 }
 
 pub fn invoke(id: i64, method: &str, args: &str) -> Result<(), String> {
-    let guard = HOST.lock().unwrap_or_else(|e| e.into_inner());
-    let host = guard.as_ref().ok_or_else(|| ui::tr("The interface is not connected to the app"))?;
-    // attach_current_thread keeps the thread attached and runs the call in
-    // its own local frame, so the two JStrings made per call are freed when
-    // it returns (without a frame they filled the local reference table and
-    // aborted the process). A Java exception is caught, cleared and
-    // returned as an error.
-    let result = host.vm.attach_current_thread(|env| -> jni::errors::Result<()> {
-        let method = env.new_string(method)?;
-        let args = env.new_string(args)?;
-        env.call_method(
-            host.activity.as_obj(),
-            jni_str!("slintCall"),
-            jni_sig!("(JLjava/lang/String;Ljava/lang/String;)V"),
-            &[JValue::Long(id), JValue::Object(&method), JValue::Object(&args)],
-        )?;
-        Ok(())
-    });
-    if let Err(error) = result {
-        log::error!("slintCall {method} failed: {error}");
-        return Err(ui::tr("Calling the app failed"));
+    match HOST.get() {
+        Some(host) => host.invoke(id, method, args),
+        None => unattached(id, method, args),
     }
+}
+
+/// On Android the shell registers its host before the UI runs; without one
+/// the call fails as it does when no activity is attached.
+#[cfg(target_os = "android")]
+fn unattached(_id: i64, _method: &str, _args: &str) -> Result<(), String> {
+    Err(crate::i18n::tr("The interface is not connected to the app"))
+}
+
+/// Off Android there is no Kotlin host; calls fail and the window shows the error.
+#[cfg(all(not(target_os = "android"), not(feature = "shot")))]
+fn unattached(_id: i64, _method: &str, _args: &str) -> Result<(), String> {
+    Err("No Android host".into())
+}
+
+/// The screenshot harness answers the calls itself (src/shot.rs).
+#[cfg(all(not(target_os = "android"), feature = "shot"))]
+fn unattached(id: i64, method: &str, args: &str) -> Result<(), String> {
+    crate::shot::queue(id, method, args);
     Ok(())
-}
-
-fn read<'local>(env: &mut EnvUnowned<'local>, value: &JString<'local>) -> String {
-    env.with_env(|env| -> jni::errors::Result<String> { value.try_to_string(env) }).resolve::<LogErrorAndDefault>()
-}
-
-#[no_mangle]
-pub extern "system" fn Java_io_nekohasekai_sfa_bridge_SlintHost_nativeEvent<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    payload: JString<'local>,
-) {
-    let payload = read(&mut env, &payload);
-    let _ = slint::invoke_from_event_loop(move || ui::guarded("host event", || ui::on_event(&payload)));
-}
-
-#[no_mangle]
-pub extern "system" fn Java_io_nekohasekai_sfa_bridge_SlintHost_nativeReply<'local>(
-    mut env: EnvUnowned<'local>,
-    _class: JClass<'local>,
-    id: jlong,
-    ok: jboolean,
-    payload: JString<'local>,
-) {
-    let payload = read(&mut env, &payload);
-    let _ = slint::invoke_from_event_loop(move || ui::guarded("host reply", || ui::on_reply(id, ok, &payload)));
 }

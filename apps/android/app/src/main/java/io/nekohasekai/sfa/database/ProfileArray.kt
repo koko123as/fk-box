@@ -8,7 +8,7 @@ import kotlinx.serialization.json.put
  * A top-level JSON array of complete configs (v2rayNG's multi custom-config export, or a
  * subscription serving one): libbox splits it ([ProfileContent.splitArray]), and every
  * element becomes its own profile. Naming the profiles, and which element a subscription
- * profile keeps following, are decided in client-core (crates/client-core/src/profile_array.rs).
+ * profile keeps following, are decided in client-core (crates/client-core/src/config/profile_array.rs).
  */
 internal object ProfileArray {
     /** One element after splitting: [remarks] is "" when the element has none. */

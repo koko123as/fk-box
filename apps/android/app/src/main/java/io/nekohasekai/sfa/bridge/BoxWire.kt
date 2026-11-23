@@ -1,60 +1,52 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.sfa.backend.model.Connection
-import io.nekohasekai.sfa.backend.model.Group
-import io.nekohasekai.sfa.backend.dashboard.DashboardUiState
-import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.utils.RemoteControlManager
+import io.nekohasekai.libbox.Connection as LibboxConnection
+import io.nekohasekai.sfa.ktx.toList
+import io.nekohasekai.libbox.Libbox
+import io.nekohasekai.libbox.OutboundGroup
+import org.json.JSONArray
+import org.json.JSONObject
 
-internal fun DashboardUiState.toWire(): Map<String, Any?> = mapOf(
-    "status" to serviceStatus.name,
-    "selectedProfileId" to Settings.selectedProfile,
-    "startedAt" to (RemoteControlManager.startedAt.value ?: serviceStartTime),
-    "trafficAvailable" to trafficVisible,
-    "modes" to if (clashModeVisible) clashModes else emptyList<String>(),
-    "mode" to selectedClashMode,
-    "systemProxyAvailable" to (systemProxyVisible && RemoteControlManager.remoteServer.value == null),
-    "systemProxy" to systemProxyEnabled,
-    "remote" to RemoteControlManager.remoteServer.value?.displayName,
-    "remoteConnected" to RemoteControlManager.isConnected.value,
-    "deprecated" to deprecatedNotes.map { mapOf("message" to it.message, "url" to it.migrationLink) },
-)
-
-internal fun Group.toWire(): Map<String, Any?> = mapOf(
+/** A libbox proxy group as client-core `groups.rs` reads it. */
+internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(
     "tag" to tag,
-    "type" to displayType,
+    "type" to Libbox.proxyDisplayType(type),
     "selectable" to selectable,
     "selected" to selected,
     "expanded" to isExpand,
-    "items" to items.map { mapOf("tag" to it.tag, "type" to it.displayType, "delay" to it.urlTestDelay, "testedAt" to it.urlTestTime) },
-)
-
-internal fun Connection.toWire(): Map<String, Any?> = mapOf(
-    "id" to id, "inbound" to inbound,
-    "network" to network, "source" to source, "destination" to destination,
-    "domain" to domain, "displayDestination" to displayDestination,
-    "protocol" to protocolName, "user" to user, "createdAt" to createdAt,
-    "closedAt" to closedAt, "upload" to upload, "download" to download,
-    "uploadTotal" to uploadTotal, "downloadTotal" to downloadTotal,
-    "rule" to rule, "outbound" to outbound,
-    "chain" to chain, "process" to processInfo?.let {
-        mapOf("id" to it.processId, "path" to it.processPath, "user" to it.userName, "packages" to it.packageNames)
+    "items" to buildList {
+        val iterator = items
+        while (iterator.hasNext()) {
+            val item = iterator.next()
+            add(mapOf("tag" to item.tag, "type" to Libbox.proxyDisplayType(item.type), "delay" to item.urlTestDelay, "testedAt" to item.urlTestTime))
+        }
     },
 )
 
 /**
- * Connection rows for the "connections" event. The connection store keeps an
- * unchanged row's instance across batches, so its wire map is reused instead of
- * rebuilt, and the UI sees the same map for a row that did not change.
+ * A libbox connection as client-core `connections.rs` keeps it (the rows the
+ * connections page lists, `outboundType` included for its DNS filter).
  */
-internal class ConnectionWire {
-    private var last = java.util.IdentityHashMap<Connection, Map<String, Any?>>()
+internal fun LibboxConnection.toWire(): Map<String, Any?> = mapOf(
+    "id" to id, "inbound" to inbound,
+    "network" to network, "source" to source, "destination" to destination,
+    "domain" to domain, "displayDestination" to displayDestination(),
+    "protocol" to protocol, "user" to user, "createdAt" to createdAt,
+    "closedAt" to closedAt.takeIf { it > 0 }, "upload" to uplink, "download" to downlink,
+    "uploadTotal" to uplinkTotal, "downloadTotal" to downlinkTotal,
+    "rule" to rule, "outbound" to outbound, "outboundType" to outboundType,
+    "chain" to chain().toList(), "process" to processInfo?.let {
+        mapOf("id" to it.processID, "path" to (it.processPath ?: ""), "user" to (it.userName ?: ""),
+            "packages" to (it.packageNames()?.toList() ?: emptyList<String>()))
+    },
+)
 
-    @Synchronized
-    fun rows(connections: List<Connection>): List<Map<String, Any?>> {
-        val next = java.util.IdentityHashMap<Connection, Map<String, Any?>>(connections.size)
-        val rows = connections.map { connection -> (last[connection] ?: connection.toWire()).also { next[connection] = it } }
-        last = next
-        return rows
-    }
+/** An org.json object as the bridge carries it (maps, lists, null for JSON null). */
+internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
+
+private fun jsonValue(value: Any?): Any? = when (value) {
+    JSONObject.NULL -> null
+    is JSONObject -> jsonObject(value)
+    is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
+    else -> value
 }

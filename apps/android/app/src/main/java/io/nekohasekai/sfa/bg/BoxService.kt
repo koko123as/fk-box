@@ -29,10 +29,11 @@ import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.bridge.CoreRouting
+import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.bridge.MitmCertificate
 import io.nekohasekai.sfa.ktx.hasPermission
 import kotlinx.coroutines.DelicateCoroutinesApi
@@ -44,26 +45,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.io.File
 
 class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
     internal data class DashboardConfig(val server: CommandServer, val profileId: Long, val content: String)
-
-    /**
-     * What the routing rules did at the last start or reload (libbox
-     * CoreRoutingResult): shown on Settings › Traffic routing. [error] is
-     * why the profile runs without its rules; [fallback] is set when the
-     * core was started again without them.
-     */
-    internal data class RoutingStatus(
-        val core: String,
-        val applied: Int,
-        val active: Boolean,
-        val fallback: Boolean,
-        val error: String,
-        val warnings: List<String>,
-        val time: Long,
-    )
 
     companion object {
         @Volatile internal var dashboardServer: CommandServer? = null
@@ -79,8 +74,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         @Volatile internal var lastReloadFellBack = false
             private set
 
-        private val _routingStatus = MutableStateFlow<RoutingStatus?>(null)
+        /**
+         * What the routing rules did at the last start or reload, shown on
+         * Settings › Traffic routing: mobile-ffi service.rs `routing_status`
+         * (`core`, `applied`, `active`, `fallback`, `error`, `warnings`, `time`).
+         */
+        private val _routingStatus = MutableStateFlow<JsonElement?>(null)
         internal val routingStatus = _routingStatus.asStateFlow()
+
+        /** The UI language picks the notices' text (mobile-ffi service.rs). */
+        private fun zh() = java.util.Locale.getDefault().language == "zh"
+
 
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
@@ -105,7 +109,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private val status = MutableLiveData(Status.Stopped)
     private val binder = ServiceBinder(status)
-    private val notification = ServiceNotification(status, service)
+    private val notification = SystemNotifications(status, service)
     private lateinit var commandServer: CommandServer
     private var receiverRegistered = false
     private val receiver =
@@ -133,7 +137,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     // The configuration the core last started with, used to fall back when a
     // reload of the same profile fails (for example a remote rule set that cannot
     // be downloaded while the phone sleeps) instead of stopping the service.
-    // [routing] is the routing rule set the core was compiled with (CoreRouting.coreJson).
+    // [routing] is the routing rule set the core was compiled with (client-core routing::core_json).
     private class StartedConfig(val profileId: Long, val content: String, val core: String, val routing: String?)
     @Volatile private var lastStarted: StartedConfig? = null
     private var startupJob: Job? = null
@@ -145,27 +149,11 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     private suspend fun startService() {
         try {
-            val selectedProfileId = Settings.selectedProfile
-            if (selectedProfileId == -1L) {
-                stopAndAlert(Alert.EmptyConfiguration)
-                return
-            }
-
-            val profile = ProfileManager.get(selectedProfileId)
-            if (profile == null) {
-                stopAndAlert(Alert.EmptyConfiguration)
-                return
-            }
-
-            val content = File(profile.typed.path).readText()
-            if (content.isBlank()) {
-                stopAndAlert(Alert.EmptyConfiguration)
-                return
-            }
+            val (selectedProfileId, profile, content) = selectedProfile() ?: return
 
             lastProfileName = profile.name
             withContext(Dispatchers.Main) {
-                notification.show(lastProfileName, R.string.status_starting)
+                notification.show(lastProfileName, "starting")
             }
 
             DefaultNetworkMonitor.start()
@@ -174,33 +162,26 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 val routing = startOrReloadCore(content, profile.typed.core)
                 lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
             } catch (e: Exception) {
-                stopAndAlert(Alert.CreateService, e.message)
+                failStart("core", e)
                 return
             }
 
             dashboardServer = commandServer
             _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
-            if (commandServer.needWIFIState()) {
-                val wifiPermission =
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                        android.Manifest.permission.ACCESS_FINE_LOCATION
-                    } else {
-                        android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                    }
-                if (!service.hasPermission(wifiPermission)) {
-                    stopAndAlert(Alert.RequestLocationPermission)
-                    return
-                }
+            if (!wifiPermitted()) {
+                stopAndAlert(Alert.RequestLocationPermission)
+                return
             }
 
             withContext(Dispatchers.Main) {
                 if (stopRequested) return@withContext
-                notification.show(lastProfileName, R.string.status_started)
+                notification.show(lastProfileName, "started")
                 notification.start()
-                if (!stopRequested) status.value = Status.Started
+                val started = state("startSucceeded") { put("stopRequested", stopRequested); put("profile", lastProfileName) }
+                started.intOrNull("status")?.let { status.value = Status.entries[it] }
             }
         } catch (e: Exception) {
-            stopAndAlert(Alert.StartService, e.message)
+            failStart("service", e)
             return
         }
     }
@@ -223,23 +204,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     }
 
     suspend fun serviceReload0() {
-        val selectedProfileId = Settings.selectedProfile
-        if (selectedProfileId == -1L) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
-
-        val profile = ProfileManager.get(selectedProfileId)
-        if (profile == null) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
-
-        val content = File(profile.typed.path).readText()
-        if (content.isBlank()) {
-            stopAndAlert(Alert.EmptyConfiguration)
-            return
-        }
+        val (selectedProfileId, profile, content) = selectedProfile() ?: return
         lastProfileName = profile.name
         lastReloadFellBack = false
         try {
@@ -247,10 +212,21 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
         } catch (e: Exception) {
             val previous = lastStarted
-            // Fall back when the profile or its routing rules changed since the last good start.
-            if (previous != null && previous.profileId == selectedProfileId &&
-                (previous.content != content || previous.routing != currentRouting(previous.core, previous.content))
-            ) {
+            // mobile-ffi service_state.rs: fall back when the profile or its routing
+            // rules changed since the last good start.
+            val fallback = state("reloadFallback") {
+                put("previous", previous?.let {
+                    buildJsonObject {
+                        put("profileId", it.profileId)
+                        put("content", it.content)
+                        put("routing", it.routing)
+                    }
+                } ?: JsonNull)
+                put("selected", selectedProfileId)
+                put("content", content)
+                put("currentRouting", previous?.takeIf { it.profileId == selectedProfileId }?.let { currentRouting(it.core, it.content) })
+            }
+            if (previous != null && fallback.bool("fallback")) {
                 val fellBack = runCatching { startOrReloadCore(previous.content, previous.core, previous.routing) }
                 if (fellBack.isSuccess) {
                     Log.w(TAG, "reload failed, kept the previous configuration", e)
@@ -259,7 +235,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 }
                 fellBack.exceptionOrNull()?.let(e::addSuppressed)
             }
-            stopAndAlert(Alert.CreateService, e.message)
+            failStart("core", e)
             // Return reload failures to the command client so configuration
             // editors can restore their previous content instead of reporting success.
             throw e
@@ -267,23 +243,51 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
         dashboardServer = commandServer
         _dashboardConfig.value = DashboardConfig(commandServer, selectedProfileId, content)
-        if (commandServer.needWIFIState()) {
-            val wifiPermission =
-                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
-                    android.Manifest.permission.ACCESS_FINE_LOCATION
-                } else {
-                    android.Manifest.permission.ACCESS_BACKGROUND_LOCATION
-                }
-            if (!service.hasPermission(wifiPermission)) {
-                stopAndAlert(Alert.RequestLocationPermission)
-                return
-            }
+        if (!wifiPermitted()) {
+            stopAndAlert(Alert.RequestLocationPermission)
+            return
         }
+    }
+
+    private data class Selected(val id: Long, val profile: io.nekohasekai.sfa.database.Profile, val content: String)
+
+    /** mobile-ffi service_state.rs (`serviceState.*`): the start and stop decisions. */
+    private fun state(method: String, build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {}) =
+        CoreBridge.call("serviceState.$method", build)
+
+    /** The selected profile and its content, or null after the empty configuration alert. */
+    private suspend fun selectedProfile(): Selected? {
+        val id = Settings.selectedProfile
+        val profile = if (id == -1L) null else ProfileManager.get(id)
+        val content = profile?.let { File(it.typed.path).readText() }
+        val check = state("profileCheck") {
+            put("selected", id)
+            put("found", profile != null)
+            put("blank", content.isNullOrBlank())
+        }
+        check.intOrNull("alert")?.let {
+            stopAndAlert(Alert.entries[it])
+            return null
+        }
+        return Selected(id, profile!!, content!!)
+    }
+
+    /** False when the core reads the Wi-Fi state without the permission it needs. */
+    private fun wifiPermitted(): Boolean {
+        if (!commandServer.needWIFIState()) return true
+        val permission = state("wifiPermission") { put("sdk", Build.VERSION.SDK_INT) }.string("permission")!!
+        return service.hasPermission(permission)
+    }
+
+    /** A failed start step ([stage]: commandServer, core, service), alerted as mobile-ffi classifies it. */
+    private suspend fun failStart(stage: String, error: Exception) {
+        val failure = state("startFailure") { put("stage", stage); put("stopRequested", stopRequested) }
+        stopAndAlert(Alert.entries[failure.int("alert")], error.message)
     }
 
     /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */
     private fun currentRouting(declaredCore: String, content: String): String? = runCatching {
-        CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), Libbox.resolveProfileCore(declaredCore, content))
+        ServiceSettings.routingCoreJson(Libbox.resolveProfileCore(declaredCore, content))
     }.getOrNull()
 
     /**
@@ -295,7 +299,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         val core = Libbox.resolveProfileCore(declaredCore, content)
         Settings.requireCoreEnabled(core)
         var unreadable: String? = null
-        val rules = routing ?: runCatching { CoreRouting.coreJson(CoreRouting.decode(Settings.routingRules), core) }
+        val rules = routing ?: runCatching { ServiceSettings.routingCoreJson(core) }
             .onFailure {
                 Log.w(TAG, "routing rules unreadable, starting without them", it)
                 unreadable = it.message ?: it.javaClass.simpleName
@@ -304,12 +308,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         // (geoip.dat, ASN.mmdb) downloaded the first time the profile or its
         // routing rules need them, outside the CA lock since it may take a while.
         val geoMissing = if (core != TypedProfile.CORE_SING_BOX) GeoResources.prepareForCoreBlocking(core, content + "\n" + rules, service) else null
-        if (geoMissing != null) notifyGeoMissing(geoMissing)
+        // Geo data neither in the APK nor downloadable now: a notice, and the core may still start.
+        val geoNotice = geoMissing?.let { detail ->
+            Log.w(TAG, "geo data missing: $detail")
+            CoreStore.call("service.geoMissing") { put("detail", detail); put("zh", zh()) }.jsonObject
+        }
+        geoNotice?.string("notice")?.let(::toast)
         return try {
             startCoreLocked(core, content, rules, unreadable)
         } catch (error: Exception) {
-            if (geoMissing == null) throw error
-            throw Exception("${error.message}\n\n${geoMissingText(geoMissing)}", error)
+            if (geoNotice == null) throw error
+            throw Exception("${error.message}\n\n${geoNotice.string("text")}", error)
         }
     }
 
@@ -317,12 +326,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
-                val appList = Settings.getEffectivePerAppProxyList()
-                if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                    includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                } else {
-                    excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                }
+                // mobile-ffi service.rs: the app itself always stays proxied.
+                val packages = CoreStore.call("service.perAppPackages") {
+                    put("enabled", true)
+                    put("mode", Settings.getEffectivePerAppProxyMode())
+                    put("list", JsonArray(Settings.getEffectivePerAppProxyList().map { JsonPrimitive(it) }))
+                    put("own", Application.application.packageName)
+                }.jsonObject
+                packages["include"]?.let { includePackage = PlatformInterfaceWrapper.StringArray(it.strings().iterator()) }
+                packages["exclude"]?.let { excludePackage = PlatformInterfaceWrapper.StringArray(it.strings().iterator()) }
             }
             rewriteDirectory = File(service.noBackupFilesDir, "http-debug/captures").absolutePath
             if (core == TypedProfile.CORE_SING_BOX && Libbox.needsUIHTTPRewriteCA(content)) {
@@ -344,47 +356,41 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         rules
     }
 
-    private fun geoMissingText(detail: String): String {
-        val zh = java.util.Locale.getDefault().language == "zh"
-        val title = if (zh) {
-            "地理数据下载失败，可在 工具 › 资源 中手动下载或更换下载地址"
-        } else {
-            "Geo data could not be downloaded; download it or change its address in Tools › Resources"
-        }
-        return title + "\n" + detail
-    }
-
-    /** The profile needs geo data that is neither in the APK nor downloadable now; the core may still start. */
-    private fun notifyGeoMissing(detail: String) {
-        Log.w(TAG, "geo data missing: $detail")
-        val text = geoMissingText(detail).take(200)
+    private fun toast(text: String) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             android.widget.Toast.makeText(service, text, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
+    private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    private fun JsonElement.strings(): List<String> = jsonArray.map { it.jsonPrimitive.content }
+
+    /**
+     * Publishes what the routing rules did (mobile-ffi service.rs shapes it)
+     * and, when they newly failed, a notice even if the app is closed: the
+     * service is running, but without the rules the user set.
+     */
     private fun publishRoutingStatus(core: String, result: io.nekohasekai.libbox.CoreRoutingResult?, unreadable: String?) {
-        val error = unreadable?.let { "Routing rules unreadable: $it" } ?: result?.error.orEmpty()
-        val previous = routingStatus.value
-        val status = RoutingStatus(
-            core = core,
-            applied = result?.applied ?: 0,
-            active = result?.active == true,
-            fallback = result?.fallback == true,
-            error = error,
-            warnings = result?.warnings.orEmpty().lines().filter { it.isNotBlank() },
-            time = System.currentTimeMillis(),
-        )
-        _routingStatus.value = status
-        if (error.isNotEmpty() && error != previous?.error) {
-            // A notice even when the app is closed: the service is running,
-            // but without the rules the user set.
-            val zh = java.util.Locale.getDefault().language == "zh"
-            val title = if (zh) "分流规则未生效，已按原配置运行" else "Routing rules not applied; the profile runs without them"
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(service, title + "\n" + error.take(160), android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
+        val previousError = (routingStatus.value as? JsonObject)?.string("error").orEmpty()
+        val answer = CoreStore.call("service.routingStatus") {
+            put("core", core)
+            put("result", result?.let {
+                buildJsonObject {
+                    put("applied", it.applied)
+                    put("active", it.active)
+                    put("fallback", it.fallback)
+                    put("error", it.error.orEmpty())
+                    put("warnings", it.warnings.orEmpty())
+                }
+            } ?: JsonNull)
+            unreadable?.let { put("unreadable", it) }
+            put("previousError", previousError)
+            put("now", System.currentTimeMillis())
+            put("zh", zh())
+        }.jsonObject
+        _routingStatus.value = answer["status"]
+        answer.string("notice")?.let(::toast)
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {
@@ -402,9 +408,10 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     @OptIn(DelicateCoroutinesApi::class)
     private fun stopService() {
-        if (status.value != Status.Started && status.value != Status.Starting) return
+        val stop = state("stopRequest") { put("status", status.value!!.ordinal) }
+        if (!stop.bool("stop")) return
         stopRequested = true
-        status.value = Status.Stopping
+        status.value = Status.entries[stop.int("status")]
         if (receiverRegistered) {
             service.unregisterReceiver(receiver)
             receiverRegistered = false
@@ -428,8 +435,9 @@ class BoxService(private val service: Service, private val platformInterface: Pl
             Settings.startedByUser = false
             Settings.dataStore.flush()
             withContext(Dispatchers.Main) {
-                status.value = Status.Stopped
-                if (restartAfterStop) {
+                val finished = state("stopFinished") { put("restartAfterStop", restartAfterStop) }
+                status.value = Status.entries[finished.int("status")]
+                if (finished.bool("restart")) {
                     restartAfterStop = false
                     onStartCommand()
                 } else {
@@ -483,26 +491,24 @@ class BoxService(private val service: Service, private val platformInterface: Pl
     @OptIn(DelicateCoroutinesApi::class)
     @Suppress("SameReturnValue")
     internal fun onStartCommand(): Int {
-        when (status.value) {
-            Status.Stopped -> Unit
-            Status.Stopping -> {
-                // Started with startForegroundService while the last run is still
-                // tearing down: the system requires startForeground within seconds,
-                // so show the notification now and start again once stopped.
-                notification.show(lastProfileName, R.string.status_starting)
+        // mobile-ffi service_state.rs: a start while stopping restarts once stopped;
+        // a start while starting or started only repeats startForeground, which
+        // a start through startForegroundService needs within seconds.
+        val start = state("startCommand") {
+            put("status", status.value!!.ordinal)
+            put("profile", lastProfileName)
+        }
+        notification.show(start["notification"]!!.jsonObject)
+        when (start.string("action")) {
+            "start" -> Unit
+            "restartAfterStop" -> {
                 restartAfterStop = true
                 return Service.START_STICKY
             }
-            else -> {
-                // Starting or Started: already in the foreground; repeating the
-                // call satisfies this start's startForeground requirement too.
-                notification.show(lastProfileName, if (status.value == Status.Started) R.string.status_started else R.string.status_starting)
-                return Service.START_STICKY
-            }
+            else -> return Service.START_STICKY
         }
         stopRequested = false
-        status.value = Status.Starting
-        notification.show(lastProfileName, R.string.status_starting)
+        status.value = Status.entries[start.int("status")]
 
         if (!receiverRegistered) {
             ContextCompat.registerReceiver(
@@ -520,7 +526,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                 Application.application.setupLibbox()
                 startCommandServer()
             } catch (e: Exception) {
-                stopAndAlert(Alert.StartCommandServer, e.message)
+                failStart("commandServer", e)
                 return@launch
             }
             startService()
@@ -565,7 +571,7 @@ class BoxService(private val service: Service, private val platformInterface: Pl
                         setAction(Action.OPEN_URL).setData(Uri.parse(notification.openURL))
                         setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
                     },
-                    ServiceNotification.flags,
+                    SystemNotifications.flags,
                 ),
             )
         }

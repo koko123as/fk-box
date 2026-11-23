@@ -56,14 +56,10 @@ object Settings {
         else -> "sing-box"
     }
 
-    // Geo resources shared by Xray and mihomo (FlClash's geo-auto-update,
-    // geo-update-interval in hours and geox-url; off and 24 by default).
-    var geoAutoUpdate by dataStore.boolean(SettingsKey.GEO_AUTO_UPDATE) { false }
-    var geoUpdateInterval by dataStore.int(SettingsKey.GEO_UPDATE_INTERVAL) { 24 }
-    var geoUrls by dataStore.string(SettingsKey.GEO_URLS) { "" }
-
-    // Per-core routing rules (bridge/CoreRouting.kt); "" means none.
-    var routingRules by dataStore.string(SettingsKey.ROUTING_RULES) { "" }
+    // Geo resources (SettingsKey.GEO_*) and the per-core routing rules
+    // (SettingsKey.ROUTING_RULES) are read and written by client-core
+    // (geo.rs, routing.rs, service_settings.rs) through ServiceSettings and
+    // GeoPolicy, not through this cache.
 
     const val PER_APP_PROXY_EXCLUDE = 1
     const val PER_APP_PROXY_INCLUDE = 2

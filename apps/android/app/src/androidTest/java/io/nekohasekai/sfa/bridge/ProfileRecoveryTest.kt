@@ -1,14 +1,12 @@
 package io.nekohasekai.sfa.bridge
 
 import android.os.Build
-import androidx.lifecycle.ViewModelProvider
+import io.nekohasekai.sfa.utils.CommandSessions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.backend.log.LogLevel
-import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.compose.MainActivity
@@ -26,8 +24,15 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.long
 import kotlinx.serialization.json.put
 import org.junit.Assert.*
 import org.junit.Test
@@ -322,7 +327,8 @@ class ProfileRecoveryTest {
             // A small base must not bypass the limit on the recovered backup.
             base.writeText("{}")
             backup.writeText(" ".repeat(4 * 1024 * 1024 + 1))
-            val error = assertThrows(IllegalArgumentException::class.java) {
+            // client-core reports the limit as a store error (a RuntimeException from JNI).
+            val error = assertThrows(RuntimeException::class.java) {
                 CaptureSettings(directory, retiredKeyAlias = null).snapshot()
             }
             assertTrue(error.message.orEmpty().contains("exceed"))
@@ -423,17 +429,25 @@ class ProfileRecoveryTest {
     }
 
     @Test fun logLevelFollowsSuccessfulConfigurationReloads() = withRunningProfile { activity, profiles, id ->
-        val logs = withContext(Dispatchers.Main) { ViewModelProvider(activity)[LogViewModel::class.java] }
-        // libbox runs every core at warn when the profile omits log.level.
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
-        for ((configured, expected) in listOf("warn" to LogLevel.WARNING, "debug" to LogLevel.DEBUG, "info" to LogLevel.INFO)) {
-            val previous = profiles.read(id)
-            profiles.writeContent(id, """{"log":{"level":"$configured"}}""", BoxProfiles.revision(previous))
-            assertEquals(Status.Started, activity.serviceStatus.value)
-            withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == expected } }
+        // The level libbox last reported on the log stream (BoxStreams, libbox
+        // priorities: 3 warn, 4 info, 5 debug). The stream runs while the Logs
+        // page is shown.
+        val levels = BoxStreams.defaultLogLevel
+        CommandSessions.setPageVisibility(traffic = false, connections = 0, logs = true)
+        try {
+            // libbox runs every core at warn when the profile omits log.level.
+            withTimeout(15_000) { levels.first { it == 3 } }
+            for ((configured, expected) in listOf("warn" to 3, "debug" to 5, "info" to 4)) {
+                val previous = profiles.read(id)
+                profiles.writeContent(id, """{"log":{"level":"$configured"}}""", BoxProfiles.revision(previous))
+                assertEquals(Status.Started, activity.serviceStatus.value)
+                withTimeout(15_000) { levels.first { it == expected } }
+            }
+            profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
+            withTimeout(15_000) { levels.first { it == 3 } }
+        } finally {
+            CommandSessions.setPageVisibility(traffic = false, connections = 0, logs = false)
         }
-        profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
     }
 
     @Test fun lanCacheTracksEqualSizeWritesSuccessfulReloadsAndRecovery() = withRunningProfile { activity, profiles, id ->
@@ -693,15 +707,19 @@ class ProfileRecoveryTest {
                         assertEquals(Status.Started, activity.serviceStatus.value)
                         assertEquals(0, failure!!.suppressed.size)
 
-                        val backups = BoxBackups(activity, { emptyMap() }, {},
-                            { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, {}, { _, _ -> }, BoxWebDAV(activity))
-                        val backup = backups.create()
-                        @Suppress("UNCHECKED_CAST")
-                        val entries = (backup["profiles"] as List<Map<String, Any?>>).map {
-                            if ((it["id"] as Number).toLong() == id) it + mapOf("name" to "Broken restored profile", "content" to invalidAtRuntime) else it
+                        val backups = BoxBackups(activity, {},
+                            { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, {}, { _, _ -> })
+                        val backup = Json.parseToJsonElement(backups.create()).jsonObject
+                        val entries = backup.getValue("profiles").jsonArray.map { element ->
+                            val entry = element.jsonObject
+                            if (entry.getValue("id").jsonPrimitive.long == id) {
+                                JsonObject(entry + mapOf("name" to JsonPrimitive("Broken restored profile"), "content" to JsonPrimitive(invalidAtRuntime)))
+                            } else entry
                         }
+                        val changed = JsonObject(backup + mapOf("profiles" to JsonArray(entries), "preferences" to buildJsonObject { put("theme", "dark") }))
+                        val staged = backups.read(changed.toString(), "all")
                         val restoreFailure = runCatching {
-                            backups.restore(backup + mapOf("profiles" to entries, "preferences" to mapOf("theme" to "dark")), "all", "Override")
+                            backups.restore(staged["token"] as String, "all", "Override")
                         }.exceptionOrNull()
                         assertNotNull("A failed restored service must fail the restore", restoreFailure)
                         assertEquals("Recovery fixture", profiles.get(id).name)

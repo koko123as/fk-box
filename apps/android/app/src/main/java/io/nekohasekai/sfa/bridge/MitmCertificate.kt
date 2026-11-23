@@ -150,3 +150,16 @@ internal class MitmCertificate(context: Context, directory: File = File(context.
         }
     }
 }
+
+internal fun writeCaptureFile(file: AtomicFile, content: String) {
+    val parent = file.baseFile.parentFile ?: error("Missing capture directory")
+    check(parent.isDirectory || parent.mkdirs()) { "Unable to create capture directory" }
+    val stream = file.startWrite()
+    try {
+        stream.write(content.toByteArray(Charsets.UTF_8))
+        file.finishWrite(stream)
+    } catch (error: Exception) {
+        file.failWrite(stream)
+        throw error
+    }
+}
