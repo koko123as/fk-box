@@ -188,7 +188,8 @@ fn metadata_becomes_a_connection() {
     assert_eq!(c.src, Some("172.19.0.1".parse::<IpAddr>().unwrap()));
     assert_eq!((c.src_port, c.dst_port, c.uid, c.inbound), (40000, 443, Some(10123), Some(0)));
     assert_eq!((c.package, c.process), (Some("com.example.app"), Some("example")));
-    let empty = conn_of(&FkbConnMeta::new()).unwrap();
+    let blank = FkbConnMeta::new();
+    let empty = conn_of(&blank).unwrap();
     assert_eq!((empty.network, empty.domain, empty.uid, empty.inbound, empty.dst), (None, None, None, None, None));
     for broken in [
         FkbConnMeta { abi_version: 2, ..m },
