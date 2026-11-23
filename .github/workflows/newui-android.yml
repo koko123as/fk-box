@@ -28,11 +28,11 @@ jobs:
           # Write the Gradle cache from main and the ui/* branches (setup-gradle
           # only writes from the default branch otherwise); others only read.
           cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/ui/') }}
-      # apps/android/app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
+      # apps/android/app/build.gradle.kts downloads the pinned geo data into apps/android/.gradle/geo-assets/<commit>.
       - name: Cache bundled geo data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: .gradle/geo-assets
+          path: apps/android/.gradle/geo-assets
           key: geo-assets-${{ hashFiles('apps/android/app/geo-assets.properties') }}
       # The UI is Rust + Slint (crates/client-ui/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
@@ -59,6 +59,7 @@ jobs:
           echo "ANDROID_JAR=$(ls -d "$ANDROID_HOME"/platforms/android-*/android.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
           echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
       - name: Build emulator APK
+        working-directory: apps/android
         run: ./gradlew :app:testOtherDebugUnitTest :app:compilePlayDebugKotlin :app:assembleOtherDebug :app:assembleOtherDebugAndroidTest -Parm64Only=true --no-daemon --console=plain --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
@@ -104,7 +105,7 @@ jobs:
           arch: x86_64
           profile: pixel_2
           disable-animations: true
-          script: python3 tools/android_smoke.py
+          script: python3 scripts/android_smoke.py
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         if: always()
         with:

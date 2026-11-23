@@ -15,7 +15,7 @@ import org.junit.runner.RunWith
  * device or emulator image (libbox is arm64-only) with API 33+, then copy the
  * result into apps/android/app/src/main/baseline-prof.txt:
  *
- *   ./gradlew -PbaselineProfile=true -Parm64Only=true \
+ *   cd apps/android && ./gradlew -PbaselineProfile=true -Parm64Only=true \
  *     :baselineprofile:connectedOtherBenchmarkAndroidTest
  *   # apps/android/baselineprofile/build/outputs/connected_android_test_additional_output/
  *   #   …/BaselineProfileGenerator_generate-baseline-prof.txt

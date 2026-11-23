@@ -37,7 +37,7 @@ jobs:
         name: Set the release version from the date
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 tools/release_version.py
+        run: python3 scripts/release_version.py
 
       - id: core
         uses: ./.github/actions/build-libbox
@@ -56,11 +56,11 @@ jobs:
           # Write the Gradle cache from main and the ui/* branches (setup-gradle
           # only writes from the default branch otherwise); others only read.
           cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/ui/') }}
-      # apps/android/app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
+      # apps/android/app/build.gradle.kts downloads the pinned geo data into apps/android/.gradle/geo-assets/<commit>.
       - name: Cache bundled geo data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: .gradle/geo-assets
+          path: apps/android/.gradle/geo-assets
           key: geo-assets-${{ hashFiles('apps/android/app/geo-assets.properties') }}
       # The UI is Rust + Slint (crates/client-ui/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
@@ -90,6 +90,7 @@ jobs:
           echo "ANDROID_D8_JAR=$(ls -d "$ANDROID_HOME"/build-tools/*/lib/d8.jar | sort -V | tail -1)" >> "$GITHUB_ENV"
 
       - name: Run unit tests
+        working-directory: apps/android
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           ./gradlew :app:testOtherDebugUnitTest -Parm64Only=true \
@@ -117,7 +118,7 @@ jobs:
         run: |
           for name in KEYSTORE_BASE64 KEYSTORE_PASS ALIAS_NAME ALIAS_PASS; do
             if [[ -z "${!name}" ]]; then
-              echo "::error::Missing repository secret: $name (see app.md)"
+              echo "::error::Missing repository secret: $name (see docs/app.md)"
               exit 1
             fi
           done
@@ -134,6 +135,7 @@ jobs:
           KEYSTORE_PASS: ${{ secrets.KEYSTORE_PASS }}
           ALIAS_NAME: ${{ secrets.ALIAS_NAME }}
           ALIAS_PASS: ${{ secrets.ALIAS_PASS }}
+        working-directory: apps/android
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           ./gradlew :app:assembleOtherRelease -Parm64Only=true \
@@ -142,7 +144,7 @@ jobs:
             -Pkotlin.compiler.execution.strategy=in-process
 
       - name: Verify APK identity, architecture and signature
-        run: python3 tools/verify_release.py
+        run: python3 scripts/verify_release.py
 
       - name: Upload Release APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -158,7 +160,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION_NAME: ${{ steps.core.outputs.version }}
-        run: python3 tools/publish_release.py
+        run: python3 scripts/publish_release.py
 
       - name: Remove signing key
         if: always()

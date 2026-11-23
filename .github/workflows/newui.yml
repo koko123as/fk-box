@@ -25,7 +25,7 @@ jobs:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - uses: ./.github/actions/setup-core
       - name: Multi-core gRPC coverage (every StartedService method handled or reviewed)
-        run: python3 tools/verify_multicore.py
+        run: python3 scripts/verify_multicore.py
       - name: Android ingress-discard map compatibility tests
         working-directory: .core
         run: go test -ldflags=-checklinkname=0 github.com/sagernet/sing-tun -run '^TestAndroidIngressDiscard' -count=1
@@ -56,4 +56,4 @@ jobs:
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
       - name: Compose source guards
-        run: python3 tools/verify_newui.py
+        run: python3 scripts/verify_newui.py

@@ -11,7 +11,7 @@
 # Profiles, Tools/Logs). Rarely used pages and tools are left to JIT.
 #
 # Replace with a generated profile when one is collected on an ARM64 device:
-# see baselineprofile/ and app.md ("Baseline Profile").
+# see baselineprofile/ and docs/app.md ("Baseline Profile").
 
 # Process start
 HSPLio/nekohasekai/sfa/Application;->**(**)**

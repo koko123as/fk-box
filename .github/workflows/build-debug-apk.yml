@@ -42,11 +42,11 @@ jobs:
           # Write the Gradle cache from main and the ui/* branches (setup-gradle
           # only writes from the default branch otherwise); others only read.
           cache-read-only: ${{ github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/heads/ui/') }}
-      # apps/android/app/build.gradle.kts downloads the pinned geo data into .gradle/geo-assets/<commit>.
+      # apps/android/app/build.gradle.kts downloads the pinned geo data into apps/android/.gradle/geo-assets/<commit>.
       - name: Cache bundled geo data
         uses: actions/cache@caa296126883cff596d87d8935842f9db880ef25 # v5
         with:
-          path: .gradle/geo-assets
+          path: apps/android/.gradle/geo-assets
           key: geo-assets-${{ hashFiles('apps/android/app/geo-assets.properties') }}
       # The UI is Rust + Slint (crates/client-ui/), built into libfkui.so by cargo-ndk.
       - name: Set up Rust for the Slint UI
@@ -78,9 +78,10 @@ jobs:
           cargo test --workspace --lib
 
       - name: Source guards
-        run: python3 tools/verify_newui.py
+        run: python3 scripts/verify_newui.py
 
       - name: Build debug APK
+        working-directory: apps/android
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           # Slint compiles its Java IME helper at build time.
@@ -108,6 +109,7 @@ jobs:
           retention-days: 30
 
       - name: JVM unit tests
+        working-directory: apps/android
         run: |
           ./gradlew :app:testOtherDebugUnitTest -Parm64Only=true \
             --no-daemon --console=plain --max-workers=2 \

@@ -11,9 +11,10 @@ plugins {
 detekt {
     buildUponDefaultConfig = true
     allRules = false
-    config.setFrom("${projectDir}/config/detekt/detekt.yml")
-    baseline = file("${projectDir}/config/detekt/baseline.xml")
-    source.setFrom("apps/android/app/src/main/java", "apps/android/app/src/main/kotlin")
+    // Shared config lives at the repository root, two levels above this Gradle root.
+    config.setFrom("${projectDir}/../../resources/config/detekt/detekt.yml")
+    baseline = file("${projectDir}/../../resources/config/detekt/baseline.xml")
+    source.setFrom("app/src/main/java", "app/src/main/kotlin")
 }
 
 dependencies {

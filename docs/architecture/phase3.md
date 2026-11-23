@@ -28,7 +28,7 @@
 
 **Rust 直连 libbox 命令服务——暂不做。** 命令服务是 sing-box `daemon.StartedService` 的 gRPC（本地 Unix 套接字；远程控制为 TLS 加密钥），并由 `core_api.go` 的 `coreStartedService` 包装成多内核接口。Rust 直连需要在 `libfkui.so`（已约 24 MB）里加入 tonic/prost/rustls，复刻远程连接的地址、证书与密钥处理，并随每次 sing-box 升级同步 proto 与 `core_grpc_passthrough.txt`。第二阶段推迟它的原因——调度规则留在 Kotlin——已由 3b 解决：规则在 `sessions.rs`，宿主只负责按目标连/断。等 Windows 客户端立项、需要不经 gomobile 的传输时，再在 client-core 加 gRPC 客户端，`sessions.rs` 不变。
 
-**`apps/android/core` 独立 `go.mod`——不做。** 这里 50 个 Go 文件全部是 `package libbox`：构建时复制进 sing-box 的 `experimental/libbox`，由 gomobile 绑定成 Kotlin 的 `Libbox.*`，并直接使用该包未导出的类型（`CommandServer`、`StartedService` 等）；`httpdebug`、`dns`、`route`、`option` 也是打补丁进 sing-box 源码树的内部包。独立模块意味着把它们改成导出 API 并在构建时改写 sing-box 的 `go.mod`（`replace`），三个内核共用模块的版本核查（[libbox.md](../../libbox.md)）也要多一层，收益只是目录上的独立。维持现状。
+**`apps/android/core` 独立 `go.mod`——不做。** 这里 50 个 Go 文件全部是 `package libbox`：构建时复制进 sing-box 的 `experimental/libbox`，由 gomobile 绑定成 Kotlin 的 `Libbox.*`，并直接使用该包未导出的类型（`CommandServer`、`StartedService` 等）；`httpdebug`、`dns`、`route`、`option` 也是打补丁进 sing-box 源码树的内部包。独立模块意味着把它们改成导出 API 并在构建时改写 sing-box 的 `go.mod`（`replace`），三个内核共用模块的版本核查（[libbox.md](../libbox.md)）也要多一层，收益只是目录上的独立。维持现状。
 
 **清理：**
 - 宿主已不再发送的界面事件 `connections`、`connectionStats` 从 `client-ui` 删除；截图工具 `shot.rs` 改发 `connectionEvents`（与 `BoxBridge.flushConnections` 相同的批次）。

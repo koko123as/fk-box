@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Bump one core in version.properties, after checking it can build here.
 
-    python3 tools/bump_core.py sing-box 1.15.0-alpha.14
-    python3 tools/bump_core.py xray 26.8.1
-    python3 tools/bump_core.py mihomo 1.19.34
-    python3 tools/bump_core.py libxray v1.260801.0
-    python3 tools/bump_core.py ... --dry-run     # only report
+    python3 scripts/bump_core.py sing-box 1.15.0-alpha.14
+    python3 scripts/bump_core.py xray 26.8.1
+    python3 scripts/bump_core.py mihomo 1.19.34
+    python3 scripts/bump_core.py libxray v1.260801.0
+    python3 scripts/bump_core.py ... --dry-run     # only report
 
 Checks before writing: the tag exists, the module resolves on the Go proxy
 (Xray tags are not valid module versions, so the tag's commit is turned into
 the pseudo-version Go uses), and the go directive of the new go.mod is not
 newer than GO_VERSION (a newer one breaks setup-core). Only version.properties
-changes; build and test on a branch (see "升级内核" in libbox.md).
+changes; build and test on a branch (see "升级内核" in docs/libbox.md).
 """
 import json
 import re
@@ -109,7 +109,7 @@ def main(argv):
         return 1
     if core == "xray":
         print("Also check libXray: its go.mod must accept this xray-core "
-              "(python3 tools/bump_core.py libxray <version> if it needs a newer one).")
+              "(python3 scripts/bump_core.py libxray <version> if it needs a newer one).")
     if dry:
         print("dry run: nothing written")
         return 0
