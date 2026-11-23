@@ -102,6 +102,7 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "urlTest" -> urlTest(args.str("tag"))
     "setMode" -> setMode(args.getString("mode"))
     "setSystemProxy" -> setSystemProxy(args.getBoolean("enabled"))
+    "dashboardProbe" -> dashboardProbe(args.optBoolean("local"), args.optBoolean("notes"))
     "setConnectionsVisible" -> setConnectionsVisible(args.getBoolean("visible"))
     "setConnectionStatsVisible" -> setConnectionStatsVisible(args.getBoolean("visible"))
     "closeConnection" -> closeConnection(args.str("id"))

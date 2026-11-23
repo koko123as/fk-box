@@ -11,10 +11,13 @@
 //!   args, answered with JSON).
 //! - [`sessions`]: which libbox command subscriptions run, and to which
 //!   target (the host keeps the clients).
+//! - [`runtime`]: what the UI makes of the forwarded libbox command streams
+//!   (dashboard, groups, connections, logs; phase 4d).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
+pub mod runtime;
 pub mod session;
 pub mod sessions;
 

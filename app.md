@@ -85,9 +85,9 @@ Tailscale 端点/节点/出口节点/Ping、Taildrop 收发与分享、SSH/Root/
 
 原生日志保留所有收到的等级供日志页过滤，`CommandClient` 将当前会话内核的 `setDefaultLogLevel` 回调与日志记录一起传给界面。默认值来自内核实际使用的配置（配置未设级别时三个内核均按 warn 运行，见 [libbox.md](libbox.md#服务层第-2-阶段)；sing-box 高级配置的日志页在未设置时也显示 warn），不自行解析本地文件来推断远端状态；日志客户端只在日志页可见（且应用在前台）时连接（各命令订阅何时连接由 mobile-ffi `sessions.rs` 决定，见 [docs/architecture/phase3.md](docs/architecture/phase3.md)），内核在每次订阅时重放已保存的行；本地配置成功重载后，通过已启动配置快照的变化重新订阅日志，更新默认级别。界面筛选规则见 [flclash.md](flclash.md#导航与交互约定)。
 
-连接页的事件批次、重置和清空在 `ConnectionsViewModel` 的单线程通道内按到达顺序转为增量（只有 NEW 和带快照的 CLOSED 经 JNI 读取连接），暂存到桥接最多每秒发送一次 `connectionEvents`；界面用 client-core [connections.rs](crates/client-core/src/connection/connections.rs) 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射并算出列表与仪表盘计数：UPDATE 按增量更新该行，关闭 5 分钟后淘汰，DNS 连接不显示；本地服务的 DNS 计数仍取内核自己的统计，远程会话按连接列表计数。
+连接页的事件批次在 Kotlin `bridge/BoxStreams.kt` 的单线程通道内按到达顺序转为纯值（只有 NEW 和带快照的 CLOSED 经 JNI 读取连接）后原样转发（`stream` 事件），由 mobile-ffi [runtime.rs](crates/mobile-ffi/src/runtime.rs) 转为 `connectionEvents`（流断开或本地服务停止时发重置）；界面用 client-core [connections.rs](crates/client-core/src/connection/connections.rs) 按 libbox `Connections.ApplyEvents` 维护 ID → 连接映射并算出列表与仪表盘计数：UPDATE 按增量更新该行，关闭 5 分钟后淘汰，DNS 连接不显示；本地服务的 DNS 计数仍取内核自己的统计，远程会话按连接列表计数。
 
-日志记录由界面持有：`LogViewModel` 在单线程通道里把内核的日志行、清空和默认等级暂存（最多 3000 行，清空丢弃暂存并标记重置），桥接只在前台日志页可见时最多每秒发送一次 `logEvents`（`reset`、变化后的 `defaultLogLevel`、新行）；界面用 client-core [logs.rs](crates/client-core/src/connection/logs.rs) 去 ANSI、编号、按 3000 条环形保留，ID 跨清空递增。隐藏日志页不清空界面记录，也不影响当前会话的等级同步。
+日志记录由界面持有：`BoxStreams` 把内核的日志行、清空和默认等级原样转发，mobile-ffi `runtime.rs` 暂存（最多 3000 行，清空丢弃暂存并标记重置），界面最多每秒取一次 `logEvents`（`reset`、变化后的 `defaultLogLevel`、新行）；界面用 client-core [logs.rs](crates/client-core/src/connection/logs.rs) 去 ANSI、编号、按 3000 条环形保留，ID 跨清空递增。隐藏日志页不清空界面记录，也不影响当前会话的等级同步。
 
 仪表盘与代理组：Kotlin 只上报 libbox 状态原值（`DashboardUiState`、`OutboundGroup` 转换后的列表），界面用 client-core [dashboard.rs](crates/client-core/src/controller/dashboard.rs) 推导显示（模式仅在可切换时列出、系统代理仅本地服务、远程会话的启动时间），用 [groups.rs](crates/client-core/src/controller/groups.rs) 在选择节点、测速和切换模式前检查分组、节点与模式；宿主不再重复检查，已失效的选择由内核拒绝。
 
@@ -228,7 +228,7 @@ JVM 回归覆盖服务启动确认/失败/超时、设置、日志等级/边界�
 
 [AppListCacheTest.kt](apps/android/app/src/test/java/io/nekohasekai/sfa/bridge/AppListCacheTest.kt) 通过查询/名称读取计数覆盖隐藏应用不读取名称、筛选切换复用、刷新及查询策略/语言失效、失败/取消重试和并发查询合并，由 Android smoke 和 Release 的 JVM 测试运行。它不衡量设备上的实际加载耗时。
 
-[LogEventBufferTest.kt](apps/android/app/src/test/java/io/nekohasekai/sfa/backend/log/LogEventBufferTest.kt) 覆盖日志暂存的增量发送、清空重置、等级只发一次与 3000 行上限；记录本身（去 ANSI、环形保留、ID 跨清空递增）由 client-core `logs.rs` 的 Rust 测试覆盖。[VisiblePollingTest.kt](apps/android/app/src/test/java/io/nekohasekai/sfa/bridge/VisiblePollingTest.kt) 用虚拟时间检查不可见/后台/熄屏时零采样、恢复立即采样及取消在途任务；这些 JVM 测试由 Android smoke 和 Release 的 JVM 测试运行，删除前 Flutter 版的通知与订阅测试记录见 [flclash.md](flclash.md#验证与升级参考版本)。这些调用计数不代表实测内存或帧率收益。
+mobile-ffi `runtime.rs` 的 Rust 测试覆盖日志暂存的增量发送、清空重置、等级只发一次与 3000 行上限，以及仪表盘、代理组与连接的流规则；记录本身（去 ANSI、环形保留、ID 跨清空递增）由 client-core `logs.rs` 的 Rust 测试覆盖。[VisiblePollingTest.kt](apps/android/app/src/test/java/io/nekohasekai/sfa/bridge/VisiblePollingTest.kt) 用虚拟时间检查不可见/后台/熄屏时零采样、恢复立即采样及取消在途任务；这些 JVM 测试由 Android smoke 和 Release 的 JVM 测试运行，删除前 Flutter 版的通知与订阅测试记录见 [flclash.md](flclash.md#验证与升级参考版本)。这些调用计数不代表实测内存或帧率收益。
 
 上述为已配置的检查，不是当前提交的通过声明。记录实际结果时附源码 SHA、Actions 链接和未验证范围，不能沿用旧裁剪 APK 或旧界面验证记录。
 

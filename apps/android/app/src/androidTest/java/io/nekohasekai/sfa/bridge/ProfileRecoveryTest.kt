@@ -1,14 +1,12 @@
 package io.nekohasekai.sfa.bridge
 
 import android.os.Build
-import androidx.lifecycle.ViewModelProvider
+import io.nekohasekai.sfa.utils.CommandSessions
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
-import io.nekohasekai.sfa.backend.log.LogLevel
-import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.bg.BoxService
 import io.nekohasekai.sfa.compose.MainActivity
@@ -431,17 +429,25 @@ class ProfileRecoveryTest {
     }
 
     @Test fun logLevelFollowsSuccessfulConfigurationReloads() = withRunningProfile { activity, profiles, id ->
-        val logs = withContext(Dispatchers.Main) { ViewModelProvider(activity)[LogViewModel::class.java] }
-        // libbox runs every core at warn when the profile omits log.level.
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
-        for ((configured, expected) in listOf("warn" to LogLevel.WARNING, "debug" to LogLevel.DEBUG, "info" to LogLevel.INFO)) {
-            val previous = profiles.read(id)
-            profiles.writeContent(id, """{"log":{"level":"$configured"}}""", BoxProfiles.revision(previous))
-            assertEquals(Status.Started, activity.serviceStatus.value)
-            withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == expected } }
+        // The level libbox last reported on the log stream (BoxStreams, libbox
+        // priorities: 3 warn, 4 info, 5 debug). The stream runs while the Logs
+        // page is shown.
+        val levels = BoxStreams.defaultLogLevel
+        CommandSessions.setLogsVisible(true)
+        try {
+            // libbox runs every core at warn when the profile omits log.level.
+            withTimeout(15_000) { levels.first { it == 3 } }
+            for ((configured, expected) in listOf("warn" to 3, "debug" to 5, "info" to 4)) {
+                val previous = profiles.read(id)
+                profiles.writeContent(id, """{"log":{"level":"$configured"}}""", BoxProfiles.revision(previous))
+                assertEquals(Status.Started, activity.serviceStatus.value)
+                withTimeout(15_000) { levels.first { it == expected } }
+            }
+            profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
+            withTimeout(15_000) { levels.first { it == 3 } }
+        } finally {
+            CommandSessions.setLogsVisible(false)
         }
-        profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
-        withTimeout(15_000) { logs.uiState.first { it.defaultLogLevel == LogLevel.WARNING } }
     }
 
     @Test fun lanCacheTracksEqualSizeWritesSuccessfulReloadsAndRecovery() = withRunningProfile { activity, profiles, id ->

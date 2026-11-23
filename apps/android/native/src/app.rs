@@ -3,7 +3,7 @@
 //! [Data] and project it onto their Slint globals (src/pages/*.rs). Everything
 //! here runs on the Slint event-loop thread.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, VecDeque};
 use std::rc::Rc;
 
@@ -258,6 +258,40 @@ pub fn act(method: &str, args: Value) {
     call(method, args, |result| {
         if let Err(error) = result {
             report(&error);
+        }
+    });
+}
+
+/// Switches the system HTTP proxy of the local service (the dashboard's
+/// switch): ignored while unavailable or already switching.
+pub fn set_system_proxy(enabled: bool) {
+    if !with_runtime(|rt| rt.system_proxy_switchable()) {
+        return;
+    }
+    with_runtime(|rt| rt.system_proxy_switching());
+    call("setSystemProxy", json!({ "enabled": enabled }), move |result| {
+        let out = with_runtime(|rt| rt.system_proxy_switched(result.as_ref().ok().map(|_| enabled)));
+        if let Err(error) = result {
+            report(&error);
+        }
+        run_outputs(out);
+    });
+}
+
+/// Clears the logs: through the core when it runs (its broadcast clears the
+/// stream), otherwise the waiting lines here. `then` gets whether it worked.
+pub fn clear_logs(then: impl FnOnce(bool) + 'static) {
+    call("clearLogs", json!({}), move |result| match result {
+        Ok(sent) => {
+            if sent.as_bool() == Some(false) {
+                with_runtime(|rt| rt.clear_logs());
+                schedule_logs();
+            }
+            then(true)
+        }
+        Err(error) => {
+            report(&error);
+            then(false)
         }
     });
 }
@@ -639,7 +673,81 @@ pub fn on_event(payload: &str) {
     let mut event = root.get_mut("v").map(Value::take).unwrap_or(Value::Null);
     let kind = text(&event["type"]);
     let value = event.get_mut("value").map(Value::take).unwrap_or(Value::Null);
-    let mark = data_mut(|d| match kind.as_str() {
+    match kind.as_str() {
+        // The host's raw libbox command stream callbacks and its service
+        // state go through the stream runtime (mobile-ffi runtime.rs), which
+        // answers with the events below.
+        "stream" => {
+            let out = with_runtime(|rt| rt.stream(&value));
+            run_outputs(out);
+        }
+        "hostState" => {
+            let out = with_runtime(|rt| rt.host_state(&value));
+            run_outputs(out);
+        }
+        "foreground" => {
+            with_runtime(|rt| rt.set_foreground(value.as_bool().unwrap_or(true)));
+            apply(&kind, value);
+        }
+        _ => apply(&kind, value),
+    }
+}
+
+thread_local! {
+    static RUNTIME: RefCell<fkbox_mobile_ffi::runtime::Runtime> = RefCell::new(fkbox_mobile_ffi::runtime::Runtime::new());
+    static LOGS_FLUSH: Cell<(bool, i64)> = const { Cell::new((false, 0)) };
+}
+
+pub fn with_runtime<R>(f: impl FnOnce(&mut fkbox_mobile_ffi::runtime::Runtime) -> R) -> R {
+    RUNTIME.with(|rt| f(&mut rt.borrow_mut()))
+}
+
+fn now_millis() -> i64 {
+    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0)
+}
+
+/// Applies what the stream runtime answered: its events, the dashboard probes
+/// it asks the host for, and log lines at most about once a second
+/// (`UI_UPDATE_INTERVAL_MILLIS` on the host before).
+pub fn run_outputs(out: Vec<fkbox_mobile_ffi::runtime::Output>) {
+    use fkbox_mobile_ffi::runtime::Output;
+    for output in out {
+        match output {
+            Output::Event(name, value) => apply(name, value),
+            Output::Probe(probe) => {
+                call("dashboardProbe", json!({ "local": probe.local, "notes": probe.notes }), |result| {
+                    if let Ok(result) = result {
+                        let out = with_runtime(|rt| rt.probe(&result));
+                        run_outputs(out);
+                    }
+                });
+            }
+            Output::LogsPending => schedule_logs(),
+        }
+    }
+}
+
+const LOGS_INTERVAL_MILLIS: i64 = 1000;
+
+fn schedule_logs() {
+    let (pending, last) = LOGS_FLUSH.with(Cell::get);
+    if pending {
+        return;
+    }
+    let wait = (last + LOGS_INTERVAL_MILLIS - now_millis()).clamp(0, LOGS_INTERVAL_MILLIS);
+    LOGS_FLUSH.with(|f| f.set((true, last)));
+    slint::Timer::single_shot(std::time::Duration::from_millis(wait as u64), || {
+        crate::guarded("logs", || {
+            LOGS_FLUSH.with(|f| f.set((false, now_millis())));
+            if let Some(batch) = with_runtime(|rt| rt.drain_logs()) {
+                apply("logEvents", batch);
+            }
+        })
+    });
+}
+
+fn apply(kind: &str, value: Value) {
+    let mark = data_mut(|d| match kind {
         "tools" => {
             d.tool_state = obj(&value);
             Mark::TOOLS
@@ -845,7 +953,18 @@ fn initialize() {
                 d.xray_version = text(&result["xrayVersion"]);
                 d.mihomo_version = text(&result["mihomoVersion"]);
                 d.system_accent = long(&result["systemAccentColor"]).map(|v| v as u32).unwrap_or(0xff007aff);
-                d.dashboard = obj(&fkbox_client_core::dashboard::view(&result["dashboard"]));
+                // The host's service state; the stream runtime composes the
+                // dashboard from it (and later from the streams).
+                let out = with_runtime(|rt| rt.host_state(&result["hostState"]));
+                for output in &out {
+                    if let fkbox_mobile_ffi::runtime::Output::Event("dashboard", value) = output {
+                        d.dashboard = obj(&fkbox_client_core::dashboard::view(value));
+                    }
+                }
+                let probes: Vec<_> = out.into_iter().filter(|o| matches!(o, fkbox_mobile_ffi::runtime::Output::Probe(_))).collect();
+                if !probes.is_empty() {
+                    crate::defer("probe", move || run_outputs(probes));
+                }
                 // The host opened the client store before answering.
                 d.profiles = stored_profiles().unwrap_or_else(|| rows(&result["profiles"]));
                 d.settings = service_settings(&d.settings, &result["settings"]);

@@ -4,18 +4,12 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
-import io.nekohasekai.sfa.backend.connections.ConnectionsViewModel
-import io.nekohasekai.sfa.backend.dashboard.DashboardViewModel
-import io.nekohasekai.sfa.backend.dashboard.groups.GroupsViewModel
-import io.nekohasekai.sfa.backend.log.LogViewModel
 import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.constant.Status
@@ -26,7 +20,6 @@ import io.nekohasekai.sfa.database.RemoteServerManager
 import io.nekohasekai.sfa.database.ServiceSettings
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
-import io.nekohasekai.sfa.utils.CommandClient
 import io.nekohasekai.sfa.utils.CommandSessions
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.RemoteControlManager
@@ -37,9 +30,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -73,10 +64,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private var sink: EventSink? = null
     private var streamJob: Job? = null
     private val queuedErrors = ArrayDeque<String>()
-    private lateinit var dashboard: DashboardViewModel
-    private lateinit var groups: GroupsViewModel
-    private lateinit var connections: ConnectionsViewModel
-    private lateinit var logs: LogViewModel
+    private lateinit var streams: BoxStreams
     internal lateinit var toolBridge: BoxTools
     private lateinit var dashboardDetails: BoxDashboard
     private var connectionsVisible = false
@@ -103,41 +91,21 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private val qrScanner = BoxQrScanner(profiles::decode)
     private val backups = BoxBackups(activity, ::patchSettings,
         { restart, recover -> withContext(Dispatchers.Main) { activity.applyProfile(restart, recover) } }, ::publishProfiles, ::emit)
-    private val rates = object : CommandClient.Handler {
-        override fun updateStatus(status: StatusMessage) {
-            if (::dashboardDetails.isInitialized) dashboardDetails.remoteMemory = status.memory
-            // Traffic totals change every second, so they ride with the rates
-            // instead of the dashboard state that most pages read.
-            emit("rates", mapOf("upload" to status.uplink, "download" to status.downlink, "memoryBytes" to status.memory,
-                "uploadTotal" to Libbox.formatBytes(status.uplinkTotal), "downloadTotal" to Libbox.formatBytes(status.downlinkTotal),
-                "connections" to status.connectionsIn))
-        }
-    }
     private val profileCallback: () -> Unit = { scope.launch { operations.withLock { publishProfiles() } } }
     private val initialize = scope.async {
         withContext(Dispatchers.IO) {
             Settings.dataStore.initialize()
             Application.application.setupLibbox()
         }
-        val provider = ViewModelProvider(activity)
-        dashboard = provider[DashboardViewModel::class.java]
-        groups = provider[GroupsViewModel::class.java]
-        connections = provider[ConnectionsViewModel::class.java]
-        logs = provider[LogViewModel::class.java]
         toolBridge = BoxTools(activity, ::emit)
         dashboardDetails = BoxDashboard(activity, ::emit)
-        dashboard.commandClient.addHandler(rates)
+        // The libbox command streams go to the UI raw (mobile-ffi runtime.rs).
+        streams = BoxStreams(scope, ::emit) { dashboardDetails.remoteMemory = it.memory }
         ProfileManager.registerCallback(profileCallback)
         PackageQueryManager.registerListeners()
         RemoteControlManager.restore()
         scope.launch {
-            activity.serviceStatus.collect {
-                dashboard.updateServiceStatus(it)
-                groups.updateServiceStatus(it)
-                connections.updateServiceStatus(it)
-                CommandSessions.setServiceStatus(it)
-                if (it == Status.Stopped) emit("rates", mapOf("upload" to 0L, "download" to 0L))
-            }
+            activity.serviceStatus.collect { CommandSessions.setServiceStatus(it) }
         }
         // The Log client follows the Logs page instead of running on every page.
         scope.launch { logsVisible.collect { CommandSessions.setLogsVisible(it) } }
@@ -164,36 +132,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             try {
                 initialize.await()
                 while (queuedErrors.isNotEmpty()) emit("error", queuedErrors.removeFirst())
-                // In the background nothing streams to the UI: the collectors
-                // stop (the UI also turns its subscriptions and timers off), and
-                // coming back re-collects, so every state is sent once, fresh.
-                // The core service and its notification do not depend on this.
-                AppLifecycleObserver.isForeground.collectLatest { foreground ->
-                    emit("foreground", foreground)
-                    if (!foreground) return@collectLatest
-                    coroutineScope {
-                        launch { dashboard.uiState.collect { emit("dashboard", it.toWire()) } }
-                        launch { groups.uiState.collect { emit("groups", it.groups) } }
-                        // The streamed lists reach the UI about once a second:
-                        // after a send the collector waits, and the StateFlow
-                        // keeps only the newest state meanwhile. Showing a
-                        // page sends its current state at once (the
-                        // set*Visible commands, and the log stream restarting).
-                        launch { connections.uiState.collect {
-                            if (flushConnections()) delay(UI_UPDATE_INTERVAL_MILLIS)
-                        } }
-                        launch {
-                            logsVisible.collectLatest { visible ->
-                                if (!visible) return@collectLatest
-                                logs.uiState.collect {
-                                    if (flushLogs()) delay(UI_UPDATE_INTERVAL_MILLIS)
-                                }
-                            }
-                        }
-                        launch { RemoteControlManager.remoteServer.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
-                        launch { RemoteControlManager.isConnected.collect { emit("dashboard", dashboard.uiState.value.toWire()) } }
-                    }
-                }
+                // The service and remote session state, in the background too:
+                // the stream runtime keeps what the dashboard, groups and
+                // connections show.
+                launch { activity.serviceStatus.collect { emit("hostState", hostState()) } }
+                launch { RemoteControlManager.remoteServer.collect { emit("hostState", hostState()) } }
+                launch { RemoteControlManager.isConnected.collect { emit("hostState", hostState()) } }
+                launch { RemoteControlManager.startedAt.collect { emit("hostState", hostState()) } }
+                // The UI turns its subscriptions and timers off in the
+                // background (mobile-ffi sessions.rs disconnects the streams).
+                AppLifecycleObserver.isForeground.collect { foreground -> emit("foreground", foreground) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -207,16 +155,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         streamJob?.cancel()
         logsVisible.value = false
-        if (::dashboard.isInitialized) CommandSessions.setTrafficVisible(false)
+        if (::streams.isInitialized) CommandSessions.setTrafficVisible(false)
         if (::dashboardDetails.isInitialized) {
             dashboardDetails.setMemoryVisible(false)
             dashboardDetails.setLanVisible(false)
         }
-        if (::connections.isInitialized && connectionsVisible) {
+        if (::streams.isInitialized && connectionsVisible) {
             connectionsVisible = false
             CommandSessions.setConnectionsVisible(false)
         }
-        if (::connections.isInitialized && connectionStatsVisible) {
+        if (::streams.isInitialized && connectionStatsVisible) {
             connectionStatsVisible = false
             CommandSessions.setConnectionsVisible(false)
         }
@@ -295,7 +243,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             "version" to BuildConfig.VERSION_NAME, "coreVersion" to Libbox.version(),
             "xrayVersion" to Libbox.xrayVersion(), "mihomoVersion" to Libbox.mihomoVersion(),
             "systemAccentColor" to systemAccentColor(),
-            "dashboard" to dashboard.uiState.value.toWire(),
+            "hostState" to hostState(),
             "settings" to settingsValue,
             "tools" to toolBridge.snapshot(), "diagnostics" to toolBridge.diagnostics(),
             "intent" to activity.takeIntent(),
@@ -447,17 +395,58 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().setClashMode(mode) }
     }
 
-    fun setSystemProxy(enabled: Boolean) {
-        require(!CommandTarget.isRemote && dashboard.uiState.value.systemProxyVisible) { "System HTTP proxy is unavailable" }
-        dashboard.toggleSystemProxy(enabled)
+    /** Switches the local service's system HTTP proxy (the UI keeps the switch state, mobile-ffi runtime.rs). */
+    suspend fun setSystemProxy(enabled: Boolean) {
+        require(!CommandTarget.isRemote) { "System HTTP proxy is unavailable" }
+        withContext(Dispatchers.IO) {
+            Settings.systemProxyEnabled = enabled
+            Libbox.newStandaloneCommandClient().setSystemProxyEnabled(enabled)
+        }
     }
+
+    /**
+     * What the dashboard reads from a started service once (mobile-ffi
+     * runtime.rs asks): its start time and system proxy status ([local]), and
+     * its deprecation notes ([notes], unless turned off). A value that cannot
+     * be read is left out.
+     */
+    suspend fun dashboardProbe(local: Boolean, notes: Boolean): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val result = HashMap<String, Any?>()
+        if (local) {
+            runCatching { result["startedAt"] = Libbox.newStandaloneCommandClient().startedAt }
+            runCatching {
+                val status = Libbox.newStandaloneCommandClient().systemProxyStatus
+                result["systemProxy"] = mapOf("available" to status.available, "enabled" to status.enabled)
+            }
+        }
+        if (notes && !Settings.disableDeprecatedWarnings) {
+            runCatching {
+                val iterator = Libbox.newStandaloneCommandClient().deprecatedNotes
+                val list = ArrayList<Map<String, Any?>>()
+                while (iterator.hasNext()) {
+                    val note = iterator.next()
+                    list.add(mapOf("message" to note.message(), "url" to note.migrationLink))
+                }
+                result["deprecated"] = list
+            }
+        }
+        result
+    }
+
+    /** The service and remote session state for the stream runtime (mobile-ffi runtime.rs). */
+    private fun hostState(): Map<String, Any?> = mapOf(
+        "status" to activity.serviceStatus.value.name,
+        "selectedProfileId" to Settings.selectedProfile,
+        "remote" to RemoteControlManager.remoteServer.value?.displayName,
+        "remoteConnected" to RemoteControlManager.isConnected.value,
+        "remoteStartedAt" to RemoteControlManager.startedAt.value,
+    )
 
     fun setConnectionsVisible(visible: Boolean) {
         if (visible != connectionsVisible) {
             connectionsVisible = visible
             CommandSessions.setConnectionsVisible(visible)
         }
-        if (visible) flushConnections(force = true)
     }
 
     /** The dashboard's connection statistics card: counts only, no rows. */
@@ -466,23 +455,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
             connectionStatsVisible = visible
             CommandSessions.setConnectionsVisible(visible)
         }
-        if (visible) flushConnections(force = true)
-    }
-
-    /**
-     * Sends the connection events that arrived since the last send
-     * ("connectionEvents"; the UI keeps the list and its counts in client-core
-     * `connections.rs`). False when nothing was sent. DNS: the queries the
-     * local core answered since it started, counted inside the core
-     * (hijack-dns never becomes a connection); a remote session only has its
-     * connection list to go by, which the UI counts.
-     */
-    private fun flushConnections(force: Boolean = false): Boolean {
-        if (!connectionsVisible && !connectionStatsVisible) return false
-        val batch = connections.drain(force) ?: return false
-        val dns = if (CommandTarget.isRemote) null else Libbox.readUIDNSQueryCount()
-        emit("connectionEvents", batch + ("dnsQueries" to dns))
-        return true
     }
 
     suspend fun closeConnection(id: String?) {
@@ -493,17 +465,13 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().closeConnections() }
     }
 
-    fun clearLogs() { logs.requestClearLogs() }
-
     /**
-     * Sends the log lines that arrived since the last send ("logEvents"; the
-     * UI keeps the records in client-core `logs.rs`). False when nothing was
-     * sent.
+     * Clears the logs through the core, whose broadcast clears the stream;
+     * false when it could not be reached (the service stopped), and the UI
+     * clears its own lines.
      */
-    private fun flushLogs(): Boolean {
-        val batch = logs.drain() ?: return false
-        emit("logEvents", batch)
-        return true
+    suspend fun clearLogs(): Boolean = withContext(Dispatchers.IO) {
+        runCatching { CommandTarget.standaloneClient().clearLogs() }.isSuccess
     }
 
     fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
@@ -756,7 +724,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private suspend fun publishProfiles() {
         withContext(Dispatchers.IO) { profiles.resolveCores() }
         emit("profiles", null)
-        if (::dashboard.isInitialized) emit("dashboard", dashboard.uiState.value.toWire())
+        emit("hostState", hostState())
     }
 
     /**
@@ -869,8 +837,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         qrScanner.close()
         streamJob?.cancel()
         sink = null
-        if (::dashboard.isInitialized) {
-            dashboard.commandClient.removeHandler(rates)
+        if (::streams.isInitialized) {
+            streams.close()
             CommandSessions.setTrafficVisible(false)
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
@@ -885,9 +853,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
 /** Store keys of the geo update schedule (client-core geo::AUTO_UPDATE_KEY, UPDATE_INTERVAL_KEY). */
 private val GEO_SCHEDULE_STORE_KEYS = setOf("geo_auto_update", "geo_update_interval")
-
-/** The streamed connection list and logs reach the UI at most this often. */
-private const val UI_UPDATE_INTERVAL_MILLIS = 1000L
 
 internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
 private fun jsonValue(value: Any?): Any? = when (value) {

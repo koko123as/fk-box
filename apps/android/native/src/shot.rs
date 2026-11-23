@@ -272,7 +272,7 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
         "ready" => json!({
             "version": "1.15.6", "coreVersion": "1.13.0", "xrayVersion": "25.10.15", "mihomoVersion": "1.19.15",
             "systemAccentColor": 0xff007aff_u32,
-            "dashboard": dashboard(now),
+            "hostState": { "status": "Started", "selectedProfileId": 1, "remote": null, "remoteConnected": false },
             "profiles": profiles(now),
             "settings": {},
             "preferences": PREFS.with(|p| Value::Object(p.borrow().clone())),
@@ -284,6 +284,7 @@ fn answer(method: &str, args: &Value) -> Result<Value, String> {
             json!({ "ip": "23.191.200.117", "country": "us", "organization": "Unredacted Inc", "asn": "AS396356", "type": "Hosting", "ipSource": "ident.me", "checkedAt": now })
         }
         "profileStats" => json!({ "groups": "6", "outbounds": "48", "rules": "1203" }),
+        "dashboardProbe" => json!({ "startedAt": now - 130_000, "systemProxy": { "available": false, "enabled": false }, "deprecated": [] }),
         // Access control: a phone's worth of installed apps, each icon a
         // 48 dp PNG at 3x like the host renders (BoxActivity appIcon).
         "listApps" => Value::Array(
@@ -382,14 +383,6 @@ fn icon_png(pkg: &str) -> String {
         }
     }
     path.to_string_lossy().into_owned()
-}
-
-fn dashboard(now: i64) -> Value {
-    json!({
-        "status": "Started", "selectedProfileId": 1, "startedAt": now - 130_000, "trafficAvailable": true,
-        "modes": ["Rule", "Global", "Direct"], "mode": "Rule", "systemProxyAvailable": false, "systemProxy": false,
-        "remote": null, "remoteConnected": false, "deprecated": [],
-    })
 }
 
 fn profiles(now: i64) -> Value {
@@ -722,6 +715,9 @@ pub fn run(args: Vec<String>) {
         nav.set_inset_bottom(24.0);
     }
     h.pump();
+    // The libbox streams as BoxStreams forwards them.
+    event("stream", json!({ "stream": "clashMode", "kind": "init", "value": { "modes": ["Rule", "Global", "Direct"], "mode": "Rule" } }));
+    event("stream", json!({ "stream": "status", "kind": "status", "value": { "trafficAvailable": true } }));
     event("groups", groups());
     h.pump();
     for _ in 0..3 {

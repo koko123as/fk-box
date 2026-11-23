@@ -2029,7 +2029,7 @@ fn logs_menu(st: &Rc<RefCell<Logs>>, paused: bool) -> Vec<MenuEntry> {
     let a = st.clone();
     items.push(MenuEntry::act("Clear", "delete", move || {
         let b = a.clone();
-        app::act_then("clearLogs", json!({}), move |ok| {
+        app::clear_logs(move |ok| {
             if ok {
                 b.borrow_mut().paused = None;
                 mark(Mark::ROWS);

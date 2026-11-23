@@ -25,8 +25,12 @@ native pages and the system capabilities.
 2. **4b** `mobile-ffi`: host contract, `api` dispatch and session orchestration.
 3. **4c** page logic out of client-ui into `apps/android/native` (shared parts
    into `mobile-ffi`); client-ui keeps Slint and models.
-4. **4d** `client-runtime`: Rust connects to the libbox command server; the
-   Kotlin `backend/` view models go.
+4. **4d** stream runtime (option B, chosen 2026-11-23): Kotlin keeps only the
+   libbox command clients and forwards each callback raw (`bridge/BoxStreams.kt`);
+   `crates/mobile-ffi/src/runtime.rs` holds the dashboard, groups, connection
+   and log rules of the deleted `DashboardViewModel`, `GroupsViewModel`,
+   `ConnectionsViewModel` and `LogViewModel`. A Rust gRPC client for the
+   command server (option A) stays possible later.
 5. **4e** host slimming: `BoxBridge`, the wire classes, the `database/`
    wrappers and `BoxService` business flow move to Rust.
 6. **4f** `apps/android/core` as its own Go module.

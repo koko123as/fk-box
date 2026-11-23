@@ -4,30 +4,6 @@ import io.nekohasekai.libbox.Connection as LibboxConnection
 import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
-import io.nekohasekai.sfa.backend.dashboard.DashboardUiState
-import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.utils.RemoteControlManager
-
-/**
- * What the dashboard knows about the service and the remote session, as
- * reported; client-core `dashboard.rs` derives what the header shows (modes
- * only while switchable, system proxy only locally, the remote start time).
- */
-internal fun DashboardUiState.toWire(): Map<String, Any?> = mapOf(
-    "status" to serviceStatus.name,
-    "selectedProfileId" to Settings.selectedProfile,
-    "startedAt" to serviceStartTime,
-    "remoteStartedAt" to RemoteControlManager.startedAt.value,
-    "trafficVisible" to trafficVisible,
-    "clashModeVisible" to clashModeVisible,
-    "modes" to clashModes,
-    "mode" to selectedClashMode,
-    "systemProxyVisible" to systemProxyVisible,
-    "systemProxy" to systemProxyEnabled,
-    "remote" to RemoteControlManager.remoteServer.value?.displayName,
-    "remoteConnected" to RemoteControlManager.isConnected.value,
-    "deprecated" to deprecatedNotes.map { mapOf("message" to it.message, "url" to it.migrationLink) },
-)
 
 /** A libbox proxy group as client-core `groups.rs` reads it. */
 internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(

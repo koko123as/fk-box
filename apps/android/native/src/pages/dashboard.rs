@@ -938,7 +938,7 @@ pub fn act(id: &str, arg: &str) -> bool {
                 }
             }
         }
-        "system-proxy" => app::act("setSystemProxy", json!({ "enabled": arg == "1" })),
+        "system-proxy" => app::set_system_proxy(arg == "1"),
         "remote-disconnect" => app::act("disconnectRemoteServer", json!({})),
         "apply-restart" => app::act_then("reloadService", json!({ "restart": true }), |ok| {
             if ok {
