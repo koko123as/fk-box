@@ -53,7 +53,19 @@ native pages and the system capabilities.
      changes or its service goes away), holds the files and checks the file
      commands. `TaildropViewModel` and `StreamSubscription` are gone; the
      outbound list follows the `toolStatus` target too.
-   - **4e3** `BoxBridge`, `database/` wrappers and the `BoxService` flow.
+   - **4e3b** `BoxBridge` checks and the `BoxService` start decisions:
+     mobile-ffi `bridge.rs` runs before a command reaches the host (required
+     arguments and their defaults, what a remote session or a starting
+     service rules out, the LAN proxy port and URL checks, whether a setting
+     or routing change restarts the running service, the geo reschedule,
+     web profile links answered without the host) and combines the pages
+     that keep the traffic, connection and log streams open into one
+     `pages.visible` host call; it also turns libbox's line lists (routing
+     targets, preview warnings) into arrays. mobile-ffi `service.rs`
+     (`service.*` in `api.rs`) shapes the routing status and decides its
+     notice, the geo data notice and the per-app package lists for
+     `bg/BoxService.kt`. Kotlin keeps the Android calls only.
+   - **4e3c** `database/` wrappers (awaiting a decision).
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

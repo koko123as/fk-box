@@ -29,6 +29,7 @@ import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.Status
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.TypedProfile
 import io.nekohasekai.sfa.database.Settings
@@ -44,26 +45,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 import java.io.File
 
 class BoxService(private val service: Service, private val platformInterface: PlatformInterface) : CommandServerHandler {
     internal data class DashboardConfig(val server: CommandServer, val profileId: Long, val content: String)
-
-    /**
-     * What the routing rules did at the last start or reload (libbox
-     * CoreRoutingResult): shown on Settings › Traffic routing. [error] is
-     * why the profile runs without its rules; [fallback] is set when the
-     * core was started again without them.
-     */
-    internal data class RoutingStatus(
-        val core: String,
-        val applied: Int,
-        val active: Boolean,
-        val fallback: Boolean,
-        val error: String,
-        val warnings: List<String>,
-        val time: Long,
-    )
 
     companion object {
         @Volatile internal var dashboardServer: CommandServer? = null
@@ -79,8 +74,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         @Volatile internal var lastReloadFellBack = false
             private set
 
-        private val _routingStatus = MutableStateFlow<RoutingStatus?>(null)
+        /**
+         * What the routing rules did at the last start or reload, shown on
+         * Settings › Traffic routing: mobile-ffi service.rs `routing_status`
+         * (`core`, `applied`, `active`, `fallback`, `error`, `warnings`, `time`).
+         */
+        private val _routingStatus = MutableStateFlow<JsonElement?>(null)
         internal val routingStatus = _routingStatus.asStateFlow()
+
+        /** The UI language picks the notices' text (mobile-ffi service.rs). */
+        private fun zh() = java.util.Locale.getDefault().language == "zh"
+
 
         @OptIn(DelicateCoroutinesApi::class)
         fun start() = GlobalScope.launch(Dispatchers.Main.immediate) {
@@ -304,12 +308,17 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         // (geoip.dat, ASN.mmdb) downloaded the first time the profile or its
         // routing rules need them, outside the CA lock since it may take a while.
         val geoMissing = if (core != TypedProfile.CORE_SING_BOX) GeoResources.prepareForCoreBlocking(core, content + "\n" + rules, service) else null
-        if (geoMissing != null) notifyGeoMissing(geoMissing)
+        // Geo data neither in the APK nor downloadable now: a notice, and the core may still start.
+        val geoNotice = geoMissing?.let { detail ->
+            Log.w(TAG, "geo data missing: $detail")
+            CoreStore.call("service.geoMissing") { put("detail", detail); put("zh", zh()) }.jsonObject
+        }
+        geoNotice?.string("notice")?.let(::toast)
         return try {
             startCoreLocked(core, content, rules, unreadable)
         } catch (error: Exception) {
-            if (geoMissing == null) throw error
-            throw Exception("${error.message}\n\n${geoMissingText(geoMissing)}", error)
+            if (geoNotice == null) throw error
+            throw Exception("${error.message}\n\n${geoNotice.string("text")}", error)
         }
     }
 
@@ -317,12 +326,15 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         val overrides = OverrideOptions().apply {
             autoRedirect = Settings.autoRedirect
             if (Settings.perAppProxyEnabled) {
-                val appList = Settings.getEffectivePerAppProxyList()
-                if (Settings.getEffectivePerAppProxyMode() == Settings.PER_APP_PROXY_INCLUDE) {
-                    includePackage = PlatformInterfaceWrapper.StringArray((appList + Application.application.packageName).iterator())
-                } else {
-                    excludePackage = PlatformInterfaceWrapper.StringArray((appList - Application.application.packageName).iterator())
-                }
+                // mobile-ffi service.rs: the app itself always stays proxied.
+                val packages = CoreStore.call("service.perAppPackages") {
+                    put("enabled", true)
+                    put("mode", Settings.getEffectivePerAppProxyMode())
+                    put("list", JsonArray(Settings.getEffectivePerAppProxyList().map { JsonPrimitive(it) }))
+                    put("own", Application.application.packageName)
+                }.jsonObject
+                packages["include"]?.let { includePackage = PlatformInterfaceWrapper.StringArray(it.strings().iterator()) }
+                packages["exclude"]?.let { excludePackage = PlatformInterfaceWrapper.StringArray(it.strings().iterator()) }
             }
             rewriteDirectory = File(service.noBackupFilesDir, "http-debug/captures").absolutePath
             if (core == TypedProfile.CORE_SING_BOX && Libbox.needsUIHTTPRewriteCA(content)) {
@@ -344,47 +356,41 @@ class BoxService(private val service: Service, private val platformInterface: Pl
         rules
     }
 
-    private fun geoMissingText(detail: String): String {
-        val zh = java.util.Locale.getDefault().language == "zh"
-        val title = if (zh) {
-            "地理数据下载失败，可在 工具 › 资源 中手动下载或更换下载地址"
-        } else {
-            "Geo data could not be downloaded; download it or change its address in Tools › Resources"
-        }
-        return title + "\n" + detail
-    }
-
-    /** The profile needs geo data that is neither in the APK nor downloadable now; the core may still start. */
-    private fun notifyGeoMissing(detail: String) {
-        Log.w(TAG, "geo data missing: $detail")
-        val text = geoMissingText(detail).take(200)
+    private fun toast(text: String) {
         android.os.Handler(android.os.Looper.getMainLooper()).post {
             android.widget.Toast.makeText(service, text, android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
+    private fun JsonObject.string(key: String): String? = (get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+
+    private fun JsonElement.strings(): List<String> = jsonArray.map { it.jsonPrimitive.content }
+
+    /**
+     * Publishes what the routing rules did (mobile-ffi service.rs shapes it)
+     * and, when they newly failed, a notice even if the app is closed: the
+     * service is running, but without the rules the user set.
+     */
     private fun publishRoutingStatus(core: String, result: io.nekohasekai.libbox.CoreRoutingResult?, unreadable: String?) {
-        val error = unreadable?.let { "Routing rules unreadable: $it" } ?: result?.error.orEmpty()
-        val previous = routingStatus.value
-        val status = RoutingStatus(
-            core = core,
-            applied = result?.applied ?: 0,
-            active = result?.active == true,
-            fallback = result?.fallback == true,
-            error = error,
-            warnings = result?.warnings.orEmpty().lines().filter { it.isNotBlank() },
-            time = System.currentTimeMillis(),
-        )
-        _routingStatus.value = status
-        if (error.isNotEmpty() && error != previous?.error) {
-            // A notice even when the app is closed: the service is running,
-            // but without the rules the user set.
-            val zh = java.util.Locale.getDefault().language == "zh"
-            val title = if (zh) "分流规则未生效，已按原配置运行" else "Routing rules not applied; the profile runs without them"
-            android.os.Handler(android.os.Looper.getMainLooper()).post {
-                android.widget.Toast.makeText(service, title + "\n" + error.take(160), android.widget.Toast.LENGTH_LONG).show()
-            }
-        }
+        val previousError = (routingStatus.value as? JsonObject)?.string("error").orEmpty()
+        val answer = CoreStore.call("service.routingStatus") {
+            put("core", core)
+            put("result", result?.let {
+                buildJsonObject {
+                    put("applied", it.applied)
+                    put("active", it.active)
+                    put("fallback", it.fallback)
+                    put("error", it.error.orEmpty())
+                    put("warnings", it.warnings.orEmpty())
+                }
+            } ?: JsonNull)
+            unreadable?.let { put("unreadable", it) }
+            put("previousError", previousError)
+            put("now", System.currentTimeMillis())
+            put("zh", zh())
+        }.jsonObject
+        _routingStatus.value = answer["status"]
+        answer.string("notice")?.let(::toast)
     }
 
     override fun getSystemProxyStatus(): SystemProxyStatus? {

@@ -224,6 +224,10 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         }
         // -- update check ----------------------------------------------------
         "updates.check" => updates::check(kernel()?, &parsed(&args, "build")?)?,
+        // -- the service's start decisions (phase 4e3b) ----------------------
+        "service.routingStatus" => crate::service::routing_status(&args),
+        "service.geoMissing" => crate::service::geo_missing(&args),
+        "service.perAppPackages" => crate::service::per_app_packages(&args),
         // -- command subscriptions (phase 3b) ------------------------------
         "sessions.plan" => {
             let inputs: sessions::Inputs = if args.is_null() {

@@ -4,6 +4,8 @@ import io.nekohasekai.libbox.Connection as LibboxConnection
 import io.nekohasekai.sfa.ktx.toList
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.OutboundGroup
+import org.json.JSONArray
+import org.json.JSONObject
 
 /** A libbox proxy group as client-core `groups.rs` reads it. */
 internal fun OutboundGroup.toWire(): Map<String, Any?> = mapOf(
@@ -38,3 +40,13 @@ internal fun LibboxConnection.toWire(): Map<String, Any?> = mapOf(
             "packages" to (it.packageNames()?.toList() ?: emptyList<String>()))
     },
 )
+
+/** An org.json object as the bridge carries it (maps, lists, null for JSON null). */
+internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
+
+private fun jsonValue(value: Any?): Any? = when (value) {
+    JSONObject.NULL -> null
+    is JSONObject -> jsonObject(value)
+    is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
+    else -> value
+}

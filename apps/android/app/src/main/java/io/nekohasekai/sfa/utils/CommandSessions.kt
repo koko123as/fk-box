@@ -14,7 +14,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -104,14 +103,16 @@ object CommandSessions {
 
     fun setServiceStatus(status: Status) { serviceStarted.value = status == Status.Started }
 
-    fun setTrafficVisible(visible: Boolean) { trafficVisible.value = visible }
-
-    /** A page showing the connection list or its counts appeared (or went). */
-    fun setConnectionsVisible(visible: Boolean) {
-        connectionsVisible.update { (it + if (visible) 1 else -1).coerceAtLeast(0) }
+    /**
+     * Which pages want the streams (mobile-ffi bridge.rs combines them): the
+     * traffic stream, how many pages show the connection list or its counts,
+     * and the Logs page.
+     */
+    fun setPageVisibility(traffic: Boolean, connections: Int, logs: Boolean) {
+        trafficVisible.value = traffic
+        connectionsVisible.value = connections.coerceAtLeast(0)
+        logsVisible.value = logs
     }
-
-    fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
 }
 
 /** Connects while [stream]'s target says so, renewing the subscription when it changes. */

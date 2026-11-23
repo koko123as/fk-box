@@ -18,12 +18,18 @@
 //! - [`tool_status`]: the Tailscale, OpenConnect, OpenVPN and USBIP status
 //!   lists, and the checks of commands that name their entries (phase 4e2).
 //! - [`taildrop`]: the Taildrop inbox (phase 4e3a).
+//! - [`bridge`]: the host command checks, argument defaults and stream page
+//!   visibility the Kotlin `BoxBridge` kept (phase 4e3b).
+//! - [`service`]: the routing status, geo notice and per-app package
+//!   decisions of the Kotlin `BoxService` start (phase 4e3b).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
+pub mod bridge;
 pub mod diagnostics;
 pub mod runtime;
+pub mod service;
 pub mod taildrop;
 pub mod tool_status;
 pub mod session;

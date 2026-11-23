@@ -28,6 +28,7 @@ use std::collections::VecDeque;
 
 use serde_json::{json, Map, Value};
 
+use crate::bridge::{Bridge, HostView, Step};
 use crate::diagnostics::Diagnostics;
 use crate::tool_status::ToolStatus;
 
@@ -92,6 +93,10 @@ pub struct Runtime {
     pub diagnostics: Diagnostics,
     /// The Tailscale, OpenConnect, OpenVPN and USBIP lists (tool_status.rs).
     pub tool_status: ToolStatus,
+    /// The host command checks and stream page visibility (bridge.rs).
+    pub bridge: Bridge,
+    /// The chosen remote server's id, as last reported.
+    remote_id: Option<i64>,
     /// Whether the service (local, or the remote session) is reachable, and
     /// the remote server's id (0 locally), as last reported.
     target: Option<(bool, i64)>,
@@ -122,6 +127,18 @@ impl Runtime {
     /// when one is chosen, otherwise the local service.
     pub fn service_available(&self) -> bool {
         if self.remote() { self.dashboard.remote_connected } else { self.started() }
+    }
+
+    /// Runs the command checks of bridge.rs against the current host state.
+    pub fn step(&mut self, method: &str, args: Value) -> Step {
+        let Runtime { bridge, dashboard, remote_id, .. } = self;
+        let view = HostView {
+            status: &dashboard.status,
+            remote: !dashboard.remote.is_null(),
+            remote_id: *remote_id,
+            selected_profile: dashboard.selected_profile.as_i64(),
+        };
+        bridge.step(&view, method, args)
     }
 
     /// A "toolStatus" event from the host (tool_status.rs, taildrop.rs).
@@ -194,6 +211,8 @@ impl Runtime {
         d.remote = state["remote"].clone();
         d.remote_connected = state["remoteConnected"].as_bool().unwrap_or(false);
         d.remote_started_at = state["remoteStartedAt"].clone();
+        self.remote_id = state["remoteId"].as_i64();
+        let d = &mut self.dashboard;
         let status = state["status"].as_str().map(str::to_string);
         let changed = match status {
             Some(status) if status != d.status => {
@@ -518,5 +537,19 @@ mod tests {
         let out = rt.system_proxy_switched(Some(true));
         assert_eq!(event(&out, "dashboard").unwrap()["systemProxy"], true);
         assert!(rt.system_proxy_switchable());
+    }
+
+    #[test]
+    fn command_checks_read_the_host_state() {
+        let mut rt = Runtime::new();
+        let mut remote = state("Stopped", json!("Server"));
+        remote["remoteId"] = json!(7);
+        rt.host_state(&remote);
+        assert_eq!(rt.step("deleteRemoteServer", json!({ "id": 7 })), Step::Reject("Disconnect from this server first".into()));
+        assert!(matches!(rt.step("startService", json!({})), Step::Reject(_)));
+        rt.host_state(&state("Started", Value::Null));
+        assert!(matches!(rt.step("deleteRemoteServer", json!({ "id": 7 })), Step::Forward(_)));
+        let Step::Forward(args) = rt.step("saveRouting", json!({ "value": {} })) else { panic!() };
+        assert_eq!(args["restartService"], true);
     }
 }

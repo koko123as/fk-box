@@ -433,7 +433,7 @@ class ProfileRecoveryTest {
         // priorities: 3 warn, 4 info, 5 debug). The stream runs while the Logs
         // page is shown.
         val levels = BoxStreams.defaultLogLevel
-        CommandSessions.setLogsVisible(true)
+        CommandSessions.setPageVisibility(traffic = false, connections = 0, logs = true)
         try {
             // libbox runs every core at warn when the profile omits log.level.
             withTimeout(15_000) { levels.first { it == 3 } }
@@ -446,7 +446,7 @@ class ProfileRecoveryTest {
             profiles.writeContent(id, "{}", BoxProfiles.revision(profiles.read(id)))
             withTimeout(15_000) { levels.first { it == 3 } }
         } finally {
-            CommandSessions.setLogsVisible(false)
+            CommandSessions.setPageVisibility(traffic = false, connections = 0, logs = false)
         }
     }
 

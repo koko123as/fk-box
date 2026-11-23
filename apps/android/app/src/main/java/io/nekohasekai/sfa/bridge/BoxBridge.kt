@@ -12,7 +12,6 @@ import io.nekohasekai.sfa.backend.base.GlobalEventBus
 import io.nekohasekai.sfa.backend.base.UiEvent
 import io.nekohasekai.sfa.bg.GeoResources
 import io.nekohasekai.sfa.bg.UpdateGeoWork
-import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
@@ -30,7 +29,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -39,8 +37,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
-import org.json.JSONArray
-import org.json.JSONObject
 import java.io.Closeable
 
 /**
@@ -67,24 +63,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     private lateinit var streams: BoxStreams
     internal lateinit var toolBridge: BoxTools
     private lateinit var dashboardDetails: BoxDashboard
-    private var connectionsVisible = false
-    private var connectionStatsVisible = false
-    private val logsVisible = MutableStateFlow(false)
     private val operations = Mutex()
-    private val apps = AppListCache {
-        val packageManager = activity.packageManager
-        PackageQueryManager.getInstalledPackages(android.content.pm.PackageManager.GET_PERMISSIONS).mapNotNull { info ->
-            if (info.packageName == activity.packageName) return@mapNotNull null
-            val application = info.applicationInfo ?: return@mapNotNull null
-            AppListCache.Entry(
-                packageName = info.packageName,
-                system = application.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM != 0,
-                internet = info.requestedPermissions?.contains(android.Manifest.permission.INTERNET) == true,
-                updatedAt = info.lastUpdateTime,
-                loadLabel = { application.loadLabel(packageManager).toString() },
-            )
-        }
-    }
+    private val apps = AppListCache.installed(activity)
     internal val reports = BoxReports(activity)
     private val profiles = BoxProfiles { recover -> withContext(Dispatchers.Main) { activity.applyProfile(recover = recover) } }
     internal val capture = BoxCapture(activity)
@@ -107,8 +87,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         scope.launch {
             activity.serviceStatus.collect { CommandSessions.setServiceStatus(it) }
         }
-        // The Log client follows the Logs page instead of running on every page.
-        scope.launch { logsVisible.collect { CommandSessions.setLogsVisible(it) } }
         scope.launch {
             GlobalEventBus.events.collect { event ->
                 when (event) {
@@ -154,29 +132,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     fun cancel() {
         sink = null
         streamJob?.cancel()
-        logsVisible.value = false
-        if (::streams.isInitialized) CommandSessions.setTrafficVisible(false)
+        if (::streams.isInitialized) CommandSessions.setPageVisibility(false, 0, false)
         if (::dashboardDetails.isInitialized) {
             dashboardDetails.setMemoryVisible(false)
             dashboardDetails.setLanVisible(false)
         }
-        if (::streams.isInitialized && connectionsVisible) {
-            connectionsVisible = false
-            CommandSessions.setConnectionsVisible(false)
-        }
-        if (::streams.isInitialized && connectionStatsVisible) {
-            connectionStatsVisible = false
-            CommandSessions.setConnectionsVisible(false)
-        }
     }
 
-    private fun required(value: String?, key: String): String = value ?: error("Missing argument: " + key)
-
-    private fun required(value: Long?, key: String = "id"): Long = value ?: error("Missing argument: " + key)
-
     // -----------------------------------------------------------------------
-    // Commands. Arguments the UI may leave out stay nullable and fail with a
-    // "Missing argument" message.
+    // Commands. mobile-ffi bridge.rs checks them first: required arguments,
+    // their defaults, and what the service or a remote session rules out.
     // -----------------------------------------------------------------------
 
     /** fk-box's own release check (client-core updates.rs; requests through libbox). */
@@ -218,9 +183,8 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun refreshLan() = dashboardDetails.refreshNetwork(force = true)
 
-    suspend fun setLanProxy(profileId: Long?, revision: String?, enabled: Boolean, port: Int?) = localProfiles {
-        require(port == null || port in 1..65535) { "Invalid proxy port" }
-        profiles.setLanProxy(required(profileId, "profileId"), required(revision, "revision"), enabled, port ?: 0)
+    suspend fun setLanProxy(profileId: Long, revision: String, enabled: Boolean, port: Int?) = localProfiles {
+        profiles.setLanProxy(profileId, revision, enabled, port ?: 0)
         publishProfiles()
         dashboardDetails.refreshNetwork()
     }
@@ -250,15 +214,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         )
     }
 
-    fun startService() {
-        require(!CommandTarget.isRemote) { "Exit remote control before starting the local service" }
-        activity.startService()
-    }
+    fun startService() = activity.startService()
 
-    fun stopService() {
-        require(!CommandTarget.isRemote) { "Exit remote control before stopping the local service" }
-        activity.stopService()
-    }
+    fun stopService() = activity.stopService()
 
     suspend fun reloadService(restart: Boolean = false) {
         operations.withLock {
@@ -267,23 +225,23 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }
     }
 
-    suspend fun readProfile(id: Long?) = withContext(Dispatchers.IO) { profiles.read(required(id)) }
+    suspend fun readProfile(id: Long) = withContext(Dispatchers.IO) { profiles.read(id) }
 
-    suspend fun profileRevision(id: Long?) = withContext(Dispatchers.IO) { profiles.revisionOf(required(id)) }
+    suspend fun profileRevision(id: Long) = withContext(Dispatchers.IO) { profiles.revisionOf(id) }
 
-    suspend fun profileConfig(id: Long?) = withContext(Dispatchers.IO) { profiles.config(required(id)) }
+    suspend fun profileConfig(id: Long) = withContext(Dispatchers.IO) { profiles.config(id) }
 
-    suspend fun profileStats(id: Long?) = withContext(Dispatchers.IO) { profiles.stats(required(id)) }
+    suspend fun profileStats(id: Long) = withContext(Dispatchers.IO) { profiles.stats(id) }
 
-    suspend fun writeProfile(id: Long?, content: String?, revision: String?) = localProfiles {
-        val saved = profiles.writeContent(required(id), required(content, "content"), required(revision, "revision"))
+    suspend fun writeProfile(id: Long, content: String, revision: String) = localProfiles {
+        val saved = profiles.writeContent(id, content, revision)
         publishProfiles()
         saved
     }
 
-    suspend fun selectProfile(id: Long?) {
+    suspend fun selectProfile(id: Long) {
         localProfiles {
-            profiles.select(required(id)) { activity.serviceStatus.value }
+            profiles.select(id) { activity.serviceStatus.value }
             publishProfiles()
         }
     }
@@ -305,16 +263,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
     suspend fun decodeProfileText(content: String, name: String = "Imported profile") =
         withContext(Dispatchers.IO) { profiles.decodeText(content, name) }
 
-    suspend fun updateProfile(id: Long?) {
+    suspend fun updateProfile(id: Long) {
         localProfiles {
-            profiles.update(required(id))
+            profiles.update(id)
             publishProfiles()
         }
     }
 
-    suspend fun deleteProfile(id: Long?) {
+    suspend fun deleteProfile(id: Long) {
         localProfiles {
-            profiles.delete(required(id))
+            profiles.delete(id)
             publishProfiles()
         }
     }
@@ -332,31 +290,26 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     fun closeProfileScan(session: String) { qrScanner.close(session) }
 
-    suspend fun decodeProfileIntent(value: String): Map<String, Any?> {
-        val uri = Uri.parse(value)
-        return if (uri.scheme == "sing-box" && uri.host == "import-remote-profile") {
+    /** A profile link or document; mobile-ffi bridge.rs answers web links itself and says which [kind] this is. */
+    suspend fun decodeProfileIntent(value: String, kind: String): Map<String, Any?> = withContext(Dispatchers.IO) {
+        if (kind == "remoteLink") {
             val info = Libbox.parseRemoteProfileImportLink(value)
             mapOf("name" to info.name, "url" to info.url)
-        } else if (uri.scheme == "http" || uri.scheme == "https") {
-            BoxProfiles.validateUrl(value)
-            mapOf("name" to (uri.host ?: "Profile"), "url" to value)
         } else {
-            withContext(Dispatchers.IO) {
-                val (name, bytes) = activity.readDocument(uri)
-                profiles.decode(bytes, name)
-            }
+            val (name, bytes) = activity.readDocument(Uri.parse(value))
+            profiles.decode(bytes, name)
         }
     }
 
     fun takeIntent() = activity.takeIntent()
 
-    suspend fun checkConfig(core: String?, content: String): Boolean = withContext(Dispatchers.IO) {
-        ProfileContent.prepare(core ?: "auto", content)
+    suspend fun checkConfig(core: String, content: String): Boolean = withContext(Dispatchers.IO) {
+        ProfileContent.prepare(core, content)
         true
     }
 
-    suspend fun formatConfig(core: String?, content: String): String = withContext(Dispatchers.IO) {
-        val resolved = Libbox.resolveProfileCore(core ?: "auto", content)
+    suspend fun formatConfig(core: String, content: String): String = withContext(Dispatchers.IO) {
+        val resolved = Libbox.resolveProfileCore(core, content)
         Libbox.formatCoreConfig(resolved, content).value
     }
 
@@ -377,18 +330,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         }, null))
     }
 
-    suspend fun selectOutbound(groupTag: String?, tag: String?) {
+    suspend fun selectOutbound(groupTag: String, tag: String) {
         operations.withLock {
             // The UI checks the group and node against its list first
             // (client-core groups.rs); the core rejects what has gone since.
-            withContext(Dispatchers.IO) { CommandTarget.standaloneClient().selectOutbound(required(groupTag, "group"), required(tag, "tag")) }
+            withContext(Dispatchers.IO) { CommandTarget.standaloneClient().selectOutbound(groupTag, tag) }
         }
     }
 
-    suspend fun urlTest(tagArgument: String?) {
-        withContext(Dispatchers.IO) {
-            CommandTarget.standaloneClient().urlTest(required(tagArgument, "tag"))
-        }
+    suspend fun urlTest(tag: String) {
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().urlTest(tag) }
     }
 
     suspend fun setMode(mode: String) {
@@ -397,7 +348,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     /** Switches the local service's system HTTP proxy (the UI keeps the switch state, mobile-ffi runtime.rs). */
     suspend fun setSystemProxy(enabled: Boolean) {
-        require(!CommandTarget.isRemote) { "System HTTP proxy is unavailable" }
         withContext(Dispatchers.IO) {
             Settings.systemProxyEnabled = enabled
             Libbox.newStandaloneCommandClient().setSystemProxyEnabled(enabled)
@@ -443,23 +393,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         "remoteStartedAt" to RemoteControlManager.startedAt.value,
     )
 
-    fun setConnectionsVisible(visible: Boolean) {
-        if (visible != connectionsVisible) {
-            connectionsVisible = visible
-            CommandSessions.setConnectionsVisible(visible)
-        }
+    /**
+     * Which pages keep the traffic, connection and log streams open
+     * (mobile-ffi bridge.rs combines the pages and sends each change).
+     */
+    fun pageVisibility(traffic: Boolean, connections: Int, logs: Boolean) {
+        CommandSessions.setPageVisibility(traffic, connections, logs)
     }
 
-    /** The dashboard's connection statistics card: counts only, no rows. */
-    fun setConnectionStatsVisible(visible: Boolean) {
-        if (visible != connectionStatsVisible) {
-            connectionStatsVisible = visible
-            CommandSessions.setConnectionsVisible(visible)
-        }
-    }
-
-    suspend fun closeConnection(id: String?) {
-        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().closeConnection(required(id, "id")) }
+    suspend fun closeConnection(id: String) {
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().closeConnection(id) }
     }
 
     suspend fun closeConnections() {
@@ -475,14 +418,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         runCatching { CommandTarget.standaloneClient().clearLogs() }.isSuccess
     }
 
-    fun setLogsVisible(visible: Boolean) { logsVisible.value = visible }
-
-    /** The core's per-second status stream ("rates") while a page shows it. */
-    fun setTrafficVisible(visible: Boolean) { CommandSessions.setTrafficVisible(visible) }
-
-    /** One setting; [restart] restarts a running local service for it (allowBypass, autoRedirect, dynamicNotification). */
-    suspend fun setSetting(key: String, value: Any?, restart: Boolean = false) = operations.withLock {
-        saveSettings(key, value, restart)
+    /** One setting; [restartService] (decided by mobile-ffi bridge.rs) restarts the running local service for it. */
+    suspend fun setSetting(key: String, value: Any?, restartService: Boolean) = operations.withLock {
+        saveRestarting(mapOf(key to value), restartService)
         platformSettings()
     }
 
@@ -492,29 +430,20 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * setup options are re-read and geo updates rescheduled when needed.
      * Returns the Android state the UI shows with them.
      */
-    suspend fun serviceSettingsWritten(written: List<Any?>) = operations.withLock {
-        val keys = ServiceSettings.adopt(ServiceSettings.element(written))
+    suspend fun serviceSettingsWritten(written: List<Any?>, rescheduleGeo: Boolean) = operations.withLock {
+        ServiceSettings.adopt(ServiceSettings.element(written))
         withContext(Dispatchers.IO) { Application.application.reloadSetupOptions() }
-        if (keys.any { it in GEO_SCHEDULE_STORE_KEYS }) UpdateGeoWork.reconfigure()
+        if (rescheduleGeo) UpdateGeoWork.reconfigure()
         platformSettings()
     }
 
     /**
-     * Saves the routing rules; a running local service reloads with them and
-     * the previous rules come back if the reload fails.
+     * Saves the routing rules; with [restartService] the running local
+     * service reloads with them and the previous rules come back if the
+     * reload fails.
      */
-    suspend fun saveRouting(value: Map<String, Any?>) = operations.withLock {
-        val values = mapOf("routingRules" to ServiceSettings.normalizeRouting(value))
-        val previous = mapOf("routingRules" to ServiceSettings.snapshot()["routingRules"])
-        if (previous != values) {
-            if (CommandTarget.isRemote || activity.serviceStatus.value != Status.Started) {
-                patchSettings(values)
-            } else {
-                ServiceSettingsChange.apply(previous, values, ::patchSettings) { recover ->
-                    withContext(Dispatchers.Main) { activity.applyProfile(recover = recover) }
-                }
-            }
-        }
+    suspend fun saveRouting(value: Map<String, Any?>, restartService: Boolean) = operations.withLock {
+        saveRestarting(mapOf("routingRules" to ServiceSettings.normalizeRouting(value)), restartService, restart = false, skipUnchanged = true)
         platformSettings()
     }
 
@@ -523,37 +452,28 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * the core that runs it, the compiled content and the warnings.
      */
     suspend fun routingPreview(draft: Map<String, Any?>): Map<String, Any?> {
-        require(!CommandTarget.isRemote) { "Routing rules apply to the local service" }
         return withContext(Dispatchers.IO) {
-            val id = Settings.selectedProfile
-            require(id != -1L) { "No profile selected" }
-            val profile = ProfileManager.get(id) ?: error("Profile no longer exists")
+            val profile = ProfileManager.get(Settings.selectedProfile) ?: error("Profile no longer exists")
             val content = java.io.File(profile.typed.path).readText()
             val core = ProfileContent.coreOf(profile, content)
             val result = Libbox.applyCoreRouting(core, content, ServiceSettings.routingCoreJson(core, draft))
             mapOf(
                 "profile" to profile.name, "core" to core, "content" to result.content,
                 "applied" to result.applied, "active" to result.active,
-                "warnings" to result.warnings.lines().filter { it.isNotBlank() },
+                "warnings" to result.warnings,
             )
         }
     }
 
     /**
      * The names a "node or group" rule of [core] can target in the selected
-     * profile (libbox CoreRoutingTargets: mihomo proxy-provider nodes are
-     * left out); empty when the selected profile runs on another core.
+     * profile, one per line (libbox CoreRoutingTargets: mihomo proxy-provider
+     * nodes are left out); empty when the selected profile runs on another core.
      */
-    suspend fun routingTargets(core: String): List<String> {
-        if (CommandTarget.isRemote) return emptyList()
-        return withContext(Dispatchers.IO) {
-            val id = Settings.selectedProfile
-            if (id == -1L) return@withContext emptyList()
-            val profile = ProfileManager.get(id) ?: return@withContext emptyList()
-            val content = java.io.File(profile.typed.path).readText()
-            if (ProfileContent.coreOf(profile, content) != core) return@withContext emptyList()
-            Libbox.coreRoutingTargets(core, content).lines().filter { it.isNotBlank() }
-        }
+    suspend fun routingTargets(core: String): String = withContext(Dispatchers.IO) {
+        val profile = ProfileManager.get(Settings.selectedProfile) ?: return@withContext ""
+        val content = java.io.File(profile.typed.path).readText()
+        if (ProfileContent.coreOf(profile, content) != core) "" else Libbox.coreRoutingTargets(core, content)
     }
 
     suspend fun updateSettings(values: Map<String, Any?>) = operations.withLock {
@@ -575,6 +495,14 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         return result
     }
 
+    /** Display names of [packages] (routing rules list their apps by name); unknown packages are left out. */
+    suspend fun appLabels(packages: List<String>): Map<String, String> = withContext(Dispatchers.IO) {
+        val packageManager = activity.packageManager
+        packages.mapNotNull { name ->
+            runCatching { name to packageManager.getApplicationInfo(name, 0).loadLabel(packageManager).toString() }.getOrNull()
+        }.toMap()
+    }
+
     /**
      * An app list closed. The package snapshot goes, then the runtime is asked
      * to collect what the list loaded: each label and icon opened the app's
@@ -584,14 +512,6 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * trim; this does the same as soon as the list closes.
      */
     @Suppress("DEPRECATION")
-    /** Display names of [packages] (routing rules list their apps by name); unknown packages are left out. */
-    suspend fun appLabels(packages: List<String>): Map<String, String> = withContext(Dispatchers.IO) {
-        val packageManager = activity.packageManager
-        packages.take(1000).mapNotNull { name ->
-            runCatching { name to packageManager.getApplicationInfo(name, 0).loadLabel(packageManager).toString() }.getOrNull()
-        }.toMap()
-    }
-
     suspend fun releaseApps() {
         apps.clear()
         withContext(Dispatchers.Default) {
@@ -615,21 +535,16 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         activity.startActivity(Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + activity.packageName)))
     }
 
-    fun openUrl(url: String?) {
-        val uri = Uri.parse(required(url, "url"))
-        require(uri.scheme in listOf("http", "https")) { "Unsupported URL" }
-        activity.startActivity(Intent(Intent.ACTION_VIEW, uri))
+    fun openUrl(url: String) {
+        activity.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
     }
 
-    suspend fun deleteRemoteServer(id: Long?) {
-        withContext(Dispatchers.IO) {
-            require(RemoteControlManager.remoteServer.value?.id != required(id)) { "Disconnect from this server first" }
-            RemoteServerManager.get(required(id))?.let { RemoteServerManager.delete(it) }
-        }
+    suspend fun deleteRemoteServer(id: Long) {
+        withContext(Dispatchers.IO) { RemoteServerManager.get(id)?.let { RemoteServerManager.delete(it) } }
     }
 
-    suspend fun connectRemoteServer(id: Long?) {
-        val server = withContext(Dispatchers.IO) { RemoteServerManager.get(required(id)) } ?: error("Server no longer exists")
+    suspend fun connectRemoteServer(id: Long) {
+        val server = withContext(Dispatchers.IO) { RemoteServerManager.get(id) } ?: error("Server no longer exists")
         RemoteControlManager.enterRemoteControl(server)
     }
 
@@ -640,9 +555,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * (up to 64 MiB) stays on this side: it never crosses JNI to the UI.
      * False when the user dismissed the file picker.
      */
-    suspend fun exportBackup(name: String?): Boolean {
+    suspend fun exportBackup(name: String): Boolean {
         val bytes = operations.withLock { withContext(Dispatchers.IO) { backups.create().toByteArray(Charsets.UTF_8) } }
-        val uri = activity.pickDocument(required(name, "name")) ?: return false
+        val uri = activity.pickDocument(name) ?: return false
         withContext(Dispatchers.IO) {
             activity.contentResolver.openOutputStream(uri, "wt")?.use { it.write(bytes) } ?: error("Unable to write document")
         }
@@ -654,15 +569,15 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
      * here and returns its summary and token for [restoreBackup]. Null when
      * the user dismissed the file picker.
      */
-    suspend fun readBackup(scope: String?): Any? {
+    suspend fun readBackup(scope: String): Any? {
         val uri = activity.pickDocument() ?: return null
         return withContext(Dispatchers.IO) {
-            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second.toString(Charsets.UTF_8), scope ?: "all")
+            backups.read(activity.readDocument(uri, BoxBackups.MAX_BYTES).second.toString(Charsets.UTF_8), scope)
         }
     }
 
-    suspend fun restoreBackup(token: String?, scope: String?, strategy: String?) = localProfiles {
-        backups.restore(required(token, "token"), scope ?: "all", strategy ?: "Compatible")
+    suspend fun restoreBackup(token: String, scope: String, strategy: String) = localProfiles {
+        backups.restore(token, scope, strategy)
     }
 
     suspend fun webdavAccount() = withContext(Dispatchers.IO) { backups.webdavAccount() }
@@ -678,7 +593,7 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         withContext(Dispatchers.IO) { backups.uploadWebdav() }
     }
 
-    suspend fun readWebdavBackup(scope: String?): Any? = withContext(Dispatchers.IO) { backups.readWebdav(scope ?: "all") }
+    suspend fun readWebdavBackup(scope: String): Any? = withContext(Dispatchers.IO) { backups.readWebdav(scope) }
 
     // Terminal settings that change files or several settings at once run
     // under the same lock as the other setting writes.
@@ -716,10 +631,9 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
 
     suspend fun stopCapture() = operations.withLock { capture.stop() }
 
-    private suspend fun <T> localProfiles(block: suspend () -> T): T {
-        require(!CommandTarget.isRemote) { "Local profiles cannot modify a remote sing-box session" }
-        return operations.withLock { withContext(Dispatchers.IO) { block() } }
-    }
+    // A remote session rules these out before they get here (bridge.rs).
+    private suspend fun <T> localProfiles(block: suspend () -> T): T =
+        operations.withLock { withContext(Dispatchers.IO) { block() } }
 
     /** The profiles changed in the client store: their cores are resolved, then the UI re-reads the list. */
     private suspend fun publishProfiles() {
@@ -743,24 +657,24 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         emit("settings", platformSettings())
     }
 
-    private suspend fun saveSettings(key: String, value: Any?, restart: Boolean) {
-        val values = mapOf(key to value)
-        if (!restart) {
-            patchSettings(values)
-            return
-        }
-        require(key in setOf("allowBypass", "autoRedirect", "dynamicNotification")) { "Invalid automatic service restart setting" }
-        require(CommandTarget.isRemote || activity.serviceStatus.value in setOf(Status.Started, Status.Stopped)) {
-            "Wait for the service to finish starting or stopping"
-        }
-        val previous = mapOf(key to withContext(Dispatchers.IO) { ServiceSettings.snapshot()[key] })
-        if (previous == values) return
-        if (CommandTarget.isRemote || activity.serviceStatus.value != Status.Started) {
-            patchSettings(values)
-            return
-        }
+    /**
+     * Saves [values]. With [restartService] a changed value is applied to the
+     * running local service (restarted, or reloaded when [restart] is false)
+     * and the previous values come back if that fails.
+     */
+    private suspend fun saveRestarting(
+        values: Map<String, Any?>,
+        restartService: Boolean,
+        restart: Boolean = true,
+        skipUnchanged: Boolean = restartService,
+    ) {
+        val previous = if (skipUnchanged) {
+            val snapshot = withContext(Dispatchers.IO) { ServiceSettings.snapshot() }
+            values.mapValues { snapshot[it.key] }.also { if (it == values) return }
+        } else emptyMap()
+        if (!restartService) return patchSettings(values)
         ServiceSettingsChange.apply(previous, values, ::patchSettings) { recover ->
-            if (!CommandTarget.isRemote) activity.applyProfile(restart = true, recover = recover)
+            withContext(Dispatchers.Main) { activity.applyProfile(restart = restart, recover = recover) }
         }
     }
 
@@ -840,25 +754,11 @@ class BoxBridge(private val activity: BoxActivity) : Closeable {
         sink = null
         if (::streams.isInitialized) {
             streams.close()
-            CommandSessions.setTrafficVisible(false)
+            CommandSessions.setPageVisibility(false, 0, false)
             ProfileManager.unregisterCallback(profileCallback)
             PackageQueryManager.unregisterListeners()
-            if (connectionsVisible) CommandSessions.setConnectionsVisible(false)
-            if (connectionStatsVisible) CommandSessions.setConnectionsVisible(false)
-            CommandSessions.setLogsVisible(false)
             toolBridge.close()
             dashboardDetails.close()
         }
     }
-}
-
-/** Store keys of the geo update schedule (client-core geo::AUTO_UPDATE_KEY, UPDATE_INTERVAL_KEY). */
-private val GEO_SCHEDULE_STORE_KEYS = setOf("geo_auto_update", "geo_update_interval")
-
-internal fun jsonObject(value: JSONObject): Map<String, Any?> = value.keys().asSequence().associateWith { jsonValue(value.get(it)) }
-private fun jsonValue(value: Any?): Any? = when (value) {
-    JSONObject.NULL -> null
-    is JSONObject -> jsonObject(value)
-    is JSONArray -> (0 until value.length()).map { jsonValue(value.get(it)) }
-    else -> value
 }

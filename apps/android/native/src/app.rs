@@ -241,6 +241,9 @@ impl Data {
 
 /// Runs one bridge command; `reply` runs on the UI thread with its result.
 pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>) + 'static) {
+    // The host's raw answers of a few commands are shaped here (bridge.rs).
+    let shaped = method.to_string();
+    let reply = move |result: Result<Value, String>| reply(result.map(|v| fkbox_mobile_ffi::bridge::finish(&shaped, v)));
     let id = CALLS.with(|c| {
         let mut c = c.borrow_mut();
         c.next += 1;
@@ -259,6 +262,21 @@ pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>)
         }
         return;
     }
+    // The checks BoxBridge ran before a command: its arguments against the
+    // service and remote session state, their defaults, the stream pages
+    // (mobile-ffi bridge.rs).
+    let args = match with_runtime(|rt| rt.step(method, args)) {
+        fkbox_mobile_ffi::bridge::Step::Forward(args) => args,
+        fkbox_mobile_ffi::bridge::Step::Answer(value, out) => {
+            on_reply(id, true, &json!({ "v": value }).to_string());
+            run_outputs(out);
+            return;
+        }
+        fkbox_mobile_ffi::bridge::Step::Reject(error) => {
+            on_reply(id, false, &json!({ "v": error }).to_string());
+            return;
+        }
+    };
     // A command naming a tool peer, exit node or USBIP server is checked
     // against the status lists, and gets the peer's details (tool_status.rs).
     let args = match with_runtime(|rt| rt.tool_status.prepare(method, args)) {
