@@ -210,10 +210,13 @@ static int run(int argc, char **argv) {
     k.release(v);
     if (report(&k, "fk_check", k.check(config, len))) return 1;
     printf("fk_check: ok\n");
-    if (report(&k, "fk_check(bad)", k.check("{not a config", 13)) == 0) {
+    if (k.check("{not a config", 13) == 0) {
         fprintf(stderr, "FAIL fk_check accepted a broken config\n");
         return 1;
     }
+    char *e = k.last_error();
+    printf("fk_check(broken config) rejected as expected: %s\n", e);
+    k.release(e);
     for (int round = 1; round <= 2; round++) {
         double t = now();
         if (report(&k, "fk_start", k.start(config, len, -1))) return 1;

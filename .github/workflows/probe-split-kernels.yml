@@ -72,7 +72,7 @@ jobs:
       - name: Run each kernel in its own harness process
         working-directory: probe/split-kernels
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           mkdir -p /tmp/fkprobe/www /tmp/fkprobe/singbox /tmp/fkprobe/mihomo /tmp/fkprobe/xray /tmp/fkprobe/two
           echo fk-probe-ok > /tmp/fkprobe/www/probe.txt
           python3 -m http.server 18080 --bind 127.0.0.1 --directory /tmp/fkprobe/www > /tmp/fkprobe/http.log 2>&1 &
@@ -90,7 +90,7 @@ jobs:
       - name: Negative test - two kernels in one process
         working-directory: probe/split-kernels
         run: |
-          set -uo pipefail
+          set +e -uo pipefail
           python3 -m http.server 18080 --bind 127.0.0.1 --directory /tmp/fkprobe/www > /dev/null 2>&1 &
           sleep 1
           { echo "### Two kernel libraries in one process"; echo "| A + B | exit | result |"; echo "|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
