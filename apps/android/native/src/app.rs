@@ -248,6 +248,17 @@ pub fn call(method: &str, args: Value, reply: impl FnOnce(Result<Value, String>)
         c.pending.insert(id, Box::new(reply));
         id
     });
+    // The Taildrop inbox's subscribe/unsubscribe stay in the runtime (taildrop.rs).
+    if let Some(result) = with_runtime(|rt| rt.tool_status.inbox.command(method, &args)) {
+        match result {
+            Ok(out) => {
+                on_reply(id, true, &json!({ "v": Value::Null }).to_string());
+                run_outputs(out);
+            }
+            Err(error) => on_reply(id, false, &json!({ "v": error }).to_string()),
+        }
+        return;
+    }
     // A command naming a tool peer, exit node or USBIP server is checked
     // against the status lists, and gets the peer's details (tool_status.rs).
     let args = match with_runtime(|rt| rt.tool_status.prepare(method, args)) {
@@ -692,7 +703,7 @@ pub fn on_event(payload: &str) {
         }
         // A tool status subscription's update (BoxToolStatus).
         "toolStatus" => {
-            let out = with_runtime(|rt| rt.tool_status.event(&value));
+            let out = with_runtime(|rt| rt.tool_status_event(&value));
             run_outputs(out);
         }
         // A libbox diagnostic's callback (BoxDiagnostics).

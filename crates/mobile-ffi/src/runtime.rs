@@ -124,6 +124,12 @@ impl Runtime {
         if self.remote() { self.dashboard.remote_connected } else { self.started() }
     }
 
+    /// A "toolStatus" event from the host (tool_status.rs, taildrop.rs).
+    pub fn tool_status_event(&mut self, event: &Value) -> Vec<Output> {
+        let available = self.service_available();
+        self.tool_status.event(event, available)
+    }
+
     /// The dashboard as the host's `DashboardUiState.toWire` sent it (the
     /// UI's `dashboard::view` reads it).
     pub fn dashboard(&self) -> Value {

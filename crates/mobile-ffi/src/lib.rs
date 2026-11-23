@@ -17,12 +17,14 @@
 //!   (phase 4e).
 //! - [`tool_status`]: the Tailscale, OpenConnect, OpenVPN and USBIP status
 //!   lists, and the checks of commands that name their entries (phase 4e2).
+//! - [`taildrop`]: the Taildrop inbox (phase 4e3a).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
 pub mod api;
 pub mod diagnostics;
 pub mod runtime;
+pub mod taildrop;
 pub mod tool_status;
 pub mod session;
 pub mod sessions;

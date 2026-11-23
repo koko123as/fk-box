@@ -6,6 +6,8 @@ import io.nekohasekai.libbox.OpenConnectStatusUpdate
 import io.nekohasekai.libbox.OpenVPNChallengeResponse
 import io.nekohasekai.libbox.OpenVPNStatusHandler
 import io.nekohasekai.libbox.OpenVPNStatusUpdate
+import io.nekohasekai.libbox.TaildropInbox
+import io.nekohasekai.libbox.TaildropInboxHandler
 import io.nekohasekai.libbox.TailscaleStatusHandler
 import io.nekohasekai.libbox.TailscaleStatusUpdate
 import io.nekohasekai.libbox.USBIPServerStatusHandler
@@ -29,6 +31,10 @@ import io.nekohasekai.sfa.backend.usbip.convertUpdate as convertUSBIPUpdate
  * event (`kind`, `event`, `value`). mobile-ffi `tool_status.rs` keeps the
  * lists and checks the commands that name their entries.
  *
+ * The Taildrop inbox subscription opens and closes with them as mobile-ffi
+ * `taildrop.rs` asks ([openInbox], [closeInbox]); its updates carry the
+ * run it gave.
+ *
  * The latest OpenConnect endpoints stay here too: the sign-in WebView
  * ([BoxBrowserFactory]) needs the typed browser request.
  */
@@ -46,7 +52,7 @@ internal class BoxToolStatus(
 
     private val follow = scope.launch {
         CommandSessions.target(CommandSessions.Stream.ToolStatus).collect { target ->
-            closeAll()
+            closeAll(target)
             if (target.connect) openAll()
         }
     }
@@ -63,14 +69,50 @@ internal class BoxToolStatus(
         if (!kept) runCatching { close() }
     }
 
-    private fun closeAll() {
+    private var inbox: (() -> Unit)? = null
+
+    /** Closes every subscription; mobile-ffi reopens the inbox for [target] when it wants it. */
+    private fun closeAll(target: CommandSessions.Target) {
         val closing = synchronized(closers) {
             generation++
-            closers.toList().also { closers.clear() }
+            closers.toList().also { closers.clear() } + listOfNotNull(inbox.also { inbox = null })
         }
         closing.forEach { runCatching { it() } }
         openConnectEndpoints = emptyList()
-        send("*", "reset")
+        emit("toolStatus", mapOf("kind" to "*", "event" to "reset",
+            "target" to mapOf("connect" to target.connect, "remoteServerId" to target.remoteServerId)))
+    }
+
+    private fun inboxEvent(run: Long, event: String, value: Any?) {
+        emit("toolStatus", mapOf("kind" to "taildrop", "event" to event, "run" to run, "value" to value))
+    }
+
+    /** Opens [endpoint]'s inbox subscription for mobile-ffi run [run], replacing any open one. */
+    fun openInbox(endpoint: String, run: Long) {
+        closeInbox()
+        val token = synchronized(closers) { generation }
+        scope.launch(Dispatchers.IO) {
+            try {
+                val session = CommandTarget.standaloneClient().subscribeTaildropInbox(endpoint, object : TaildropInboxHandler {
+                    override fun onInboxUpdate(inbox: TaildropInbox) {
+                        inboxEvent(run, "update", inboxWire(inbox))
+                    }
+
+                    override fun onError(message: String) {
+                        inboxEvent(run, "error", message)
+                    }
+                })
+                val kept = synchronized(closers) { (token == generation && inbox == null).also { if (it) inbox = { session.close() } } }
+                if (!kept) runCatching { session.close() }
+            } catch (e: Exception) {
+                inboxEvent(run, "failed", e.message ?: e.toString())
+            }
+        }
+    }
+
+    fun closeInbox() {
+        val close = synchronized(closers) { inbox.also { inbox = null } }
+        close?.let { runCatching { it() } }
     }
 
     private fun subscribe(kind: String, token: Long, minAPI: Int, open: (io.nekohasekai.libbox.CommandClient) -> (() -> Unit)) {
@@ -172,9 +214,26 @@ internal class BoxToolStatus(
         follow.cancel()
         val closing = synchronized(closers) {
             generation++
-            closers.toList().also { closers.clear() }
+            closers.toList().also { closers.clear() } + listOfNotNull(inbox.also { inbox = null })
         }
         closing.forEach { runCatching { it() } }
+    }
+
+    private fun inboxWire(inbox: TaildropInbox): Map<String, Any?> {
+        val files = ArrayList<Map<String, Any?>>()
+        val fileIterator = inbox.files()
+        while (fileIterator.hasNext()) {
+            val file = fileIterator.next()
+            files.add(mapOf("name" to file.name, "size" to file.size, "senderName" to file.senderName))
+        }
+        val receiving = ArrayList<Map<String, Any?>>()
+        val receivingIterator = inbox.receiving()
+        while (receivingIterator.hasNext()) {
+            val file = receivingIterator.next()
+            receiving.add(mapOf("name" to file.name, "size" to file.size, "receivedBytes" to file.receivedBytes,
+                "senderID" to file.senderID, "senderName" to file.senderName))
+        }
+        return mapOf("files" to files, "receiving" to receiving)
     }
 
     private companion object {

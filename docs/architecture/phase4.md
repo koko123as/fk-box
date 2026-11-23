@@ -46,7 +46,13 @@ native pages and the system capabilities.
      (`peerInfo`) for the host; `sessions.rs` plans the `toolStatus` target.
      Kotlin `bridge/BoxToolStatus.kt` opens the libbox subscriptions and
      forwards converted updates; the four status ViewModels and
-     `SessionSlot` are gone. The Taildrop inbox stays for 4e3.
+     `SessionSlot` are gone.
+   - **4e3a** the Taildrop inbox: mobile-ffi `taildrop.rs` keeps which
+     endpoint the page shows, opens and closes the host subscription with
+     the tool status target (forgetting the endpoint when the session
+     changes or its service goes away), holds the files and checks the file
+     commands. `TaildropViewModel` and `StreamSubscription` are gone; the
+     outbound list follows the `toolStatus` target too.
    - **4e3** `BoxBridge`, `database/` wrappers and the `BoxService` flow.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.

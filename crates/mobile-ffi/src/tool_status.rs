@@ -15,12 +15,15 @@
 use serde_json::{json, Map, Value};
 
 use crate::runtime::Output;
+use crate::taildrop::Inbox;
 
 pub const KINDS: [&str; 4] = ["tailscale", "openconnect", "openvpn", "usbip"];
 
 #[derive(Debug, Default)]
 pub struct ToolStatus {
     lists: Map<String, Value>,
+    /// The Taildrop inbox (taildrop.rs), opened and closed with the others.
+    pub inbox: Inbox,
 }
 
 fn s<'a>(value: &'a Value, key: &str) -> &'a str {
@@ -59,16 +62,26 @@ impl ToolStatus {
     /// One forwarded event: `update` (the kind's whole list), `error` (the
     /// subscription ended with a message: empty and report it), `failed`
     /// (it could not open: empty quietly) or `reset` (every subscription
-    /// closed: kind "*").
-    pub fn event(&mut self, event: &Value) -> Vec<Output> {
+    /// closed as the tool status `target` moved: kind "*"). Kind "taildrop"
+    /// is the inbox's. `available`: whether the session's service is up.
+    pub fn event(&mut self, event: &Value, available: bool) -> Vec<Output> {
         let kind = s(event, "kind");
+        if kind == "taildrop" {
+            return self.inbox.event(event);
+        }
         match s(event, "event") {
             "reset" => {
-                if self.lists.values().all(|l| l.as_array().is_none_or(Vec::is_empty)) {
-                    return vec![];
+                let target = &event["target"];
+                let mut out = self.inbox.target(
+                    target["connect"].as_bool().unwrap_or(false),
+                    target["remoteServerId"].as_i64(),
+                    available,
+                );
+                if !self.lists.values().all(|l| l.as_array().is_none_or(Vec::is_empty)) {
+                    self.lists.clear();
+                    out.push(self.publish());
                 }
-                self.lists.clear();
-                vec![self.publish()]
+                out
             }
             _ if !KINDS.contains(&kind) => vec![],
             "update" => {
@@ -115,6 +128,7 @@ impl ToolStatus {
     /// adds what the host needs of it (`peerInfo`). Other commands pass
     /// through unchanged.
     pub fn prepare(&self, method: &str, mut args: Value) -> Result<Value, String> {
+        self.inbox.prepare(method, &args)?;
         let peer_info = |peer: &Value| {
             json!({
                 "stableID": s(peer, "stableID"),
@@ -190,7 +204,7 @@ mod tests {
             "userGroups": [{ "id": 1, "peers": [peer("laptop", "s1"),
                 { "id": "phone", "stableID": "s2", "hostName": "phone", "dnsName": "", "tailscaleIPs": [], "sshHostKeys": [],
                   "online": false, "exitNodeOption": false, "canReceiveFiles": true }] }] });
-        t.event(&json!({ "kind": "tailscale", "event": "update", "value": [endpoint] }));
+        t.event(&json!({ "kind": "tailscale", "event": "update", "value": [endpoint] }), true);
         t
     }
 
@@ -199,13 +213,13 @@ mod tests {
         let mut t = with_tailscale();
         assert_eq!(t.snapshot()["tailscale"].as_array().unwrap().len(), 1);
         assert_eq!(t.snapshot()["usbip"], json!([]));
-        let out = t.event(&json!({ "kind": "tailscale", "event": "error", "value": "gone" }));
+        let out = t.event(&json!({ "kind": "tailscale", "event": "error", "value": "gone" }), true);
         assert!(out.contains(&Output::Error("gone".into())));
         assert_eq!(t.snapshot()["tailscale"], json!([]));
-        t.event(&json!({ "kind": "usbip", "event": "update", "value": [{ "serverTag": "u" }] }));
-        assert_eq!(t.event(&json!({ "kind": "*", "event": "reset" })).len(), 1);
-        assert!(t.event(&json!({ "kind": "*", "event": "reset" })).is_empty(), "nothing to clear");
-        assert!(t.event(&json!({ "kind": "bogus", "event": "update", "value": [] })).is_empty());
+        t.event(&json!({ "kind": "usbip", "event": "update", "value": [{ "serverTag": "u" }] }), true);
+        assert_eq!(t.event(&json!({ "kind": "*", "event": "reset" }), true).len(), 1);
+        assert!(t.event(&json!({ "kind": "*", "event": "reset" }), true).is_empty(), "nothing to clear");
+        assert!(t.event(&json!({ "kind": "bogus", "event": "update", "value": [] }), true).is_empty());
     }
 
     #[test]

@@ -4,17 +4,15 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import io.nekohasekai.sfa.backend.tools.TaildropFiles
 import io.nekohasekai.sfa.backend.tools.TaildropSendManager
-import io.nekohasekai.sfa.backend.tools.TaildropViewModel
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.usbip.USBIPManager
-import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import io.nekohasekai.sfa.utils.CommandTarget
 import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.utils.CommandSessions
+import io.nekohasekai.sfa.utils.follow
 import io.nekohasekai.sfa.utils.RemoteControlManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.Closeable
@@ -29,13 +27,10 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
     val status = BoxToolStatus(scope, emit)
     /** STUN, network quality and Tailscale ping (mobile-ffi diagnostics.rs decides when). */
     val diagnostics = BoxDiagnostics(activity, scope, emit)
-    private val inbox = provider[TaildropViewModel::class.java]
     private val jobs = mutableListOf<Job>()
     private val usbController = BoxUsb(activity)
     val ssh = BoxSSH(scope, emit)
     val terminalSettings = BoxTerminalSettings(activity)
-    private var inboxTag: String? = null
-    private var sessionKey: Long? = null
     private val outbounds = CommandClient(scope, CommandClient.ConnectionType.Outbounds, object : CommandClient.Handler {
         override fun updateOutbounds(outbounds: List<io.nekohasekai.libbox.OutboundGroupItem>) {
             emit("outbounds", outbounds.map { mapOf("tag" to it.tag, "type" to it.type) })
@@ -46,29 +41,7 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         get() = if (CommandTarget.isRemote) RemoteControlManager.isConnected.value else activity.serviceStatus.value == Status.Started
 
     init {
-        jobs += scope.launch {
-            combine(
-                activity.serviceStatus, AppLifecycleObserver.isForeground,
-                RemoteControlManager.remoteServer, RemoteControlManager.isConnected,
-            ) { status, foreground, remote, connected ->
-                val available = if (remote != null) connected else status == Status.Started
-                Triple(foreground && available, available, remote?.id ?: 0L)
-            }.distinctUntilChanged().collect { (connected, available, target) ->
-                outbounds.disconnect()
-                if (sessionKey != target || !available) {
-                    inbox.cancel()
-                    inboxTag = null
-                }
-                sessionKey = target
-                if (connected) {
-                    outbounds.connect()
-                    inboxTag?.let { inbox.subscribe(it) }
-                } else {
-                    inbox.cancel()
-                }
-            }
-        }
-        jobs += scope.launch { inbox.uiState.collect { emit("inbox", it.toWire()) } }
+        jobs += outbounds.follow(scope, CommandSessions.Stream.ToolStatus)
         jobs += scope.launch { TaildropSendManager.sessions.collect { sessions ->
             emit("transfers", sessions.map { session ->
                 mapOf("id" to session.id, "endpointTag" to session.endpointTag, "peerName" to session.peerName,
@@ -96,28 +69,26 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         withContext(Dispatchers.IO) { CommandTarget.standaloneClient().tailscaleLogout(required(endpoint, "endpoint")) }
     }
 
-    suspend fun subscribeTaildrop(endpoint: String?) {
-        inboxTag = required(endpoint, "endpoint")
-        inbox.subscribe(inboxTag!!)
-        inbox.markInboxRead(inboxTag!!)
+    // The inbox itself (which endpoint, its files) is mobile-ffi taildrop.rs;
+    // it checked that a file named here is still in the inbox.
+
+    suspend fun markTaildropRead(endpoint: String?) {
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().markTaildropInboxRead(required(endpoint, "endpoint")) }
     }
 
-    suspend fun unsubscribeTaildrop() { inboxTag = null; inbox.cancel() }
-
     suspend fun deleteTaildropFile(endpoint: String?, nameArgument: String?) {
-        val name = required(nameArgument, "name")
-        require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
-        inbox.delete(required(endpoint, "endpoint"), name)
+        withContext(Dispatchers.IO) { CommandTarget.standaloneClient().deleteTaildropFile(required(endpoint, "endpoint"), required(nameArgument, "name")) }
     }
 
     suspend fun cancelTaildropReceive(endpoint: String?, sender: String?, name: String?) {
-        inbox.cancelReceiving(required(endpoint, "endpoint"), required(sender, "sender"), required(name, "name"))
+        withContext(Dispatchers.IO) {
+            CommandTarget.standaloneClient().cancelTaildropReceiving(required(endpoint, "endpoint"), required(sender, "sender"), required(name, "name"))
+        }
     }
 
     /** False when the user dismissed the file picker. */
     suspend fun saveTaildropFile(endpoint: String?, nameArgument: String?): Boolean {
         val name = required(nameArgument, "name")
-        require(inbox.uiState.value.files.any { it.name == name }) { "File no longer exists" }
         val uri = activity.pickDocument(TaildropFiles.safeName(name)) ?: return false
         val file = TaildropFiles.materialize(required(endpoint, "endpoint"), name)
         withContext(Dispatchers.IO) {
@@ -178,7 +149,6 @@ internal class BoxTools(private val activity: BoxActivity, private val emit: (St
         jobs.forEach { it.cancel() }
         status.close()
         outbounds.disconnect()
-        inbox.cancel()
         diagnostics.close()
         usbController.close()
         ssh.close()

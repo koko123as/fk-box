@@ -13,9 +13,6 @@ import io.nekohasekai.sfa.backend.tools.OpenConnectEndpointData
 import io.nekohasekai.sfa.backend.tools.OpenVPNChallengeData
 import io.nekohasekai.sfa.backend.tools.OpenVPNTunnelInfoData
 import io.nekohasekai.sfa.backend.tools.OpenVPNEndpointData
-import io.nekohasekai.sfa.backend.tools.TaildropFileData
-import io.nekohasekai.sfa.backend.tools.TaildropReceivingFileData
-import io.nekohasekai.sfa.backend.tools.TaildropInboxState
 import io.nekohasekai.sfa.backend.usbip.UsbSharedInterfaceData
 import io.nekohasekai.sfa.backend.usbip.UsbSharedDeviceData
 import io.nekohasekai.sfa.backend.usbip.UsbipServerData
@@ -137,25 +134,6 @@ internal fun OpenVPNEndpointData.toWire(): Map<String, Any?> = mapOf(
     "challenge" to challenge?.toWire(),
     "error" to error,
     "tunnelInfo" to tunnelInfo?.toWire(),
-)
-
-internal fun TaildropFileData.toWire(): Map<String, Any?> = mapOf(
-    "name" to name,
-    "size" to size,
-    "senderName" to senderName,
-)
-
-internal fun TaildropReceivingFileData.toWire(): Map<String, Any?> = mapOf(
-    "name" to name,
-    "size" to size,
-    "receivedBytes" to receivedBytes,
-    "senderID" to senderID,
-    "senderName" to senderName,
-)
-
-internal fun TaildropInboxState.toWire(): Map<String, Any?> = mapOf(
-    "files" to files.map { it.toWire() },
-    "receiving" to receiving.map { it.toWire() },
 )
 
 internal fun UsbSharedInterfaceData.toWire(): Map<String, Any?> = mapOf(
