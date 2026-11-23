@@ -78,6 +78,12 @@ native pages and the system capabilities.
        notification's title, text and traffic line (and whether it shows).
        `bg/BoxService.kt`, `bg/ServiceNotification.kt` and `BoxActivity` keep
        the state, the libbox calls and the Android notification calls.
+     - **4i2** the VPN interface: mobile-ffi `tun.rs` (`tun.plan`) turns
+       libbox's `TunOptions` (converted to JSON in Kotlin) and the settings
+       into the builder plan: session, MTU, metered, bypass, addresses, DNS
+       servers, routes (`IpPrefix` routes and exclusions from Android 13,
+       route ranges before), allowed and disallowed apps and the HTTP proxy.
+       `bg/VPNService.kt` keeps `VpnService.Builder` and `establish`.
 6. **4f** `apps/android/core` as its own Go module.
 7. **4g** cleanup, docs, release APK.
 

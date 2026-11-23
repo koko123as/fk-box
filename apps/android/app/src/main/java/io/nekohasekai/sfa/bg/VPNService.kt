@@ -2,20 +2,35 @@ package io.nekohasekai.sfa.bg
 
 import android.content.Intent
 import android.content.pm.PackageManager.NameNotFoundException
+import android.net.IpPrefix
 import android.net.ProxyInfo
 import android.net.VpnService
 import android.os.Build
 import android.os.IBinder
 import android.util.Log
+import androidx.annotation.RequiresApi
 import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.libbox.Notification
 import io.nekohasekai.libbox.TunOptions
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.ktx.toIpPrefix
+import io.nekohasekai.libbox.RoutePrefixIterator
+import io.nekohasekai.libbox.StringIterator
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.ktx.toList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
+import java.net.InetAddress
 
 class VPNService :
     VpnService(),
@@ -54,127 +69,70 @@ class VPNService :
     override fun openTun(options: TunOptions): Int {
         if (prepare(this) != null) error("android: missing vpn permission")
 
-        val builder =
-            Builder()
-                .setSession("sing-box")
-                .setMtu(options.mtu)
+        // mobile-ffi tun.rs decides what goes into the builder; this only
+        // converts the gomobile options and makes the builder calls.
+        val plan = CoreStore.call("tun.plan") {
+            put("sdk", Build.VERSION.SDK_INT)
+            put("allowBypass", Settings.allowBypass)
+            put("systemProxy", Settings.systemProxyEnabled)
+            put("mtu", options.mtu)
+            put("autoRoute", options.autoRoute)
+            put("dnsDisabled", options.dnsMode.value == Libbox.DNSModeDisabled)
+            put("inet4Address", options.inet4Address.prefixes())
+            put("inet6Address", options.inet6Address.prefixes())
+            put("dnsServers", options.dnsServerAddress.strings())
+            put("inet4RouteAddress", options.inet4RouteAddress.prefixes())
+            put("inet6RouteAddress", options.inet6RouteAddress.prefixes())
+            put("inet4RouteExclude", options.inet4RouteExcludeAddress.prefixes())
+            put("inet6RouteExclude", options.inet6RouteExcludeAddress.prefixes())
+            put("inet4RouteRange", options.inet4RouteRange.prefixes())
+            put("inet6RouteRange", options.inet6RouteRange.prefixes())
+            put("include", options.includePackage.strings())
+            put("exclude", options.excludePackage.strings())
+            put("httpProxy", buildJsonObject {
+                put("enabled", options.isHTTPProxyEnabled)
+                if (options.isHTTPProxyEnabled) {
+                    put("server", options.httpProxyServer)
+                    put("port", options.httpProxyServerPort)
+                    put("bypass", options.httpProxyBypassDomain.strings())
+                }
+            })
+        }.jsonObject
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+        val builder = Builder().setSession(plan.text("session")).setMtu(plan.int("mtu"))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && plan["metered"]?.jsonPrimitive?.booleanOrNull == false) {
             builder.setMetered(false)
         }
-
-        if (Settings.allowBypass) {
-            builder.allowBypass()
-        }
-
-        val inet4Address = options.inet4Address
-        while (inet4Address.hasNext()) {
-            val address = inet4Address.next()
-            builder.addAddress(address.address(), address.prefix())
-        }
-
-        val inet6Address = options.inet6Address
-        while (inet6Address.hasNext()) {
-            val address = inet6Address.next()
-            builder.addAddress(address.address(), address.prefix())
-        }
-
-        if (options.autoRoute) {
-            if (options.dnsMode.value != Libbox.DNSModeDisabled) {
-                val dnsServerAddress = options.dnsServerAddress
-                while (dnsServerAddress.hasNext()) {
-                    builder.addDnsServer(dnsServerAddress.next())
-                }
-            }
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                val inet4RouteAddress = options.inet4RouteAddress
-                if (inet4RouteAddress.hasNext()) {
-                    while (inet4RouteAddress.hasNext()) {
-                        builder.addRoute(inet4RouteAddress.next().toIpPrefix())
-                    }
-                } else if (options.inet4Address.hasNext()) {
-                    builder.addRoute("0.0.0.0", 0)
-                }
-
-                val inet6RouteAddress = options.inet6RouteAddress
-                if (inet6RouteAddress.hasNext()) {
-                    while (inet6RouteAddress.hasNext()) {
-                        builder.addRoute(inet6RouteAddress.next().toIpPrefix())
-                    }
-                } else if (options.inet6Address.hasNext()) {
-                    builder.addRoute("::", 0)
-                }
-
-                val inet4RouteExcludeAddress = options.inet4RouteExcludeAddress
-                while (inet4RouteExcludeAddress.hasNext()) {
-                    builder.excludeRoute(inet4RouteExcludeAddress.next().toIpPrefix())
-                }
-
-                val inet6RouteExcludeAddress = options.inet6RouteExcludeAddress
-                while (inet6RouteExcludeAddress.hasNext()) {
-                    builder.excludeRoute(inet6RouteExcludeAddress.next().toIpPrefix())
-                }
-            } else {
-                val inet4RouteAddress = options.inet4RouteRange
-                if (inet4RouteAddress.hasNext()) {
-                    while (inet4RouteAddress.hasNext()) {
-                        val address = inet4RouteAddress.next()
-                        builder.addRoute(address.address(), address.prefix())
-                    }
-                }
-
-                val inet6RouteAddress = options.inet6RouteRange
-                if (inet6RouteAddress.hasNext()) {
-                    while (inet6RouteAddress.hasNext()) {
-                        val address = inet6RouteAddress.next()
-                        builder.addRoute(address.address(), address.prefix())
-                    }
-                }
-            }
-
-            val includePackage = options.includePackage
-            if (includePackage.hasNext()) {
-                while (includePackage.hasNext()) {
-                    try {
-                        val nextPackage = includePackage.next()
-                        builder.addAllowedApplication(nextPackage)
-                        Log.d("VPNService", "addAllowedApplication: $nextPackage")
-                    } catch (e: NameNotFoundException) {
-                        Log.e("VPNService", "addAllowedApplication failed", e)
-                    }
-                }
-            }
-
-            val excludePackage = options.excludePackage
-            if (excludePackage.hasNext()) {
-                while (excludePackage.hasNext()) {
-                    try {
-                        val nextPackage = excludePackage.next()
-                        builder.addDisallowedApplication(nextPackage)
-                        Log.d("VPNService", "addDisallowedApplication: $nextPackage")
-                    } catch (e: NameNotFoundException) {
-                        Log.e("VPNService", "addDisallowedApplication failed", e)
-                    }
-                }
-            }
-        }
-
-        if (options.isHTTPProxyEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            systemProxyAvailable = true
-            systemProxyEnabled = Settings.systemProxyEnabled
-            if (systemProxyEnabled) {
-                builder.setHttpProxy(
-                    ProxyInfo.buildDirectProxy(
-                        options.httpProxyServer,
-                        options.httpProxyServerPort,
-                        options.httpProxyBypassDomain.toList(),
-                    ),
-                )
-            }
+        if (plan.bool("allowBypass")) builder.allowBypass()
+        plan.items("addresses").forEach { builder.addAddress(it.text("address"), it.int("prefix")) }
+        plan.texts("dns").forEach { builder.addDnsServer(it) }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && plan.bool("ipPrefix")) {
+            plan.items("routes").forEach { builder.addRoute(it.ipPrefix()) }
+            plan.items("excludeRoutes").forEach { builder.excludeRoute(it.ipPrefix()) }
         } else {
-            systemProxyAvailable = false
-            systemProxyEnabled = false
+            plan.items("routes").forEach { builder.addRoute(it.text("address"), it.int("prefix")) }
+        }
+        plan.texts("allowed").forEach { name ->
+            try {
+                builder.addAllowedApplication(name)
+                Log.d("VPNService", "addAllowedApplication: $name")
+            } catch (e: NameNotFoundException) {
+                Log.e("VPNService", "addAllowedApplication failed", e)
+            }
+        }
+        plan.texts("disallowed").forEach { name ->
+            try {
+                builder.addDisallowedApplication(name)
+                Log.d("VPNService", "addDisallowedApplication: $name")
+            } catch (e: NameNotFoundException) {
+                Log.e("VPNService", "addDisallowedApplication failed", e)
+            }
+        }
+        systemProxyAvailable = plan.bool("systemProxyAvailable")
+        systemProxyEnabled = plan.bool("systemProxyEnabled")
+        val proxy = plan["httpProxy"] as? JsonObject
+        if (proxy != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            builder.setHttpProxy(ProxyInfo.buildDirectProxy(proxy.text("server"), proxy.int("port"), proxy.texts("bypass")))
         }
 
         val pfd =
@@ -192,4 +150,28 @@ class VPNService :
     override fun sendNotification(notification: Notification) = service.sendNotification(notification)
 
     override fun cancelNotification(identifier: String, typeID: Int) = service.cancelNotification(identifier, typeID)
+
+    private fun RoutePrefixIterator.prefixes() = JsonArray(
+        buildList {
+            while (hasNext()) {
+                val prefix = next()
+                add(buildJsonObject { put("address", prefix.address()); put("prefix", prefix.prefix()) })
+            }
+        },
+    )
+
+    private fun StringIterator.strings() = JsonArray(toList().map { JsonPrimitive(it) })
+
+    private fun JsonObject.text(key: String) = getValue(key).jsonPrimitive.content
+
+    private fun JsonObject.int(key: String) = getValue(key).jsonPrimitive.int
+
+    private fun JsonObject.bool(key: String) = this[key]?.jsonPrimitive?.booleanOrNull == true
+
+    private fun JsonObject.items(key: String) = this[key]?.jsonArray.orEmpty().map { it.jsonObject }
+
+    private fun JsonObject.texts(key: String) = this[key]?.jsonArray.orEmpty().map { it.jsonPrimitive.content }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun JsonObject.ipPrefix() = IpPrefix(InetAddress.getByName(text("address")), int("prefix"))
 }

@@ -24,6 +24,7 @@
 //!   decisions of the Kotlin `BoxService` start (phase 4e3b).
 //! - [`lifecycle`]: the `BoxService` start and stop state machine, alerts
 //!   and foreground notification content (phase 4i1).
+//! - [`tun`]: what the VPN interface is built with (phase 4i2).
 //!
 //! Layout follows docs/architecture/phase4.md.
 
@@ -35,6 +36,7 @@ pub mod runtime;
 pub mod service;
 pub mod taildrop;
 pub mod tool_status;
+pub mod tun;
 pub mod session;
 pub mod sessions;
 

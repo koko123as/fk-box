@@ -241,6 +241,8 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
         "lifecycle.notification" => crate::lifecycle::notification(&args),
         "lifecycle.trafficShown" => crate::lifecycle::traffic_shown(&args),
         "lifecycle.trafficText" => crate::lifecycle::traffic_text(&args),
+        // -- the VPN interface (phase 4i2) -----------------------------------
+        "tun.plan" => crate::tun::plan(&args),
         // -- command subscriptions (phase 3b) ------------------------------
         "sessions.plan" => {
             let inputs: sessions::Inputs = if args.is_null() {
