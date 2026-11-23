@@ -178,6 +178,9 @@ msgstr "拦截"
 msgid "Block ads"
 msgstr "广告拦截"
 
+msgid "Block the network while the core is starting or after it fails"
+msgstr "内核启动中或失败时断开网络，不让流量绕过代理"
+
 msgid "Body"
 msgstr "正文"
 
@@ -876,6 +879,9 @@ msgstr "HTTP 改写脚本的 JavaScript 引擎"
 
 msgid "Keyboard"
 msgstr "键盘"
+
+msgid "Kill switch"
+msgstr "断网保护"
 
 msgid "LAN direct"
 msgstr "局域网直连"

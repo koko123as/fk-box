@@ -63,6 +63,29 @@ class VPNService :
         return pfd.fd
     }
 
+    /**
+     * The kill switch's TUN: every route, and nothing reads it, so traffic is
+     * dropped until the core opens its own TUN (which replaces this one) or the
+     * service stops.
+     */
+    fun openBlockingTun() {
+        if (prepare(this) != null) error("android: missing vpn permission")
+        val pfd = Builder()
+            .setSession("fk-box kill switch")
+            .setMtu(1500)
+            .addAddress("172.19.0.1", 30)
+            .addRoute("0.0.0.0", 0)
+            .addAddress("fdfe:dcba:9876::1", 126)
+            .addRoute("::", 0)
+            .addDnsServer("172.19.0.2")
+            .establish() ?: error("android: the application is not prepared or is revoked")
+        val previous = service.fileDescriptor
+        service.fileDescriptor = pfd
+        if (previous != null && previous !== pfd) {
+            runCatching { previous.close() }
+        }
+    }
+
     override fun sendNotification(notification: Notification) = service.sendNotification(notification)
 
     override fun cancelNotification(identifier: String, typeID: Int) = service.cancelNotification(identifier, typeID)

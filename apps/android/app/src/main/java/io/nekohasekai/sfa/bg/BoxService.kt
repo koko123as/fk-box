@@ -158,6 +158,12 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
             DefaultNetworkMonitor.start()
 
+            // Kill switch: block the network while the core starts; its own TUN
+            // replaces this one.
+            if (state("startGuard") { put("killSwitch", Settings.killSwitch); put("vpn", service is VPNService) }.bool("block")) {
+                runCatching { (service as VPNService).openBlockingTun() }.onFailure { Log.w(TAG, "kill switch: open blocking tun", it) }
+            }
+
             try {
                 val routing = startOrReloadCore(content, profile.typed.core)
                 lastStarted = StartedConfig(selectedProfileId, content, profile.typed.core, routing)
@@ -287,8 +293,39 @@ class BoxService(private val service: Service, private val platformInterface: Pl
 
     /** A failed start step ([stage]: commandServer, core, service), alerted as mobile-ffi classifies it. */
     private suspend fun failStart(stage: String, error: Exception) {
-        val failure = state("startFailure") { put("stage", stage); put("stopRequested", stopRequested) }
-        stopAndAlert(Alert.entries[failure.int("alert")], error.message)
+        val failure = state("startFailure") {
+            put("stage", stage)
+            put("stopRequested", stopRequested)
+            put("killSwitch", Settings.killSwitch)
+            put("vpn", service is VPNService)
+        }
+        val alert = Alert.entries[failure.int("alert")]
+        if (failure.bool("block") && blockAfterFailure(alert, error.message)) return
+        stopAndAlert(alert, error.message)
+    }
+
+    /**
+     * Kill switch: the core failed, so close it and keep the VPN up on a TUN
+     * nothing reads, dropping traffic until the user stops the service (the
+     * notification's Stop, or the app). The alert still reports the failure.
+     * False when the blocking TUN cannot be opened; the service then stops.
+     */
+    private suspend fun blockAfterFailure(alert: Alert, message: String?): Boolean {
+        if (::commandServer.isInitialized) closeService()
+        val blocked = runCatching { (service as VPNService).openBlockingTun() }
+            .onFailure { Log.w(TAG, "kill switch: open blocking tun", it) }
+            .isSuccess
+        if (!blocked) return false
+        lastStarted = null
+        withContext(Dispatchers.Main) {
+            if (stopRequested) return@withContext
+            // Drop the traffic line (no core to report it) and show the blocked state.
+            notification.close()
+            notification.show(state("blockedNotification") { put("profile", lastProfileName) })
+            status.value = Status.Started
+            binder.broadcast { callback -> callback.onServiceAlert(alert.ordinal, message) }
+        }
+        return true
     }
 
     /** The routing rule set libbox compiles for this profile's core now (Settings › Routing rules). */

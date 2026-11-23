@@ -4,6 +4,7 @@ object SettingsKey {
     const val SELECTED_PROFILE = "selected_profile"
     const val SERVICE_MODE = "service_mode"
     const val DYNAMIC_NOTIFICATION = "dynamic_notification"
+    const val KILL_SWITCH = "kill_switch"
     const val DISABLE_DEPRECATED_WARNINGS = "disable_deprecated_warnings"
     const val CORE_SING_BOX_ENABLED = "core_sing_box_enabled"
     const val CORE_XRAY_ENABLED = "core_xray_enabled"

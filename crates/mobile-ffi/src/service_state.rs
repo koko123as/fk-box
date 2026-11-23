@@ -119,13 +119,41 @@ pub fn profile_check(args: &Value) -> Value {
 /// (the rest of the start). Answers its `alert`, and `send` (false while a
 /// stop is requested, since the stop job then owns teardown and nothing is
 /// reported).
+///
+/// `block` (the kill switch, Settings › Service): with `killSwitch` on in
+/// VPN mode (`vpn`), a failed `core` or later step keeps the VPN up with a
+/// TUN nothing reads, so traffic is dropped instead of leaking until the
+/// user stops the service. A command server failure still stops, since the
+/// service cannot be controlled without it.
 pub fn start_failure(args: &Value) -> Value {
-    let alert = match s(args, "stage") {
+    let stage = s(args, "stage");
+    let alert = match stage {
         "commandServer" => ALERT_START_COMMAND_SERVER,
         "core" => ALERT_CREATE_SERVICE,
         _ => ALERT_START_SERVICE,
     };
-    json!({ "alert": alert, "send": !flag(args, "stopRequested") })
+    let send = !flag(args, "stopRequested");
+    let block = send && stage != "commandServer" && kill_switch_on(args);
+    json!({ "alert": alert, "send": send, "block": block })
+}
+
+fn kill_switch_on(args: &Value) -> bool {
+    flag(args, "killSwitch") && flag(args, "vpn")
+}
+
+/// Whether a start first opens the blocking TUN (kill switch on in VPN
+/// mode), so nothing leaks while the core starts; the core's own TUN
+/// replaces it.
+pub fn start_guard(args: &Value) -> Value {
+    json!({ "block": kill_switch_on(args) })
+}
+
+/// The notification while the kill switch blocks traffic after a failure:
+/// the profile's `title` and the `kill_switch_blocked` text.
+pub fn blocked_notification(args: &Value) -> Value {
+    let mut shown = notification(&json!({ "profile": s(args, "profile"), "phase": "started" }));
+    shown["text"] = json!("kill_switch_blocked");
+    shown
 }
 
 /// What a page does with a service alert (`type`, the error `message`):
@@ -244,9 +272,26 @@ mod tests {
         ] {
             assert_eq!(profile_check(&bad)["alert"], ALERT_EMPTY_CONFIGURATION);
         }
-        assert_eq!(start_failure(&json!({ "stage": "commandServer" })), json!({ "alert": ALERT_START_COMMAND_SERVER, "send": true }));
+        assert_eq!(start_failure(&json!({ "stage": "commandServer" })), json!({ "alert": ALERT_START_COMMAND_SERVER, "send": true, "block": false }));
         assert_eq!(start_failure(&json!({ "stage": "core" }))["alert"], ALERT_CREATE_SERVICE);
         assert_eq!(start_failure(&json!({ "stage": "service" }))["alert"], ALERT_START_SERVICE);
+    }
+
+    #[test]
+    fn the_kill_switch_blocks_failures_in_vpn_mode() {
+        let on = |stage: &str, vpn: bool, stop: bool| {
+            start_failure(&json!({ "stage": stage, "killSwitch": true, "vpn": vpn, "stopRequested": stop }))["block"].clone()
+        };
+        assert_eq!(on("core", true, false), true);
+        assert_eq!(on("service", true, false), true);
+        assert_eq!(on("commandServer", true, false), false);
+        assert_eq!(on("core", false, false), false);
+        assert_eq!(on("core", true, true), false);
+        assert_eq!(start_failure(&json!({ "stage": "core", "vpn": true }))["block"], false);
+        assert_eq!(start_guard(&json!({ "killSwitch": true, "vpn": true }))["block"], true);
+        assert_eq!(start_guard(&json!({ "killSwitch": true, "vpn": false }))["block"], false);
+        let shown = blocked_notification(&json!({ "profile": "Home" }));
+        assert_eq!(shown, json!({ "title": "Home", "text": "kill_switch_blocked" }));
     }
 
     #[test]

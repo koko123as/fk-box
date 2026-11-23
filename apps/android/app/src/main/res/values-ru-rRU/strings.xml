@@ -12,6 +12,7 @@
 
     <!-- Status -->
     <string name="status_starting">Запуск</string>
+    <string name="kill_switch_blocked">Kill switch: network blocked</string>
     <string name="status_started">Запущена</string>
 
     <!-- Dashboard -->
