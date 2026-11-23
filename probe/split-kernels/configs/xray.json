@@ -1,0 +1,7 @@
+{
+  "log": {"loglevel": "warning"},
+  "api": {"tag": "api", "listen": "/tmp/fkprobe/xray/xray.sock", "services": ["StatsService"]},
+  "stats": {},
+  "inbounds": [{"tag": "socks-in", "listen": "127.0.0.1", "port": 17893, "protocol": "socks", "settings": {"udp": false}}],
+  "outbounds": [{"tag": "direct", "protocol": "freedom"}]
+}

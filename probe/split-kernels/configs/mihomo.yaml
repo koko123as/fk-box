@@ -1,0 +1,11 @@
+mixed-port: 17892
+bind-address: 127.0.0.1
+allow-lan: false
+mode: rule
+log-level: warning
+ipv6: false
+geo-auto-update: false
+external-controller-unix: mihomo.sock
+proxies: []
+rules:
+  - MATCH,DIRECT

@@ -1,0 +1,166 @@
+name: Probe split kernels (throwaway)
+
+# Feasibility probe for docs/architecture/split-kernels.md: three unpatched
+# kernels, each its own -buildmode=c-shared library behind the C ABI in
+# probe/split-kernels/include/fk_kernel.h. Manual runs only; nothing here is
+# part of the app build.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-harness:
+    name: linux/arm64 harness (one kernel per process)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Read Go version
+        id: v
+        run: echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.v.outputs.go }}
+          cache: false
+      - name: Verify modules and dependency versions
+        working-directory: probe/split-kernels
+        run: |
+          set -euo pipefail
+          for k in "singbox github.com/sagernet/sing-box" "mihomo github.com/metacubex/mihomo" "xray github.com/xtls/xray-core"; do
+            set -- $k
+            echo "::group::$1"
+            ( cd "$1"
+              go mod download
+              go mod verify
+              python3 ../check_deps.py "$2" | tee "../deps-$1.txt"
+              # No kernel source in the shim module: only its own *.go files.
+              ls *.go )
+            echo "::endgroup::"
+          done
+          {
+            echo "### Module verification"
+            for k in singbox mihomo xray; do echo; echo "**$k**"; echo '```'; sed -n '1,4p' "deps-$k.txt"; echo '```'; done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Build linux/arm64 c-shared libraries
+        working-directory: probe/split-kernels
+        env:
+          CGO_ENABLED: '1'
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          (cd singbox && go build -buildmode=c-shared -trimpath -buildvcs=false \
+            -tags with_quic,with_wireguard,with_utls,with_clash_api,badlinkname,tfogo_checklinkname0 \
+            -ldflags "-s -w -checklinkname=0 -X github.com/sagernet/sing-box/constant.Version=1.15.0-alpha.13" \
+            -o ../out/libsingbox.so .)
+          (cd mihomo && go build -buildmode=c-shared -trimpath -buildvcs=false -tags cmfa,with_gvisor \
+            -ldflags "-s -w -checklinkname=0 -X github.com/metacubex/mihomo/constant.Version=v1.19.34" \
+            -o ../out/libmihomo.so .)
+          (cd xray && go build -buildmode=c-shared -trimpath -buildvcs=false \
+            -ldflags "-s -w -checklinkname=0" -o ../out/libxray.so .)
+          gcc -O2 -Wall -Werror -Iinclude -o out/harness harness/harness.c -ldl
+          ls -l out
+      - name: Run each kernel in its own harness process
+        working-directory: probe/split-kernels
+        run: |
+          set -uo pipefail
+          mkdir -p /tmp/fkprobe/www /tmp/fkprobe/singbox /tmp/fkprobe/mihomo /tmp/fkprobe/xray /tmp/fkprobe/two
+          echo fk-probe-ok > /tmp/fkprobe/www/probe.txt
+          python3 -m http.server 18080 --bind 127.0.0.1 --directory /tmp/fkprobe/www > /tmp/fkprobe/http.log 2>&1 &
+          sleep 1
+          status=0
+          run() { name=$1; shift
+            timeout 120 ./out/harness run "$@" > "out/run-$name.log" 2>&1; rc=$?
+            cat "out/run-$name.log"; echo "| $name | $rc | $(grep -c 'fk-probe-ok' out/run-$name.log) |" >> out/table.md
+            [ $rc -eq 0 ] || status=1; }
+          run singbox ./out/libsingbox.so configs/singbox.json /tmp/fkprobe/singbox 17891 18080 tcp:19091
+          run mihomo ./out/libmihomo.so configs/mihomo.yaml /tmp/fkprobe/mihomo 17892 18080 unix:/tmp/fkprobe/mihomo/mihomo.sock
+          run xray ./out/libxray.so configs/xray.json /tmp/fkprobe/xray 17893 18080 sock:/tmp/fkprobe/xray/xray.sock
+          { echo "### Harness (one kernel per process)"; echo "| kernel | exit | fetches ok |"; echo "|---|---|---|"; cat out/table.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+      - name: Negative test - two kernels in one process
+        working-directory: probe/split-kernels
+        run: |
+          set -uo pipefail
+          python3 -m http.server 18080 --bind 127.0.0.1 --directory /tmp/fkprobe/www > /dev/null 2>&1 &
+          sleep 1
+          { echo "### Two kernel libraries in one process"; echo "| A + B | exit | result |"; echo "|---|---|---|"; } >> "$GITHUB_STEP_SUMMARY"
+          two() { timeout 90 ./out/harness two "$@" > out/two.log 2>&1; rc=$?
+            cat out/two.log
+            line=$(grep -E 'RESULT|fatal error|SIGSEGV|panic' out/two.log | head -1)
+            echo "| $(basename $1) + $(basename $3) | $rc | ${line:-no RESULT line (killed by signal $((rc > 128 ? rc - 128 : 0)))} |" >> "$GITHUB_STEP_SUMMARY"; }
+          for i in 1 2 3; do
+            two ./out/libsingbox.so configs/singbox.json ./out/libmihomo.so configs/mihomo.yaml /tmp/fkprobe/two 17891 17892 18080
+            two ./out/libmihomo.so configs/mihomo.yaml ./out/libxray.so configs/xray.json /tmp/fkprobe/two 17892 17893 18080
+            two ./out/libxray.so configs/xray.json ./out/libsingbox.so configs/singbox.json /tmp/fkprobe/two 17893 17891 18080
+          done
+          exit 0
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: probe-linux-logs
+          path: |
+            probe/split-kernels/out/*.log
+            probe/split-kernels/deps-*.txt
+
+  android-build:
+    name: android/arm64 c-shared builds (NDK)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - name: Read Go version
+        id: v
+        run: echo "go=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.v.outputs.go }}
+          cache: false
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+        with:
+          log-accepted-android-sdk-licenses: false
+          packages: ndk;28.0.13004108
+      - name: Build android/arm64 c-shared libraries
+        working-directory: probe/split-kernels
+        env:
+          CGO_ENABLED: '1'
+          GOOS: android
+          GOARCH: arm64
+        run: |
+          set -euo pipefail
+          ndk="$ANDROID_HOME/ndk/28.0.13004108/toolchains/llvm/prebuilt/linux-x86_64/bin"
+          export CC="$ndk/aarch64-linux-android24-clang"
+          mkdir -p out
+          # sing-box: libbox's own Android tag set (cmd/internal/build_libbox) without with_usbip.
+          ts=with_tailscale,ts_omit_logtail,ts_omit_ssh,ts_omit_drive,ts_omit_taildrop,ts_omit_webclient,ts_omit_doctor,ts_omit_capture,ts_omit_kube,ts_omit_aws,ts_omit_synology,ts_omit_bird
+          base=with_quic,with_wireguard,with_utls,with_naive_outbound,with_clash_api,with_openvpn,with_openconnect,badlinkname,tfogo_checklinkname0
+          sb_ld="-s -w -checklinkname=0 -X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -X github.com/sagernet/sing-box/constant.Version=1.15.0-alpha.13"
+          (cd singbox && go build -buildmode=c-shared -trimpath -buildvcs=false -tags "$base,$ts" -ldflags "$sb_ld" -o ../out/libsingbox.so .)
+          (cd singbox && go build -buildmode=c-shared -trimpath -buildvcs=false -tags "$base" -ldflags "$sb_ld" -o ../out/libsingbox-notailscale.so .)
+          (cd mihomo && go build -buildmode=c-shared -trimpath -buildvcs=false -tags cmfa,with_gvisor \
+            -ldflags "-s -w -checklinkname=0 -X github.com/metacubex/mihomo/constant.Version=v1.19.34" -o ../out/libmihomo.so .)
+          (cd xray && go build -buildmode=c-shared -trimpath -buildvcs=false -ldflags "-s -w -checklinkname=0" -o ../out/libxray.so .)
+          "$ndk/llvm-strip" --strip-all out/*.so
+          {
+            echo "### android/arm64 libraries (stripped; NDK 28.0.13004108, API 24)"
+            echo "| library | bytes | deflate -6 | deflate -9 | NEEDED |"
+            echo "|---|---|---|---|---|"
+            for f in out/*.so; do
+              python3 - "$f" "$("$ndk/llvm-readelf" -d "$f" | sed -n 's/.*Shared library: \[\(.*\)\]/\1/p' | tr '\n' ' ')" <<'PY'
+          import os, sys, zlib
+          data = open(sys.argv[1], "rb").read()
+          print(f"| {os.path.basename(sys.argv[1])} | {len(data):,} | {len(zlib.compress(data, 6)):,} | {len(zlib.compress(data, 9)):,} | {sys.argv[2]} |")
+          PY
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+          for f in out/*.so; do "$ndk/llvm-nm" -D --defined-only "$f" | grep ' T fk_' | awk '{print $3}' | tr '\n' ' '; echo " <- $f"; done
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: probe-android-arm64-libs
+          path: probe/split-kernels/out/*.so
+          retention-days: 7

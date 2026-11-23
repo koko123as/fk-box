@@ -1,0 +1,7 @@
+{
+  "log": {"level": "warn"},
+  "inbounds": [{"type": "mixed", "tag": "mixed-in", "listen": "127.0.0.1", "listen_port": 17891}],
+  "outbounds": [{"type": "direct", "tag": "direct"}],
+  "route": {"final": "direct"},
+  "experimental": {"clash_api": {"external_controller": "127.0.0.1:19091", "secret": "fk-probe"}}
+}
