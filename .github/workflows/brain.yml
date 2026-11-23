@@ -1,16 +1,30 @@
-name: Brain (rule engine and C ABI)
+name: Brain (rule engine, C ABI, config generation)
 
-# Stage 1 of the single-kernel design (docs/architecture/brain-ffi.md): the
-# rule engine in crates/client-core (rules::engine) and the C ABI crate
-# crates/brain-ffi. Tests, the ABI checks from C, the real geo data format
-# check and the decide() bench, on arm64.
+# Single-kernel design (docs/architecture/brain-ffi.md, brain-config.md): the
+# rule engine in crates/client-core (rules::engine), the configuration
+# import/generation (config::brain), and the C ABI crate crates/brain-ffi.
+# Tests, the ABI checks from C, the real geo data format check, the decide()
+# bench, and sing-box accepting the generated configurations (probes/stage2),
+# on arm64. Stacked stage PRs target arch/* branches, so those run too.
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, 'arch/**']
     paths:
       - 'crates/client-core/**'
       - 'crates/brain-ffi/**'
+      - 'probes/stage2/**'
+      - 'version.properties'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/brain.yml'
+  push:
+    branches: ['arch/**']
+    paths:
+      - 'crates/client-core/**'
+      - 'crates/brain-ffi/**'
+      - 'probes/stage2/**'
+      - 'version.properties'
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/brain.yml'
@@ -49,6 +63,13 @@ jobs:
             crates/brain-ffi/src/*.rs crates/brain-ffi/benches/*.rs \
             crates/client-core/src/rules/engine/*.rs
 
+      # Written without a local toolchain (AGENTS.md: no local builds), so the
+      # formatting of config/brain is reported here, not enforced.
+      - name: Format of config/brain (advisory)
+        run: |
+          rustfmt --edition 2021 --check crates/client-core/src/config/brain/*.rs > "$RUNNER_TEMP/fmt-brain.diff" 2>&1 \
+            || echo "::warning::config/brain is not rustfmt-clean ($(grep -c '^Diff in' "$RUNNER_TEMP/fmt-brain.diff") hunks)"
+
       - name: Header compiles as C11 (layout static asserts)
         run: gcc -std=c11 -Wall -Wextra -Werror -fsyntax-only -x c crates/brain-ffi/include/fkbox_brain.h
 
@@ -72,9 +93,15 @@ jobs:
           ls -l "$dir"
           echo "FKBOX_GEO_DIR=$dir" >> "$GITHUB_ENV"
 
+      # The config::brain tests also write the generated sing-box
+      # configurations into FKBOX_BRAIN_CONFIG_OUT for the Go check below.
       - name: Unit tests (client-core, brain-ffi)
         shell: bash
-        run: cargo test --locked -p fkbox-client-core -p fkbox-brain-ffi -- --nocapture --test-threads 4 2>&1 | tee "$RUNNER_TEMP/test.log"
+        env:
+          FKBOX_BRAIN_CONFIG_OUT: ${{ runner.temp }}/brain-configs
+        run: |
+          set -o pipefail
+          cargo test --locked -p fkbox-client-core -p fkbox-brain-ffi -- --nocapture --test-threads 4 2>&1 | tee "$RUNNER_TEMP/test.log"
 
       - name: Test summary
         if: always()
@@ -86,6 +113,50 @@ jobs:
             grep -E '^test result:|^running [0-9]+ tests|real geo|geoip\.(dat|metadb):' "$RUNNER_TEMP/test.log" || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Read Go version
+        id: versions
+        if: always()
+        run: echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        if: always()
+        with:
+          go-version: ${{ steps.versions.outputs.go_version }}
+          cache-dependency-path: probes/stage2/go.sum
+
+      # sing-box 1.15.0-alpha.13 parses each generated configuration (with
+      # fkbrain/fkdns/mihomo/xray registered as option-only placeholders)
+      # and creates it with box.New. Build tags as the app's core needs for
+      # the generated protocols (QUIC, WireGuard endpoint, uTLS/REALITY).
+      - name: Generated configurations accepted by sing-box (probes/stage2)
+        if: always()
+        working-directory: probes/stage2
+        env:
+          GOTOOLCHAIN: local
+          FKBOX_BRAIN_CONFIG_DIR: ${{ runner.temp }}/brain-configs
+        run: |
+          set -o pipefail
+          ls "$FKBOX_BRAIN_CONFIG_DIR"
+          go version
+          go test -count=1 -v -tags with_quic,with_wireguard,with_utls,with_gvisor -ldflags=-checklinkname=0 ./... 2>&1 | tee "$RUNNER_TEMP/go-check.log"
+          {
+            echo "### Generated configurations (sing-box 1.15.0-alpha.13)"
+            echo
+            echo '```'
+            grep -E 'CONFIG |^(ok|FAIL|---)' "$RUNNER_TEMP/go-check.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: brain-configs
+          path: |
+            ${{ runner.temp }}/brain-configs
+            ${{ runner.temp }}/fmt-brain.diff
+            ${{ runner.temp }}/go-check.log
+          if-no-files-found: warn
 
       - name: Static library linked from C (ABI smoke test)
         run: |
