@@ -12,6 +12,7 @@ package e2e
 import (
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"sync"
 	"testing"
@@ -21,6 +22,9 @@ import (
 	"github.com/koko123as/fk-box/apps/android/fkhost/host"
 	"github.com/koko123as/fk-box/apps/android/fkhost/internal/fixture"
 	"github.com/koko123as/fk-box/apps/android/fkhost/plugin"
+
+	"github.com/sagernet/sing-box/adapter"
+	M "github.com/sagernet/sing/common/metadata"
 )
 
 func TestMain(m *testing.M) { fixture.Main(m) }
@@ -96,7 +100,7 @@ func TestEndToEnd(t *testing.T) {
 
 	subscription := fmt.Sprintf(`proxies:
   - {name: ss-native, type: ss, server: 127.0.0.1, port: %d, cipher: aes-128-gcm, password: %q}
-  - {name: mieru-plugin, type: mieru, server: 127.0.0.1, port: %d, transport: TCP, username: fkbox, password: %q}
+  - {name: mieru-plugin, type: mieru, server: 127.0.0.1, port: %d, transport: TCP, udp: true, username: fkbox, password: %q}
 rules:
   - IP-CIDR,198.18.99.1/32,ss-native
   - IP-CIDR,198.18.99.2/32,mieru-plugin
@@ -120,6 +124,27 @@ rules:
 			t.Fatalf("generated configuration lacks outbound %s", tag)
 		}
 	}
+	// The TUN inbound asks the router's PreMatch for every new flow
+	// (adapter.JudgeFlow). With no route rules it falls to route.final =
+	// fkbrain, which does not implement adapter.FlowOutbound, so PreMatch
+	// must answer Continue (tun.ActionAccept): the flow is accepted into
+	// the stack and reaches fkbrain as a connection. The traffic below
+	// then proves that path end to end.
+	brainOutbound, _ := instance.Outbound().Outbound("fkbrain")
+	if _, isFlow := brainOutbound.(adapter.FlowOutbound); isFlow {
+		t.Fatal("fkbrain implements adapter.FlowOutbound")
+	}
+	for _, network := range []string{"tcp", "udp"} {
+		result := instance.Router().PreMatch(adapter.InboundContext{
+			Network:     network,
+			Source:      M.SocksaddrFromNetIP(netip.MustParseAddrPort("172.19.0.1:40000")),
+			Destination: M.SocksaddrFromNetIP(netip.MustParseAddrPort("198.18.99.1:7777")),
+		}, nil)
+		if result.Action != adapter.PreMatchContinue {
+			t.Fatalf("PreMatch %s: action %d, want Continue", network, result.Action)
+		}
+	}
+	t.Log("E2E tun PreMatch: tcp+udp Continue (fkbrain is not a FlowOutbound)")
 	before, protectedBefore := plugin.Stats(), h.Platform().Protected()
 
 	tcpEcho(t, "198.18.99.1:7777")

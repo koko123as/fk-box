@@ -112,7 +112,7 @@ func TestMihomoMieru(t *testing.T) {
 	dns := fixture.StartDNS(t)
 	mieruPort := fixture.StartMieru(t)
 	instance, bridge, ctx := newTestBox(t, clientConfig(dns.Port, fmt.Sprintf(
-		`{"type": "mihomo", "tag": "mieru", "proxy": {"name": "mieru", "type": "mieru", "server": "mieru.fixture.test", "port": %d, "transport": "TCP", "username": "fkbox", "password": %q}}`,
+		`{"type": "mihomo", "tag": "mieru", "proxy": {"name": "mieru", "type": "mieru", "server": "mieru.fixture.test", "port": %d, "transport": "TCP", "udp": true, "username": "fkbox", "password": %q}}`,
 		mieruPort, fixture.Password)))
 	mieru := outboundOf(t, instance, "mieru").(*plugin.Mihomo)
 	before, lookups := bridge.Count(), plugin.MihomoLookups.Load()
@@ -165,7 +165,7 @@ func TestMihomoDetour(t *testing.T) {
 	ssPort := fixture.StartShadowsocks(t, "127.0.0.1", mieruPort)
 	instance, bridge, ctx := newTestBox(t, clientConfig(dns.Port, fmt.Sprintf(
 		`{"type": "shadowsocks", "tag": "hop", "server": "127.0.0.1", "server_port": %d, "method": "aes-128-gcm", "password": %q},
-     {"type": "mihomo", "tag": "chained", "detour": "hop", "proxy": {"name": "chained", "type": "mieru", "server": "192.0.2.1", "port": 1, "transport": "TCP", "username": "fkbox", "password": %q}}`,
+     {"type": "mihomo", "tag": "chained", "detour": "hop", "proxy": {"name": "chained", "type": "mieru", "server": "192.0.2.1", "port": 1, "transport": "TCP", "udp": true, "username": "fkbox", "password": %q}}`,
 		ssPort, fixture.Password, fixture.Password)))
 	chained := outboundOf(t, instance, "chained").(*plugin.Mihomo)
 	before := bridge.Count()
