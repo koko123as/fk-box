@@ -9,9 +9,10 @@
 Checks before writing: the tag exists, the module resolves on the Go proxy
 (Xray tags are not valid module versions, so the tag's commit is turned into
 the pseudo-version Go uses), and the go directive of the new go.mod is not
-newer than GO_VERSION. Only version.properties changes; the kernel itself is
-pinned by apps/android/fkhost/go.mod (stage 6), so bump that module too and
-build on a branch (brain-android.md).
+newer than GO_VERSION. Only version.properties changes; the Core upgrade
+workflow (.github/workflows/core-upgrade.yml) runs this and then
+scripts/sync_core_versions.py --apply, which moves apps/android/fkhost/go.mod
+to the new pins (docs/architecture/brain-upgrade.md).
 """
 import json
 import re
