@@ -9,6 +9,7 @@ require (
 	github.com/sagernet/sing-box v1.15.0-alpha.13
 	github.com/sagernet/sing-tun v0.9.7-0.20261023115453-611d83b7a57b
 	github.com/xtls/xray-core v1.260327.1-0.20261109052709-676eaf66f8f0
+	golang.org/x/sys v0.49.0
 )
 
 require (
@@ -195,6 +196,7 @@ require (
 	github.com/sagernet/cronet-go/lib/windows_arm64 v0.0.0-20261023055542-d5437a0df01a // indirect
 	github.com/sagernet/fswatch v0.1.2 // indirect
 	github.com/sagernet/gliderssh v0.3.4-0.20261023092853-e0cad6d28647 // indirect
+	github.com/sagernet/gomobile v0.1.13 // indirect
 	github.com/sagernet/gvisor v0.0.0-20260727.0-sing-box-mod.1 // indirect
 	github.com/sagernet/netlink v0.0.0-20260814022025-64455d367bbf // indirect
 	github.com/sagernet/nftables v0.3.0-mod.4 // indirect
@@ -258,10 +260,10 @@ require (
 	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
 	golang.org/x/sync v0.24.0 // indirect
-	golang.org/x/sys v0.49.0 // indirect
 	golang.org/x/term v0.47.0 // indirect
 	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard v0.0.0-20250521234502-f333402bd9cb // indirect
 	golang.zx2c4.com/wireguard/windows v1.1.1 // indirect
@@ -272,4 +274,9 @@ require (
 	layeh.com/gopher-luar v1.0.11 // indirect
 	lukechampine.com/blake3 v1.4.1 // indirect
 	zombiezen.com/go/capnproto2 v2.18.2+incompatible // indirect
+)
+
+tool (
+	github.com/sagernet/gomobile/cmd/gobind
+	github.com/sagernet/gomobile/cmd/gomobile
 )

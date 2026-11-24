@@ -66,6 +66,12 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
 
+      # Stage 7: go.mod must carry exactly the pins of version.properties
+      # (sing-box, mihomo, Xray, gomobile); an upgrade goes through the Core
+      # upgrade workflow, never a hand edit of one side.
+      - name: version.properties and fkhost go.mod agree
+        run: python3 scripts/sync_core_versions.py --check
+
       - name: Set up Rust
         run: |
           rustup toolchain install stable --profile minimal

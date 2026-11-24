@@ -90,19 +90,23 @@ runs:
       run: |
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
         export CGO_LDFLAGS="-L$FKHOST_BRAIN_LIB"
-        GOFLAGS= go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
-        GOFLAGS= go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+        # gomobile and gobind are go.mod tools at GOMOBILE_VERSION (stage 7,
+        # scripts/sync_core_versions.py); no go get here, so the bind uses
+        # exactly the module graph CI checked.
+        GOFLAGS=-mod=readonly go install tool
         export PATH="$PATH:$(go env GOPATH)/bin"
-        # gomobile bind needs its bind packages in the module being bound.
-        go get github.com/sagernet/gomobile@v0.1.13
-        git diff --stat -- go.mod go.sum || true
+        command -v gomobile gobind
         mkdir -p ../app/libs
         gomobile bind -v -target android/arm64 -androidapi 24 \
           -javapkg=io.fkbox -libname=fkhost \
           -tags "$FKHOST_TAGS" -trimpath -buildvcs=false \
           -ldflags "-checklinkname=0 -s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=$CORE_VERSION" \
           -o ../app/libs/fkhost.aar ./mobile
-        git checkout -- go.mod go.sum
+        if ! git diff --quiet -- go.mod go.sum; then
+          git diff -- go.mod go.sum
+          echo "::warning::gomobile bind touched go.mod/go.sum (restored); the pins are checked by sync_core_versions.py --check"
+          git checkout -- go.mod go.sum
+        fi
         test ! -e ../app/libs/libbox.aar
         size=$(stat -c %s ../app/libs/fkhost.aar)
         so=$(unzip -l ../app/libs/fkhost.aar | awk '/jni\/arm64-v8a\/libfkhost\.so/ {print $1}')
