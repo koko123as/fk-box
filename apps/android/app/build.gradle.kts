@@ -443,7 +443,7 @@ val buildRustUi = tasks.register<Exec>("buildRustUi") {
     commandLine(listOf("cargo", "ndk") + targets + listOf("-P", "24", "-o", rustUiOut.get().asFile.absolutePath, "build", "--release"))
     // Slint 1.19's prebuilt Skia needs NDK r30 or newer: linked with an older
     // NDK's static libc++ the library has an unresolved std::__ndk1 symbol and
-    // fails to load at launch. CI sets FKUI_NDK_HOME (build-libbox action).
+    // fails to load at launch. CI sets FKUI_NDK_HOME (build-fkhost action).
     System.getenv("FKUI_NDK_HOME")?.let { environment("ANDROID_NDK_HOME", it) }
     onlyIf { !providers.gradleProperty("skipRustUi").orNull.toBoolean() }
 }

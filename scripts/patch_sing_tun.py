@@ -1,6 +1,15 @@
-"""Apply B-box's Android ingress-map fix to an isolated sing-tun dependency.
+"""Apply fk-box's Android ingress-map fix to an isolated sing-tun dependency.
 
-Run after setting up the matching Go toolchain, before testing/building libbox.
+    python3 scripts/patch_sing_tun.py apps/android/fkhost   # CI only
+
+Kept in stage 6 (docs/architecture/brain-android.md "sing-tun patch"): sing-tun's
+redirect_ingress_discard_android.go checks the value size of netd's ingress
+discard BPF map (line 73 at the pinned version) and only accepts the 8-byte
+layout; Android builds with a 4-byte value (one interface) then fail auto-redirect.
+Auto-redirect is root-only and not wired on the single-kernel path, so fkhost.aar
+is built without this patch; Core and source validation applies it to a scratch
+copy of the module (the replace is never committed) and runs its test, so the fix
+stays ready for the pinned sing-tun when auto-redirect returns.
 The shared Go module cache is never modified.
 """
 
@@ -18,7 +27,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("core", type=Path, help="matching sing-box checkout")
+    parser.add_argument("core", type=Path, help="Go module that depends on sing-tun (apps/android/fkhost)")
     core = parser.parse_args().core.resolve()
     dependency = json.loads(subprocess.check_output(
         ["go", "mod", "download", "-json", MODULE], cwd=core, text=True,

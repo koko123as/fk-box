@@ -64,9 +64,9 @@
 
 ## 参考版本与来源清单
 
-布局参考固定为 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（`be84736605527034689c95bf27828ff27d912c5e`，2026-11-04），最初翻译依据为 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`）。服务状态按该版本迁入（规则移植到 `apps/android/core/ui_service_check.go`，界面见下文仪表盘一节）；DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 页面及其后的 Compose 实现均不再使用。
+布局参考固定为 [chen08209/FlClash v0.9.3](https://github.com/chen08209/FlClash/tree/be84736605527034689c95bf27828ff27d912c5e)（`be84736605527034689c95bf27828ff27d912c5e`，2026-11-04），最初翻译依据为 v0.9.2（`7fd417fb9a9a277c6a9339a8ac87f907df7c25f7`）。服务状态按该版本迁入（规则曾移植到 `apps/android/core/ui_service_check.go`，阶段 6b 随三内核 libbox 删除，服务检测暂不可用）；DNS 记录和应用内更新安装会改变功能，未迁入。84e71e4^ 之前的旧 SFA Compose 页面及其后的 Compose 实现均不再使用。
 
-[flclash-manifest.json](../resources/flclash-manifest.json) 记录参考版本、原生适配（`adaptedNativeFiles`：`apps/android/core/ui_egress.go` 对 FlClash IP 查询的适配，用 sing-box 路由和 libbox HTTP 替换原传输）和补充参考（`supplementalReferences`：MITM dev、地理数据资源页设计）。原 Flutter 导入的逐文件清单可在 `6902a3d` 的 `flclash-manifest.json` 中查看。
+[flclash-manifest.json](../resources/flclash-manifest.json) 记录参考版本、原生适配（`adaptedNativeFiles`；阶段 6b 删除的 `ui_egress.go`/`ui_service_check.go` 记录见 `retiredNativeFiles`）和补充参考（`supplementalReferences`：MITM dev、地理数据资源页设计）。原 Flutter 导入的逐文件清单可在 `6902a3d` 的 `flclash-manifest.json` 中查看。
 
 请求/MITM 功能另参考 FlClash `dev` 的 [`63aa150e23288558074d877f745a6d3b5f6418f6`](https://github.com/chen08209/FlClash/tree/63aa150e23288558074d877f745a6d3b5f6418f6)（[`f544861`](https://github.com/chen08209/FlClash/commit/f54486102172566e7342d7f5c138663c3c5dec0b) 的 MITM 应用侧设计、[`1a7556d`](https://github.com/chen08209/FlClash/commit/1a7556d30a38707f39abfba4b7d6a6b8f57774ed) 的请求/连接整合）。该 dev 源码的 `FEATURE_MITM` 默认关闭，B-box 自行实现 sing-box 路由上的 TLS 接管。
 
@@ -150,7 +150,7 @@ FlClash 许可保留在 [licenses/LICENSE](../resources/licenses/LICENSE)，字�
 
 ### 状态卡片与出口查询
 
-查询来源、字段解析及质量判定参考上述固定版本。IP 竞速由 [ui_egress.go](../apps/android/core/ui_egress.go) 负责：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
+查询来源、字段解析及质量判定参考上述固定版本。IP 竞速曾由 `apps/android/core/ui_egress.go` 负责（阶段 6b 随 libbox 删除，单内核路径暂无出口探测）：Cloudflare、IP.SB、IPinfo、ipwho.is、GeoJS、country.is、IPQuery、ident.me 共八源，B-box 的完整解析与失败回退、限额及传输约束见 [libbox.md](libbox.md#出口-ip-和质量查询传输)。
 
 质量查询在 `apps/android/native/src/pages/egress.rs` 中依次分批使用 ident.me/ip-api.com/IPQuery、IPLocate、ipapi.is、proxycheck.io；等待一秒或当前请求全部失败后进入后续批次，单请求最多八秒。保留参考版组织/ASN 解析、显式类型优先、住宅类型推断及 Tor/abuser 质量规则。
 

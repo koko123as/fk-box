@@ -4,12 +4,12 @@ description: >-
   the Rust brain (crates/brain-ffi, libfkbox_brain_ffi.a for aarch64-linux-android)
   linked by cgo into the Go host (apps/android/fkhost), bound by gomobile into
   apps/android/app/libs/fkhost.aar (Java package io.fkbox.mobile,
-  jni/arm64-v8a/libfkhost.so). It replaces the three-core libbox.aar
-  (build-libbox). arm64-v8a only.
+  jni/arm64-v8a/libfkhost.so). It replaced the three-core libbox.aar
+  (build-libbox, removed in stage 6b). arm64-v8a only.
 
 outputs:
   version:
-    description: The app version (VERSION_NAME), as build-libbox gave it.
+    description: The app version (VERSION_NAME).
     value: ${{ steps.inputs.outputs.version }}
   cache-hit:
     description: '"true" when fkhost.aar came from the Actions cache.'
@@ -135,7 +135,8 @@ runs:
           echo "- libfkhost.so (arm64-v8a): $so bytes"
         } >> "$GITHUB_STEP_SUMMARY"
     # The Rust + Slint UI (libfkui.so) links Slint 1.19's prebuilt Skia, built
-    # with NDK r30 (see build-libbox); apps/android/app/build.gradle.kts gives
+    # with NDK r30 (its static libc++ has std::__ndk1::__hash_memory, r28's does
+    # not, and the library then fails to load); apps/android/app/build.gradle.kts gives
     # FKUI_NDK_HOME to cargo-ndk.
     - name: Select the NDK for the Slint UI
       shell: bash

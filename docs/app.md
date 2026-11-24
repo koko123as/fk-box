@@ -45,7 +45,7 @@
 | 服务与数据 | `bg/`、`database/`、`utils/` | 保留 sing-box 服务、订阅更新及本地/远程命令目标；Room 已移除，设置、配置元数据与远程服务器经 `database/CoreStore.kt`（JNI）存于 `crates/client-core` 的客户端存储 |
 | 应用查询 | [vendor/](../apps/android/app/src/main/java/io/nekohasekai/sfa/vendor/) | 普通、Root/Shizuku 应用查询和托管列表扫描；API 24+ 实现及依赖由 `play` / `other` 共用 |
 
-配置按 `TypedProfile.core` 交给 sing-box、Xray 或 mihomo（识别与校验见 [libbox.md](libbox.md#多内核xray-与-mihomo)），分组、可选节点、延迟和模式由当前内核经 libbox 提供；自动组不可手动选择。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
+阶段 6 起所有配置由单一 sing-box 内核运行，Rust 大脑负责导入、规则、DNS 和分组（`TypedProfile.core` 只保留存储值，不再切换内核，见 [brain-android.md](architecture/brain-android.md)）；分组、可选节点和延迟来自大脑的 `fkb_brain_groups`/`fkb_brain_group_select`/`fkb_brain_group_test`，自动组不可手动选择，模式切换已不存在。VPN 授权、前台服务、连接管理、日志、流量、本地/远程会话及路由保持原有能力边界。具体布局、语言、卡片与工具入口见 [flclash.md](flclash.md)。
 
 桥接载荷只携带 Rust 界面读取的字段（以 `apps/android/native/src` 中的键名为准）；USB/IP 设备、OpenConnect/OpenVPN 隧道信息和连接的进程信息由界面整体列出，保留完整字段。只供已删除 Compose 页面使用的状态与载荷字段（加载标志、Tailscale 头像/密钥到期/最后在线、Ping 历史、测速精度、扫码裁剪框回调、未接入的设置 DAO 方法等）已删除，新增字段时先确认界面会读取。设置存储 [StorePreferenceDataStore](../apps/android/app/src/main/java/io/nekohasekai/sfa/database/preference/StorePreferenceDataStore.kt) 读写客户端存储的 `settings` 表（类型码沿用旧 `KeyValueEntity`），内存缓存与按序异步写入的行为不变。
 
@@ -169,16 +169,15 @@ Xray 配置里的 `geoip:`/`geosite:` 规则和 mihomo 的 GEOIP/GEOSITE/IP-ASN 
 
 ## 构建与发布
 
-[apps/android/app/build.gradle.kts](../apps/android/app/build.gradle.kts) 只从本地 `apps/android/app/libs/libbox.aar` 消费核心，界面为 `crates/client-ui/` 的 Rust + Slint 源码（经 `buildRustUi` 编译为 `libfkui.so` 打包），不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。核心必须包含 [libbox.md](libbox.md) 的当前扩展，并同时编入 sing-box、Xray、mihomo。
+[apps/android/app/build.gradle.kts](../apps/android/app/build.gradle.kts) 只从本地 `apps/android/app/libs/fkhost.aar` 消费内核（阶段 6：单 sing-box 内核 + Rust 大脑，见 [brain-android.md](architecture/brain-android.md)），界面为 `crates/client-ui/` 的 Rust + Slint 源码（经 `buildRustUi` 编译为 `libfkui.so` 打包），不再依赖 Flutter SDK、Flutter AAR 或其 Maven 仓库。三内核 libbox（sing-box、Xray、mihomo 各自完整运行）已在阶段 6 移除。
 
-Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。libbox 目前只构建 arm64（见 [libbox.md](libbox.md#多内核xray-与-mihomo)），因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
+Gradle 默认 ABI 过滤为 ARMv7、ARM64、x86_64 并生成 universal；`-Parm64Only=true` 只生成 ARM64，`-PemulatorOnly=true` 只生成 x86_64，二者都关闭 universal。fkhost 只构建 arm64，因此 CI 的 Debug、Release 与模拟器构建均使用 `-Parm64Only=true`。
 
-[build-release.yml](../.github/workflows/build-release.yml) 仅手动触发，发布 Android 7.0+ 的 ARM64 `otherRelease`。Release 与模拟器构建共用 [build-libbox](../.github/actions/build-libbox/action.yml)，核心使用 JDK 17，应用使用 JDK 21；具体 SDK/Build Tools/NDK 版本以共享 Action 和 Gradle 为准。本机未经明确要求不构建，见 [AGENTS.md](../AGENTS.md)。
+[build-release.yml](../.github/workflows/build-release.yml) 仅手动触发，发布 Android 7.0+ 的 ARM64 `otherRelease`。Release 与模拟器构建共用 [build-fkhost](../.github/actions/build-fkhost/action.yml)，内核使用 JDK 17，应用使用 JDK 21；具体 SDK/Build Tools/NDK 版本以共享 Action 和 Gradle 为准。本机未经明确要求不构建，见 [AGENTS.md](../AGENTS.md)。
 
 CI 缓存（均为 GitHub Actions 缓存，不含密钥或签名文件）：
 
-- `libbox.aar`：[build-libbox](../.github/actions/build-libbox/action.yml) 以平台、`version.properties` 中的核心/Go/Xray/mihomo/libXray 版本（不含每次发布都改写的 `VERSION_NAME`/`VERSION_CODE`）以及 `apps/android/core/**`、`scripts/patch_*.py` 和两个共享 Action 文件的哈希为键；命中时跳过 sing-box 检出、补丁、`go mod tidy` 与 gomobile 构建，未命中时构建后立即保存（之后的应用构建失败也保留）。
-- Go：[setup-core](../.github/actions/setup-core/action.yml) 关闭 setup-go 自带缓存（只按上游 `go.sum` 取键且无回退），改用 `actions/cache` 缓存模块与构建缓存，键为用途（`test` 或 `libbox-<平台>`）、Go 版本、上述版本集合及该 Action 文件哈希，可回退到同 Go 版本的旧缓存。
+- `fkhost.aar`：[build-fkhost](../.github/actions/build-fkhost/action.yml) 以 `version.properties` 中的核心/Go/Xray/mihomo 版本（不含 `VERSION_NAME`/`VERSION_CODE`）以及 `apps/android/fkhost/**`、`crates/brain-ffi/**`、`crates/client-core/**`、`Cargo.lock`/`Cargo.toml` 和该 Action 文件的哈希为键；命中时跳过 Rust 大脑与 gomobile 构建，未命中时构建后立即保存。
 - Rust：`Swatinem/rust-cache` 缓存 `~/.cargo`（含 `cargo-ndk`）与 `target/`，在安装 `cargo-ndk` 之前恢复；键随 `Cargo.lock` 与 rustc 版本变化。Slint 的 Skia 预编译包由 `skia-bindings` 下载到其 `OUT_DIR`（`target/<目标>/release/build/skia-bindings-*/out`，下载文件在 `.cache/`），依赖的构建输出随该缓存保留，命中时不再下载；不使用指向本地文件的 `SKIA_BINARIES_URL`，因为文件名不匹配时 `skia-bindings` 会退回从源码完整构建 Skia。`ui-slint` 自身与 `vendor/` 中的 Slint 补丁 crate 仍每次重新编译。
 - Gradle：`gradle/actions/setup-gradle`，`main` 与 `ui/*` 分支写入，其他分支只读；内置地理数据的下载目录 `apps/android/.gradle/geo-assets` 按 [geo-assets.properties](../apps/android/app/geo-assets.properties) 的哈希缓存。
 

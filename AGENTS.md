@@ -8,7 +8,7 @@
 | --- | --- |
 | [README.md](README.md) | 项目介绍、下载入口和许可声明 |
 | [AGENTS.md](AGENTS.md) | 项目约束、工作方式和验证要求 |
-| [libbox.md](docs/libbox.md) | 相对上游 sing-box/libbox 的补丁、扩展绑定及核心构建差异 |
+| [libbox.md](docs/libbox.md) | 三内核 libbox 已退役（阶段 6）；仍保留的 sing-tun 补丁及原因 |
 | [flclash.md](docs/flclash.md) | 界面实现（Material Design 3）、FlClash 布局参考版本、适配范围及验证 |
 | [app.md](docs/app.md) | 相对 sing-box-for-android 的应用差异、兼容性及构建发布 |
 
@@ -38,8 +38,8 @@
 | `apps/android/native/` | `fkbox-android`：Android cdylib（库名 `fkui`，即 `libfkui.so`），含 `android_main`、界面 JNI（`jni_host.rs`）、客户端存储 JNI（`jni_store.rs`，供 Kotlin `database/CoreStore.kt`，并回调 `database/CoreKernel.kt`）、logcat 初始化，以及驱动 Slint 组件树的展示层（`app.rs`、`nav.rs`、`rows.rs`、`forms.rs`、`pages/`；主机截图工具 `examples/shot.rs`，`--features shot`） |
 | `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
 | `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |
-| `apps/android/core/` | libbox 的 Go 多内核适配与补丁（由 `.github/actions/setup-core` 和 `scripts/patch_*.py` 叠加到 sing-box 源码） |
-| `apps/android/fkhost/` | 单内核架构阶段 3 的 Go 宿主（独立 Go 模块，做法 A：自建 `box.Context` + `daemon.NewStartedService` + Android `PlatformInterface`）与 fkbrain/fkdns/mihomo/xray 插件、链接 Rust 大脑的 cgo 桥（`brainffi`）；不打补丁、无本地监听，暂未接入应用。见 [brain-host.md](docs/architecture/brain-host.md) |
+| `apps/android/core/` | 阶段 6b 后只剩保留的 `sing-tun-android-ingress.patch` 及其测试（`scripts/patch_sing_tun.py`，原因见 [brain-android.md](docs/architecture/brain-android.md)）；三内核 libbox 的 Go 适配已删除 |
+| `apps/android/fkhost/` | 单内核架构阶段 3 的 Go 宿主（独立 Go 模块，做法 A：自建 `box.Context` + `daemon.NewStartedService` + Android `PlatformInterface`）与 fkbrain/fkdns/mihomo/xray 插件、链接 Rust 大脑的 cgo 桥（`brainffi`）；不打补丁、无本地监听；`mobile/` 经 gomobile 打成 `fkhost.aar`（`.github/actions/build-fkhost`）供应用使用（阶段 6）。见 [brain-host.md](docs/architecture/brain-host.md)、[brain-android.md](docs/architecture/brain-android.md) |
 | `vendor/` | 带 fk-box 补丁的 Slint crate（`FKBOX-PATCH.md`），经根 `Cargo.toml` 的 `[patch.crates-io]` 使用 |
 | `scripts/` | 构建、核心补丁、发布与源码检查脚本（`python3 scripts/<名称>.py`，在仓库根目录运行） |
 | `resources/` | 非代码资源：`config/`（detekt 配置）、`licenses/`（组件许可文本）、`flclash-manifest.json`（FlClash 来源清单） |
@@ -52,11 +52,11 @@ Gradle 根是 `apps/android/`（`settings.gradle.kts`、`build.gradle.kts`、`gr
 ## 架构与兼容性约束
 
 1. 界面由 Rust + Slint 提供，布局位于 `crates/client-ui/ui/`，状态与页面逻辑位于 `apps/android/native/src/`，一并编为 `libfkui.so`，页面布局按 FlClash 翻译，风格为 Material Design 3（语义颜色角色、M3 字阶、形状与间距令牌、状态层、48 dp 触控目标、标准 M3 组件）与 Material 图标；手机端为悬浮的不透明导航栏（surface-container 加阴影，内容从其下滚过），较宽窗口为 M3 导航侧栏；浮在滚动内容之上的表面（悬浮导航栏、滚动后的顶部应用栏、菜单、对话框、行页面底部提示条）一律是 `ui/components/kit.slint` 的不透明 `Surface`（M3 surface-container 色调角色，需要时加 `Theme.shadow-*` 阴影），禁止 `backdrop-blur`、半透明“玻璃”表面、液态玻璃着色器、其他模糊滤镜或装饰形状——模糊会在每帧滚动时重读并过滤下方内容；阴影只用于浮在内容之上的表面（菜单、消息条、FAB、提升卡片/按钮、悬浮导航栏、行页面底部提示条）（约定见 [flclash.md](docs/flclash.md#material-design-3-界面约定)，由 `scripts/verify_newui.py` 检查）。动效参考 FlClash 的动效与交互手感用 Slint 实现（状态过渡、可点按表面的水波纹、淡入切换/滑动分页、代理组展开、列表项增删、底部表单拖动关闭、数值补间、仪表盘编辑晃动与拖动让位、容器变换），时长与曲线一律取 `ui/theme/theme.slint` 的 motion 令牌，所有时长乘以宿主传入的系统动画时长缩放（`ANIMATOR_DURATION_SCALE`，为 0 时关闭动画）（见 [flclash.md](docs/flclash.md#动效)）。Slint 为 1.19，Skia 渲染器与 Android 后端以带 fk-box 补丁的 vendored 副本使用（[slint-manifest.md](docs/slint-manifest.md#fonts-and-rendering-slint-ui-only)）。Jetpack Compose 界面已删除，`compose/` 只保留稳定组件名 `compose.MainActivity`、`compose.ShareActivity`（进入 `BoxActivity`，即 GameActivity）和扫码用的 `compose/qr/`。原生状态模型在 `backend/`，命令与事件经 `bridge/BoxBridge.kt` 与 `bridge/SlintHost.kt`（JNI）提供给 Rust。
-2. 客户端存储（`crates/client-core`，文件 `files/fkbox/client.db`）与 libbox 是配置、服务和会话数据的来源；旧版 Room `profiles.db`/`settings.db` 与 SharedPreferences `flclash_ui` 只在首次启动时导入一次，原文件保留不改（供降级的旧版本读取），不要删除或写入。`libbox.aar` 同时编入 sing-box、Xray、mihomo 三个内核，同一时间只运行一个（多内核设计与分阶段进度见 [libbox.md](docs/libbox.md#多内核xray-与-mihomo)）。在多内核接入完成前，配置仍为 sing-box JSON 并经过 `Libbox.checkConfig`；不能静默把一种内核的配置转换成另一种。
+2. 客户端存储（`crates/client-core`，文件 `files/fkbox/client.db`）与内核（`fkhost.aar`：单 sing-box + Rust 大脑）是配置、服务和会话数据的来源；旧版 Room `profiles.db`/`settings.db` 与 SharedPreferences `flclash_ui` 只在首次启动时导入一次，原文件保留不改（供降级的旧版本读取），不要删除或写入。阶段 6 起只有一个 sing-box 内核，由 Rust 大脑导入 Clash/mihomo YAML、sing-box JSON 与分享链接并生成配置（mihomo/Xray 协议经插件运行）；配置按原样保存，保存前经 mobile-ffi `brain.check` 校验（见 [brain-android.md](docs/architecture/brain-android.md)）。
 3. 模式、代理组、可选节点和延迟来自当前内核；自动组不能手动选择。保留本地/远程会话区分，不把本机配置、出口 IP 或演示数据当作远端状态。
 4. 保留 Android VPN 权限、前台服务和服务状态确认流程。配置及备份应用须保留修订冲突检查、原子写入和失败恢复；不能在需要重启服务时把发出启动请求视为启动成功。
 5. fk-box 的安装身份为 `io.fkbox.app`，源码 namespace、类路径及 AIDL 描述符保留 `io.nekohasekai.sfa`。任务未涉及这些约定时保持兼容；不要重排或复用已退役的 Binder 方法编号，也不要清空无关设置和数据库。
-6. 保留完整 sing-box 协议和 Tailscale/Taildrop、终端、普通 Root/Shizuku 能力。历史核心裁剪与 Tailscale/终端移除已回退；Android 5/6、legacy AAR、Xposed/LSPosed 和旧更新下载/静默安装链路则已移除。具体范围见 [libbox.md](docs/libbox.md) 和 [app.md](docs/app.md)。
+6. 阶段 6（用户 2026-11-24 决定）：Tailscale/Taildrop、OpenVPN、OpenConnect、终端（Tailscale SSH）、USB/IP、抓包/MITM/HTTP 改写、远程控制和 root 自动重定向不在单内核路径上，入口移除、用户数据不删；普通 Root/Shizuku 包查询保留。Android 5/6、legacy AAR、Xposed/LSPosed 和旧更新下载/静默安装链路已移除。具体范围见 [brain-android.md](docs/architecture/brain-android.md) 和 [app.md](docs/app.md)。
 7. FlClash 只作页面布局参考，保留其来源和许可；[flclash-manifest.json](resources/flclash-manifest.json) 记录参考版本、`adaptedNativeFiles` 及补充参考（[flclash.md](docs/flclash.md#参考版本与来源清单)）。编译成功或源码检查都不能代替视觉和实机验收。
 
 ## 上游同步与验证

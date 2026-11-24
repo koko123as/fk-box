@@ -10,25 +10,6 @@
   },
   "changes": "No Clash core included.",
   "adaptedNativeFiles": {
-    "apps/android/core/ui_egress.go": {
-      "sources": [
-        {
-          "source": "core/outbound_ip.go",
-          "sourceSHA256": "3fe24d2501c91dd4e6a9a3e5c734b92fa1e0fd9e6e54d7d27266659de256c1a0",
-          "changes": "IP race concurrency, stagger, response limit, browser user agent and public-IP validation preserved; routed HTTP transport uses sing-box. A source wins only after its source-specific parser validates the public IP and country field; malformed or incomplete responses advance the race."
-        },
-        {
-          "source": "lib/common/service_probe.dart",
-          "sourceSHA256": "fd64b97ee725b5c471dfd361aae3290609eefd9688cb657d547b23eda879b3db",
-          "changes": "Eight IP query URLs and source order preserved."
-        },
-        {
-          "source": "lib/models/common.dart",
-          "sourceSHA256": "af8884a550912ee1bbd7ced944ca81b894fa5c90090bbf4268c2fc4d490b84ea",
-          "changes": "IpInfo response fields adapted to Go JSON/trace parsers."
-        }
-      ]
-    },
     "apps/android/native/src/pages/services.rs": {
       "sources": [
         {
@@ -64,30 +45,6 @@
           "source": "lib/views/dashboard/widgets/connection_stats.dart",
           "sourceSHA256": "5e495b40238ca7b47aaa1655b60ae13d52749a683c18db0766cce6071d914e5d",
           "changes": "Three counts (live connections, recent requests, DNS queries), the first two opening their request views; counts come from the fk-box connection stream."
-        }
-      ]
-    },
-    "apps/android/core/ui_service_check.go": {
-      "sources": [
-        {
-          "source": "core/service_check.go",
-          "sourceSHA256": "d955596a7b247510754415f77e250ee53af23c88216357695f4d0998044f9ed0",
-          "changes": "The thirteen checkers in FlClash's order, statuses, statusFromCode, the sweep budget factor (6x the request timeout) and the single retry after a timeout. Requests go through UIEgressProbe (running core's routing, device network while stopped) instead of mihomo's tunnel; route hits and chains are not reported."
-        },
-        {
-          "source": "core/service_rules.go",
-          "sourceSHA256": "e22e4ca4692c2c8c7fcd42ac69b57c77841449b0eabc17b84f148a3de4612e4d",
-          "changes": "Every rule (YouTube Premium, ChatGPT, Claude, Gemini, Netflix, Disney+, Prime Video, Spotify, TikTok, Discord, bilibili) with its URLs, markers, regions and body caps, unchanged."
-        },
-        {
-          "source": "core/region.go",
-          "sourceSHA256": "4463b32e6f0dd62e962bac7d99249006412b23cc2fc777b0c966f5a50010a1e2",
-          "changes": "normalizeRegion and the packed ISO 3166 table, unchanged."
-        },
-        {
-          "source": "core/probe.go",
-          "sourceSHA256": "dc38c8c7020b625ca204269bc7d8ba714cf529dd029a4da9a9fb8d1ffdda01fe",
-          "changes": "probeRequest/ProbeResult and the body reader (cap, scan with overlap, no-redirect); delay is the time to the final response's headers."
         }
       ]
     },
@@ -257,7 +214,7 @@
           "sourceSHA256": "84c3e49046785166334f5a3c99e3abdb22badd262f6a50268e5f815edc8a36f4",
           "usage": "design",
           "localPaths": [
-            "apps/android/core/core_geo.go",
+            "apps/android/app/src/main/java/io/nekohasekai/sfa/bg/GeoDownload.kt",
             "apps/android/app/geo-assets.properties"
           ],
           "changes": "defaultGeoXUrl (MetaCubeX/meta-rules-dat latest) kept as the default URLs; geo-auto-update off and geo-update-interval 24 hours kept as defaults. The bundled copy is pinned to a meta-rules-dat release-branch commit and verified by SHA-256 at build time instead of being committed."
@@ -267,7 +224,7 @@
           "sourceSHA256": "abbc7ee2b7dc9df49a780dc8aa1fcbc25fdd43c3f17c115a72ba55547116acfb",
           "usage": "design",
           "localPaths": [
-            "apps/android/core/core_geo.go"
+            "apps/android/app/src/main/java/io/nekohasekai/sfa/bg/GeoDownload.kt"
           ],
           "changes": "Same four resources and parser checks as mihomo's updater (protobuf GeoIP/GeoSite, MaxMind DB); the file is written beside the target and renamed so a failed download keeps the old file."
         }
@@ -381,5 +338,8 @@
       ]
     }
   ],
-  "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation, which lives in apps/android/app/src/main/java/io/nekohasekai/sfa/compose. The former files/adaptedFiles lists (paths in the deleted flutter/ tree) are in Git history (flclash-manifest.json at 6902a3d)."
+  "note": "fk-box: the Flutter module was removed after the Kotlin + Jetpack Compose translation, which lives in apps/android/app/src/main/java/io/nekohasekai/sfa/compose. The former files/adaptedFiles lists (paths in the deleted flutter/ tree) are in Git history (flclash-manifest.json at 6902a3d).",
+  "retiredNativeFiles": {
+    "note": "Stage 6b removed apps/android/core/ui_egress.go (FlClash outbound IP race) and ui_service_check.go (FlClash service checks) with the three-core libbox; their adaptation records are in flclash-manifest.json at 1d72da6."
+  }
 }

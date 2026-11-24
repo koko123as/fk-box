@@ -10,8 +10,9 @@
 Checks before writing: the tag exists, the module resolves on the Go proxy
 (Xray tags are not valid module versions, so the tag's commit is turned into
 the pseudo-version Go uses), and the go directive of the new go.mod is not
-newer than GO_VERSION (a newer one breaks setup-core). Only version.properties
-changes; build and test on a branch (see "升级内核" in docs/libbox.md).
+newer than GO_VERSION. Only version.properties changes; the kernel itself is
+pinned by apps/android/fkhost/go.mod (stage 6), so bump that module too and
+build on a branch (brain-android.md).
 """
 import json
 import re
