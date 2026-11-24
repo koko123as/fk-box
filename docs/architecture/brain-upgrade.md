@@ -101,7 +101,10 @@ of the three cores).
 | `TestProtocolsConstructOnly/*` | none | mihomo plugin, start only |
 
 Protocols with TCP+UDP echo: shadowsocks, vmess, vless, trojan, socks5,
-hysteria2, hysteria, tuic, anytls (native and mihomo), http (TCP only); Xray
+hysteria2, tuic, anytls (native and mihomo), hysteria (native; mihomo TCP
+only: mihomo's hysteria v1 UDP to sing-box's hysteria inbound timed out in CI
+run 45354148270, unverified whether the two v1 UDP implementations
+interoperate), http (TCP only); Xray
 VLESS over tcp/ws/grpc/httpupgrade, VMess, Trojan, Shadowsocks. Stage 3's
 tests keep mieru (mihomo), the detour chain, Xray XHTTP and mKCP. Every case
 asserts a protected socket (and for mihomo, dials through the sing-box dialer;
