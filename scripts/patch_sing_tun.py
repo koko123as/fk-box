@@ -22,7 +22,11 @@ import subprocess
 from pathlib import Path
 
 MODULE = "github.com/sagernet/sing-tun"
-VERSION = "v0.9.7-0.20261023115453-611d83b7a57b"
+# The sing-tun the patch was last rebased on. A sing-box upgrade may move
+# sing-tun (stage 7, docs/architecture/brain-upgrade.md): the patch is then
+# only taken when `git apply --check` accepts it on the new version, and the
+# run says so; a patch that no longer applies stops here with what to rebase.
+REBASED_ON = "v0.9.7-0.20261023115453-611d83b7a57b"
 ROOT = Path(__file__).resolve().parents[1]
 
 
@@ -33,11 +37,9 @@ def main():
     dependency = json.loads(subprocess.check_output(
         ["go", "mod", "download", "-json", MODULE], cwd=core, text=True,
     ))
-    if dependency.get("Path") != MODULE or dependency.get("Version") != VERSION:
-        raise SystemExit(
-            f"Rebase sing-tun-android-ingress.patch before changing {MODULE}: "
-            f"expected {VERSION}, got {dependency.get('Version')}"
-        )
+    if dependency.get("Path") != MODULE:
+        raise SystemExit(f"go mod download did not return {MODULE}: {dependency}")
+    version = dependency.get("Version")
 
     target = core / ".b-box" / "sing-tun"
     # Refuse an existing copy instead of silently discarding local changes.
@@ -52,11 +54,24 @@ def main():
     # path outside the current directory, so nothing was patched. The old
     # setup-core ran this on .core, a separate sing-box checkout, where it worked.
     environment = dict(os.environ, GIT_CEILING_DIRECTORIES=str(target.parent))
-    for arguments in (["--check"], []):
-        subprocess.run(
-            ["git", "apply", "--verbose", *arguments, str(patch)],
-            cwd=target, env=environment, check=True,
+    checked = subprocess.run(
+        ["git", "apply", "--check", "--verbose", str(patch)],
+        cwd=target, env=environment, check=False,
+    )
+    if checked.returncode != 0:
+        raise SystemExit(
+            f"::error file=apps/android/core/sing-tun-android-ingress.patch::"
+            f"sing-tun-android-ingress.patch does not apply to {MODULE}@{version} "
+            f"(rebased on {REBASED_ON}); rebase it on the new sing-tun "
+            f"(redirect_ingress_discard_android.go) or drop it if upstream fixed the check"
         )
+    if version != REBASED_ON:
+        print(f"::warning file=scripts/patch_sing_tun.py::sing-tun moved {REBASED_ON} -> {version}; "
+              f"the patch still applies (git apply --check); update REBASED_ON after review")
+    subprocess.run(
+        ["git", "apply", "--verbose", str(patch)],
+        cwd=target, env=environment, check=True,
+    )
     if not (target / "redirect_ingress_discard_value_linux.go").is_file():
         raise SystemExit("sing-tun-android-ingress.patch was not applied")
     shutil.copyfile(
@@ -67,7 +82,7 @@ def main():
         ["go", "mod", "edit", f"-replace={MODULE}=./.b-box/sing-tun"],
         cwd=core, check=True,
     )
-    print(f"Applied Android ingress-map compatibility fix to {MODULE}@{VERSION}")
+    print(f"Applied Android ingress-map compatibility fix to {MODULE}@{version}")
 
 
 if __name__ == "__main__":
