@@ -87,9 +87,9 @@ int main(void) {
 	CHECK(brain.dns_message != NULL && brain.fakeip_reverse != NULL);
 	uint8_t ip[16] = {8, 8, 8, 8};
 	uint8_t name[256];
-	fkb_buf domain = {name, sizeof name, 0};
+	fkb_buf reversed = {name, sizeof name, 0};
 	/* No fake-ip pool configured from C: nothing is a fake address. */
-	CHECK(brain.fakeip_reverse(ip, 4, &domain) == FKB_OK && domain.len == 0);
+	CHECK(brain.fakeip_reverse(ip, 4, &reversed) == FKB_OK && reversed.len == 0);
 
 	if (failures) {
 		fprintf(stderr, "%d check(s) failed\n", failures);
