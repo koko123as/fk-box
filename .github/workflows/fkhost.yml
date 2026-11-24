@@ -148,7 +148,7 @@ jobs:
           FKHOST_E2E_TUN: fkt0
         run: |
           set -o pipefail
-          go test -count=1 -p 1 -timeout 20m -v -tags "$GO_TAGS" -ldflags=-checklinkname=0 ./... 2>&1 | tee "$RUNNER_TEMP/fkhost-test.log"
+          go test -count=1 -p 1 -timeout 30m -v -tags "$GO_TAGS" -ldflags=-checklinkname=0 ./... 2>&1 | tee "$RUNNER_TEMP/fkhost-test.log"
 
       - name: Test summary
         if: always()
@@ -157,7 +157,7 @@ jobs:
             echo "### Go host and plugins"
             echo
             echo '```'
-            grep -E 'STAGE3 |STAGE4 |E2E |^(ok|FAIL|---|PASS)' "$RUNNER_TEMP/fkhost-test.log" || true
+            grep -E 'STAGE3 |STAGE4 |STAGE7 |E2E |^(ok|FAIL|---|PASS)' "$RUNNER_TEMP/fkhost-test.log" || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

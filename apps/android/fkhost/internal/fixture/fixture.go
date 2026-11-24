@@ -315,15 +315,23 @@ func runXrayFixture(config string) int {
 	return 0
 }
 
-// startXrayServer runs a VLESS inbound with the given stream settings whose
+// StartXrayServer runs a VLESS inbound with the given stream settings whose
 // freedom outbound redirects every connection to the echo port.
 func StartXrayServer(t *testing.T, port int, streamSettings map[string]any, echoPort int) {
+	t.Helper()
+	StartXrayInbound(t, port, "vless", map[string]any{"clients": []any{map[string]any{"id": UUID}}, "decryption": "none"}, streamSettings, echoPort)
+}
+
+// StartXrayInbound runs one Xray inbound (any protocol, its settings and
+// stream settings) whose freedom outbound redirects every connection to the
+// echo port (stage 7 protocol tests).
+func StartXrayInbound(t *testing.T, port int, protocol string, settings map[string]any, streamSettings map[string]any, echoPort int) {
 	t.Helper()
 	config, err := stdjson.Marshal(map[string]any{
 		"log": map[string]any{"loglevel": "warning"},
 		"inbounds": []any{map[string]any{
-			"tag": "in", "listen": "127.0.0.1", "port": port, "protocol": "vless",
-			"settings":       map[string]any{"clients": []any{map[string]any{"id": UUID}}, "decryption": "none"},
+			"tag": "in", "listen": "127.0.0.1", "port": port, "protocol": protocol,
+			"settings":       settings,
 			"streamSettings": streamSettings,
 		}},
 		"outbounds": []any{map[string]any{"protocol": "freedom", "tag": "direct", "settings": map[string]any{
