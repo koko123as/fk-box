@@ -1,0 +1,195 @@
+name: Core upgrade
+
+# Stage 7 (docs/architecture/brain-upgrade.md): upgrading sing-box, mihomo,
+# Xray or gomobile is a change of version.properties only. This workflow
+# takes the new version, writes it into version.properties
+# (scripts/bump_core.py), turns the pins into apps/android/fkhost/go.mod and
+# go.sum (scripts/sync_core_versions.py --apply), pushes the result to a new
+# arch/core-upgrade/* branch, runs the brain, host and validation CI on that
+# branch, and opens a draft PR against the base. It never pushes to or opens
+# a PR against main: the base must be an arch/* branch.
+#
+# The pushes use GITHUB_TOKEN and so start no push runs; the CI runs here as
+# called workflows with ref set to the new branch. Opening the draft PR needs
+# "Allow GitHub Actions to create and approve pull requests" in the repository
+# settings; with it off (or dry_run set) the branch and the CI still run and
+# the PR step only prints the command.
+
+on:
+  workflow_dispatch:
+    inputs:
+      core:
+        description: Which pin to move
+        required: true
+        type: choice
+        options: [sing-box, mihomo, xray, gomobile]
+      version:
+        description: New version (sing-box 1.15.0-alpha.14, mihomo 1.19.35, xray 26.11.9, gomobile v0.1.14)
+        required: true
+        type: string
+      base:
+        description: Branch to upgrade from and open the draft PR against (arch/* only, never main)
+        required: true
+        type: string
+        default: arch/stage7-ci
+      dry_run:
+        description: Run everything but do not open the PR
+        required: false
+        type: boolean
+        default: false
+  # A workflow that is not on the default branch can only be dispatched once
+  # GitHub has seen it run; this push run registers it and checks the
+  # scripts, nothing more.
+  push:
+    branches: ['arch/stage7-ci']
+    paths:
+      - '.github/workflows/core-upgrade.yml'
+      - 'scripts/bump_core.py'
+      - 'scripts/sync_core_versions.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: core-upgrade-${{ github.ref }}-${{ inputs.core }}-${{ inputs.version }}
+  cancel-in-progress: false
+
+jobs:
+  register:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Scripts compile
+        run: python3 -m py_compile scripts/bump_core.py scripts/sync_core_versions.py
+
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      branch: ${{ steps.push.outputs.branch }}
+      summary: ${{ steps.bump.outputs.summary }}
+    env:
+      CORE: ${{ inputs.core }}
+      VERSION: ${{ inputs.version }}
+      BASE: ${{ inputs.base }}
+      GOTOOLCHAIN: local
+    steps:
+      - name: Refuse any base outside arch/*
+        run: |
+          case "$BASE" in
+            arch/*) ;;
+            *) echo "::error::base must be an arch/* branch, got '$BASE' (never main)"; exit 1 ;;
+          esac
+          case "$VERSION" in
+            *[!A-Za-z0-9._+-]*|'') echo "::error::version '$VERSION' has characters a version cannot have"; exit 1 ;;
+          esac
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.base }}
+          fetch-depth: 1
+      - name: Read Go version
+        id: versions
+        run: echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go_version }}
+          cache-dependency-path: apps/android/fkhost/go.sum
+      - name: Write the new pin into version.properties
+        id: bump
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          before=$(grep -E '^(CORE_VERSION|MIHOMO_VERSION|XRAY_VERSION|XRAY_MODULE_VERSION|GOMOBILE_VERSION)=' version.properties | tr -d '\r')
+          if [ "$CORE" = gomobile ]; then
+            v="v${VERSION#v}"
+            sed -i "s/^GOMOBILE_VERSION=.*/GOMOBILE_VERSION=$v/" version.properties
+          else
+            python3 scripts/bump_core.py "$CORE" "$VERSION"
+          fi
+          git diff -- version.properties
+          if git diff --quiet -- version.properties; then
+            echo "summary=$CORE $VERSION (same version as $BASE: simulated upgrade)" >> "$GITHUB_OUTPUT"
+          else
+            echo "summary=$CORE -> $VERSION" >> "$GITHUB_OUTPUT"
+          fi
+          echo "before:"; echo "$before"
+      - name: Turn the pins into go.mod/go.sum
+        run: python3 scripts/sync_core_versions.py --apply
+      - name: Push arch/core-upgrade/* branch
+        id: push
+        run: |
+          branch="arch/core-upgrade/${CORE}-${VERSION#v}-${GITHUB_RUN_ID}"
+          git config user.name "fk-box bot"
+          git config user.email "bot@fk-box"
+          git add version.properties apps/android/fkhost/go.mod apps/android/fkhost/go.sum
+          git status --short
+          # A same-version run (the stage 7 simulation) changes nothing; it
+          # still gets a commit so the branch, the CI and the PR all exist.
+          git commit --allow-empty -m "core upgrade: ${{ steps.bump.outputs.summary }}" \
+            -m "Made by the Core upgrade workflow (run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}) from ${BASE}."
+          git push origin "HEAD:refs/heads/$branch"
+          echo "branch=$branch" >> "$GITHUB_OUTPUT"
+          echo "Pushed $branch" >> "$GITHUB_STEP_SUMMARY"
+
+  brain:
+    needs: prepare
+    uses: ./.github/workflows/brain.yml
+    with:
+      ref: ${{ needs.prepare.outputs.branch }}
+
+  fkhost:
+    needs: prepare
+    uses: ./.github/workflows/fkhost.yml
+    with:
+      ref: ${{ needs.prepare.outputs.branch }}
+
+  validation:
+    needs: prepare
+    uses: ./.github/workflows/newui.yml
+    with:
+      ref: ${{ needs.prepare.outputs.branch }}
+
+  draft-pr:
+    needs: [prepare, brain, fkhost, validation]
+    if: always() && needs.prepare.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      BRANCH: ${{ needs.prepare.outputs.branch }}
+      BASE: ${{ inputs.base }}
+      SUMMARY: ${{ needs.prepare.outputs.summary }}
+      CI: brain=${{ needs.brain.result }} fkhost=${{ needs.fkhost.result }} validation=${{ needs.validation.result }}
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - name: Open the draft PR (arch/* base only)
+        run: |
+          case "$BASE" in arch/*) ;; *) echo "::error::refusing base '$BASE'"; exit 1 ;; esac
+          body=$(printf 'Core upgrade: %s\n\nBranch %s, made from %s by %s/%s/actions/runs/%s.\nCI on the branch: %s\n\nStacked on %s; do not merge before it. Draft only.\n' \
+            "$SUMMARY" "$BRANCH" "$BASE" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID" "$CI" "$BASE")
+          if [ "$DRY_RUN" = true ]; then
+            echo "dry run: would run gh pr create --draft --base $BASE --head $BRANCH"
+            printf '%s\n' "$body"
+            exit 0
+          fi
+          if ! gh pr create --repo "$GITHUB_REPOSITORY" --draft --base "$BASE" --head "$BRANCH" \
+               --title "core upgrade: $SUMMARY" --body "$body" 2> err.txt; then
+            cat err.txt
+            if grep -qi "not permitted to create" err.txt; then
+              echo "::error::The repository does not let GitHub Actions create pull requests (Settings > Actions > General > Workflow permissions). The branch $BRANCH is pushed and tested; open the draft PR by hand or rerun with dry_run."
+            fi
+            exit 1
+          fi
+      - name: Fail when the CI on the branch failed
+        if: needs.brain.result != 'success' || needs.fkhost.result != 'success' || needs.validation.result != 'success'
+        run: |
+          echo "::error::$CI"
+          exit 1

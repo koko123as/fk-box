@@ -8,13 +8,25 @@ on:
     branches: [main]
     paths-ignore: ['**/*.md']
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or SHA to test (empty = the ref the run is on)
+        required: false
+        type: string
+        default: ''
   workflow_call:
+    inputs:
+      ref:
+        description: Branch or SHA to test (empty = the ref the run is on)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: validation-${{ github.workflow }}-${{ github.ref }}
+  group: validation-${{ github.workflow }}-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -26,6 +38,8 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref }}
       - name: Read Go version
         id: versions
         run: echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
@@ -45,5 +59,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref }}
       - name: Compose source guards
         run: python3 scripts/verify_newui.py

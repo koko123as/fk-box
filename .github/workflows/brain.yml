@@ -28,13 +28,29 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/brain.yml'
+  # ref: stacked arch/* branches are tested by dispatching with ref, and the
+  # Core upgrade workflow calls this one on the branch it pushed (its pushes
+  # use GITHUB_TOKEN, which starts no push runs).
   workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or SHA to test (empty = the ref the run is on)
+        required: false
+        type: string
+        default: ''
+  workflow_call:
+    inputs:
+      ref:
+        description: Branch or SHA to test (empty = the ref the run is on)
+        required: false
+        type: string
+        default: ''
 
 permissions:
   contents: read
 
 concurrency:
-  group: brain-${{ github.ref }}
+  group: brain-${{ inputs.ref || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -43,6 +59,8 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          ref: ${{ inputs.ref }}
 
       - name: Set up Rust
         run: |
