@@ -1,147 +1,198 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.libbox.ConnectionEvents
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.LogEntry
-import io.nekohasekai.libbox.OutboundGroup
-import io.nekohasekai.libbox.StatusMessage
-import io.nekohasekai.sfa.utils.CommandClient
+import io.nekohasekai.sfa.bg.FkHost
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.utils.CommandSessions
-import io.nekohasekai.sfa.utils.CommandTarget
-import io.nekohasekai.sfa.utils.follow
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import java.io.Closeable
-import java.util.concurrent.atomic.AtomicLong
 
 /**
- * The libbox command streams, forwarded raw to the Rust UI (phase 4d). Each
- * stream's [CommandClient] connects and disconnects as mobile-ffi
- * `sessions.rs` plans ([follow]); every callback becomes one "stream" event
- * (`stream`, `kind`, `value`), and mobile-ffi `runtime.rs` makes the
- * dashboard, groups, connections and logs of them. Only the conversion of
- * the libbox (gomobile) objects to plain values stays here.
+ * The kernel's state for the Rust UI, in the stream events mobile-ffi
+ * `runtime.rs` reads (`stream`, `kind`, `value`). The single-core kernel
+ * runs in this process, so each stream polls it while mobile-ffi
+ * `sessions.rs` says the stream is wanted ([CommandSessions]):
+ *
+ * - status: traffic rates and totals, live connections, memory (fkhost stats), every second;
+ * - groups: the brain's groups (`fkb_brain_groups`, brain-groups.md) as
+ *   client-core `groups.rs` reads them, sent when their version changes;
+ * - log: the kernel's log ring, new lines every second;
+ * - connections: the per-connection list was the Clash API's; only the
+ *   counts are left (status), so the list is sent empty once.
+ *
+ * Mode switching (the Clash API's modes) does not exist on this path.
  */
 internal class BoxStreams(
     private val scope: CoroutineScope,
     private val emit: (String, Any?) -> Unit,
-    /** Every per-second status message, before it is forwarded (the remote memory card). */
-    private val onStatus: (StatusMessage) -> Unit = {},
+    /** Every per-second memory reading, before it is forwarded (the memory card). */
+    private val onMemory: (Long) -> Unit = {},
 ) : Closeable {
     private fun send(stream: String, kind: String, value: Any? = null) {
         emit("stream", mapOf("stream" to stream, "kind" to kind, "value" to value))
     }
 
-    private open inner class Forward(private val stream: String) : CommandClient.Handler {
-        override fun onConnected() = send(stream, "connected")
+    private val jobs = ArrayList<Job>()
 
-        override fun onDisconnected() = send(stream, "disconnected")
+    private fun follow(stream: CommandSessions.Stream, name: String, run: suspend CoroutineScope.() -> Unit) {
+        jobs += scope.launch {
+            val follower = this
+            var current: Job? = null
+            CommandSessions.target(stream).collect { target ->
+                current?.cancel()
+                current = null
+                if (target.connect) {
+                    current = follower.launch(Dispatchers.IO) {
+                        send(name, "connected")
+                        try {
+                            run()
+                        } finally {
+                            send(name, "disconnected")
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    private val status = CommandClient(scope, CommandClient.ConnectionType.Status, object : Forward("status") {
-        override fun updateStatus(status: StatusMessage) {
-            onStatus(status)
-            send("status", "status", mapOf(
-                "uplink" to status.uplink, "downlink" to status.downlink, "memory" to status.memory,
-                "uplinkTotalText" to Libbox.formatBytes(status.uplinkTotal),
-                "downlinkTotalText" to Libbox.formatBytes(status.downlinkTotal),
-                "connectionsIn" to status.connectionsIn, "trafficAvailable" to status.trafficAvailable,
-            ))
-        }
-    })
-
-    private val clashMode = CommandClient(scope, CommandClient.ConnectionType.ClashMode, object : Forward("clashMode") {
-        override fun initializeClashMode(modeList: List<String>, currentMode: String) =
-            send("clashMode", "init", mapOf("modes" to modeList, "mode" to currentMode))
-
-        override fun updateClashMode(newMode: String) = send("clashMode", "mode", newMode)
-    })
-
-    // Each groups update converts on its own Default coroutine (many JNI
-    // reads); a later one can finish first, so only the newest is sent.
-    private val groupsSequence = AtomicLong()
-    private val groups = CommandClient(scope, CommandClient.ConnectionType.Groups, object : Forward("groups") {
-        override fun onDisconnected() {
-            groupsSequence.incrementAndGet()
-            super.onDisconnected()
-        }
-
-        override fun updateGroups(newGroups: MutableList<OutboundGroup>) {
-            val sequence = groupsSequence.incrementAndGet()
-            scope.launch(Dispatchers.Default) {
-                val wire = newGroups.map { it.toWire() }
-                if (sequence == groupsSequence.get()) send("groups", "groups", wire)
-            }
-        }
-    })
-
-    // Connection batches convert on one lane, in arrival order, so the
-    // NEW/UPDATE/CLOSED deltas reach the UI in order.
-    @OptIn(ExperimentalCoroutinesApi::class)
-    private val connectionsLane = Dispatchers.Default.limitedParallelism(1)
-    private val connections = CommandClient(scope, CommandClient.ConnectionType.Connections, object : Forward("connections") {
-        override fun onDisconnected() {
-            scope.launch(connectionsLane) { send("connections", "disconnected") }
-        }
-
-        override fun writeConnectionEvents(events: ConnectionEvents) {
-            scope.launch(connectionsLane) {
-                val batch = ArrayList<Map<String, Any?>>()
-                val iterator = events.iterator()
-                while (iterator.hasNext()) {
-                    val event = iterator.next() ?: continue
-                    // Only NEW and CLOSED-with-snapshot events read a libbox
-                    // connection over JNI; UPDATE carries the deltas alone.
-                    batch.add(mapOf(
-                        "type" to event.type, "id" to event.id,
-                        "connection" to event.connection?.toWire(),
-                        "uplinkDelta" to event.uplinkDelta, "downlinkDelta" to event.downlinkDelta,
-                        "closedAt" to event.closedAt,
-                    ))
-                }
-                // The DNS queries the local core answered (hijack-dns never
-                // becomes a connection); a remote session has only its list.
-                val dns = if (CommandTarget.isRemote) null else runCatching { Libbox.readUIDNSQueryCount() }.getOrNull()
-                send("connections", "events", mapOf("reset" to events.reset, "events" to batch, "dnsQueries" to dns))
-            }
-        }
-    })
-
-    private val log = CommandClient(scope, CommandClient.ConnectionType.Log, object : Forward("log") {
-        override fun setDefaultLogLevel(level: Int) {
-            _defaultLogLevel.value = level
-            send("log", "level", level)
-        }
-
-        override fun clearLogs() = send("log", "clear")
-
-        override fun appendLogs(message: List<LogEntry>) =
-            send("log", "lines", message.map { mapOf("level" to it.level, "message" to it.message) })
-    })
-
-    private val clients = listOf(status, clashMode, groups, connections, log)
-
     init {
-        status.follow(scope, CommandSessions.Stream.Status)
-        clashMode.follow(scope, CommandSessions.Stream.ClashMode)
-        groups.follow(scope, CommandSessions.Stream.Groups)
-        connections.follow(scope, CommandSessions.Stream.Connections)
-        log.follow(scope, CommandSessions.Stream.Log)
+        follow(CommandSessions.Stream.Status, "status") {
+            while (isActive) {
+                FkHost.stats()?.let { stats ->
+                    onMemory(stats.memoryInuse)
+                    send(
+                        "status",
+                        "status",
+                        mapOf(
+                            "uplink" to stats.uplinkRate, "downlink" to stats.downlinkRate, "memory" to stats.memoryInuse,
+                            "uplinkTotalText" to FkHost.formatBytes(stats.uplinkBytes),
+                            "downlinkTotalText" to FkHost.formatBytes(stats.downlinkBytes),
+                            "connectionsIn" to (stats.connectionsTCP + stats.connectionsUDP), "trafficAvailable" to true,
+                        ),
+                    )
+                }
+                delay(1000)
+            }
+        }
+        follow(CommandSessions.Stream.Groups, "groups") {
+            var version: Long? = null
+            while (isActive) {
+                val text = FkHost.groups()
+                if (text != null) {
+                    val document = runCatching { CoreStore.json.parseToJsonElement(text).jsonObject }.getOrNull()
+                    val current = document?.get("version")?.jsonPrimitive?.longOrNull
+                    if (document != null && (current == null || current != version)) {
+                        version = current
+                        send("groups", "groups", groupsWire(document))
+                    }
+                }
+                delay(1000)
+            }
+        }
+        follow(CommandSessions.Stream.Connections, "connections") {
+            send("connections", "events", mapOf("reset" to true, "events" to emptyList<Any>(), "dnsQueries" to null))
+        }
+        follow(CommandSessions.Stream.Log, "log") {
+            var from = 0
+            send("log", "clear")
+            while (isActive) {
+                val text = FkHost.logs(from)
+                if (text != null) {
+                    val batch = runCatching { CoreStore.json.parseToJsonElement(text).jsonObject }.getOrNull()
+                    val total = batch?.get("total")?.jsonPrimitive?.intOrNull ?: 0
+                    if (total < from) {
+                        // The ring was cleared or a new service started: read it again.
+                        from = 0
+                        send("log", "clear")
+                        continue
+                    }
+                    val lines = (batch?.get("lines") as? JsonArray).orEmpty().map { line ->
+                        val item = line.jsonObject
+                        mapOf("level" to (item["level"]?.jsonPrimitive?.intOrNull ?: 0), "message" to (item["message"]?.jsonPrimitive?.content ?: ""))
+                    }
+                    if (lines.isNotEmpty()) send("log", "lines", lines)
+                    from = total
+                }
+                delay(1000)
+            }
+        }
     }
 
     override fun close() {
-        clients.forEach { it.disconnect() }
+        jobs.forEach { it.cancel() }
+        jobs.clear()
     }
 
     companion object {
         private val _defaultLogLevel = MutableStateFlow<Int?>(null)
 
-        /** The log level the core last reported (libbox priority); for instrumented tests. */
+        /** The log level the kernel last reported; for instrumented tests. */
         val defaultLogLevel: StateFlow<Int?> = _defaultLogLevel.asStateFlow()
+
+        private fun groupType(type: String): String = when (type) {
+            "select" -> "Selector"
+            "url-test" -> "URLTest"
+            "fallback" -> "Fallback"
+            "load-balance" -> "LoadBalance"
+            else -> type
+        }
+
+        private fun memberType(kind: String, name: String): String = when (kind) {
+            "group" -> "Group"
+            "builtin" -> if (name.startsWith("REJECT")) "Reject" else "Direct"
+            else -> "Proxy"
+        }
+
+        /**
+         * The brain's group document as client-core `groups.rs` reads the
+         * groups (`tag`, `type`, `selectable`, `selected`, `expanded`,
+         * `items`: `tag`, `type`, `delay`, `testedAt`): a member that failed
+         * its test is tested with delay 0 (unreachable), an untested one has
+         * neither.
+         */
+        internal fun groupsWire(document: JsonObject): List<Map<String, Any?>> {
+            val now = System.currentTimeMillis() / 1000
+            return (document["groups"] as? JsonArray).orEmpty().mapNotNull { element ->
+                val group = element as? JsonObject ?: return@mapNotNull null
+                if (group["hidden"]?.jsonPrimitive?.booleanOrNull == true) return@mapNotNull null
+                val testedAgo = group["tested_secs_ago"]?.jsonPrimitive?.longOrNull
+                val testedAt = testedAgo?.let { (now - it).coerceAtLeast(1) } ?: 0L
+                val name = group["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                mapOf(
+                    "tag" to name,
+                    "type" to groupType(group["type"]?.jsonPrimitive?.content ?: ""),
+                    "selectable" to (group["selectable"]?.jsonPrimitive?.booleanOrNull == true),
+                    "selected" to ((group["now"] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: ""),
+                    "expanded" to false,
+                    "items" to (group["members"] as? JsonArray).orEmpty().mapNotNull { memberElement ->
+                        val member = memberElement as? JsonObject ?: return@mapNotNull null
+                        val memberName = member["name"]?.jsonPrimitive?.content ?: return@mapNotNull null
+                        val alive = (member["alive"] as? JsonPrimitive)?.booleanOrNull
+                        val delayMs = member["delay_ms"]?.jsonPrimitive?.longOrNull ?: 0L
+                        mapOf(
+                            "tag" to memberName,
+                            "type" to memberType(member["kind"]?.jsonPrimitive?.content ?: "", memberName),
+                            "delay" to if (alive == true) delayMs.coerceAtLeast(1) else 0L,
+                            "testedAt" to if (alive == null) 0L else maxOf(testedAt, 1L),
+                        )
+                    },
+                )
+            }
+        }
     }
 }

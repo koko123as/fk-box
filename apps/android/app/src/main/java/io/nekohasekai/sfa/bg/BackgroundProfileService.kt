@@ -4,7 +4,6 @@ import android.content.Context
 import android.content.Intent
 import android.net.VpnService
 import androidx.core.content.ContextCompat
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.constant.Alert
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -45,7 +44,7 @@ internal class BackgroundProfileService(private val context: Context) : ServiceC
         if (!recover && mode == Settings.serviceMode) {
             recoveryRequired = true
             try {
-                withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().serviceReload() }
+                withContext(Dispatchers.IO) { BoxService.reloadRunning() }
             } catch (error: Exception) {
                 // The service went back to the previous configuration, which the
                 // rollback restores on disk too: nothing left to restart.

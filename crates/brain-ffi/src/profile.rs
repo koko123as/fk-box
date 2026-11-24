@@ -18,6 +18,8 @@ use std::sync::Arc;
 
 use fkbox_client_core::config::brain::generate::{self, GenerateOptions, TunOptions};
 use fkbox_client_core::config::brain::{import, ImportResult, Loaders};
+use fkbox_client_core::rules::engine::geo::{GeoIpDat, GeoSiteDb};
+use fkbox_client_core::rules::engine::mmdb::Mmdb;
 use fkbox_client_core::rules::engine::{compile, Cond, Env, Router, RouterIr, Rule, Target};
 use serde_json::Value;
 
@@ -42,6 +44,13 @@ pub struct ProfileOptions {
     /// Where select groups' manual choices are kept (a file the brain
     /// rewrites); absent: in memory only.
     pub group_store: Option<PathBuf>,
+    /// Geo data files (stage 6: the app's geo directory). Read only when
+    /// the rules use them: `geosite.dat` for `GEOSITE`, `geoip.dat` and/or
+    /// `geoip.metadb` (mmdb) for `GEOIP`. Absent: such a rule is an error
+    /// (`LAN` and private ranges need no data).
+    pub geosite: Option<PathBuf>,
+    pub geoip: Option<PathBuf>,
+    pub mmdb: Option<PathBuf>,
 }
 
 impl ProfileOptions {
@@ -75,6 +84,18 @@ impl ProfileOptions {
                     Value::String(path) if !path.is_empty() => options.group_store = Some(PathBuf::from(path)),
                     _ => return Err("profile options: group_store is not a path".into()),
                 },
+                "geosite" | "geoip" | "mmdb" => {
+                    let path = match item {
+                        Value::Null => None,
+                        Value::String(path) if !path.is_empty() => Some(PathBuf::from(path)),
+                        _ => return Err(format!("profile options: {key} is not a path")),
+                    };
+                    match key.as_str() {
+                        "geosite" => options.geosite = path,
+                        "geoip" => options.geoip = path,
+                        _ => options.mmdb = path,
+                    }
+                }
                 other => return Err(format!("profile options: unknown key {other:?}")),
             }
         }
@@ -125,6 +146,67 @@ fn reads_process(cond: &Cond) -> bool {
 fn ir_reads_process(ir: &RouterIr) -> bool {
     ir.rules.iter().chain(ir.sub_rules.values().flatten()).any(|r| reads_process(&r.cond))
         || ir.rule_sets.values().any(|s| s.rules.iter().any(reads_process))
+}
+
+fn cond_uses(cond: &Cond, wanted: &dyn Fn(&Cond) -> bool) -> bool {
+    if wanted(cond) {
+        return true;
+    }
+    match cond {
+        Cond::And(children) | Cond::Or(children) => children.iter().any(|c| cond_uses(c, wanted)),
+        Cond::Not(child) => cond_uses(child, wanted),
+        _ => false,
+    }
+}
+
+fn ir_uses(ir: &RouterIr, wanted: &dyn Fn(&Cond) -> bool) -> bool {
+    ir.rules.iter().chain(ir.sub_rules.values().flatten()).any(|r| cond_uses(&r.cond, wanted))
+        || ir.rule_sets.values().any(|s| s.rules.iter().any(|c| cond_uses(c, wanted)))
+}
+
+fn read_geo(path: &Option<PathBuf>) -> Result<Option<Arc<[u8]>>, String> {
+    let Some(path) = path else { return Ok(None) };
+    match std::fs::read(path) {
+        Ok(data) if !data.is_empty() => Ok(Some(Arc::from(data))),
+        Ok(_) => Ok(None),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(format!("{}: {e}", path.display())),
+    }
+}
+
+/// `GEOIP` codes other than `LAN` / `private` (built in) read geo data.
+fn geoip_needs_data(cond: &Cond) -> bool {
+    match cond {
+        Cond::GeoIp { code, .. } => !code.eq_ignore_ascii_case("lan") && !code.eq_ignore_ascii_case("private"),
+        _ => false,
+    }
+}
+
+/// The geo data the rules need, read from the files the options name
+/// (only what is used: GEOSITE needs geosite.dat, GEOIP geoip.dat or the
+/// mmdb).
+struct GeoData {
+    geosite: Option<GeoSiteDb>,
+    geoip: Option<GeoIpDat>,
+    mmdb: Option<Arc<Mmdb>>,
+}
+
+fn load_geo(ir: &RouterIr, options: &ProfileOptions) -> Result<GeoData, String> {
+    let mut data = GeoData { geosite: None, geoip: None, mmdb: None };
+    if ir_uses(ir, &|c| matches!(c, Cond::GeoSite(_))) {
+        if let Some(bytes) = read_geo(&options.geosite)? {
+            data.geosite = Some(GeoSiteDb::parse(bytes).map_err(|e| format!("geosite: {e}"))?);
+        }
+    }
+    if ir_uses(ir, &geoip_needs_data) {
+        if let Some(bytes) = read_geo(&options.geoip)? {
+            data.geoip = Some(GeoIpDat::parse(bytes).map_err(|e| format!("geoip: {e}"))?);
+        }
+        if let Some(bytes) = read_geo(&options.mmdb)? {
+            data.mmdb = Some(Arc::new(Mmdb::parse(bytes).map_err(|e| format!("mmdb: {e}"))?));
+        }
+    }
+    Ok(data)
 }
 
 /// The outbound a rule target name stands for: a node, a group (run by
@@ -188,8 +270,16 @@ pub fn plan(content: &str, options: &ProfileOptions) -> Result<Plan, String> {
     let inbounds = vec![generate::TAG_TUN.to_string()];
     // Rule targets: the outbounds, then the groups (virtual indices the brain follows).
     let targets = groups.target_names();
-    let router =
-        compile(&ir, &Env { outbounds: &targets, inbounds: &inbounds, geosite: None, geoip: None, mmdb: None, default_final: None })?;
+    let geo = load_geo(&ir, options)?;
+    let env = Env {
+        outbounds: &targets,
+        inbounds: &inbounds,
+        geosite: geo.geosite.as_ref(),
+        geoip: geo.geoip.as_ref(),
+        mmdb: geo.mmdb.clone(),
+        default_final: None,
+    };
+    let router = compile(&ir, &env)?;
     let config_json = serde_json::to_string(&generated.config).map_err(|e| e.to_string())?;
     let node_servers = result
         .nodes
@@ -394,6 +484,23 @@ rules:
         let with_group = ProfileOptions::from_json(r#"{"group_store": "/data/fk/groups.json"}"#).unwrap();
         assert_eq!(with_group.group_store, Some(PathBuf::from("/data/fk/groups.json")));
         assert!(ProfileOptions::from_json(r#"{"group_store": 1}"#).is_err());
+    }
+
+    #[test]
+    fn geo_paths_are_read_only_when_the_rules_need_them() {
+        let options = ProfileOptions::from_json(r#"{"geosite": "/nonexistent/geosite.dat", "mmdb": null}"#).unwrap();
+        assert_eq!(options.geosite, Some(PathBuf::from("/nonexistent/geosite.dat")));
+        assert_eq!(options.mmdb, None);
+        assert!(ProfileOptions::from_json(r#"{"geoip": 3}"#).is_err());
+        // No GEOSITE/GEOIP rule: the missing file is never read.
+        assert!(plan(YAML, &options).is_ok());
+        // A GEOSITE rule without the file is reported by the compiler.
+        let geosite = YAML.replace("  - MATCH,DIRECT", "  - GEOSITE,cn,DIRECT\n  - MATCH,DIRECT");
+        let err = plan(&geosite, &options).err().expect("GEOSITE without data");
+        assert!(err.contains("geosite"), "{err}");
+        // GEOIP,LAN needs no data.
+        let lan = YAML.replace("  - MATCH,DIRECT", "  - GEOIP,LAN,DIRECT\n  - MATCH,DIRECT");
+        assert!(plan(&lan, &options).is_ok());
     }
 
     #[test]

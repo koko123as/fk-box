@@ -3,57 +3,31 @@ package io.nekohasekai.sfa.bridge
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.lifecycle.lifecycleScope
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.CommandServer
-import io.nekohasekai.libbox.UIEgressProbe
 import io.nekohasekai.sfa.bg.BoxService
+import io.nekohasekai.sfa.bg.FkHost
 import io.nekohasekai.sfa.constant.Status
-import io.nekohasekai.sfa.database.ProfileContent
-import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
-import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 import org.json.JSONArray
 import java.io.Closeable
 import java.io.File
 import java.net.NetworkInterface
 
+/**
+ * The dashboard's memory and intranet cards. On the single-core path the
+ * kernel's memory is fkhost's (Go heap and stacks in use); the IP probe and
+ * service checks (libbox egress probes) and the LAN proxy switch are not
+ * available (UI entries go in stage 6b).
+ */
 internal class BoxDashboard(private val activity: BoxActivity, private val emit: (String, Any?) -> Unit) : Closeable {
     @Volatile var remoteMemory = 0L
     private var networkSnapshot: Map<String, Any?>? = null
     private val networkMutex = Mutex()
-    private val configCache = DashboardConfigCache(ProfileContent::revision, Libbox::detectCoreConfig) { content, addresses ->
-        val values = JSONArray(Libbox.readUILANProxyListeners(content, addresses).value)
-        (0 until values.length()).map { jsonObject(values.getJSONObject(it)) }
-    }
-    private class EgressSession(val server: CommandServer?) {
-        @Volatile var closed = false
-            private set
-        private var probe: UIEgressProbe? = null
-        fun attach(value: UIEgressProbe) = synchronized(this) {
-            if (closed) { value.close(); throw CancellationException("IP probe cancelled") }
-            probe = value
-        }
-        fun get(): UIEgressProbe = synchronized(this) { probe ?: error("IP probe is not available") }
-        fun close() {
-            val value = synchronized(this) { closed = true; probe.also { probe = null } }
-            value?.close()
-        }
-    }
-    private val egressSessions = mutableMapOf<String, EgressSession>()
-    private val serviceChanges = activity.lifecycleScope.launch {
-        activity.serviceStatus.collect {
-            egressSessions.filterValues { !isCurrent(it) }.keys.toList().forEach(::closeProbe)
-        }
-    }
     private val memoryVisible = MutableStateFlow(false)
     private val memoryPolling = activity.lifecycleScope.pollWhileVisible(
         memoryVisible, AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn,
@@ -75,24 +49,16 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
     fun setLanVisible(visible: Boolean) { lanVisible.value = visible }
 
     private fun memory(): Map<String, Any?> {
-        if (CommandTarget.isRemote) return mapOf("remote" to true, "total" to remoteMemory, "core" to remoteMemory)
         val rss = File("/proc/self/status").useLines { lines -> lines.firstOrNull { it.startsWith("VmRSS:") }
             ?.substringAfter(':')?.trim()?.substringBefore(' ')?.toLongOrNull()?.times(1024) ?: 0L }
         val running = activity.serviceStatus.value == Status.Started
-        // The cores run in this process: whatever the status says (a core
-        // still starting, or running while the UI lost track of it), the Go
-        // runtime's memory is the core's, never the app's. FlClash splits
-        // the process RSS the same way (app = RSS - core runtime).
-        val core = runCatching { Libbox.readUIRuntimeMemory() }.getOrNull()
-        // What the kernel keeps resident for Go's own mappings can exceed Go's
-        // accounting (huge pages refilling released memory); count that as
-        // core rather than letting it inflate the app share. The excess is
-        // runtime memory outside the heap and stack rows.
-        val accounted = core?.let { maxOf(it.total, it.resident) } ?: 0L
-        val excess = core?.let { maxOf(0L, it.resident - it.total) } ?: 0L
-        return mapOf("total" to maxOf(rss, accounted), "rss" to rss, "app" to maxOf(0L, rss - accounted), "core" to accounted,
-            "remote" to false, "running" to running, "heapInuse" to core?.heapInuse, "heapIdle" to core?.heapIdle,
-            "stack" to core?.stackInuse, "runtimeOther" to core?.let { it.runtimeOther + excess }, "goroutines" to core?.goroutines)
+        // The kernel runs in this process once the service started: its Go
+        // heap and stacks are the core's share of the process RSS.
+        val stats = FkHost.stats()
+        val core = stats?.memoryInuse ?: 0L
+        return mapOf("total" to maxOf(rss, core), "rss" to rss, "app" to maxOf(0L, rss - core), "core" to core,
+            "remote" to false, "running" to running, "heapInuse" to stats?.memoryInuse, "heapIdle" to null,
+            "stack" to null, "runtimeOther" to null, "goroutines" to stats?.goroutines)
     }
 
     @Suppress("DEPRECATION")
@@ -133,71 +99,21 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
             .thenBy { priority(it.getValue("interface")) }.thenBy { it.getValue("address") })
         val addresses = interfaceAddresses.map { it.getValue("address") }.distinct()
         val encodedAddresses = JSONArray(interfaceAddresses).toString()
-        var bindings = emptyList<Map<String, Any?>>()
-        var activeBindings = emptyList<Map<String, Any?>>()
-        var profileId = -1L
-        var revision: String? = null
-        var configurationError: String? = null
-        var running = false
-        var activeProfileId = -1L
-        // The LAN proxy switch edits sing-box inbounds; Xray/mihomo profiles have none.
-        var lanSwitchable = true
-        if (!CommandTarget.isRemote) {
-            try {
-                val config = ProfileContent.mutex.withLock {
-                    profileId = Settings.selectedProfile
-                    val profile = ProfileManager.get(profileId)
-                    if (profile == null) {
-                        configCache.clearSaved()
-                        null
-                    } else {
-                        val file = File(profile.typed.path)
-                        val key = DashboardConfigCache.FileKey(profileId, file.path, ProfileContent.generation,
-                            file.lastModified(), file.length(), file.exists())
-                        configCache.saved(key) { file.readText() }
-                    }
-                }
-                if (config != null) {
-                    revision = config.revision
-                    lanSwitchable = config.core !in setOf(Libbox.CoreXray, Libbox.CoreMihomo)
-                    bindings = config.listeners(encodedAddresses)
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                configurationError = error.message ?: error.toString()
-            }
-            val active = BoxService.dashboardConfig.value
-            running = activity.serviceStatus.value == Status.Started && active != null &&
-                BoxService.dashboardServer === active.server
-            if (running && active != null) {
-                activeProfileId = active.profileId
-                try {
-                    activeBindings = configCache.active(active) { active.content }.listeners(encodedAddresses)
-                } catch (error: CancellationException) {
-                    throw error
-                } catch (error: Exception) {
-                    configurationError = configurationError ?: error.message ?: error.toString()
-                }
-            } else {
-                configCache.clearActive()
-            }
-        }
+        // The LAN proxy (a sing-box inbound listening on the LAN) has no
+        // place on the single-core path (no local listener): nothing to bind.
+        val running = activity.serviceStatus.value == Status.Started
+        val active = BoxService.dashboardConfig.value
         val stamp = "${manager.activeNetwork}:$encodedAddresses:${networks.map { (network, capabilities, _) ->
             "$network:${capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)}"
         }.sorted()}"
-        return mapOf("addresses" to addresses, "bindings" to bindings, "activeBindings" to activeBindings,
-            "enabled" to (if (running) activeBindings else bindings).any { it["lan"] == true },
-            "running" to running, "activeProfileId" to activeProfileId,
-            "profileId" to profileId, "revision" to revision, "canToggle" to (revision != null && configurationError == null && lanSwitchable),
-            "error" to configurationError, "stamp" to stamp)
+        return mapOf("addresses" to addresses, "bindings" to emptyList<Any>(), "activeBindings" to emptyList<Any>(),
+            "enabled" to false, "running" to running, "activeProfileId" to (active?.profileId ?: -1L),
+            "profileId" to Settings.selectedProfile, "revision" to null, "canToggle" to false,
+            "error" to null, "stamp" to stamp)
     }
 
     suspend fun refreshNetwork(force: Boolean = false): Map<String, Any?> = networkMutex.withLock {
-        val value = withContext(Dispatchers.IO) {
-            if (force) configCache.refresh()
-            network()
-        }
+        val value = withContext(Dispatchers.IO) { network() }
         if (value != networkSnapshot) {
             networkSnapshot = value
             emit("lan", value)
@@ -205,96 +121,25 @@ internal class BoxDashboard(private val activity: BoxActivity, private val emit:
         value
     }
 
-    private fun requireLocalProbe() {
-        require(!CommandTarget.isRemote) { "Remote servers do not expose an egress probe" }
-        require(activity.serviceStatus.value in listOf(Status.Stopped, Status.Started)) { "Service is changing during egress check" }
-    }
+    private fun unavailable(): Nothing = error("The IP probe is not available in the single-core build")
 
-    private fun isCurrent(session: EgressSession): Boolean = !session.closed && !CommandTarget.isRemote &&
-        BoxService.dashboardServer === session.server &&
-        activity.serviceStatus.value == (if (session.server == null) Status.Stopped else Status.Started)
+    suspend fun openProbe(id: String) { unavailable() }
 
-    private fun session(id: String): EgressSession {
-        requireLocalProbe()
-        val session = egressSessions[id] ?: error("IP probe is no longer active")
-        check(isCurrent(session)) { "Service changed during egress check" }
-        return session
-    }
+    suspend fun egress(id: String): Map<String, Any?> = unavailable()
 
-    private suspend fun createProbe(id: String): EgressSession {
-        requireLocalProbe()
-        require(id.length in 1..128 && id !in egressSessions && egressSessions.size < 8) { "Invalid IP probe session" }
-        val server = when (activity.serviceStatus.value) {
-            Status.Started -> BoxService.dashboardServer ?: error("Service is not available")
-            Status.Stopped -> {
-                check(BoxService.dashboardServer == null) { "Service is changing during egress check" }
-                null
-            }
-            else -> error("Service is changing during egress check")
-        }
-        val active = EgressSession(server)
-        egressSessions[id] = active
-        return try {
-            withContext(Dispatchers.IO) {
-                val probe = if (server == null) Libbox.newUIDirectEgressProbe() else server.newUIEgressProbe()
-                active.attach(probe)
-            }
-            check(session(id) === active) { "IP probe changed during creation" }
-            active
-        } catch (error: Exception) {
-            if (egressSessions[id] === active) egressSessions.remove(id)
-            active.close()
-            throw error
-        }
-    }
+    suspend fun query(id: String, url: String, timeoutMillis: Long): Map<String, Any?> = unavailable()
 
-    suspend fun openProbe(id: String) { createProbe(id) }
+    suspend fun serviceCheck(id: String, name: String, timeoutMillis: Long): Map<String, Any?> = unavailable()
 
-    suspend fun egress(id: String): Map<String, Any?> {
-        val active = createProbe(id)
-        return try {
-            val info = withContext(Dispatchers.IO) { jsonObject(JSONObject(active.get().lookupOutboundIP())) }
-            check(session(id) === active) { "IP probe changed during egress check" }
-            info
-        } catch (error: Exception) {
-            if (egressSessions[id] === active) egressSessions.remove(id)
-            active.close()
-            throw error
-        }
-    }
-
-    suspend fun query(id: String, url: String, timeoutMillis: Long): Map<String, Any?> {
-        val active = session(id)
-        val response = withContext(Dispatchers.IO) { active.get().get(url, timeoutMillis) }
-        check(session(id) === active) { "IP probe changed during query" }
-        return mapOf("status" to response.status, "body" to response.content.toString(Charsets.UTF_8))
-    }
-
-    /**
-     * Service status: one service's rule (FlClash core/service_rules.go, ported
-     * to libbox/ui_service_check.go) through this probe session.
-     */
-    suspend fun serviceCheck(id: String, name: String, timeoutMillis: Long): Map<String, Any?> {
-        val active = session(id)
-        val result = withContext(Dispatchers.IO) { active.get().serviceCheck(name, timeoutMillis) }
-        check(session(id) === active) { "IP probe changed during query" }
-        return mapOf("name" to result.name, "status" to result.status, "region" to result.region,
-            "delay" to result.delayMillis, "checkedAt" to result.checkedAt)
-    }
-
-    fun closeProbe(id: String) { egressSessions.remove(id)?.close() }
+    fun closeProbe(id: String) {}
 
     suspend fun releaseMemory(): Map<String, Any?> = withContext(Dispatchers.IO) {
-        require(!CommandTarget.isRemote) { "Remote memory collection is not supported" }
-        Libbox.collectUIRuntimeMemory()
+        FkHost.freeMemory()
         memory().also { emit("memory", it) }
     }
 
     override fun close() {
-        serviceChanges.cancel()
         polling.cancel()
         memoryPolling.cancel()
-        egressSessions.values.forEach { it.close() }
-        egressSessions.clear()
     }
 }

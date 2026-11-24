@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bg
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -183,7 +182,15 @@ abstract class ReportManager(private val directoryName: String) {
             File(strippedDir, GO_LOG_FILE_NAME).delete()
         }
         beforeArchive(strippedDir)
-        Libbox.createZipArchive(strippedDir.path, zipFile.path, useAgeEncryption)
+        // The age encryption was libbox's (Go); the single-core build writes a plain zip.
+        require(!useAgeEncryption) { "Encrypted report export is not available in this build" }
+        java.util.zip.ZipOutputStream(zipFile.outputStream().buffered()).use { zip ->
+            strippedDir.walkTopDown().filter { it.isFile }.forEach { file ->
+                zip.putNextEntry(java.util.zip.ZipEntry(file.relativeTo(strippedDir).invariantSeparatorsPath))
+                file.inputStream().use { it.copyTo(zip) }
+                zip.closeEntry()
+            }
+        }
         zipFile
     }
 

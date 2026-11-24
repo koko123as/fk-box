@@ -7,53 +7,56 @@ import android.net.VpnService
 import android.os.Build
 import android.util.Log
 import androidx.annotation.RequiresApi
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.RoutePrefixIterator
-import io.nekohasekai.libbox.TunOptions
+import io.fkbox.mobile.TunOptions
+import io.nekohasekai.sfa.Application
+import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.ktx.toList
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import java.net.InetAddress
 
 /**
  * The VPN interface (Clash-of-Rust's `VpnRouting`): mobile-ffi
- * `vpn_routing.rs` decides what goes into the builder; this converts the
- * gomobile options and makes the `VpnService.Builder` calls.
+ * `vpn_routing.rs` decides what goes into the builder from the kernel's
+ * TUN options; this makes the `VpnService.Builder` calls.
  */
 internal object VpnRouting {
-    fun plan(options: TunOptions): JsonObject =
-        CoreBridge.call("vpnRouting.plan") {
+    /**
+     * The kernel's interface (fkhost TunOptions.plan(), the keys of
+     * vpn_routing.rs) with the app's own settings: bypass, system proxy and
+     * the per-app proxy list (the generated configuration has none; the app
+     * itself always stays proxied, mobile-ffi service.rs).
+     */
+    fun plan(options: TunOptions): JsonObject {
+        val kernel = CoreStore.json.parseToJsonElement(options.plan()).jsonObject
+        var include: JsonArray = (kernel["include"] as? JsonArray) ?: JsonArray(emptyList())
+        var exclude: JsonArray = (kernel["exclude"] as? JsonArray) ?: JsonArray(emptyList())
+        if (Settings.perAppProxyEnabled) {
+            val packages = CoreStore.call("service.perAppPackages") {
+                put("enabled", true)
+                put("mode", Settings.getEffectivePerAppProxyMode())
+                put("list", JsonArray(Settings.getEffectivePerAppProxyList().map { JsonPrimitive(it) }))
+                put("own", Application.application.packageName)
+            }.jsonObject
+            (packages["include"] as? JsonArray)?.let { include = it }
+            (packages["exclude"] as? JsonArray)?.let { exclude = it }
+        }
+        return CoreBridge.call("vpnRouting.plan") {
+            kernel.forEach { (key, value) -> put(key, value) }
             put("sdk", Build.VERSION.SDK_INT)
             put("allowBypass", Settings.allowBypass)
             put("systemProxy", Settings.systemProxyEnabled)
-            put("mtu", options.mtu)
-            put("autoRoute", options.autoRoute)
-            put("dnsDisabled", options.dnsMode.value == Libbox.DNSModeDisabled)
-            put("inet4Address", options.inet4Address.prefixes())
-            put("inet6Address", options.inet6Address.prefixes())
-            put("dnsServers", CoreBridge.strings(options.dnsServerAddress.toList()))
-            put("inet4RouteAddress", options.inet4RouteAddress.prefixes())
-            put("inet6RouteAddress", options.inet6RouteAddress.prefixes())
-            put("inet4RouteExclude", options.inet4RouteExcludeAddress.prefixes())
-            put("inet6RouteExclude", options.inet6RouteExcludeAddress.prefixes())
-            put("inet4RouteRange", options.inet4RouteRange.prefixes())
-            put("inet6RouteRange", options.inet6RouteRange.prefixes())
-            put("include", CoreBridge.strings(options.includePackage.toList()))
-            put("exclude", CoreBridge.strings(options.excludePackage.toList()))
-            put("httpProxy", buildJsonObject {
-                put("enabled", options.isHTTPProxyEnabled)
-                if (options.isHTTPProxyEnabled) {
-                    put("server", options.httpProxyServer)
-                    put("port", options.httpProxyServerPort)
-                    put("bypass", CoreBridge.strings(options.httpProxyBypassDomain.toList()))
-                }
-            })
+            put("include", include)
+            put("exclude", exclude)
+            put("httpProxy", buildJsonObject { put("enabled", false) })
         }
+    }
 
     fun build(builder: VpnService.Builder, plan: JsonObject): VpnService.Builder {
         builder.setSession(plan.text("session")).setMtu(plan.int("mtu"))
@@ -91,15 +94,6 @@ internal object VpnRouting {
         }
         return builder
     }
-
-    private fun RoutePrefixIterator.prefixes() = JsonArray(
-        buildList {
-            while (hasNext()) {
-                val prefix = next()
-                add(buildJsonObject { put("address", prefix.address()); put("prefix", prefix.prefix()) })
-            }
-        },
-    )
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun JsonObject.ipPrefix() = IpPrefix(InetAddress.getByName(text("address")), int("prefix"))

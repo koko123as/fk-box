@@ -12,9 +12,9 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
@@ -24,11 +24,11 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 
 /**
- * Which libbox command subscriptions run. The rules are mobile-ffi
- * `sessions.rs` (`sessions.plan`); this object reports what it sees (app and
- * screen state, the service, the remote session, the loaded configuration,
- * which pages are shown) and each [CommandClient] follows its stream's
- * [Target] through [CommandClient.follow], reconnecting when it changes.
+ * Which kernel streams the UI reads (bridge/BoxStreams.kt). The rules are
+ * mobile-ffi `sessions.rs` (`sessions.plan`); this object reports what it
+ * sees (app and screen state, the service, the loaded configuration, which
+ * pages are shown) and each stream follows its [Target]. Remote sessions
+ * (libbox's remote command clients) do not exist on the single-core path.
  */
 object CommandSessions {
     enum class Stream(val key: String) {
@@ -70,7 +70,7 @@ object CommandSessions {
     private val plan: StateFlow<Map<Stream, Target>> =
         combine(
             combine(AppLifecycleObserver.isForeground, AppLifecycleObserver.isScreenOn, serviceStarted) { a, b, c -> Triple(a, b, c) },
-            combine(RemoteControlManager.remoteServer, RemoteControlManager.isConnected, localConfig) { a, b, c -> Triple(a?.id, b, c) },
+            combine(flowOf<Long?>(null), flowOf(false), localConfig) { a, b, c -> Triple(a, b, c) },
             combine(trafficVisible, connectionsVisible, logsVisible) { a, b, c -> Triple(a, b, c) },
         ) { (foreground, screenOn, started), (remoteId, remoteConnected, config), (traffic, connections, logs) ->
             Inputs(foreground, screenOn, started, remoteId, remoteConnected, config, traffic, connections, logs)
@@ -112,13 +112,6 @@ object CommandSessions {
         trafficVisible.value = traffic
         connectionsVisible.value = connections.coerceAtLeast(0)
         logsVisible.value = logs
-    }
-}
-
-/** Connects while [stream]'s target says so, renewing the subscription when it changes. */
-fun CommandClient.follow(scope: CoroutineScope, stream: CommandSessions.Stream) = scope.launch {
-    CommandSessions.target(stream).collect { target ->
-        if (target.connect) connect() else disconnect()
     }
 }
 

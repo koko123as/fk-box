@@ -2,9 +2,9 @@ package io.nekohasekai.sfa.database
 
 import io.github.sagernet.libghostty.extras.GhosttyFontStore
 import io.github.sagernet.libghostty.extras.GhosttyThemeStore
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.utils.HTTPClient
+import io.nekohasekai.sfa.utils.HttpRequests
 import io.nekohasekai.sfa.utils.SecretBox
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
@@ -21,10 +21,10 @@ import kotlinx.serialization.json.put
 /**
  * The kernel layer as `fkbox-client-core` sees it (`content::Kernel` in
  * crates/client-core/src/config/content.rs): the subscription fetch, the split of a
- * JSON array of configs, an element's remarks, and conversion plus
- * validation by each core's own parser, all libbox (Go); and what backups,
+ * JSON array of configs, an element's remarks, and the profile check (the
+ * single-core brain's import, `brain.check` in mobile-ffi); and what backups,
  * WebDAV, the update check and the terminal settings need from Android
- * (phase 2d): HTTP requests through libbox (`http.get`, `webdav.request`),
+ * (phase 2d): HTTP requests ([HttpRequests]: `fetch`, `http.get`, `webdav.request`),
  * Keystore encryption of the WebDAV password (`secret.*`, [SecretBox]) and
  * the Ghostty theme and font checks (`terminal.*`). Rust calls [call]
  * back over JNI on the thread of a [CoreStore.callKernel] call
@@ -43,37 +43,36 @@ internal object CoreKernel {
 
     private fun dispatch(method: String, args: JsonObject): JsonElement = when (method) {
         "fetch" -> {
-            // gomobile lowercases the initial uppercase run in UISubscriptionGet.
-            val response = Libbox.uiSubscriptionGet(args.text("url"), HTTPClient.userAgentFor(args.text("core")))
+            val response = HttpRequests.subscription(args.text("url"), HTTPClient.userAgentFor(args.text("core")))
             buildJsonObject {
-                put("content", response.content)
-                put("userInfo", response.userInfo)
-                put("updateInterval", response.updateInterval)
-                put("webPage", response.webPage)
+                put("content", response.content.toString(Charsets.UTF_8))
+                put("userInfo", response.header("subscription-userinfo"))
+                put("updateInterval", response.header("profile-update-interval"))
+                put("webPage", response.header("profile-web-page-url"))
             }
         }
         "split" -> ProfileContent.splitArray(args.text("content"))?.let { elements ->
             JsonArray(elements.map { buildJsonObject { put("remarks", it.remarks); put("content", it.content); put("core", it.core) } })
         } ?: JsonNull
-        "remarks" -> JsonPrimitive(Libbox.coreConfigRemarks(args.text("content")))
+        // JSON arrays of configs are not split on the single-core path (split answers null).
+        "remarks" -> JsonPrimitive("")
         "prepare" -> ProfileContent.prepare(args.text("core"), args.text("content")).let {
             buildJsonObject { put("core", it.core); put("content", it.content) }
         }
         "validate" -> {
-            // The core the content resolves to, checked by that core's parser.
+            // The brain's import checks every profile; the declared core is kept as stored.
             val content = args.text("content")
-            val core = Libbox.resolveProfileCore(args.text("core"), content)
+            val core = args.text("core")
             ProfileContent.validate(core, content)
             JsonPrimitive(core)
         }
-        "capture.validate" -> JsonPrimitive(Libbox.validateUICaptureConfig(args.text("content")))
+        "capture.validate" -> error("HTTP capture is not available in the single-core build")
         "http.get" -> {
-            // gomobile lowercases the initial uppercase run in UIHTTPGet.
-            val response = Libbox.uihttpGet(args.text("url"))
+            val response = HttpRequests.get(args.text("url"))
             buildJsonObject { put("status", response.status); put("content", response.content.toString(Charsets.UTF_8)) }
         }
         "webdav.request" -> {
-            val response = Libbox.uiWebDAVRequest(args.text("method"), args.text("url"), args.text("user"), args.text("password"),
+            val response = HttpRequests.webdav(args.text("method"), args.text("url"), args.text("user"), args.text("password"),
                 args.text("content").toByteArray(Charsets.UTF_8))
             buildJsonObject { put("status", response.status); put("content", response.content.toString(Charsets.UTF_8)) }
         }

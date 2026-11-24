@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.database
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.bg.ProxyService
 import io.nekohasekai.sfa.bg.VPNService
 import io.nekohasekai.sfa.constant.ServiceMode
@@ -139,14 +138,14 @@ object Settings {
         return ServiceMode.NORMAL
     }
 
+    /**
+     * The single-core kernel always runs a TUN inbound (the brain's generated
+     * configuration), so every selected profile needs the VpnService.
+     */
     private suspend fun needVPNService(): Boolean {
         val selectedProfileId = selectedProfile
         if (selectedProfileId == -1L) return false
-        val profile = ProfileManager.get(selectedProfileId) ?: return false
-        val content = File(profile.typed.path).readText()
-        // Xray and mihomo only run on the VpnService TUN fd; their YAML/Xray
-        // JSON has no sing-box tun inbound for hasTunInbound to find.
-        if (ProfileContent.coreOf(profile, content) != TypedProfile.CORE_SING_BOX) return true
-        return Libbox.hasTunInbound(content)
+        ProfileManager.get(selectedProfileId) ?: return false
+        return true
     }
 }

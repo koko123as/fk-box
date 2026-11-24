@@ -67,6 +67,20 @@ fn to_json<T: serde::Serialize>(value: &T) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
 
+/// The single-core brain's check of a profile before it is saved: the
+/// import (Clash/mihomo YAML, sing-box JSON, share links) and the sing-box
+/// configuration generated from it, as the service would start it
+/// (crates/brain-ffi/src/profile.rs). Rule providers are not loaded here or
+/// at start.
+fn brain_check(content: &str) -> Result<Value, String> {
+    use fkbox_client_core::config::brain::generate::{generate, GenerateOptions};
+    use fkbox_client_core::config::brain::{import, Loaders};
+    let result = import(content, &Loaders::none()).map_err(|e| e.to_string())?;
+    generate(&result, &GenerateOptions::default())?;
+    let rules = result.rules.as_ref().map_or(0, |r| r.router.rules.len());
+    Ok(json!({ "nodes": result.nodes.len(), "groups": result.groups.len(), "rules": rules, "notices": result.notices.len() }))
+}
+
 /// Runs one call. Errors are messages for the caller (thrown as exceptions
 /// on the Kotlin side).
 pub fn call(store: &Store, method: &str, args: &str) -> Result<String, String> {
@@ -87,6 +101,8 @@ fn dispatch(store: &Store, kernel: Option<&mut dyn Kernel>, method: &str, args: 
     let value = match method {
         // -- subscriptions -------------------------------------------------
         "subscription.fetch" => to_json(&content::fetch(kernel()?, text(&args, "url")?, text(&args, "core")?)?)?,
+        // -- the single-core brain (stage 6) -------------------------------
+        "brain.check" => brain_check(text(&args, "content")?)?,
         "subscription.metadataAfter" => {
             let interval = arg(&args, "interval")?.as_i64().and_then(|v| i32::try_from(v).ok()).ok_or("Invalid argument: interval")?;
             let user_set = arg(&args, "intervalUserSet")?.as_bool().ok_or("Invalid argument: intervalUserSet")?;
@@ -365,6 +381,14 @@ mod tests {
 
     fn run(store: &Store, method: &str, args: Value) -> Value {
         serde_json::from_str(&call(store, method, &args.to_string()).unwrap_or_else(|e| panic!("{method}: {e}"))).unwrap()
+    }
+
+    #[test]
+    fn brain_check_accepts_what_the_brain_imports() {
+        let store = Store::open_in_memory().unwrap();
+        let links = "ss://YWVzLTEyOC1nY206cHc@127.0.0.1:8388#first\n";
+        assert_eq!(run(&store, "brain.check", json!({"content": links}))["nodes"], 1);
+        assert!(call(&store, "brain.check", &json!({"content": "not a subscription ::"}).to_string()).is_err());
     }
 
     #[test]

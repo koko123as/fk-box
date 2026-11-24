@@ -49,7 +49,6 @@ object UpdateGeoWork {
     class Task(appContext: Context, params: WorkerParameters) : CoroutineWorker(appContext, params) {
         override suspend fun doWork(): Result {
             if (!GeoPolicy.schedule().enabled) return Result.success()
-            Application.application.setupLibbox()
             var failed = false
             for (name in GeoResources.due()) {
                 try {

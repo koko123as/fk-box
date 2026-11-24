@@ -12,25 +12,24 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import androidx.lifecycle.MutableLiveData
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.StatusMessage
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.compose.MainActivity
 import io.nekohasekai.sfa.constant.Action
 import io.nekohasekai.sfa.constant.Status
 import io.nekohasekai.sfa.database.Settings
-import io.nekohasekai.sfa.utils.CommandClient
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.put
 
-class SystemNotifications(private val status: MutableLiveData<Status>, private val service: Service) :
-    BroadcastReceiver(),
-    CommandClient.Handler {
+class SystemNotifications(private val status: MutableLiveData<Status>, private val service: Service) : BroadcastReceiver() {
     companion object {
         private const val notificationId = 1
         private const val notificationChannel = "service"
@@ -44,10 +43,26 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
         }
     }
 
-    @OptIn(DelicateCoroutinesApi::class)
-    private val commandClient =
-        CommandClient(GlobalScope, CommandClient.ConnectionType.Status, this, localOnly = true)
+    // The traffic line reads the kernel's counters once a second while the
+    // screen is on (formerly a libbox status stream).
+    @Volatile private var poller: Job? = null
     private var receiverRegistered = false
+
+    @OptIn(DelicateCoroutinesApi::class)
+    private fun connect() {
+        if (poller?.isActive == true) return
+        poller = GlobalScope.launch(Dispatchers.IO) {
+            while (isActive) {
+                FkHost.stats()?.let { updateStatus(it.uplinkRate, it.downlinkRate) }
+                delay(1000)
+            }
+        }
+    }
+
+    private fun disconnect() {
+        poller?.cancel()
+        poller = null
+    }
 
     private val notificationBuilder by lazy {
         NotificationCompat.Builder(service, notificationChannel).setShowWhen(false).setOngoing(true)
@@ -135,7 +150,7 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
             put("permitted", checkPermission())
         }.bool("shown")
         if (shown) {
-            commandClient.connect()
+            connect()
             withContext(Dispatchers.Main) {
                 registerReceiver()
             }
@@ -153,10 +168,10 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
         receiverRegistered = true
     }
 
-    override fun updateStatus(status: StatusMessage) {
+    private fun updateStatus(uplink: Long, downlink: Long) {
         val line = CoreBridge.call("serviceState.trafficText") {
-            put("uplink", Libbox.formatBytes(status.uplink))
-            put("downlink", Libbox.formatBytes(status.downlink))
+            put("uplink", FkHost.formatBytes(uplink))
+            put("downlink", FkHost.formatBytes(downlink))
             put("last", lastContent)
         }
         if (!line.bool("post")) return
@@ -171,18 +186,18 @@ class SystemNotifications(private val status: MutableLiveData<Status>, private v
     override fun onReceive(context: Context, intent: Intent) {
         when (intent.action) {
             Intent.ACTION_SCREEN_ON -> {
-                commandClient.connect()
+                connect()
             }
 
             Intent.ACTION_SCREEN_OFF -> {
-                commandClient.disconnect()
+                disconnect()
             }
         }
     }
 
     fun close() {
         lastContent = null
-        commandClient.disconnect()
+        disconnect()
         ServiceCompat.stopForeground(service, ServiceCompat.STOP_FOREGROUND_REMOVE)
         if (receiverRegistered) {
             service.unregisterReceiver(this)

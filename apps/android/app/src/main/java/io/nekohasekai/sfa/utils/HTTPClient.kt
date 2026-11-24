@@ -1,28 +1,21 @@
 package io.nekohasekai.sfa.utils
 
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.sfa.database.Settings
-import java.util.Locale
+import io.nekohasekai.sfa.BuildConfig
 
 /**
- * Subscription User-Agents. The fetch itself is libbox's `UISubscriptionGet`,
- * run for client-core through `database/CoreKernel.kt`; its headers are parsed
- * in client-core (`crates/client-core/src/subscription/mod.rs`).
+ * Subscription User-Agents (the fetch itself is database/CoreKernel.kt;
+ * its headers are parsed in client-core,
+ * crates/client-core/src/subscription/mod.rs). The single-core brain
+ * imports Clash/mihomo YAML with its rules and groups, sing-box JSON and
+ * share links; "auto" asks in mihomo's format, which carries the most.
  */
 object HTTPClient {
-    val userAgent by lazy {
-        var userAgent = "SFA (sing-box "
-        userAgent += Libbox.version()
-        userAgent += "; language "
-        userAgent += Locale.getDefault().toLanguageTag().replace("-", "_")
-        userAgent += ")"
-        userAgent
-    }
+    val userAgent: String get() = "sing-box ${BuildConfig.CORE_VERSION} (fk-box ${BuildConfig.VERSION_NAME})"
 
-    /** [core] ("auto" resolves to the first enabled core) picks the User-Agent so the provider answers in that core's format. */
-    fun userAgentFor(core: String): String = when (if (core == "auto" || core.isEmpty()) Settings.autoFetchCore() else core) {
-        "xray" -> Libbox.coreSubscriptionUserAgent("xray", "")
-        "mihomo" -> Libbox.coreSubscriptionUserAgent("mihomo", "")
-        else -> userAgent
+    /** [core] picks the User-Agent so the provider answers in that format. */
+    fun userAgentFor(core: String): String = when (core) {
+        "xray" -> "v2rayN/${BuildConfig.XRAY_VERSION}"
+        "sing-box" -> userAgent
+        else -> "clash.meta"
     }
 }

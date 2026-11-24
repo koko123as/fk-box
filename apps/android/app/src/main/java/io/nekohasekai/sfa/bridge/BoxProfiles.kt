@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bridge
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.bg.UpdateProfileWork
 import io.nekohasekai.sfa.constant.Status
@@ -10,14 +9,16 @@ import io.nekohasekai.sfa.database.ProfileContent
 import io.nekohasekai.sfa.database.ProfileManager
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.database.TypedProfile
-import io.nekohasekai.sfa.utils.CommandTarget
 import kotlinx.coroutines.sync.withLock
 import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ServiceSettings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
@@ -49,36 +50,25 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
 
     suspend fun config(id: Long): Map<String, Any?> = mutex.withLock { configLocked(id) }
 
+    /**
+     * A profile's configuration for the editor: the content as saved (the
+     * brain imports it as written; no core formats it) and what the brain's
+     * check counts in it (mobile-ffi `brain.check`).
+     */
     private suspend fun configLocked(id: Long): Map<String, Any?> {
         val profile = get(id)
         val content = File(profile.typed.path).readText()
         val core = ProfileContent.coreOf(profile, content)
-        if (core != TypedProfile.CORE_SING_BOX) {
-            // Xray JSON and Clash YAML are edited as text; sing-box-only stats do not apply.
-            val formatted = Libbox.formatCoreConfig(core, content).value
-            return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
-                "core" to core, "language" to if (core == TypedProfile.CORE_MIHOMO) "yaml" else "json",
-                "stats" to runCatching { JSONObject(Libbox.coreProfileStats(core, content)).let { stats ->
-                    mapOf("groups" to stats.optInt("groups"), "outbounds" to stats.optInt("outbounds"), "rules" to stats.optInt("rules"))
-                } }.getOrNull())
-        }
-        val formatted = Libbox.formatConfig(content).value
-        val root = JSONObject(formatted)
-        val outbounds = root.optJSONArray("outbounds")
-        var groupCount = 0
-        for (index in 0 until (outbounds?.length() ?: 0)) {
-            if (outbounds?.optJSONObject(index)?.optString("type") in setOf("selector", "urltest")) groupCount++
-        }
-        val route = root.optJSONObject("route")
-        return mapOf("content" to content, "formatted" to formatted, "revision" to revision(content),
-            "core" to core, "language" to "json", "stats" to mapOf(
-            "groups" to groupCount, "outbounds" to (outbounds?.length() ?: 0),
-            "rules" to (route?.optJSONArray("rules")?.length() ?: 0),
-            "ruleSets" to (route?.optJSONArray("rule_set")?.length() ?: 0),
-            "dnsServers" to (root.optJSONObject("dns")?.optJSONArray("servers")?.length() ?: 0),
-            "endpoints" to (root.optJSONArray("endpoints")?.length() ?: 0),
-        ))
+        val json = content.trimStart().startsWith("{")
+        val stats = runCatching { CoreStore.call("brain.check") { put("content", content) } as JsonObject }.getOrNull()
+        return mapOf("content" to content, "formatted" to content, "revision" to revision(content),
+            "core" to core, "language" to if (json) "json" else "yaml",
+            "stats" to stats?.let {
+                mapOf("groups" to it.number("groups"), "outbounds" to it.number("nodes"), "rules" to it.number("rules"))
+            })
     }
+
+    private fun JsonObject.number(key: String): Int = (get(key) as? JsonPrimitive)?.intOrNull ?: 0
 
     suspend fun stats(id: Long): Any? = mutex.withLock {
         if (File(get(id).typed.path).length() > 8L * 1024 * 1024) null else configLocked(id)["stats"]
@@ -88,17 +78,10 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
         writeContentLocked(id, content, expectedRevision)
     }
 
-    suspend fun setLanProxy(id: Long, expectedRevision: String, enabled: Boolean, initialPort: Int): Map<String, Any?> = mutex.withLock {
-        require(!CommandTarget.isRemote) { "Disconnect remote session to edit local profiles" }
-        require(id == Settings.selectedProfile) { "Selected profile changed; reload it before saving" }
-        val previous = File(get(id).typed.path).readText()
-        require(revision(previous) == expectedRevision) { "Configuration changed; reload it before saving" }
-        require(ProfileContent.coreOf(get(id), previous) == TypedProfile.CORE_SING_BOX) { "LAN proxy switch is only available for sing-box profiles" }
-        val content = Libbox.setUILANProxyEnabled(previous, enabled, initialPort).value
-        val saved = writeContentLocked(id, content, expectedRevision)
-        if (previous == content && id == Settings.selectedProfile) applySelected(false)
-        saved
-    }
+    /** The LAN proxy (a sing-box inbound on the LAN) has no place on the single-core path (no local listener). */
+    @Suppress("UNUSED_PARAMETER")
+    suspend fun setLanProxy(id: Long, expectedRevision: String, enabled: Boolean, initialPort: Int): Map<String, Any?> =
+        error("The LAN proxy is not available in the single-core build")
 
     private suspend fun writeContentLocked(id: Long, content: String, expectedRevision: String): Map<String, Any?> {
         ProfileContent.replaceLocked(id, content, expectedRevision = expectedRevision, applySelected = applySelected)
@@ -235,22 +218,13 @@ internal class BoxProfiles(private val applySelected: suspend (recover: Boolean)
     fun decode(data: ByteArray, name: String): Map<String, Any?> {
         val text = data.toString(Charsets.UTF_8)
         decodeArray(text, name.substringBeforeLast('.'))?.let { return it }
-        val detected = Libbox.detectCoreConfig(text)
-        if (text.trimStart().startsWith("{") || detected == Libbox.CoreMihomo || detected == Libbox.CoreLinks) {
-            val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
-            return mapOf("name" to name.substringBeforeLast('.'), "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
-                "detectedCore" to prepared.core)
-        }
-        val profile = Libbox.decodeProfileContent(data)
-        validate(profile.config)
-        require(profile.type == Libbox.ProfileTypeLocal || profile.type == Libbox.ProfileTypeRemote) { "Unsupported profile type" }
-        val remote = profile.type == Libbox.ProfileTypeRemote
-        val url = if (remote) validateUrl(profile.remotePath) else ""
-        return mapOf("name" to profile.name, "content" to profile.config,
-            "remote" to remote, "url" to url, "autoUpdate" to (remote && profile.autoUpdate),
-            "interval" to if (remote) profile.autoUpdateInterval.coerceAtLeast(15) else 60,
-            "intervalEdited" to (remote && profile.autoUpdateInterval != TypedProfile.DEFAULT_INTERVAL),
-            "updatedAt" to if (remote) profile.lastUpdated.coerceAtLeast(0) else 0L)
+        // Text the brain imports (Clash/mihomo YAML, sing-box JSON, share
+        // links). sing-box's binary profile files (libbox's decoder) are not
+        // read on the single-core path.
+        require(!text.contains('\u0000')) { "Unsupported profile file" }
+        val prepared = ProfileContent.prepare(TypedProfile.CORE_AUTO, text)
+        return mapOf("name" to name.substringBeforeLast('.'), "content" to prepared.content, "core" to TypedProfile.CORE_AUTO,
+            "detectedCore" to prepared.core)
     }
 
     companion object {
@@ -280,7 +254,7 @@ internal fun Profile.resolvedCore(): String {
     val file = File(typed.path)
     val stamp = coreStamp()
     resolvedCores[typed.path]?.let { if (it.first == stamp) return it.second }
-    val core = runCatching { ProfileContent.coreOf(this, file.readText()) }.getOrDefault(TypedProfile.CORE_SING_BOX)
+    val core = runCatching { ProfileContent.coreOf(this, file.readText()) }.getOrDefault(typed.core)
     resolvedCores[typed.path] = stamp to core
     return core
 }

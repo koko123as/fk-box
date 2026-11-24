@@ -9,8 +9,10 @@ package brainffi
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../../crates/brain-ffi/include
-#cgo LDFLAGS: -lfkbox_brain_ffi -lm -ldl -lpthread
+#cgo LDFLAGS: -lfkbox_brain_ffi -lm -ldl
+#cgo !android LDFLAGS: -lpthread
 #cgo linux,!android LDFLAGS: -lgcc_s -lutil -lrt
+#cgo android LDFLAGS: -llog
 #include <stdlib.h>
 #include "shim.h"
 */

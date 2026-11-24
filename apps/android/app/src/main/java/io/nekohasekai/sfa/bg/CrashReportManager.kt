@@ -1,6 +1,5 @@
 package io.nekohasekai.sfa.bg
 
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.BuildConfig
 import org.json.JSONObject
@@ -57,10 +56,8 @@ object CrashReportManager : ReportManager("crash_reports") {
                 put("processName", Application.application.packageName)
                 put("appVersion", BuildConfig.VERSION_CODE.toString())
                 put("appMarketingVersion", BuildConfig.VERSION_NAME)
-                runCatching {
-                    put("coreVersion", Libbox.version())
-                    put("goVersion", Libbox.goVersion())
-                }
+                // The kernel's version is only known once libfkhost.so is loaded.
+                if (FkHost.loaded) runCatching { put("coreVersion", FkHost.version()) }
             }
             File(dir, PENDING_JVM_METADATA_FILE_NAME).writeText(metadata.toString())
         } catch (_: Throwable) {

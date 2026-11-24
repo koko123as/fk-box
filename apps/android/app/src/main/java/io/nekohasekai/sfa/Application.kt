@@ -12,16 +12,13 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.getSystemService
 import androidx.work.WorkManager
-import io.nekohasekai.libbox.Libbox
-import io.nekohasekai.libbox.SetupOptions
 import io.nekohasekai.sfa.bg.AppChangeReceiver
 import io.nekohasekai.sfa.bg.CrashReportManager
+import io.nekohasekai.sfa.bg.FkHost
 import io.nekohasekai.sfa.bg.OOMReportManager
 import io.nekohasekai.sfa.bg.PowerReportManager
 import io.nekohasekai.sfa.bg.UpdateGeoWork
 import io.nekohasekai.sfa.bg.UpdateProfileWork
-import io.nekohasekai.sfa.backend.tools.TaildropFiles
-import io.nekohasekai.sfa.constant.Bugs
 import io.nekohasekai.sfa.database.Settings
 import io.nekohasekai.sfa.utils.AppLifecycleObserver
 import kotlinx.coroutines.Dispatchers
@@ -29,9 +26,7 @@ import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.json.JSONObject
 import java.io.File
-import java.util.Locale
 import io.nekohasekai.sfa.Application as BoxApplication
 
 class Application : Application() {
@@ -39,8 +34,6 @@ class Application : Application() {
     private val workingDirAccess = Any()
     @Volatile private var workingDir: File? = null
     @Volatile private var setupCompleted = false
-    private val localeAccess = Any()
-    @Volatile private var localeApplied = false
 
     override fun attachBaseContext(base: Context?) {
         super.attachBaseContext(base)
@@ -54,27 +47,20 @@ class Application : Application() {
         // resolved off the main thread below.
         CrashReportManager.installHandler()
 
-//        Seq.setContext(this)
-        // Loading libbox (dlopen, relocations, Go runtime and package init)
-        // and the working directory setup (external storage, report archives)
-        // run on IO instead of the main thread. The locale is set first, so
-        // it is in place before setupLibbox() and every caller that waits on it.
+        // The working directory setup (external storage, report archives)
+        // runs on IO instead of the main thread. The kernel (libfkhost.so, the
+        // Go runtime) is not loaded here: the service loads it when it starts
+        // (FkHost.setup), so the UI alone never carries it.
         @Suppress("OPT_IN_USAGE")
         GlobalScope.launch(Dispatchers.IO) {
-            applyLocale()
             filesDir.mkdirs()
             cacheDir.mkdirs()
             installWorkingDir()
             Settings.dataStore.initialize()
             WorkManager.getInstance(this@Application).cancelUniqueWork("AutoUpdate")
-            runCatching {
-                setupLibbox()
-            }.onFailure {
-                Log.w("Application", "setup libbox: ${it.message}")
-            }
+            setupCompleted = true
             UpdateProfileWork.reconfigureUpdater()
             UpdateGeoWork.reconfigure()
-            TaildropFiles.cleanCache()
         }
 
         registerReceiver(
@@ -97,29 +83,15 @@ class Application : Application() {
     @Suppress("DEPRECATION")
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        if (!setupCompleted || level < TRIM_MEMORY_RUNNING_LOW) return
+        if (!FkHost.loaded || level < TRIM_MEMORY_RUNNING_LOW) return
         val now = android.os.SystemClock.elapsedRealtime()
         if (now - lastTrim < 10_000L) return
         lastTrim = now
         @Suppress("OPT_IN_USAGE")
-        GlobalScope.launch(Dispatchers.IO) { runCatching { Libbox.collectUIRuntimeMemory() } }
+        GlobalScope.launch(Dispatchers.IO) { runCatching { FkHost.freeMemory() } }
     }
 
     @Volatile private var lastTrim = 0L
-
-    /** Sets the libbox locale once; the first libbox call that loads the library. */
-    private fun applyLocale() {
-        if (localeApplied) return
-        synchronized(localeAccess) {
-            if (localeApplied) return
-            runCatching {
-                Libbox.setLocale(Locale.getDefault().toLanguageTag())
-            }.onFailure {
-                Log.d("Application", "set locale: ${it.message}")
-            }
-            localeApplied = true
-        }
-    }
 
     /** Idempotent and thread-safe; callers that read reports call it first. */
     fun installWorkingDir(): File? {
@@ -136,39 +108,13 @@ class Application : Application() {
         }
     }
 
-    suspend fun setupLibbox() = setupAccess.withLock {
-        if (setupCompleted) return@withLock
-        applyLocale()
-        val dir = installWorkingDir() ?: error("android: external storage unavailable")
-        Libbox.setup(createSetupOptions(filesDir, dir, cacheDir))
-        setupCompleted = true
-    }
-
-    fun reloadSetupOptions() {
-        val dir = getExternalFilesDir(null) ?: return
-        Libbox.reloadSetupOptions(createSetupOptions(filesDir, dir, cacheDir))
-    }
-
-    private fun createSetupOptions(baseDir: File, workingDir: File, tempDir: File): SetupOptions = SetupOptions().also {
-        it.basePath = baseDir.path
-        it.workingPath = workingDir.path
-        it.tempPath = tempDir.path
-        it.fixAndroidStack = Bugs.fixAndroidStack
-        it.logMaxLines = 3000
-        it.debug = BuildConfig.DEBUG
-        it.crashReportSource = "Application"
-        it.appVersion = BuildConfig.VERSION_CODE.toString()
-        it.appMarketingVersion = BuildConfig.VERSION_NAME
-        it.oomKillerEnabled = Settings.oomKillerEnabled
-        it.oomKillerDisabled = Settings.oomKillerDisabled
-        it.oomMemoryLimit = Settings.oomMemoryLimitMB.toLong() * 1024L * 1024L
-        it.powerReportEnabled = Settings.powerReportEnabled
-        it.platformMetadata = JSONObject().apply {
-            put("os", "Android " + Build.VERSION.RELEASE)
-            put("sdk", Build.VERSION.SDK_INT)
-            put("manufacturer", Build.MANUFACTURER)
-            put("model", Build.MODEL)
-        }.toString()
+    /**
+     * Prepares the kernel for the service: the working directory (reports)
+     * and libfkhost.so (FkHost.setup). Called by the service when it starts.
+     */
+    suspend fun setupHost() = setupAccess.withLock {
+        installWorkingDir() ?: error("android: external storage unavailable")
+        FkHost.setup()
     }
 
     companion object {

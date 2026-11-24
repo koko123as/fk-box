@@ -143,22 +143,10 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "terminalSettingsWritten" -> terminalSettingsWritten(args.list("written"))
     "terminalThemes" -> terminalThemes(args.optBoolean("dark"))
     "terminalFonts" -> terminalFonts()
-    // Capture
-    "configureCapture" -> configureCapture(args.str("revision"), args.map("config"))
-    "startCapture" -> startCapture()
-    "stopCapture" -> stopCapture()
-    "capture.caSnapshot" -> capture.caSnapshot()
-    "capture.caGenerate" -> capture.caGenerate(args.str("revision"))
-    "capture.snapshot" -> capture.snapshot(args.int("limit"), args.str("query"))
-    "capture.settings" -> capture.captureSettings()
-    "capture.logs" -> capture.logs()
-    "capture.clearLogs" -> capture.clearLogs()
-    "capture.clear" -> capture.clear()
-    "capture.domains" -> capture.domains(args.str("query"))
-    "capture.detail" -> capture.detail(args.str("id"))
-    "capture.export" -> capture.export(args.str("format"), args.str("id"), args.str("query"))
-    "capture.exportCertificate" -> capture.exportCertificate(args.str("revision"), args.optBoolean("module"))
-    "capture.installCertificate" -> capture.installCertificate(args.str("revision"))
+    // HTTP capture: removed from the single-core runtime (its settings are kept).
+    "configureCapture", "startCapture", "stopCapture", "capture.caSnapshot", "capture.caGenerate", "capture.snapshot",
+    "capture.settings", "capture.logs", "capture.clearLogs", "capture.clear", "capture.domains", "capture.detail",
+    "capture.export", "capture.exportCertificate", "capture.installCertificate" -> captureUnavailable()
     // Reports (crash and power)
     "reports.list" -> reports.list(args.getString("kind"))
     "reports.clear" -> reports.clear(args.getString("kind"))
@@ -167,36 +155,16 @@ internal suspend fun BoxBridge.slintDispatch(method: String, args: JSONObject): 
     "reports.read" -> reports.read(args.getString("kind"), args.str("id"), args.str("name"))
     "reports.save" -> reports.save(args.getString("kind"), args.str("id"), args.str("name"))
     "reports.export" -> reports.export(args.getString("kind"), args.str("id"), args.optBoolean("config"), args.optBoolean("logs"), args.optBoolean("encrypt"))
-    // Tools
-    // Diagnostics: mobile-ffi diagnostics.rs runs them (BoxDiagnostics).
-    "tools.runDiagnostic" -> toolBridge.diagnostics.run(args.getString("kind"), args.getLong("id"), jsonObject(args))
-    "tools.cancelDiagnostic" -> toolBridge.diagnostics.cancel(args.getString("kind"))
-    "tools.metered" -> toolBridge.diagnostics.metered()
-    "tools.setTailscaleExitNode" -> toolBridge.setTailscaleExitNode(args.str("endpoint"), args.str("peer"))
-    "tools.tailscaleLogout" -> toolBridge.tailscaleLogout(args.str("endpoint"))
-    "tools.openTaildropInbox" -> toolBridge.status.openInbox(args.getString("endpoint"), args.getLong("run"))
-    "tools.closeTaildropInbox" -> toolBridge.status.closeInbox()
-    "tools.markTaildropRead" -> toolBridge.markTaildropRead(args.str("endpoint"))
-    "tools.deleteTaildropFile" -> toolBridge.deleteTaildropFile(args.str("endpoint"), args.str("name"))
-    "tools.cancelTaildropReceive" -> toolBridge.cancelTaildropReceive(args.str("endpoint"), args.str("sender"), args.str("name"))
-    "tools.saveTaildropFile" -> toolBridge.saveTaildropFile(args.str("endpoint"), args.str("name"))
-    "tools.discardShare" -> toolBridge.discardShare(args.str("token"))
-    "tools.sendShare" -> toolBridge.sendShare(args.str("token"), args.str("endpoint"), args.map("peerInfo"))
-    "tools.sendTaildropFile" -> toolBridge.sendTaildropFile(args.str("endpoint"), args.map("peerInfo"))
-    "tools.cancelTaildropSend" -> toolBridge.cancelTaildropSend(args.getLong("id"))
-    "tools.dismissTaildropSend" -> toolBridge.dismissTaildropSend(args.getLong("id"))
-    "tools.submitOpenConnect" -> toolBridge.submitOpenConnect(args.str("endpoint"), args.str("challenge"), args.map("values").mapValues { it.value?.toString() ?: "" })
-    "tools.cancelOpenConnect" -> toolBridge.cancelOpenConnect(args.str("endpoint"), args.str("challenge"))
-    "tools.submitOpenVPN" -> toolBridge.submitOpenVPN(args.str("endpoint"), args.str("challenge"), args.str("username"), args.str("password"), args.str("secret"))
-    "tools.cancelOpenVPN" -> toolBridge.cancelOpenVPN(args.str("endpoint"), args.str("challenge"))
-    "tools.usbDevices" -> toolBridge.usbDevices()
-    "tools.attachUsb" -> toolBridge.attachUsb(args.str("server"), args.str("device"))
-    "tools.detachUsb" -> toolBridge.detachUsb(args.str("id"))
-    "ssh.snapshot" -> toolBridge.ssh.snapshot()
-    "ssh.options" -> toolBridge.ssh.options(args.map("peerInfo"))
-    "ssh.start" -> toolBridge.ssh.start(args.str("endpoint"), args.map("peerInfo"), args.str("username"), args.str("terminalType"), args.optBoolean("remember"))
-    "ssh.select" -> toolBridge.ssh.select(args.str("id"))
-    "ssh.duplicate" -> toolBridge.ssh.duplicate()
-    "ssh.closeSession" -> toolBridge.ssh.closeSession(args.str("id"))
+    // Tools: diagnostics (STUN, network quality, Tailscale ping), Tailscale,
+    // Taildrop, OpenVPN, OpenConnect, USB/IP and SSH were libbox services;
+    // the single-core build has none of them (their saved data is kept).
+    "tools.metered" -> false
+    "tools.runDiagnostic", "tools.cancelDiagnostic", "tools.setTailscaleExitNode", "tools.tailscaleLogout",
+    "tools.openTaildropInbox", "tools.closeTaildropInbox", "tools.markTaildropRead", "tools.deleteTaildropFile",
+    "tools.cancelTaildropReceive", "tools.saveTaildropFile", "tools.discardShare", "tools.sendShare",
+    "tools.sendTaildropFile", "tools.cancelTaildropSend", "tools.dismissTaildropSend", "tools.submitOpenConnect",
+    "tools.cancelOpenConnect", "tools.submitOpenVPN", "tools.cancelOpenVPN", "tools.usbDevices", "tools.attachUsb",
+    "tools.detachUsb", "ssh.snapshot", "ssh.options", "ssh.start", "ssh.select", "ssh.duplicate", "ssh.closeSession",
+    -> error("Not available in the single-core build: $method")
     else -> error("Unknown method: $method")
 }

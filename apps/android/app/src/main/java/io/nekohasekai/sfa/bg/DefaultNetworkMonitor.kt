@@ -1,17 +1,15 @@
 package io.nekohasekai.sfa.bg
 
 import android.net.Network
-import io.nekohasekai.libbox.InterfaceUpdateListener
-import io.nekohasekai.libbox.Libbox
+import io.fkbox.mobile.InterfaceListener
 import io.nekohasekai.sfa.Application
-import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.net.NetworkInterface
 
 object DefaultNetworkMonitor {
 
     var defaultNetwork: Network? = null
-    private var listener: InterfaceUpdateListener? = null
+    private var listener: InterfaceListener? = null
 
     // The handle of the last non-null default network, to tell a switch (Wi-Fi
     // to cellular) from the property updates the same network reports all the
@@ -21,16 +19,14 @@ object DefaultNetworkMonitor {
     suspend fun start() {
         DefaultNetworkListener.start(this) {
             defaultNetwork = it
+            // The kernel follows the default network itself (sing-box resets
+            // its connections when the interface changes).
             checkDefaultInterfaceUpdate(it)
-            pushSystemDNS()
             val update = CoreBridge.call("networkRecovery.update") {
                 put("network", it?.networkHandle)
                 put("last", lastNetwork)
             }
             lastNetwork = update.longOrNull("last")
-            if (update.bool("reconnect")) {
-                runCatching { Libbox.coreDefaultNetworkChanged() }
-            }
         }
         defaultNetwork = Application.connectivity.activeNetwork
     }
@@ -40,15 +36,7 @@ object DefaultNetworkMonitor {
         lastNetwork = null
     }
 
-    /** mihomo (cmfa build) resolves "system" DNS with the underlying network's servers. */
-    fun pushSystemDNS() {
-        val network = defaultNetwork ?: return
-        val servers = runCatching { Application.connectivity.getLinkProperties(network)?.dnsServers }.getOrNull() ?: return
-        val line = CoreBridge.call("networkRecovery.systemDns") { put("servers", CoreBridge.strings(servers.mapNotNull { it.hostAddress })) }
-        Libbox.updateCoreSystemDNS(line.text("dns"))
-    }
-
-    fun setListener(listener: InterfaceUpdateListener?) {
+    fun setListener(listener: InterfaceListener?) {
         this.listener = listener
         checkDefaultInterfaceUpdate(defaultNetwork)
     }
@@ -69,11 +57,11 @@ object DefaultNetworkMonitor {
                     Thread.sleep(100)
                     continue
                 }
-                listener.updateDefaultInterface(linkProperties.interfaceName, interfaceIndex, false, false)
+                listener.updateDefaultInterface(linkProperties.interfaceName, interfaceIndex)
                 return
             }
         } else {
-            listener.updateDefaultInterface("", -1, false, false)
+            listener.updateDefaultInterface("", -1)
         }
     }
 }

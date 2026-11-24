@@ -1,7 +1,6 @@
 package io.nekohasekai.sfa.database
 
 import android.util.AtomicFile
-import io.nekohasekai.libbox.Libbox
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.put
@@ -24,33 +23,24 @@ internal object ProfileContent {
     data class Prepared(val core: String, val content: String)
 
     /**
-     * Turns what a user imported or a subscription returned into a profile for [declaredCore]
-     * ("auto" detects): share links / Base64 node lists are converted, sing-box JSON drops the
-     * retired capture options, and every result is checked by its own core's parser.
+     * What a user imported or a subscription returned, as it is saved: the
+     * single-core brain imports Clash/mihomo YAML, sing-box JSON and share
+     * links itself when the service starts, so the content is kept as
+     * written and only checked (the brain's import, [validate]). The declared
+     * core ("auto", "sing-box", "xray", "mihomo") is kept as stored.
      */
     fun prepare(declaredCore: String, content: String): Prepared {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
-        val prepared = if (Libbox.detectCoreConfig(content) == Libbox.CoreLinks) {
-            val converted = Libbox.convertCoreShareLinksEnabled(declaredCore, Settings.enabledCores(), content)
-            Prepared(converted.core, converted.content)
-        } else {
-            val core = Libbox.resolveProfileCore(declaredCore, content)
-            Prepared(core, if (core == TypedProfile.CORE_SING_BOX) Libbox.removeUIRetiredCaptureOptions(content) else content)
-        }
-        Settings.requireCoreEnabled(prepared.core)
-        validate(prepared.core, prepared.content)
-        return prepared
+        validate(declaredCore, content)
+        return Prepared(declaredCore, content)
     }
 
     /**
-     * The elements of a top-level JSON array of configs, each with its own detected core,
-     * or null when [content] is not one. A single profile never stores an array.
+     * The elements of a top-level JSON array of configs. The brain imports one
+     * profile at a time, so content is never split on the single-core path.
      */
-    fun splitArray(content: String): List<ProfileArray.Element>? {
-        if (Libbox.detectCoreConfig(content) != Libbox.CoreArray) return null
-        val split = Libbox.splitCoreConfigArray(content)
-        return (0 until split.len()).map { ProfileArray.Element(split.remarks(it), split.content(it), split.core(it)) }
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun splitArray(content: String): List<ProfileArray.Element>? = null
 
     /**
      * One profile per element, named by its remarks (or "[source] #n"), each prepared for
@@ -67,16 +57,22 @@ internal object ProfileContent {
             entry.copy(content = prepared.content, core = prepared.core)
         }
 
+    /**
+     * The brain's check of a profile (mobile-ffi `brain.check`: import and
+     * configuration generation, crates/client-core/src/config/brain/): what
+     * the service would refuse to start is refused here.
+     */
+    @Suppress("UNUSED_PARAMETER")
     fun validate(core: String, content: String) {
         require(content.toByteArray().size <= 16 * 1024 * 1024) { "Configuration exceeds 16 MiB" }
-        Libbox.checkCoreConfig(core, content)
+        CoreStore.call("brain.check") { put("content", content) }
     }
 
-    /** sing-box-only callers (LAN proxy toggle, backups of sing-box profiles). */
-    fun validate(content: String) = validate(Libbox.resolveProfileCore(TypedProfile.CORE_AUTO, content), content)
+    fun validate(content: String) = validate(TypedProfile.CORE_AUTO, content)
 
-    /** The core that runs [profile] with its saved [content]. */
-    fun coreOf(profile: Profile, content: String): String = Libbox.resolveProfileCore(profile.typed.core, content)
+    /** The core [profile] declares (the single-core kernel runs every profile). */
+    @Suppress("UNUSED_PARAMETER")
+    fun coreOf(profile: Profile, content: String): String = profile.typed.core
 
     /** What a save did (client-core `content::Replaced`). */
     @Serializable

@@ -90,6 +90,9 @@ android {
         versionCode = getVersionProps("VERSION_CODE").toInt()
         versionName = getVersionProps("VERSION_NAME")
         base.archivesName.set("fk-box-${versionName}")
+        // Subscription User-Agents (utils/HTTPClient.kt) without loading the kernel.
+        buildConfigField("String", "CORE_VERSION", "\"${getVersionProps("CORE_VERSION")}\"")
+        buildConfigField("String", "XRAY_VERSION", "\"${getVersionProps("XRAY_VERSION")}\"")
     }
 
     signingConfigs {
@@ -319,8 +322,9 @@ androidComponents {
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
-    // libbox
-    implementation(files("libs/libbox.aar"))
+    // The kernel: fkhost.aar (Go host + Rust brain, libfkhost.so, arm64-v8a),
+    // built by .github/actions/build-fkhost from apps/android/fkhost and crates/brain-ffi.
+    implementation(files("libs/fkhost.aar"))
 
     // Both flavors use the same API 24+ backend.
     val lifecycleVersion = "2.11.0"

@@ -2,8 +2,6 @@ package io.nekohasekai.sfa.bg
 
 import android.content.Context
 import android.util.Log
-import io.nekohasekai.libbox.GeoUpdate
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.database.CoreStore
 import io.nekohasekai.sfa.database.ServiceSettings
@@ -73,7 +71,18 @@ object GeoResources {
         else -> "ASN"
     }
 
-    fun defaultUrl(name: String): String = Libbox.geoResourceDefaultURL(name)
+    /** The file a resource is stored as (as libbox named it, so installed files stay in use). */
+    fun fileName(name: String): String = when (name) {
+        GeoPolicy.GEOIP -> "geoip.dat"
+        GeoPolicy.GEOSITE -> "geosite.dat"
+        GeoPolicy.MMDB -> "geoip.metadb"
+        else -> "ASN.mmdb"
+    }
+
+    fun defaultUrl(name: String): String = "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + when (name) {
+        GeoPolicy.ASN -> "GeoLite2-ASN.mmdb"
+        else -> fileName(name)
+    }
 
     /** The user's address for [name] (client-core geo::url), else libbox's default. */
     fun url(name: String): String = CoreStore.call("geo.url") {
@@ -81,9 +90,19 @@ object GeoResources {
         put("defaultUrl", defaultUrl(name))
     }.jsonPrimitive.content
 
-    private fun dir(): File = File(Libbox.geoDataDir())
+    /**
+     * The directory libbox used (`<external files>/cores/mihomo`, GeoDataDir),
+     * kept so the files users already downloaded stay in use.
+     */
+    fun dataDir(): File {
+        val app = Application.application
+        val base = app.getExternalFilesDir(null) ?: app.filesDir
+        return File(base, "cores/mihomo").apply { mkdirs() }
+    }
 
-    private fun installed(dir: File, name: String): Boolean = File(dir, Libbox.geoResourceFileName(name)).let { it.isFile && it.length() > 0 }
+    private fun dir(): File = dataDir()
+
+    private fun installed(dir: File, name: String): Boolean = File(dir, fileName(name)).let { it.isFile && it.length() > 0 }
 
     /**
      * For the service start path, which is not a coroutine: puts the files
@@ -102,6 +121,26 @@ object GeoResources {
         }
     }
 
+    /**
+     * The geo files the brain reads for a profile's rules (`GEOSITE` needs
+     * geosite.dat, `GEOIP` the bundled geoip.metadb), put in place before the
+     * service starts. Returns why some could not be, or null; the brain then
+     * reports a rule whose data is missing.
+     */
+    fun prepareForBrainBlocking(text: String, context: Context = Application.application): String? {
+        val wanted = buildSet {
+            if (text.contains("geosite", ignoreCase = true)) add(GeoPolicy.GEOSITE)
+            if (text.contains("geoip", ignoreCase = true)) add(GeoPolicy.MMDB)
+        }
+        if (wanted.isEmpty()) return null
+        return try {
+            runBlocking { prepareForCore(wanted, context) }
+        } catch (error: Exception) {
+            Log.e(TAG, "prepare geo data", error)
+            error.message ?: error.javaClass.simpleName
+        }
+    }
+
     suspend fun prepareForCore(wanted: Set<String>, context: Context = Application.application): String? = withContext(Dispatchers.IO) {
         mutex.withLock {
             val bundle = readBundle(context)
@@ -109,7 +148,7 @@ object GeoResources {
             val dir = dir().apply { mkdirs() }
             val deadline = System.nanoTime() + ON_DEMAND_BUDGET_MS * 1_000_000
             val failures = wanted.filter { !installed(dir, it) }.mapNotNull { name ->
-                downloadMissingLocked(dir, name, bundle, deadline)?.let { "${Libbox.geoResourceFileName(name)}: $it" }
+                downloadMissingLocked(dir, name, bundle, deadline)?.let { "${fileName(name)}: $it" }
             }
             failures.takeIf { it.isNotEmpty() }?.joinToString("\n")
         }
@@ -171,7 +210,7 @@ object GeoResources {
             try {
                 val result = withTimeout(limit) {
                     cancellable { task ->
-                        if (sha256.isNotEmpty()) task.fetchExpected(dir.path, name, link, sha256) else task.fetch(dir.path, name, link, "", "", "")
+                        if (sha256.isNotEmpty()) task.fetchExpected(dir, fileName(name), link, sha256) else task.fetch(dir, fileName(name), link, "", "", "")
                     }
                 }
                 val now = System.currentTimeMillis()
@@ -183,7 +222,7 @@ object GeoResources {
                     GeoPolicy.Installed(GeoPolicy.SOURCE_DOWNLOAD, result.sha256, now, now, etag = result.etag, lastModified = result.lastModified)
                 }
                 writeState(dir, state)
-                Log.i(TAG, "downloaded ${Libbox.geoResourceFileName(name)} on first use (${if (sha256.isNotEmpty()) "pinned" else "configured address"})")
+                Log.i(TAG, "downloaded ${fileName(name)} on first use (${if (sha256.isNotEmpty()) "pinned" else "configured address"})")
                 return null
             } catch (_: TimeoutCancellationException) {
                 failure = "timed out"
@@ -201,11 +240,11 @@ object GeoResources {
     }
 
     /**
-     * A download in Go cannot see coroutine cancellation (leaving the page,
+     * A blocking download cannot see coroutine cancellation (leaving the page,
      * WorkManager stopping the worker, a timeout); cancel it explicitly.
      */
-    private suspend fun <T> cancellable(block: (GeoUpdate) -> T): T {
-        val task = Libbox.newGeoUpdate()
+    private suspend fun <T> cancellable(block: (GeoDownload) -> T): T {
+        val task = GeoDownload()
         return coroutineScope {
             val watcher = launch {
                 try {
@@ -279,7 +318,7 @@ object GeoResources {
             val dir = dir()
             val state = readState(dir)
             names.map { name ->
-                val file = File(dir, Libbox.geoResourceFileName(name))
+                val file = File(dir, fileName(name))
                 val exists = file.isFile
                 val installed = state[name]
                 val bundled = bundle?.files?.get(name)
@@ -320,7 +359,7 @@ object GeoResources {
             val dir = dir()
             val previous = readState(dir)[name]
             val result = cancellable { task ->
-                task.fetch(dir.path, name, link, previous?.sha256.orEmpty(), previous?.etag.orEmpty(), previous?.lastModified.orEmpty())
+                task.fetch(dir, fileName(name), link, previous?.sha256.orEmpty(), previous?.etag.orEmpty(), previous?.lastModified.orEmpty())
             }
             val now = System.currentTimeMillis()
             val state = readState(dir).toMutableMap()
