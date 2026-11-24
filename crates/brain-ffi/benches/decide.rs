@@ -372,7 +372,7 @@ fn setup_router_only(geo_dir: Option<&str>, use_mmdb: bool) -> (Router, ()) {
 fn main() {
     // `cargo bench` passes --bench; nothing else is read from the arguments.
     let geo_dir = std::env::var("FKBOX_GEO_DIR").ok();
-    let mut api = FkbBrainApi { abi_version: 0, size: 0, decide: None, resolve: None };
+    let mut api = FkbBrainApi { abi_version: 0, size: 0, decide: None, resolve: None, dns_message: None, fakeip_reverse: None };
     assert_eq!(unsafe { fkb_brain_attach(std::ptr::null(), &mut api) }, FKB_OK);
     let mut table = String::new();
     table.push_str(
