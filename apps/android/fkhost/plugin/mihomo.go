@@ -198,11 +198,15 @@ func (m *Mihomo) DialContext(ctx context.Context, network string, destination M.
 	case N.NetworkTCP:
 		return proxy.DialContext(ctx, mihomoMetadata(mihomoC.TCP, destination))
 	case N.NetworkUDP:
-		packetConn, err := m.listenPacket(ctx, proxy, destination)
+		packetConn, address, err := m.ListenPacketWithDestination(ctx, destination)
 		if err != nil {
 			return nil, err
 		}
-		return bufio.NewBindPacketConn(packetConn, destination.UDPAddr()), nil
+		target := destination
+		if address.IsValid() {
+			target = M.SocksaddrFrom(address, destination.Port)
+		}
+		return bufio.NewBindPacketConn(packetConn, target.UDPAddr()), nil
 	default:
 		return nil, E.New("mihomo: unsupported network ", network)
 	}
@@ -215,6 +219,55 @@ func (m *Mihomo) ListenPacket(ctx context.Context, destination M.Socksaddr) (net
 	}
 	return m.listenPacket(ctx, proxy, destination)
 }
+
+// ListenPacketWithDestination (sing-box dialer.PacketDialerWithDestination):
+// mihomo's packet connections address datagrams by IP only (WriteTo takes
+// a net.UDPAddr), so a domain destination (a fake-ip connection that
+// fkbrain mapped back to its name) is resolved first, through sing-box's
+// DNS router (fkdns, the brain: real addresses, the route the rules give
+// the name), and the relay opened to that address. The returned address
+// lets sing-box's connection manager translate between it and the
+// address the app used (bufio.NewNATPacketConn).
+func (m *Mihomo) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) {
+	proxy, err := m.current()
+	if err != nil {
+		return nil, netip.Addr{}, err
+	}
+	if !destination.IsFqdn() {
+		packetConn, err := m.listenPacket(ctx, proxy, destination)
+		return packetConn, netip.Addr{}, err
+	}
+	if m.dnsRouter == nil {
+		return nil, netip.Addr{}, E.New("mihomo: no DNS router to resolve ", destination.Fqdn)
+	}
+	addresses, err := m.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
+	if err != nil {
+		return nil, netip.Addr{}, E.Cause(err, "mihomo: resolve ", destination.Fqdn)
+	}
+	if len(addresses) == 0 {
+		return nil, netip.Addr{}, E.New("mihomo: no address for ", destination.Fqdn)
+	}
+	address := addresses[0].Unmap()
+	for _, candidate := range addresses {
+		if candidate.Unmap().Is4() {
+			address = candidate.Unmap()
+			break
+		}
+	}
+	mihomoFQDNPackets.Add(1)
+	packetConn, err := m.listenPacket(ctx, proxy, M.SocksaddrFrom(address, destination.Port))
+	if err != nil {
+		return nil, netip.Addr{}, err
+	}
+	return packetConn, address, nil
+}
+
+var _ dialer.PacketDialerWithDestination = (*Mihomo)(nil)
+
+// MihomoFQDNPackets counts UDP relays opened for a domain destination.
+func MihomoFQDNPackets() int64 { return mihomoFQDNPackets.Load() }
+
+var mihomoFQDNPackets atomic.Int64
 
 func (m *Mihomo) listenPacket(ctx context.Context, proxy mihomoC.Proxy, destination M.Socksaddr) (net.PacketConn, error) {
 	if !proxy.SupportUDP() {

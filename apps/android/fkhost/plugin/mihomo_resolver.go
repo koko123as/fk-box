@@ -22,7 +22,9 @@ import (
 // system DNS. The plugin points all three at sing-box's DNS router (the
 // fkdns server of the running configuration), once per process, public
 // exported variables only. A lookup with no running configuration fails;
-// it never reaches the system resolver.
+// it never reaches the system resolver. Since stage 4 fkdns is the brain's
+// resolver, so these lookups follow its DNS policy (node server names go
+// through the direct upstreams).
 
 type singBoxResolver struct{}
 
@@ -113,11 +115,28 @@ func (r singBoxResolver) LookupIPv6(ctx context.Context, host string) ([]netip.A
 	return r.lookup(ctx, host, netip.Addr.Is6)
 }
 
-// ResolveECH: ECH configurations come from HTTPS records, which the brain's
-// resolver will provide (stage 4); until then an ech-opts lookup fails
-// instead of asking the system.
-func (singBoxResolver) ResolveECH(ctx context.Context, host string) ([]byte, error) {
-	return nil, E.New("mihomo: ECH lookup for ", host, " is not available before the brain's resolver (stage 4)")
+// ResolveECH reads the ECH configuration from the name's HTTPS record,
+// asked through sing-box's DNS router (fkdns: the brain forwards the query
+// along the route the rules give the name, never the system resolver).
+func (r singBoxResolver) ResolveECH(ctx context.Context, host string) ([]byte, error) {
+	query := new(dns.Msg)
+	query.SetQuestion(dns.Fqdn(host), dns.TypeHTTPS)
+	response, err := r.ExchangeContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	for _, answer := range response.Answer {
+		record, isHTTPS := answer.(*dns.HTTPS)
+		if !isHTTPS {
+			continue
+		}
+		for _, value := range record.Value {
+			if ech, isECH := value.(*dns.SVCBECHConfig); isECH && len(ech.ECH) > 0 {
+				return ech.ECH, nil
+			}
+		}
+	}
+	return nil, E.New("mihomo: no ECH configuration for ", host)
 }
 
 func (singBoxResolver) ExchangeContext(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {

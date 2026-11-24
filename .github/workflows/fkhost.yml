@@ -89,13 +89,16 @@ jobs:
         run: go vet -tags "$GO_TAGS" ./...
 
       # The end-to-end test attaches to this device the way VpnService hands
-      # over its descriptor; 198.18.99.0/24 is routed into it.
+      # over its descriptor; 198.18.99.0/24 (addresses and the hijacked DNS
+      # server) and 198.18.128.0/20 (TestDNSEndToEnd's fake-ip range) are
+      # routed into it.
       - name: TUN device for the end-to-end test
         run: |
           sudo ip tuntap add dev fkt0 mode tun user "$(id -u)"
           sudo ip addr add 172.19.0.1/30 dev fkt0
           sudo ip link set fkt0 up
           sudo ip route add 198.18.99.0/24 dev fkt0
+          sudo ip route add 198.18.128.0/20 dev fkt0
           ip addr show fkt0
           ip route get 198.18.99.1
 
@@ -114,7 +117,7 @@ jobs:
             echo "### Go host and plugins"
             echo
             echo '```'
-            grep -E 'STAGE3 |E2E |^(ok|FAIL|---|PASS)' "$RUNNER_TEMP/fkhost-test.log" || true
+            grep -E 'STAGE3 |STAGE4 |E2E |^(ok|FAIL|---|PASS)' "$RUNNER_TEMP/fkhost-test.log" || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

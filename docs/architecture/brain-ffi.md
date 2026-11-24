@@ -45,7 +45,9 @@ per-core routing model (`rules::routing`), which it does not replace yet.
 | --- | --- | --- | --- |
 | host → brain | `fkb_brain_attach(host, brain)` | once, at startup, before anything else | no |
 | host → brain | `brain.decide(meta, out)` | every new connection (fkbrain `NewConnectionEx` / `NewPacketConnectionEx`) | **never** |
-| host → brain | `brain.resolve(query, out)` | the DNS transport plugin (stage 4; returns `FKB_E_UNIMPLEMENTED` in ABI 1) | yes, up to `timeout_ms` |
+| host → brain | `brain.resolve(query, out)` | real addresses of one name (ABI 2; hosts, cache, upstream) | yes, up to `timeout_ms` |
+| host → brain | `brain.dns_message(query, flags, timeout_ms, reply)` | every query of the fkdns transport (ABI 2, brain-dns.md) | yes, up to `timeout_ms` |
+| host → brain | `brain.fakeip_reverse(ip, version, domain)` | fkbrain, per connection, before decide (ABI 2) | **never** (memory only) |
 | brain → host | `start` / `reload(config_json, generation, err)` | configuration changes | yes |
 | brain → host | `stop(err)` | shutdown | yes |
 | brain → host | `probe(outbound_tag, url, timeout_ms, out, err)` | health checks / delay tests | yes, up to `timeout_ms` |
@@ -56,7 +58,12 @@ per-core routing model (`rules::routing`), which it does not replace yet.
 `fkb_brain_attach`: the brain writes its `fkb_brain_api` table into memory the
 host provides and keeps a copy of the host's `fkb_host_api`.
 
-## Structures (ABI 1, 64-bit little-endian)
+ABI 2 (stage 4) appended `dns_message` and `fakeip_reverse` to
+`fkb_brain_api` (now 40 bytes) and implemented `resolve`; every other
+structure is unchanged, the version bump makes a host built against ABI 1
+refuse the library instead of reading past its table.
+
+## Structures (ABI 2, 64-bit little-endian)
 
 Every struct is fixed; the header checks sizes and offsets with
 `_Static_assert`, the Rust mirror (`src/abi.rs`) with `const` asserts, and
@@ -158,7 +165,7 @@ Others: `fkb_str` (borrowed bytes), `fkb_buf` (caller-owned output buffer),
 | `FKB_E_INVALID` -1 | NULL, wrong `abi_version`/`size`, malformed field (bad UTF-8, unknown enum value, length beyond the array) | fallback |
 | `FKB_E_NOT_READY` -2 | no snapshot (before start, after stop) | fallback |
 | `FKB_E_PANIC` -3 | internal failure, caught at the boundary (`catch_unwind`; the release profile unwinds) | fallback |
-| `FKB_E_UNIMPLEMENTED` -4 | not in this build (resolve in ABI 1; a NULL host entry) | — |
+| `FKB_E_UNIMPLEMENTED` -4 | not in this build (a NULL host entry) | — |
 | `FKB_E_TIMEOUT` -5 | the host gave up after `timeout_ms` | — |
 | `FKB_E_BUFFER` -6 | output buffer too small, `len` = size needed | — |
 | `FKB_E_HOST` -7 | host failure, message in `err` | — |

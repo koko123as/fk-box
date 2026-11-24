@@ -1,13 +1,14 @@
 //! The brain's DNS cache as decide() reads it: sharded, read-mostly maps (a
 //! read lock per lookup, held for one hash probe) and a bounded prefetch
-//! queue that a miss feeds without ever blocking (`try_lock`). Stage 4 fills
-//! the cache from the brain's own resolver and drains the queue; stage 1
-//! only defines the contract and fills it from tests.
+//! queue that a miss feeds without ever blocking (`try_lock`). The brain's
+//! resolver fills the cache with every real answer and its prefetch thread
+//! drains the queue (woken through a condition variable; `notify_one` never
+//! blocks the deciding thread).
 
 use std::collections::{HashMap, VecDeque};
 use std::hash::{BuildHasherDefault, Hash, Hasher};
 use std::net::IpAddr;
-use std::sync::{Mutex, RwLock};
+use std::sync::{Condvar, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use fkbox_client_core::rules::engine::domain::{normalize, FxHasher};
@@ -24,6 +25,7 @@ pub struct DnsCache {
     shards: Box<[Shard]>,
     prefetch: Mutex<VecDeque<Box<str>>>,
     prefetch_cap: usize,
+    wake: Condvar,
 }
 
 impl Default for DnsCache {
@@ -35,7 +37,7 @@ impl Default for DnsCache {
 impl DnsCache {
     pub fn new(shards: usize, prefetch_cap: usize) -> DnsCache {
         let shards = (0..shards.max(1)).map(|_| RwLock::new(HashMap::default())).collect();
-        DnsCache { shards, prefetch: Mutex::new(VecDeque::new()), prefetch_cap }
+        DnsCache { shards, prefetch: Mutex::new(VecDeque::new()), prefetch_cap, wake: Condvar::new() }
     }
 
     fn shard(&self, domain: &str) -> &Shard {
@@ -50,6 +52,22 @@ impl DnsCache {
         let entry = Entry { addrs: addrs.iter().take(MAX_CACHED_ADDRS).copied().collect(), expires: Instant::now() + ttl };
         if let Ok(mut shard) = self.shard(&domain).write() {
             shard.insert(domain.into_owned().into_boxed_str(), entry);
+        }
+    }
+
+    /// Caches the answer of one family (A or AAAA), keeping the other
+    /// family's addresses of an entry that has not expired.
+    pub fn insert_family(&self, domain: &str, v6: bool, addrs: &[IpAddr], ttl: Duration) {
+        let Some(domain) = normalize(domain) else { return };
+        let now = Instant::now();
+        if let Ok(mut shard) = self.shard(&domain).write() {
+            let mut merged: Vec<IpAddr> = match shard.get(&*domain) {
+                Some(old) if old.expires > now => old.addrs.iter().copied().filter(|a| a.is_ipv6() != v6).collect(),
+                _ => Vec::new(),
+            };
+            merged.extend(addrs.iter().copied());
+            merged.truncate(MAX_CACHED_ADDRS);
+            shard.insert(domain.into_owned().into_boxed_str(), Entry { addrs: merged, expires: now + ttl });
         }
     }
 
@@ -75,6 +93,19 @@ impl DnsCache {
     pub fn take_prefetch(&self) -> Vec<Box<str>> {
         self.prefetch.lock().map(|mut q| q.drain(..).collect()).unwrap_or_default()
     }
+
+    /// As [`take_prefetch`](Self::take_prefetch), waiting up to `timeout`
+    /// for the first name when the queue is empty (the prefetch thread).
+    pub fn wait_prefetch(&self, timeout: Duration) -> Vec<Box<str>> {
+        let Ok(mut queue) = self.prefetch.lock() else { return Vec::new() };
+        if queue.is_empty() {
+            queue = match self.wake.wait_timeout(queue, timeout) {
+                Ok((q, _)) => q,
+                Err(_) => return Vec::new(),
+            };
+        }
+        queue.drain(..).collect()
+    }
 }
 
 impl DnsView for DnsCache {
@@ -94,6 +125,7 @@ impl DnsView for DnsCache {
         if let Ok(mut q) = self.prefetch.try_lock() {
             if q.len() < self.prefetch_cap && !q.iter().any(|d| &**d == domain) {
                 q.push_back(domain.into());
+                self.wake.notify_one();
             }
         }
     }
@@ -127,5 +159,16 @@ mod tests {
         let many: Vec<IpAddr> = (0..20u8).map(|i| IpAddr::from([10, 0, 0, i])).collect();
         cache.insert("many.test", &many, Duration::from_secs(60));
         assert_eq!(cache.lookup("many.test", &mut out), Some(MAX_CACHED_ADDRS));
+        // Families merge: AAAA after A keeps the A record, a new A replaces the old one.
+        cache.insert_family("fam.test", false, &["1.1.1.1".parse().unwrap()], Duration::from_secs(60));
+        cache.insert_family("fam.test", true, &["::2".parse().unwrap()], Duration::from_secs(60));
+        assert_eq!(cache.lookup("fam.test", &mut out), Some(2));
+        cache.insert_family("fam.test", false, &["2.2.2.2".parse().unwrap()], Duration::from_secs(60));
+        assert_eq!(cache.lookup("fam.test", &mut out), Some(2));
+        assert_eq!(&out[..2], &["::2".parse::<IpAddr>().unwrap(), "2.2.2.2".parse().unwrap()]);
+        // The prefetch thread wakes on a miss and times out on an empty queue.
+        assert!(cache.wait_prefetch(Duration::from_millis(10)).is_empty());
+        cache.prefetch("w.test");
+        assert_eq!(cache.wait_prefetch(Duration::from_secs(5)), vec![Box::<str>::from("w.test")]);
     }
 }

@@ -1,7 +1,8 @@
 // Package brainffi links the Rust brain (crates/brain-ffi, static library
 // libfkbox_brain_ffi.a; set CGO_LDFLAGS=-L<dir>) into the Go host:
 // fkb_brain_attach hands the brain the host's fkb_host_api table
-// (export.go) and returns decide, which becomes fkbrain's Decider. decide
+// (export.go) and returns decide, which becomes fkbrain's Decider, and
+// dns_message / fakeip_reverse, which become the plugins' DNSBrain. decide
 // takes the fixed C structs straight from Go memory (plugin.Meta /
 // plugin.Decision have the C layout); no JSON, no copy, no allocation.
 package brainffi
@@ -16,8 +17,11 @@ package brainffi
 import "C"
 
 import (
+	"context"
+	"net/netip"
 	"runtime/cgo"
 	"sync"
+	"time"
 	"unsafe"
 
 	"github.com/koko123as/fk-box/apps/android/fkhost/host"
@@ -32,6 +36,81 @@ type rustDecider struct {
 
 func (d rustDecider) Decide(meta *plugin.Meta, out *plugin.Decision) int32 {
 	return int32(C.fkhost_call_decide(d.decide, (*C.fkb_conn_meta)(unsafe.Pointer(meta)), (*C.fkb_decision)(unsafe.Pointer(out))))
+}
+
+// rustDNS is the brain's DNS behind fkdns and fkbrain's fake-ip reverse
+// lookup: dns_message (may block up to the query's deadline) and
+// fakeip_reverse (memory only).
+type rustDNS struct {
+	message C.fkb_dns_message_fn
+	reverse C.fkb_fakeip_reverse_fn
+}
+
+const defaultDNSTimeout = 5 * time.Second
+
+func (d rustDNS) Exchange(ctx context.Context, message []byte, client bool) ([]byte, error) {
+	if len(message) == 0 {
+		return nil, E.New("brain dns_message: empty message")
+	}
+	timeout := defaultDNSTimeout
+	if deadline, ok := ctx.Deadline(); ok {
+		timeout = time.Until(deadline)
+		if timeout <= 0 {
+			return nil, context.DeadlineExceeded
+		}
+	}
+	var flags C.uint32_t
+	if client {
+		flags = C.FKB_DNS_CLIENT
+	}
+	reply := make([]byte, 4096)
+	for attempt := 0; attempt < 2; attempt++ {
+		var length C.size_t
+		code := C.fkhost_call_dns_message(d.message, (*C.uint8_t)(unsafe.Pointer(&message[0])), C.size_t(len(message)), flags,
+			C.uint32_t(max(timeout.Milliseconds(), 1)), (*C.uint8_t)(unsafe.Pointer(&reply[0])), C.size_t(len(reply)), &length)
+		switch code {
+		case C.FKB_OK:
+			return reply[:int(length)], nil
+		case C.FKB_E_BUFFER:
+			if int(length) > len(reply) && int(length) <= 65535 {
+				reply = make([]byte, int(length))
+				continue
+			}
+		}
+		return nil, E.New("brain dns_message: error ", int32(code))
+	}
+	return nil, E.New("brain dns_message: reply does not fit")
+}
+
+func (d rustDNS) Reverse(addr netip.Addr) (string, bool) {
+	var ip [16]byte
+	var version C.uint8_t
+	addr = addr.Unmap()
+	switch {
+	case addr.Is4():
+		raw := addr.As4()
+		copy(ip[:], raw[:])
+		version = C.FKB_IP_V4
+	case addr.Is6():
+		ip = addr.As16()
+		version = C.FKB_IP_V6
+	default:
+		return "", false
+	}
+	var name [256]byte
+	var length C.size_t
+	code := C.fkhost_call_fakeip_reverse(d.reverse, (*C.uint8_t)(unsafe.Pointer(&ip[0])), version, (*C.uint8_t)(unsafe.Pointer(&name[0])), C.size_t(len(name)), &length)
+	switch code {
+	case C.FKB_OK:
+		if length == 0 || int(length) > len(name) {
+			return "", false
+		}
+		return string(name[:int(length)]), true
+	case C.FKB_E_NOT_FOUND:
+		return "", true
+	default:
+		return "", false
+	}
 }
 
 var (
@@ -91,6 +170,9 @@ func Attach(h *host.Host) error {
 	}
 	attached = handle
 	plugin.SetDecider(rustDecider{decide: brainAPI.decide})
+	if brainAPI.dns_message != nil && brainAPI.fakeip_reverse != nil {
+		plugin.SetDNSBrain(rustDNS{message: brainAPI.dns_message, reverse: brainAPI.fakeip_reverse})
+	}
 	return nil
 }
 

@@ -142,7 +142,9 @@ pub fn generate(result: &ImportResult, options: &GenerateOptions) -> Result<Gene
     if let Some(level) = &options.log_level {
         config.insert("log".into(), json!({"level": level}));
     }
-    config.insert("dns".into(), json!({"servers": [{"type": "fkdns", "tag": TAG_DNS}], "final": TAG_DNS}));
+    // The brain caches (with fake-ip answers that must never reach sing-box's
+    // own lookups), so sing-box's DNS client cache stays off.
+    config.insert("dns".into(), json!({"servers": [{"type": "fkdns", "tag": TAG_DNS}], "final": TAG_DNS, "disable_cache": true}));
     config.insert("inbounds".into(), json!([Value::Object(tun)]));
     if !endpoints.is_empty() {
         config.insert("endpoints".into(), Value::Array(endpoints));

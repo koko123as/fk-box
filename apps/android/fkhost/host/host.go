@@ -22,10 +22,8 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-box/include"
-	"github.com/sagernet/sing/common/bufio"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
 	"github.com/sagernet/sing/service"
 )
 
@@ -63,6 +61,8 @@ type Host struct {
 	lastSample  time.Time
 	lastUp      int64
 	lastDown    int64
+
+	dohClients plugin.DoHClients
 }
 
 type platformHandler struct{}
@@ -107,6 +107,7 @@ func (h *Host) Start(config string, generation uint32) error {
 		return E.Cause(err, "check configuration")
 	}
 	plugin.SetPendingGeneration(generation)
+	h.dohClients.Reset()
 	return h.service.StartOrReloadService(h.ctx, config, nil)
 }
 
@@ -122,6 +123,7 @@ func (h *Host) Reload(config string, generation uint32) error {
 func (h *Host) Stop() error {
 	h.lifecycle.Lock()
 	defer h.lifecycle.Unlock()
+	h.dohClients.Reset()
 	return h.service.CloseService()
 }
 
@@ -187,33 +189,17 @@ func (h *Host) Probe(ctx context.Context, tag string, url string) (int, time.Dur
 	return response.StatusCode, latency, nil
 }
 
-// Exchange sends one DNS message to upstream (udp:// or tcp:// with an IP
-// address; tls:// and https:// arrive with the brain's resolver in stage 4)
-// through the outbound and returns the reply.
+// Exchange sends one DNS message to upstream (udp://, tcp://, tls:// or
+// https:// with an IP address) through the outbound, whose dialer is the
+// protected one, and returns the reply: the brain's only way to the
+// network for DNS. DoH connections are kept per outbound until the
+// configuration changes.
 func (h *Host) Exchange(ctx context.Context, tag string, upstream string, message []byte) ([]byte, error) {
 	outbound, err := h.outbound(tag)
 	if err != nil {
 		return nil, err
 	}
-	network, server, err := plugin.ParseUpstream(upstream)
-	if err != nil {
-		return nil, err
-	}
-	if network == N.NetworkTCP {
-		conn, err := outbound.DialContext(ctx, N.NetworkTCP, server)
-		if err != nil {
-			return nil, err
-		}
-		defer conn.Close()
-		return plugin.ExchangeMessage(ctx, conn, true, message)
-	}
-	packetConn, err := outbound.ListenPacket(ctx, server)
-	if err != nil {
-		return nil, err
-	}
-	conn := bufio.NewBindPacketConn(packetConn, server.UDPAddr())
-	defer conn.Close()
-	return plugin.ExchangeMessage(ctx, conn, false, message)
+	return plugin.ExchangeVia(ctx, outbound, upstream, message, &h.dohClients)
 }
 
 // Stats mirrors fkb_stats.

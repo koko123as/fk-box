@@ -153,6 +153,9 @@ func (b *Brain) decide(metadata *adapter.InboundContext) verdict {
 		counters.decideFailed.Add(1)
 		return verdict{action: ActionReject, err: E.New("fkbrain: decide failed with code ", code)}
 	}
+	if decision.Flags&DecisionDNSMiss != 0 {
+		counters.dnsMiss.Add(1)
+	}
 	switch decision.Action {
 	case ActionReject, ActionRejectDrop, ActionHijackDNS:
 		return verdict{action: decision.Action}
@@ -174,6 +177,35 @@ func (b *Brain) decide(metadata *adapter.InboundContext) verdict {
 	return verdict{action: ActionRoute, outbound: selected}
 }
 
+// unfake rewrites a fake-ip destination to the name it stands for (the
+// brain's reverse lookup, memory only): decide then sees the domain, the
+// outbound dials the name (a proxy resolves it remotely; direct resolves it
+// through fkdns for real), and RouteOriginalDestination keeps the address
+// the app used, so sing-box's connection manager translates UDP replies
+// back to it (the same fields its own route options set). A stale fake
+// address (inside the range, unknown to the brain) cannot be routed: false.
+func unfake(metadata *adapter.InboundContext) bool {
+	brain := dnsBrain()
+	if brain == nil || !metadata.Destination.IsIP() {
+		return true
+	}
+	name, fake := brain.Reverse(metadata.Destination.Addr)
+	if !fake {
+		return true
+	}
+	if name == "" {
+		counters.fakeIPStale.Add(1)
+		return false
+	}
+	counters.fakeIP.Add(1)
+	metadata.RouteOriginalDestination = metadata.Destination
+	metadata.Destination = M.Socksaddr{Fqdn: name, Port: metadata.Destination.Port}
+	metadata.FakeIP = true
+	return true
+}
+
+var errStaleFakeIP = E.New("fkbrain: stale fake-ip address (unknown to the brain)")
+
 func rejectError(action uint16) error {
 	if action == ActionRejectDrop {
 		return &R.RejectedError{Cause: R.ErrDrop}
@@ -184,6 +216,11 @@ func rejectError(action uint16) error {
 func (b *Brain) NewConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	counters.connectionsTCP.Add(1)
 	onClose = N.AppendClose(onClose, func(error) { counters.connectionsTCP.Add(-1) })
+	if !unfake(&metadata) {
+		counters.rejected.Add(1)
+		N.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
+		return
+	}
 	if metadata.Protocol == "" && !sniff.Skip(&metadata) {
 		sniffBuffer := buf.NewPacket()
 		_ = sniff.PeekStream(ctx, &metadata, conn, nil, sniffBuffer, C.ReadPayloadTimeout, streamSniffers...)
@@ -224,6 +261,7 @@ func (b *Brain) NewConnection(ctx context.Context, conn net.Conn, metadata adapt
 
 func (b *Brain) hijackStream(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	counters.dnsHijacked.Add(1)
+	ctx = withClientQuery(ctx)
 	metadata.Destination = M.Socksaddr{}
 	err := N.ReportConnHandshakeSuccess(conn, conn)
 	if err != nil {
@@ -247,6 +285,11 @@ func (b *Brain) hijackStream(ctx context.Context, conn net.Conn, metadata adapte
 func (b *Brain) NewPacketConnection(ctx context.Context, conn N.PacketConn, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	counters.connectionsUDP.Add(1)
 	onClose = N.AppendClose(onClose, func(error) { counters.connectionsUDP.Add(-1) })
+	if !unfake(&metadata) {
+		counters.rejected.Add(1)
+		N.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
+		return
+	}
 	var packets []*N.PacketBuffer
 	if metadata.Protocol == "" {
 		var err error
@@ -323,6 +366,7 @@ func (b *Brain) sniffPackets(ctx context.Context, conn N.PacketConn, metadata *a
 
 func (b *Brain) hijackPacket(ctx context.Context, conn N.PacketConn, packets []*N.PacketBuffer, metadata adapter.InboundContext, onClose N.CloseHandlerFunc) {
 	counters.dnsHijacked.Add(1)
+	ctx = withClientQuery(ctx)
 	err := N.ReportPacketConnHandshakeSuccess(conn, nil)
 	if err != nil {
 		N.ReleaseMultiPacketBuffer(packets)

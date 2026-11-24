@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"testing"
 	"time"
@@ -40,18 +41,48 @@ func newTestBox(t *testing.T, config string) (*box.Box, *testBridge, context.Con
 		t.Fatal("start: ", err)
 	}
 	t.Cleanup(func() { instance.Close() })
+	if pendingDNSPort != 0 {
+		installFixtureDNS(t, instance, pendingDNSPort)
+	}
 	return instance, bridge, ctx
 }
 
-// clientConfig: fkdns (upstream the DNS fixture) as the only DNS server,
-// the given outbounds, protect on every dialer.
+// pendingDNSPort: the DNS fixture the next test box's fkdns answers from.
+var pendingDNSPort int
+
+// fixtureDNSBrain plays the brain's DNS in the host tests (the Rust brain
+// is linked only in brainffi): every message goes to the DNS fixture
+// through the configuration's fk-direct outbound, with the same exchange
+// the host offers the brain (protected dialer).
+type fixtureDNSBrain struct {
+	port     int
+	outbound adapter.Outbound
+}
+
+func (f fixtureDNSBrain) Exchange(ctx context.Context, message []byte, client bool) ([]byte, error) {
+	return plugin.ExchangeVia(ctx, f.outbound, fmt.Sprintf("udp://127.0.0.1:%d", f.port), message, nil)
+}
+
+func (fixtureDNSBrain) Reverse(netip.Addr) (string, bool) { return "", false }
+
+func installFixtureDNS(t *testing.T, instance *box.Box, port int) {
+	t.Helper()
+	pendingDNSPort = 0
+	plugin.SetDNSBrain(fixtureDNSBrain{port: port, outbound: outboundOf(t, instance, "fk-direct")})
+	t.Cleanup(func() { plugin.SetDNSBrain(nil) })
+}
+
+// clientConfig: fkdns as the only DNS server (answered from the DNS
+// fixture, see fixtureDNSBrain), the given outbounds, protect on every
+// dialer.
 func clientConfig(dnsPort int, outbounds string) string {
+	pendingDNSPort = dnsPort
 	return fmt.Sprintf(`{
   "log": {"level": "debug"},
-  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns", "upstream": "udp://127.0.0.1:%d"}], "final": "fkdns"},
+  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns", "disable_cache": true},
   "outbounds": [%s, {"type": "direct", "tag": "fk-direct"}, {"type": "block", "tag": "fk-block"}],
   "route": {"final": "fk-direct", "auto_detect_interface": true, "default_domain_resolver": "fkdns"}
-}`, dnsPort, outbounds)
+}`, outbounds)
 }
 
 func outboundOf(t *testing.T, instance *box.Box, tag string) adapter.Outbound {
@@ -210,6 +241,7 @@ func TestXrayXHTTP(t *testing.T) {
 			if err = instance.Start(); err != nil {
 				t.Fatal(err)
 			}
+			installFixtureDNS(t, instance, dns.Port)
 			statsBefore := plugin.XrayDialerStats()
 			checkTCPUDP(t, ctx, outboundOf(t, instance, "xh"), "198.18.99.5:443", true)
 			stats := plugin.XrayDialerStats()
@@ -375,7 +407,7 @@ func TestBrainRouting(t *testing.T) {
 	defer plugin.SetDecider(nil)
 	config := fmt.Sprintf(`{
   "log": {"level": "debug"},
-  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns", "upstream": "udp://127.0.0.1:%d"}], "final": "fkdns"},
+  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns", "disable_cache": true},
   "outbounds": [
     {"type": "fkbrain", "tag": "fkbrain", "outbounds": ["ss", "fk-direct", "fk-block"]},
     {"type": "shadowsocks", "tag": "ss", "server": "127.0.0.1", "server_port": %d, "method": "aes-128-gcm", "password": %q},
@@ -383,7 +415,8 @@ func TestBrainRouting(t *testing.T) {
     {"type": "block", "tag": "fk-block"}
   ],
   "route": {"final": "fkbrain", "auto_detect_interface": true, "default_domain_resolver": "fkdns"}
-}`, dns.Port, ssPort, fixture.Password)
+}`, ssPort, fixture.Password)
+	pendingDNSPort = dns.Port
 	instance, bridge, ctx := newTestBox(t, config)
 	before := plugin.Stats()
 

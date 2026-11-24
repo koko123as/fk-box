@@ -11,7 +11,7 @@
 //! `default`, else the first member, followed through nested groups. Groups
 //! never become sing-box `selector`/`urltest` outbounds.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use std::panic::{catch_unwind, AssertUnwindSafe};
 
 use fkbox_client_core::config::brain::generate::{self, GenerateOptions, TunOptions};
@@ -20,6 +20,8 @@ use fkbox_client_core::rules::engine::{compile, Cond, Env, Router, RouterIr, Rul
 use serde_json::Value;
 
 use crate::abi::*;
+use crate::brain::Routing;
+use crate::dns::settings::DnsSettings;
 use crate::global;
 
 /// Options of one start/reload; every field has the Android default.
@@ -32,6 +34,8 @@ pub struct ProfileOptions {
     pub tun_stack: Option<String>,
     pub tun_mtu: Option<u32>,
     pub log_level: Option<String>,
+    /// The brain's DNS settings (`dns` object; defaults when absent).
+    pub dns: DnsSettings,
 }
 
 impl ProfileOptions {
@@ -59,6 +63,7 @@ impl ProfileOptions {
                     options.tun_mtu = Some(mtu as u32);
                 }
                 "log_level" => options.log_level = Some(item.as_str().ok_or("profile options: log_level is not a string")?.to_string()),
+                "dns" => options.dns = DnsSettings::from_value(item)?,
                 other => return Err(format!("profile options: unknown key {other:?}")),
             }
         }
@@ -85,6 +90,14 @@ pub struct Plan {
     /// fkbrain's outbound table (`fkb_decision.outbound` indexes it).
     pub outbounds: Vec<String>,
     pub router: Router,
+    /// The nodes' server names (resolved through the direct upstreams).
+    pub node_servers: HashSet<String>,
+}
+
+impl Plan {
+    fn routing(&self) -> Routing {
+        Routing { outbounds: self.outbounds.clone(), node_servers: self.node_servers.clone() }
+    }
 }
 
 fn reads_process(cond: &Cond) -> bool {
@@ -179,7 +192,13 @@ pub fn plan(content: &str, options: &ProfileOptions) -> Result<Plan, String> {
         &Env { outbounds: &generated.outbounds, inbounds: &inbounds, geosite: None, geoip: None, mmdb: None, default_final: None },
     )?;
     let config_json = serde_json::to_string(&generated.config).map_err(|e| e.to_string())?;
-    Ok(Plan { config_json, outbounds: generated.outbounds, router })
+    let node_servers = result
+        .nodes
+        .iter()
+        .filter(|n| !n.server.is_empty() && n.server.trim_matches(['[', ']']).parse::<std::net::IpAddr>().is_err())
+        .filter_map(|n| fkbox_client_core::rules::engine::domain::normalize(&n.server).map(|d| d.into_owned()))
+        .collect();
+    Ok(Plan { config_json, outbounds: generated.outbounds, router, node_servers })
 }
 
 fn write_error(err: *mut FkbBuf, message: &str) {
@@ -215,7 +234,19 @@ fn run(profile: FkbStr, options: FkbStr, err: *mut FkbBuf, reload: bool) -> i32 
         let options = ProfileOptions::from_json(options).map_err(|e| (FKB_E_INVALID, e))?;
         let plan = plan(content, &options).map_err(|e| (FKB_E_INVALID, e))?;
         let brain = global();
-        let started = if reload { brain.reload(&plan.config_json, plan.router) } else { brain.start(&plan.config_json, plan.router) };
+        // The settings go in first (the host may resolve while it starts); a
+        // failed start or reload puts the previous ones back.
+        let previous = brain.dns_state().settings();
+        brain.dns_state().apply(options.dns.clone()).map_err(|e| (FKB_E_INVALID, e))?;
+        let routing = plan.routing();
+        let started = if reload {
+            brain.reload_with(&plan.config_json, plan.router, routing)
+        } else {
+            brain.start_with(&plan.config_json, plan.router, routing)
+        };
+        if started.is_err() {
+            let _ = brain.dns_state().apply((*previous).clone());
+        }
         started.map_err(|e| (e.code, e.message))
     }));
     match outcome {
@@ -321,6 +352,7 @@ rules:
         let options = ProfileOptions::from_json(r#"{"tun_auto_route": false, "tun_stack": "gvisor", "log_level": "debug"}"#).unwrap();
         let plan = plan(YAML, &options).unwrap();
         assert_eq!(plan.outbounds, ["ss-a", "mieru-b", "fk-direct", "fk-block"]);
+        assert!(plan.node_servers.is_empty(), "both servers are addresses");
         assert_eq!(outbound(&plan, "a.ss.test"), Action::Outbound(index(&plan, "ss-a")));
         // Outer -> Proxy -> first member mieru-b (groups run in the brain from stage 5).
         assert_eq!(outbound(&plan, "x.group.test"), Action::Outbound(index(&plan, "mieru-b")));
@@ -345,6 +377,9 @@ rules:
         assert!(ProfileOptions::from_json(r#"{"tun": 1}"#).is_err());
         assert!(ProfileOptions::from_json(r#"{"tun_mtu": 0}"#).is_err());
         assert_eq!(ProfileOptions::from_json("").unwrap(), ProfileOptions::default());
+        let with_dns = ProfileOptions::from_json(r#"{"dns": {"fake_ip": false, "direct_upstreams": ["tls://223.5.5.5"]}}"#).unwrap();
+        assert!(!with_dns.dns.fake_ip);
+        assert!(ProfileOptions::from_json(r#"{"dns": {"direct_upstreams": ["tls://dns.alidns.com"]}}"#).is_err());
     }
 
     #[test]

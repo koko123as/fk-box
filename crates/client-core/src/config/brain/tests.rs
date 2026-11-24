@@ -498,7 +498,7 @@ fn generated_config_is_minimal() {
     let r = import_text(&input).unwrap();
     let g = generate(&r, &GenerateOptions::default()).unwrap();
     let expected = json!({
-        "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns"},
+        "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns", "disable_cache": true},
         "inbounds": [{"type": "tun", "tag": "fk-tun", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"], "auto_route": true}],
         "endpoints": [{
             "type": "wireguard", "tag": "wg", "address": ["10.0.0.2/32"], "private_key": WG_PRIVATE,

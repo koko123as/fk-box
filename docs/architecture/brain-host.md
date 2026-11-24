@@ -99,13 +99,22 @@ route rules, so it does what the router would otherwise do:
    fails (no brain, error code, unknown generation, index or tag) rejects:
    fail closed, never direct.
 
-## fkdns (placeholder until stage 4)
+## fkdns (stage 4: the brain's resolver)
 
-The only DNS server. Every query goes to one upstream (`upstream` option,
-default `udp://1.1.1.1:53`, IP addresses only so no resolver is needed),
-over UDP or TCP, through `dialer.NewDefault` (protected by the platform);
-never the system resolver. Stage 4 replaces the body with the brain's
-`resolve`.
+The only DNS server. fkdns opens no socket: it packs every query and hands
+it to the brain's `dns_message` (flag `FKB_DNS_CLIENT` when the context
+carries fkbrain's hijack marker, i.e. an app asked), which answers from
+hosts, its cache or fake-ip, or sends it to an upstream through the host's
+`exchange` (an outbound's protected dialer). Without a brain a query fails;
+nothing falls back to the system resolver. The generated configuration
+sets `dns.disable_cache` so sing-box never caches (and never reuses a
+fake-ip answer for its own lookups). Details: brain-dns.md.
+
+fkbrain maps a fake-ip destination back to its name (`fakeip_reverse`,
+memory only) before it sniffs and decides: `Destination` becomes the name,
+`RouteOriginalDestination` keeps the address the app used (sing-box's
+connection manager then translates UDP replies, the fields its own route
+options use), a stale fake address is refused.
 
 ## mihomo plugin
 

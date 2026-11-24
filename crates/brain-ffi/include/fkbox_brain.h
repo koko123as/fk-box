@@ -1,5 +1,6 @@
 /*
- * fk-box brain C ABI (version 1).
+ * fk-box brain C ABI (version 2: stage 4 adds dns_message and fakeip_reverse
+ * to fkb_brain_api and implements resolve).
  *
  * The host is the Go kernel process: one sing-box instance (TUN, forwarding,
  * protocol outbounds, protected dialing) whose fkbrain plugin outbound
@@ -7,7 +8,10 @@
  * fkbox-brain-ffi, static library libfkbox_brain_ffi.a) that owns the rules.
  *
  *   Go -> Rust   decide() once per connection (synchronous, pure computation),
- *                resolve() for the DNS transport (declared; stage 4).
+ *                fakeip_reverse() for a fake-ip destination (memory only),
+ *                dns_message() / resolve() for the fkdns transport (may
+ *                block up to timeout_ms; the brain owns hosts, cache,
+ *                fake-ip and the choice of upstream and outbound).
  *   Rust -> Go   start/stop/reload with a sing-box JSON configuration,
  *                probe() an outbound, exchange() a DNS message through an
  *                outbound, stats().
@@ -33,7 +37,7 @@
 extern "C" {
 #endif
 
-#define FKB_ABI_VERSION 1u
+#define FKB_ABI_VERSION 2u
 #define FKB_DOMAIN_MAX 256
 #define FKB_NAME_MAX 128
 #define FKB_RESOLVE_MAX 16
@@ -125,6 +129,12 @@ enum {
 
 #define FKB_RULE_FINAL UINT32_MAX
 
+/* dns_message() flags: the query came from an app (fkbrain's port-53
+ * hijack), so a fake-ip answer is allowed. Without it (sing-box resolving a
+ * domain destination or a server name for an outbound) the brain answers
+ * with real addresses only. */
+#define FKB_DNS_CLIENT 0x0001u
+
 /* What decide() returns, written by the brain into host memory. */
 typedef struct fkb_decision {
 	uint16_t action;     /*  0  FKB_ACTION_* */
@@ -151,7 +161,8 @@ typedef struct fkb_buf {
 	size_t len;
 } fkb_buf; /* 24 */
 
-/* resolve(): one name, one query type. Declared in ABI 1, implemented in stage 4. */
+/* resolve(): one name, one query type, real addresses only (hosts, cache, then
+ * an upstream through the outbound the brain picks). */
 typedef struct fkb_resolve_query {
 	uint32_t abi_version; /*  0 */
 	uint32_t size;        /*  4 */
@@ -194,13 +205,25 @@ typedef struct fkb_stats {
 /* Go -> Rust. Thread-safe; decide must not block (see the contract). */
 typedef int32_t (*fkb_decide_fn)(const fkb_conn_meta *meta, fkb_decision *out);
 typedef int32_t (*fkb_resolve_fn)(const fkb_resolve_query *query, fkb_resolve_result *out);
+/* One DNS message (wire format, any query type) answered by the brain; the
+ * reply (same ID) goes to `reply` (FKB_E_BUFFER with len = size needed when
+ * it does not fit). Blocks at most timeout_ms. */
+typedef int32_t (*fkb_dns_message_fn)(fkb_str query, uint32_t flags, uint32_t timeout_ms, fkb_buf *reply);
+/* Is ip (16 bytes, IPv4 in the first 4; ip_version 4 or 6) a fake-ip
+ * address? FKB_OK with domain->len 0: not a fake address; FKB_OK with the
+ * domain written: the name it stands for; FKB_E_NOT_FOUND: inside the
+ * fake-ip range but unknown (stale). Memory only, never blocks: the host
+ * calls it per connection before decide. */
+typedef int32_t (*fkb_fakeip_reverse_fn)(const uint8_t *ip, uint8_t ip_version, fkb_buf *domain);
 
 typedef struct fkb_brain_api {
-	uint32_t abi_version;   /*  0 */
-	uint32_t size;          /*  4 */
-	fkb_decide_fn decide;   /*  8 */
-	fkb_resolve_fn resolve; /* 16 */
-} fkb_brain_api;            /* 24 */
+	uint32_t abi_version;                 /*  0 */
+	uint32_t size;                        /*  4 */
+	fkb_decide_fn decide;                 /*  8 */
+	fkb_resolve_fn resolve;               /* 16 */
+	fkb_dns_message_fn dns_message;       /* 24 */
+	fkb_fakeip_reverse_fn fakeip_reverse; /* 32 */
+} fkb_brain_api;                          /* 40 */
 
 /*
  * Rust -> Go. `ctx` is the host's opaque handle (a runtime/cgo.Handle value),
@@ -264,7 +287,8 @@ uint32_t fkb_struct_size(uint32_t which);
  * compiles its rules against fkbrain's outbound table and calls the host's
  * start (or reload) with it. `options` is empty or a JSON object with the
  * optional keys tun_address (list), tun_auto_route, tun_stack, tun_mtu,
- * log_level. On failure `err` (NULL or a caller buffer, truncated) holds the
+ * log_level, dns (the brain's DNS settings, docs/architecture/brain-dns.md).
+ * On failure `err` (NULL or a caller buffer, truncated) holds the
  * reason and a reload keeps the previous configuration.
  */
 int32_t fkb_brain_start_profile(fkb_str profile, fkb_str options, fkb_buf *err);
@@ -301,7 +325,9 @@ _Static_assert(offsetof(fkb_resolve_result, addrs) == 32, "fkb_resolve_result.ad
 _Static_assert(sizeof(fkb_probe_result) == 16, "fkb_probe_result size");
 _Static_assert(sizeof(fkb_stats) == 56, "fkb_stats size");
 _Static_assert(offsetof(fkb_stats, memory_inuse) == 40, "fkb_stats.memory_inuse");
-_Static_assert(sizeof(fkb_brain_api) == 24, "fkb_brain_api size");
+_Static_assert(sizeof(fkb_brain_api) == 40, "fkb_brain_api size");
+_Static_assert(offsetof(fkb_brain_api, dns_message) == 24, "fkb_brain_api.dns_message");
+_Static_assert(offsetof(fkb_brain_api, fakeip_reverse) == 32, "fkb_brain_api.fakeip_reverse");
 _Static_assert(sizeof(fkb_host_api) == 64, "fkb_host_api size");
 _Static_assert(offsetof(fkb_host_api, start) == 16, "fkb_host_api.start");
 _Static_assert(offsetof(fkb_host_api, stats) == 56, "fkb_host_api.stats");

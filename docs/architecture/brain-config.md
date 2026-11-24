@@ -118,7 +118,7 @@ name and loops (`a -> b -> a`) are errors.
 
 ```json
 {
-  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns"},
+  "dns": {"servers": [{"type": "fkdns", "tag": "fkdns"}], "final": "fkdns", "disable_cache": true},
   "inbounds": [{"type": "tun", "tag": "fk-tun", "address": ["172.19.0.1/30", "fdfe:dcba:9876::1/126"], "auto_route": true}],
   "endpoints": [ …WireGuard nodes… ],
   "outbounds": [

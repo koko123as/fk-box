@@ -60,7 +60,7 @@ jobs:
       - name: Format of the new Rust sources
         run: |
           rustfmt --edition 2021 --check \
-            crates/brain-ffi/src/*.rs crates/brain-ffi/benches/*.rs \
+            crates/brain-ffi/src/*.rs crates/brain-ffi/src/dns/*.rs crates/brain-ffi/benches/*.rs \
             crates/client-core/src/rules/engine/*.rs \
             crates/client-core/src/config/brain/*.rs
 
@@ -104,7 +104,7 @@ jobs:
             echo "### Unit tests"
             echo
             echo '```'
-            grep -E '^test result:|^running [0-9]+ tests|real geo|geoip\.(dat|metadb):' "$RUNNER_TEMP/test.log" || true
+            grep -E 'STAGE4 |^test result:|^running [0-9]+ tests|real geo|geoip\.(dat|metadb):' "$RUNNER_TEMP/test.log" || true
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 

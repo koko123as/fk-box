@@ -12,7 +12,7 @@ import (
 	N "github.com/sagernet/sing/common/network"
 )
 
-// The Go mirror of crates/brain-ffi/include/fkbox_brain.h (ABI 1). Meta and
+// The Go mirror of crates/brain-ffi/include/fkbox_brain.h (ABI 2). Meta and
 // Decision have exactly the C layout (checked in meta_test.go and, against
 // the Rust library, in brainffi), hold no Go pointers and can be handed to C
 // as they are. Nothing here allocates per decision except through metaPool.
@@ -24,7 +24,7 @@ const (
 )
 
 const (
-	ABIVersion = 1
+	ABIVersion = 2
 	domainMax  = 256
 	nameMax    = 128
 )

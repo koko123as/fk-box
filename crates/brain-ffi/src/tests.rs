@@ -168,7 +168,7 @@ fn sizes_match_the_header() {
         assert_eq!(fkb_struct_size(which), size, "{which}");
     }
     assert_eq!(fkb_struct_size(99), 0);
-    assert_eq!(fkb_brain_abi_version(), 1);
+    assert_eq!(fkb_brain_abi_version(), 2);
 }
 
 #[test]
@@ -192,7 +192,7 @@ fn metadata_becomes_a_connection() {
     let empty = conn_of(&blank).unwrap();
     assert_eq!((empty.network, empty.domain, empty.uid, empty.inbound, empty.dst), (None, None, None, None, None));
     for broken in [
-        FkbConnMeta { abi_version: 2, ..m },
+        FkbConnMeta { abi_version: 3, ..m },
         FkbConnMeta { size: 304, ..m },
         FkbConnMeta { network: 9, ..m },
         FkbConnMeta { protocol: 200, ..m },
@@ -320,12 +320,13 @@ fn concurrent_decides_see_whole_snapshots() {
 fn global_entry_points() {
     let host = leaked(Vec::new());
     let table = host_table(host);
-    let mut api = FkbBrainApi { abi_version: 0, size: 0, decide: None, resolve: None };
+    let mut api = FkbBrainApi { abi_version: 0, size: 0, decide: None, resolve: None, dns_message: None, fakeip_reverse: None };
     assert_eq!(unsafe { fkb_brain_attach(&table, std::ptr::null_mut()) }, FKB_E_INVALID);
     let bad = FkbHostApi { size: 63, ..table };
     assert_eq!(unsafe { fkb_brain_attach(&bad, &mut api) }, FKB_E_INVALID);
     assert_eq!(unsafe { fkb_brain_attach(&table, &mut api) }, FKB_OK);
-    assert_eq!((api.abi_version, api.size), (FKB_ABI_VERSION, 24));
+    assert_eq!((api.abi_version, api.size), (FKB_ABI_VERSION, 40));
+    assert!(api.dns_message.is_some() && api.fakeip_reverse.is_some());
     let decide = api.decide.unwrap();
     let resolve = api.resolve.unwrap();
     let m = meta("www.google.com", 443);
@@ -348,7 +349,8 @@ fn global_entry_points() {
     };
     let mut result =
         FkbResolveResult { count: 0, ttl_secs: 0, rcode: 0, reserved: 0, family: [0; FKB_RESOLVE_MAX], addrs: [[0; 16]; FKB_RESOLVE_MAX] };
-    assert_eq!(unsafe { resolve(&query, &mut result) }, FKB_E_UNIMPLEMENTED);
+    // An empty name is malformed (resolve is implemented since ABI 2, see dns::tests).
+    assert_eq!(unsafe { resolve(&query, &mut result) }, FKB_E_INVALID);
     assert_eq!(unsafe { resolve(&FkbResolveQuery { size: 1, ..query }, &mut result) }, FKB_E_INVALID);
     // A start through the global brain reaches the attached host.
     assert_eq!(global().start("{}", router(RULES)).unwrap(), 1);

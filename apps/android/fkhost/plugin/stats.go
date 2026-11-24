@@ -19,6 +19,9 @@ type pluginCounters struct {
 	decideFailed   atomic.Int64
 	rejected       atomic.Int64
 	dnsHijacked    atomic.Int64
+	dnsMiss        atomic.Int64
+	fakeIP         atomic.Int64
+	fakeIPStale    atomic.Int64
 
 	access   sync.Mutex
 	byTarget map[string]int64
@@ -48,6 +51,12 @@ type Snapshot struct {
 	DecideFailed   int64
 	Rejected       int64
 	DNSHijacked    int64
+	// Decisions flagged FKB_DECISION_DNS_MISS (a rule needed an address
+	// the brain's cache did not have yet).
+	DNSMiss int64
+	// Connections to a fake-ip address routed by its name / refused as stale.
+	FakeIP      int64
+	FakeIPStale int64
 	// Connections fkbrain handed to each outbound tag.
 	Routed map[string]int64
 }
@@ -70,6 +79,9 @@ func Stats() Snapshot {
 		DecideFailed:   counters.decideFailed.Load(),
 		Rejected:       counters.rejected.Load(),
 		DNSHijacked:    counters.dnsHijacked.Load(),
+		DNSMiss:        counters.dnsMiss.Load(),
+		FakeIP:         counters.fakeIP.Load(),
+		FakeIPStale:    counters.fakeIPStale.Load(),
 		Routed:         routed,
 	}
 }

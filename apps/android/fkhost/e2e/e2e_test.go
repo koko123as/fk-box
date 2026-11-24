@@ -74,7 +74,9 @@ func (b *tunBridge) Close() {
 	b.closeTunLocked()
 }
 
-const options = `{"tun_address": ["172.19.0.1/30"], "tun_auto_route": false, "tun_stack": "gvisor", "tun_mtu": 1500, "log_level": "debug"}`
+// fake-ip off: this test addresses 198.18.99.0/24 directly, which lies
+// inside the default fake-ip range (TestDNSEndToEnd covers fake-ip).
+const options = `{"tun_address": ["172.19.0.1/30"], "tun_auto_route": false, "tun_stack": "gvisor", "tun_mtu": 1500, "log_level": "debug", "dns": {"fake_ip": false}}`
 
 func tcpEcho(t *testing.T, address string) {
 	t.Helper()

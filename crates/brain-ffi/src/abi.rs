@@ -8,7 +8,7 @@ use std::net::IpAddr;
 
 use fkbox_client_core::rules::engine::{Conn, Network};
 
-pub const FKB_ABI_VERSION: u32 = 1;
+pub const FKB_ABI_VERSION: u32 = 2;
 pub const FKB_DOMAIN_MAX: usize = 256;
 pub const FKB_NAME_MAX: usize = 128;
 pub const FKB_RESOLVE_MAX: usize = 16;
@@ -48,6 +48,10 @@ pub const FKB_ACTION_HIJACK_DNS: u16 = 3;
 
 pub const FKB_DECISION_DNS_MISS: u16 = 0x0001;
 pub const FKB_RULE_FINAL: u32 = u32::MAX;
+
+/// `dns_message` flags: the query came from an app (port-53 hijack), so a
+/// fake-ip answer is allowed; without it the caller needs real addresses.
+pub const FKB_DNS_CLIENT: u32 = 0x0001;
 
 pub const FKB_STRUCT_CONN_META: u32 = 1;
 pub const FKB_STRUCT_DECISION: u32 = 2;
@@ -123,7 +127,7 @@ pub struct FkbResolveQuery {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 pub struct FkbResolveResult {
     pub count: u32,
     pub ttl_secs: u32,
@@ -158,6 +162,8 @@ pub struct FkbStats {
 
 pub type FkbDecideFn = unsafe extern "C" fn(meta: *const FkbConnMeta, out: *mut FkbDecision) -> i32;
 pub type FkbResolveFn = unsafe extern "C" fn(query: *const FkbResolveQuery, out: *mut FkbResolveResult) -> i32;
+pub type FkbDnsMessageFn = unsafe extern "C" fn(query: FkbStr, flags: u32, timeout_ms: u32, reply: *mut FkbBuf) -> i32;
+pub type FkbFakeipReverseFn = unsafe extern "C" fn(ip: *const u8, ip_version: u8, domain: *mut FkbBuf) -> i32;
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -166,6 +172,8 @@ pub struct FkbBrainApi {
     pub size: u32,
     pub decide: Option<FkbDecideFn>,
     pub resolve: Option<FkbResolveFn>,
+    pub dns_message: Option<FkbDnsMessageFn>,
+    pub fakeip_reverse: Option<FkbFakeipReverseFn>,
 }
 
 pub type FkbStartFn = unsafe extern "C" fn(ctx: *mut c_void, config_json: FkbStr, generation: u32, err: *mut FkbBuf) -> i32;
@@ -233,7 +241,9 @@ const _: () = {
     assert!(size_of::<FkbProbeResult>() == 16);
     assert!(size_of::<FkbStats>() == 56);
     assert!(offset_of!(FkbStats, memory_inuse) == 40);
-    assert!(size_of::<FkbBrainApi>() == 24);
+    assert!(size_of::<FkbBrainApi>() == 40);
+    assert!(offset_of!(FkbBrainApi, dns_message) == 24);
+    assert!(offset_of!(FkbBrainApi, fakeip_reverse) == 32);
     assert!(size_of::<FkbHostApi>() == 64);
     assert!(offset_of!(FkbHostApi, start) == 16);
     assert!(offset_of!(FkbHostApi, stats) == 56);
