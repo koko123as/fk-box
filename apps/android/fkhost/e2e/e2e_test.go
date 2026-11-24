@@ -15,6 +15,7 @@ import (
 	"net/netip"
 	"os"
 	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -33,6 +34,7 @@ type tunBridge struct {
 	name      string
 	access    sync.Mutex
 	protected int
+	tunFd     int
 }
 
 func (b *tunBridge) Protect(fd int) error {
@@ -42,8 +44,34 @@ func (b *tunBridge) Protect(fd int) error {
 	return nil
 }
 
+// OpenTun keeps its descriptor, as the Android shell keeps the
+// ParcelFileDescriptor from establish (the host runs on a duplicate), and
+// releases the previous one when a new interface is requested: a reload
+// closes the old instance first, and a non-multiqueue TUN device takes one
+// attachment at a time.
 func (b *tunBridge) OpenTun(request *host.TunRequest) (int, error) {
-	return fixture.OpenTunDevice(b.name)
+	b.access.Lock()
+	defer b.access.Unlock()
+	b.closeTunLocked()
+	fd, err := fixture.OpenTunDevice(b.name)
+	if err != nil {
+		return -1, err
+	}
+	b.tunFd = fd
+	return fd, nil
+}
+
+func (b *tunBridge) closeTunLocked() {
+	if b.tunFd > 0 {
+		_ = syscall.Close(b.tunFd)
+		b.tunFd = 0
+	}
+}
+
+func (b *tunBridge) Close() {
+	b.access.Lock()
+	defer b.access.Unlock()
+	b.closeTunLocked()
 }
 
 const options = `{"tun_address": ["172.19.0.1/30"], "tun_auto_route": false, "tun_stack": "gvisor", "tun_mtu": 1500, "log_level": "debug"}`
@@ -90,6 +118,7 @@ func TestEndToEnd(t *testing.T) {
 	}, echo.Port)
 
 	bridge := &tunBridge{name: tunName}
+	defer bridge.Close()
 	h, err := host.New(host.Options{Bridge: bridge})
 	if err != nil {
 		t.Fatal(err)

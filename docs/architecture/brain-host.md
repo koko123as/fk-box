@@ -37,7 +37,10 @@ and not part of the new path (to be decided in stage 6).
   `route.auto_detect_interface` every sing-box dialer, plugin dialers
   included), `OpenTun(request)` = `VpnService.Builder.establish` (the host
   duplicates the descriptor and runs `tun.New` on it, name from
-  `TUNGETIFF`), and optionally `OwnerFinder` (uid + packages, used when the
+  `TUNGETIFF`); the bridge keeps the original descriptor, as the Android shell
+  keeps the `ParcelFileDescriptor`, and releases it when the next interface
+  is requested or the service stops (a reload closes the old instance
+  first; a non-multiqueue TUN takes one attachment at a time), and optionally `OwnerFinder` (uid + packages, used when the
   configuration has `route.find_process`) and `NetworkSource` (interfaces
   and default network; without it sing-box watches the system itself).
   Shell, SSH, Tailscale, bridges, neighbours and auto-redirect are not
@@ -199,7 +202,10 @@ Build of every package with all errors, `go vet` (informational), then
   decider (HTTP host sniffed, routed by index, rejected, DNS hijacked to
   fkdns). Each asserts that sockets went through `Protect` (and, for Xray,
   that no dial was refused or fell outside the sing-box dialers).
-- `e2e`: a TUN device the job creates (`ip tuntap add ... user`,
+- `e2e`: first that the TUN inbound's `PreMatch` (`adapter.JudgeFlow`)
+  answers Continue for TCP and UDP, since `route.final` = fkbrain is not an
+  `adapter.FlowOutbound`, so flows are accepted and reach fkbrain as
+  connections; then a TUN device the job creates (`ip tuntap add ... user`,
   198.18.99.0/24 routed into it); the brain imports a Clash subscription
   and starts the host through `fkb_host_api`; kernel traffic enters the
   TUN (gVisor stack), fkbrain asks the Rust decide, and native
