@@ -28,7 +28,7 @@ import (
 	"github.com/koko123as/fk-box/apps/android/fkhost/brainffi"
 	"github.com/koko123as/fk-box/apps/android/fkhost/host"
 	"github.com/koko123as/fk-box/apps/android/fkhost/plugin"
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 var (
@@ -70,7 +70,7 @@ func ensureHost() (*host.Host, error) {
 		return nil, err
 	}
 	if err := brainffi.Attach(created); err != nil {
-		return nil, upstream.Cause(err, "attach the brain")
+		return nil, up.Cause(err, "attach the brain")
 	}
 	instance = created
 	return created, nil
@@ -83,7 +83,7 @@ func ensureHost() (*host.Host, error) {
 // is the VpnService; it is kept until the next Start.
 func Start(platform Platform, profile string, options string) error {
 	if platform == nil {
-		return upstream.NewError("start: no platform")
+		return up.NewError("start: no platform")
 	}
 	access.Lock()
 	defer access.Unlock()
@@ -106,7 +106,7 @@ func Reload(profile string, options string) error {
 	access.Lock()
 	defer access.Unlock()
 	if instance == nil || !running {
-		return upstream.NewError("reload: not running")
+		return up.NewError("reload: not running")
 	}
 	if err := brainffi.ReloadProfile(profile, options); err != nil {
 		if instance.Box() == nil {
@@ -248,7 +248,7 @@ func FreeMemory() {
 
 // Version is the kernel's version line: sing-box and the brain ABI.
 func Version() string {
-	return upstream.SingBoxVersion()
+	return up.SingBoxVersion()
 }
 
 // BrainABI is the brain's C ABI version (brain-ffi.md).

@@ -11,13 +11,13 @@ import (
 
 	// Every Xray protocol and transport, as fk-box links today.
 
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // XrayOptions: sing-box dial fields (detour, bind, mark) plus one Xray
 // outbound object (protocol/settings/streamSettings).
 type XrayOptions struct {
-	upstream.DialerOptions
+	up.DialerOptions
 	Outbound map[string]any `json:"outbound"`
 }
 
@@ -44,33 +44,33 @@ var (
 // core.DialUDP. Its sockets come from internet.DialSystem, which the plugin
 // redirects process-wide to sing-box dialers (xray_dialer.go).
 type Xray struct {
-	upstream.Adapter
-	logger   upstream.ContextLogger
+	up.Adapter
+	logger   up.ContextLogger
 	config   []byte
 	servers  []string
 	upstream *xrayUpstream
 	access   sync.RWMutex
-	instance *upstream.XrayInstance
+	instance *up.XrayInstance
 }
 
-func NewXray(ctx context.Context, router upstream.Router, logger upstream.ContextLogger, tag string, options XrayOptions) (upstream.Outbound, error) {
+func NewXray(ctx context.Context, router up.Router, logger up.ContextLogger, tag string, options XrayOptions) (up.Outbound, error) {
 	if len(options.Outbound) == 0 {
-		return nil, upstream.NewError("xray: missing outbound")
+		return nil, up.NewError("xray: missing outbound")
 	}
 	if err := checkXrayOutbound(options.Outbound); err != nil {
-		return nil, upstream.Cause(err, "xray")
+		return nil, up.Cause(err, "xray")
 	}
 	servers := xrayServers(options.Outbound)
 	if len(servers) == 0 {
-		return nil, upstream.NewError("xray: outbound without a server address")
+		return nil, up.NewError("xray: outbound without a server address")
 	}
-	upstream, err := upstream.NewWithOptions(upstream.DialerConfig{
+	upstream, err := up.NewWithOptions(up.DialerConfig{
 		Context:        ctx,
 		Options:        options.DialerOptions,
 		RemoteIsDomain: true,
 	})
 	if err != nil {
-		return nil, upstream.Cause(err, "xray: create sing-box dialer")
+		return nil, up.Cause(err, "xray: create sing-box dialer")
 	}
 	config, err := stdjson.Marshal(map[string]any{
 		"log":       map[string]any{"loglevel": "warning"},
@@ -81,12 +81,12 @@ func NewXray(ctx context.Context, router upstream.Router, logger upstream.Contex
 	}
 	// Build Xray's configuration now so errors surface when the
 	// configuration is checked; the instance itself is made at start.
-	if _, err = upstream.XrayLoadJSONConfig(bytes.NewReader(config)); err != nil {
-		return nil, upstream.Cause(err, "xray: load outbound")
+	if _, err = up.XrayLoadJSONConfig(bytes.NewReader(config)); err != nil {
+		return nil, up.Cause(err, "xray: load outbound")
 	}
 	installXrayDialer()
 	return &Xray{
-		Adapter:  upstream.NewAdapterWithDialerOptions(TypeXray, tag, []string{upstream.NetworkTCP, upstream.NetworkUDP}, options.DialerOptions),
+		Adapter:  up.NewAdapterWithDialerOptions(TypeXray, tag, []string{up.NetworkTCP, up.NetworkUDP}, options.DialerOptions),
 		logger:   logger,
 		config:   config,
 		servers:  servers,
@@ -94,21 +94,21 @@ func NewXray(ctx context.Context, router upstream.Router, logger upstream.Contex
 	}, nil
 }
 
-func (x *Xray) Start(stage upstream.StartStage, scope *upstream.Scope) error {
-	if stage != upstream.StartStateInitialize {
+func (x *Xray) Start(stage up.StartStage, scope *up.Scope) error {
+	if stage != up.StartStateInitialize {
 		return nil
 	}
-	built, err := upstream.XrayLoadJSONConfig(bytes.NewReader(x.config))
+	built, err := up.XrayLoadJSONConfig(bytes.NewReader(x.config))
 	if err != nil {
-		return upstream.Cause(err, "xray: load outbound")
+		return up.Cause(err, "xray: load outbound")
 	}
-	instance, err := upstream.XrayNew(built)
+	instance, err := up.XrayNew(built)
 	if err != nil {
-		return upstream.Cause(err, "xray: new instance")
+		return up.Cause(err, "xray: new instance")
 	}
 	if err = instance.Start(); err != nil {
 		_ = instance.Close()
-		return upstream.Cause(err, "xray: start instance")
+		return up.Cause(err, "xray: start instance")
 	}
 	registerXrayServers(x.servers, x.upstream)
 	x.access.Lock()
@@ -124,11 +124,11 @@ func (x *Xray) Start(stage upstream.StartStage, scope *upstream.Scope) error {
 	return nil
 }
 
-func (x *Xray) current() (*upstream.XrayInstance, error) {
+func (x *Xray) current() (*up.XrayInstance, error) {
 	x.access.RLock()
 	defer x.access.RUnlock()
 	if x.instance == nil {
-		return nil, upstream.NewError("xray: outbound ", x.Tag(), " is not started")
+		return nil, up.NewError("xray: outbound ", x.Tag(), " is not started")
 	}
 	return x.instance, nil
 }
@@ -136,51 +136,51 @@ func (x *Xray) current() (*upstream.XrayInstance, error) {
 // Servers are the host:port pairs this outbound's sockets go to.
 func (x *Xray) Servers() []string { return append([]string(nil), x.servers...) }
 
-func xrayDestination(network upstream.XrayNetwork, destination upstream.Socksaddr) upstream.XrayDestination {
-	var address upstream.XrayAddress
+func xrayDestination(network up.XrayNetwork, destination up.Socksaddr) up.XrayDestination {
+	var address up.XrayAddress
 	if destination.IsFqdn() {
-		address = upstream.XrayDomainAddress(destination.Fqdn)
+		address = up.XrayDomainAddress(destination.Fqdn)
 	} else {
-		address = upstream.XrayIPAddress(destination.Addr.Unmap().AsSlice())
+		address = up.XrayIPAddress(destination.Addr.Unmap().AsSlice())
 	}
-	return upstream.XrayDestination{Network: network, Address: address, Port: upstream.XrayPort(destination.Port)}
+	return up.XrayDestination{Network: network, Address: address, Port: up.XrayPort(destination.Port)}
 }
 
 func (x *Xray) withUpstream(ctx context.Context) context.Context {
 	return context.WithValue(ctx, xrayUpstreamKey{}, x.upstream)
 }
 
-func (x *Xray) DialContext(ctx context.Context, network string, destination upstream.Socksaddr) (net.Conn, error) {
+func (x *Xray) DialContext(ctx context.Context, network string, destination up.Socksaddr) (net.Conn, error) {
 	instance, err := x.current()
 	if err != nil {
 		return nil, err
 	}
-	switch upstream.NetworkName(network) {
-	case upstream.NetworkTCP:
-		return upstream.XrayDial(x.withUpstream(ctx), instance, xrayDestination(upstream.XrayNetwork_TCP, destination))
-	case upstream.NetworkUDP:
-		return upstream.XrayDial(x.withUpstream(ctx), instance, xrayDestination(upstream.XrayNetwork_UDP, destination))
+	switch up.NetworkName(network) {
+	case up.NetworkTCP:
+		return up.XrayDial(x.withUpstream(ctx), instance, xrayDestination(up.XrayNetwork_TCP, destination))
+	case up.NetworkUDP:
+		return up.XrayDial(x.withUpstream(ctx), instance, xrayDestination(up.XrayNetwork_UDP, destination))
 	default:
-		return nil, upstream.NewError("xray: unsupported network ", network)
+		return nil, up.NewError("xray: unsupported network ", network)
 	}
 }
 
 // ListenPacket: core.DialUDP takes any IP destination per packet; its
 // WriteTo only understands IP addresses (common/net DestinationFromAddr),
 // so a domain destination (fake-ip, stage 4) is one core.Dial UDP stream.
-func (x *Xray) ListenPacket(ctx context.Context, destination upstream.Socksaddr) (net.PacketConn, error) {
+func (x *Xray) ListenPacket(ctx context.Context, destination up.Socksaddr) (net.PacketConn, error) {
 	instance, err := x.current()
 	if err != nil {
 		return nil, err
 	}
 	if destination.IsFqdn() {
-		conn, err := upstream.XrayDial(x.withUpstream(ctx), instance, xrayDestination(upstream.XrayNetwork_UDP, destination))
+		conn, err := up.XrayDial(x.withUpstream(ctx), instance, xrayDestination(up.XrayNetwork_UDP, destination))
 		if err != nil {
 			return nil, err
 		}
-		return upstream.NewUnbindPacketConnWithAddr(conn, destination), nil
+		return up.NewUnbindPacketConnWithAddr(conn, destination), nil
 	}
-	return upstream.XrayDialUDP(x.withUpstream(ctx), instance)
+	return up.XrayDialUDP(x.withUpstream(ctx), instance)
 }
 
 func withTag(object map[string]any, tag string) map[string]any {
@@ -203,14 +203,14 @@ func asObject(value any) map[string]any {
 func checkXrayOutbound(object map[string]any) error {
 	protocol, _ := object["protocol"].(string)
 	if !xrayProtocols[strings.ToLower(protocol)] {
-		return upstream.NewError("protocol ", strconv.Quote(protocol), " is not supported in the xray plugin")
+		return up.NewError("protocol ", strconv.Quote(protocol), " is not supported in the xray plugin")
 	}
 	settings := asObject(object["settings"])
 	if settings == nil {
-		return upstream.NewError("outbound without settings")
+		return up.NewError("outbound without settings")
 	}
 	if strategy, exists := settings["domainStrategy"]; exists && !isAsIs(strategy) {
-		return upstream.NewError("settings.domainStrategy uses Xray's DNS; the brain resolves")
+		return up.NewError("settings.domainStrategy uses Xray's DNS; the brain resolves")
 	}
 	stream := asObject(object["streamSettings"])
 	if stream == nil {
@@ -218,27 +218,27 @@ func checkXrayOutbound(object map[string]any) error {
 	}
 	network, _ := stream["network"].(string)
 	if !xrayTransports[strings.ToLower(network)] {
-		return upstream.NewError("transport ", strconv.Quote(network), " is not supported in the xray plugin")
+		return up.NewError("transport ", strconv.Quote(network), " is not supported in the xray plugin")
 	}
 	if tls := asObject(stream["tlsSettings"]); tls != nil {
 		if _, exists := tls["allowInsecure"]; exists {
-			return upstream.NewError("allowInsecure was removed in Xray 26")
+			return up.NewError("allowInsecure was removed in Xray 26")
 		}
 	}
 	if sockopt := asObject(stream["sockopt"]); sockopt != nil {
 		for _, key := range []string{"dialerProxy", "addressPortStrategy", "happyEyeballs"} {
 			if _, exists := sockopt[key]; exists {
-				return upstream.NewError("streamSettings.sockopt.", key, " is not supported (chains are sing-box detours, names resolve in the brain)")
+				return up.NewError("streamSettings.sockopt.", key, " is not supported (chains are sing-box detours, names resolve in the brain)")
 			}
 		}
 		if strategy, exists := sockopt["domainStrategy"]; exists && !isAsIs(strategy) {
-			return upstream.NewError("streamSettings.sockopt.domainStrategy uses Xray's DNS; the brain resolves")
+			return up.NewError("streamSettings.sockopt.domainStrategy uses Xray's DNS; the brain resolves")
 		}
 	}
 	if finalMask, exists := stream["finalmask"]; exists {
 		encoded, _ := stdjson.Marshal(finalMask)
 		if bytes.Contains(bytes.ToLower(encoded), []byte(`"realm"`)) {
-			return upstream.NewError("finalmask realm (STUN) resolves with the system resolver")
+			return up.NewError("finalmask realm (STUN) resolves with the system resolver")
 		}
 	}
 	return nil

@@ -7,7 +7,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // The Go mirror of crates/brain-ffi/include/fkbox_brain.h (ABI 2). Meta and
@@ -144,25 +144,25 @@ var metaPool = sync.Pool{New: func() any { return new(Meta) }}
 
 func protocolCode(protocol string) uint8 {
 	switch protocol {
-	case upstream.ProtocolHTTP:
+	case up.ProtocolHTTP:
 		return ProtoHTTP
-	case upstream.ProtocolTLS:
+	case up.ProtocolTLS:
 		return ProtoTLS
-	case upstream.ProtocolQUIC:
+	case up.ProtocolQUIC:
 		return ProtoQUIC
-	case upstream.ProtocolDNS:
+	case up.ProtocolDNS:
 		return ProtoDNS
-	case upstream.ProtocolBitTorrent:
+	case up.ProtocolBitTorrent:
 		return ProtoBitTorrent
-	case upstream.ProtocolSTUN:
+	case up.ProtocolSTUN:
 		return ProtoSTUN
-	case upstream.ProtocolDTLS:
+	case up.ProtocolDTLS:
 		return ProtoDTLS
-	case upstream.ProtocolSSH:
+	case up.ProtocolSSH:
 		return ProtoSSH
-	case upstream.ProtocolRDP:
+	case up.ProtocolRDP:
 		return ProtoRDP
-	case upstream.ProtocolNTP:
+	case up.ProtocolNTP:
 		return ProtoNTP
 	default:
 		return ProtoNone
@@ -187,14 +187,14 @@ func putAddr(dst *[16]byte, addr netip.Addr) uint8 {
 // fill writes the record for one connection. Strings longer than their
 // array are cut (package/process, flagged) or left out (a domain: a cut
 // name would match the wrong rules).
-func (m *Meta) fill(metadata *upstream.InboundContext, inboundIndex uint32) {
+func (m *Meta) fill(metadata *up.InboundContext, inboundIndex uint32) {
 	*m = Meta{}
 	m.ABIVersion = ABIVersion
 	m.Size = uint32(metaSize)
 	switch metadata.Network {
-	case upstream.NetworkTCP:
+	case up.NetworkTCP:
 		m.Network = NetTCP
-	case upstream.NetworkUDP:
+	case up.NetworkUDP:
 		m.Network = NetUDP
 	}
 	m.Protocol = protocolCode(metadata.Protocol)

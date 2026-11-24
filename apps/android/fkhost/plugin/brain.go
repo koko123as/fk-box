@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // BrainOptions: the outbound table decide() indexes into
@@ -21,22 +21,22 @@ type BrainOptions struct {
 // The sniffers sing-box's router uses when a sniff rule names none
 // (route/route.go actionSniff, defaultPacketSniffers).
 var (
-	streamSniffers = []upstream.StreamSniffer{
-		upstream.TLSClientHello,
-		upstream.HTTPHost,
-		upstream.StreamDomainNameQuery,
-		upstream.BitTorrent,
-		upstream.SSH,
-		upstream.RDP,
+	streamSniffers = []up.StreamSniffer{
+		up.TLSClientHello,
+		up.HTTPHost,
+		up.StreamDomainNameQuery,
+		up.BitTorrent,
+		up.SSH,
+		up.RDP,
 	}
-	packetSniffers = []upstream.PacketSniffer{
-		upstream.DomainNameQuery,
-		upstream.QUICClientHello,
-		upstream.STUNMessage,
-		upstream.UTP,
-		upstream.UDPTracker,
-		upstream.DTLSRecord,
-		upstream.NTP,
+	packetSniffers = []up.PacketSniffer{
+		up.DomainNameQuery,
+		up.QUICClientHello,
+		up.STUNMessage,
+		up.UTP,
+		up.UDPTracker,
+		up.DTLSRecord,
+		up.NTP,
 	}
 )
 
@@ -54,46 +54,46 @@ const maxSniffPackets = 4
 // A failed decide (no brain, no snapshot, an error code, an unknown
 // generation or index) rejects the connection: fail closed, never direct.
 type Brain struct {
-	upstream.Adapter
+	up.Adapter
 	ctx         context.Context
-	logger      upstream.ContextLogger
-	manager     upstream.OutboundManager
-	inbounds    upstream.InboundManager
-	connections upstream.ConnectionManager
-	dnsRouter   upstream.DNSRouter
+	logger      up.ContextLogger
+	manager     up.OutboundManager
+	inbounds    up.InboundManager
+	connections up.ConnectionManager
+	dnsRouter   up.DNSRouter
 	generation  uint32
 	inboundOnce sync.Once
 	inboundTags []string
 }
 
 var (
-	_ upstream.ConnectionHandler       = (*Brain)(nil)
-	_ upstream.PacketConnectionHandler = (*Brain)(nil)
+	_ up.ConnectionHandler       = (*Brain)(nil)
+	_ up.PacketConnectionHandler = (*Brain)(nil)
 )
 
-func NewBrain(ctx context.Context, router upstream.Router, logger upstream.ContextLogger, tag string, options BrainOptions) (upstream.Outbound, error) {
+func NewBrain(ctx context.Context, router up.Router, logger up.ContextLogger, tag string, options BrainOptions) (up.Outbound, error) {
 	if len(options.Outbounds) == 0 {
-		return nil, upstream.NewError("fkbrain: empty outbound table")
+		return nil, up.NewError("fkbrain: empty outbound table")
 	}
 	seen := make(map[string]bool, len(options.Outbounds))
 	for _, name := range options.Outbounds {
 		if name == "" || name == tag || seen[name] {
-			return nil, upstream.NewError("fkbrain: empty, self or duplicate tag in the outbound table: ", name)
+			return nil, up.NewError("fkbrain: empty, self or duplicate tag in the outbound table: ", name)
 		}
 		seen[name] = true
 	}
 	brain := &Brain{
-		Adapter:     upstream.NewAdapter(TypeBrain, tag, []string{upstream.NetworkTCP, upstream.NetworkUDP}, options.Outbounds),
+		Adapter:     up.NewAdapter(TypeBrain, tag, []string{up.NetworkTCP, up.NetworkUDP}, options.Outbounds),
 		ctx:         ctx,
 		logger:      logger,
-		manager:     upstream.FromContext[upstream.OutboundManager](ctx),
-		inbounds:    upstream.FromContext[upstream.InboundManager](ctx),
-		connections: upstream.FromContext[upstream.ConnectionManager](ctx),
-		dnsRouter:   upstream.FromContext[upstream.DNSRouter](ctx),
+		manager:     up.FromContext[up.OutboundManager](ctx),
+		inbounds:    up.FromContext[up.InboundManager](ctx),
+		connections: up.FromContext[up.ConnectionManager](ctx),
+		dnsRouter:   up.FromContext[up.DNSRouter](ctx),
 		generation:  pendingGeneration.Load(),
 	}
 	if brain.manager == nil || brain.connections == nil || brain.dnsRouter == nil {
-		return nil, upstream.NewError("fkbrain: missing outbound manager, connection manager or DNS router")
+		return nil, up.NewError("fkbrain: missing outbound manager, connection manager or DNS router")
 	}
 	registerGeneration(brain.generation, options.Outbounds)
 	return brain, nil
@@ -119,16 +119,16 @@ func (b *Brain) inboundIndex(tag string) uint32 {
 
 type verdict struct {
 	action   uint16
-	outbound upstream.Outbound
+	outbound up.Outbound
 	err      error
 }
 
 // decide asks the brain about one connection.
-func (b *Brain) decide(metadata *upstream.InboundContext) verdict {
+func (b *Brain) decide(metadata *up.InboundContext) verdict {
 	holder := currentDecider.Load()
 	if holder == nil {
 		counters.decideFailed.Add(1)
-		return verdict{action: ActionReject, err: upstream.NewError("fkbrain: no brain attached")}
+		return verdict{action: ActionReject, err: up.NewError("fkbrain: no brain attached")}
 	}
 	meta := metaPool.Get().(*Meta)
 	meta.fill(metadata, b.inboundIndex(metadata.Inbound))
@@ -139,7 +139,7 @@ func (b *Brain) decide(metadata *upstream.InboundContext) verdict {
 	metaPool.Put(meta)
 	if code != CodeOK {
 		counters.decideFailed.Add(1)
-		return verdict{action: ActionReject, err: upstream.NewError("fkbrain: decide failed with code ", code)}
+		return verdict{action: ActionReject, err: up.NewError("fkbrain: decide failed with code ", code)}
 	}
 	if decision.Flags&DecisionDNSMiss != 0 {
 		counters.dnsMiss.Add(1)
@@ -150,17 +150,17 @@ func (b *Brain) decide(metadata *upstream.InboundContext) verdict {
 	case ActionRoute:
 	default:
 		counters.decideFailed.Add(1)
-		return verdict{action: ActionReject, err: upstream.NewError("fkbrain: unknown action ", decision.Action)}
+		return verdict{action: ActionReject, err: up.NewError("fkbrain: unknown action ", decision.Action)}
 	}
 	tag, loaded := outboundTag(decision.Generation, decision.Outbound)
 	if !loaded {
 		counters.decideFailed.Add(1)
-		return verdict{action: ActionReject, err: upstream.NewError("fkbrain: no outbound ", decision.Outbound, " in generation ", decision.Generation)}
+		return verdict{action: ActionReject, err: up.NewError("fkbrain: no outbound ", decision.Outbound, " in generation ", decision.Generation)}
 	}
 	selected, loaded := b.manager.Outbound(tag)
 	if !loaded {
 		counters.decideFailed.Add(1)
-		return verdict{action: ActionReject, err: upstream.NewError("fkbrain: outbound not running: ", tag)}
+		return verdict{action: ActionReject, err: up.NewError("fkbrain: outbound not running: ", tag)}
 	}
 	return verdict{action: ActionRoute, outbound: selected}
 }
@@ -172,7 +172,7 @@ func (b *Brain) decide(metadata *upstream.InboundContext) verdict {
 // the app used, so sing-box's connection manager translates UDP replies
 // back to it (the same fields its own route options set). A stale fake
 // address (inside the range, unknown to the brain) cannot be routed: false.
-func unfake(metadata *upstream.InboundContext) bool {
+func unfake(metadata *up.InboundContext) bool {
 	brain := dnsBrain()
 	if brain == nil || !metadata.Destination.IsIP() {
 		return true
@@ -187,40 +187,40 @@ func unfake(metadata *upstream.InboundContext) bool {
 	}
 	counters.fakeIP.Add(1)
 	metadata.RouteOriginalDestination = metadata.Destination
-	metadata.Destination = upstream.Socksaddr{Fqdn: name, Port: metadata.Destination.Port}
+	metadata.Destination = up.Socksaddr{Fqdn: name, Port: metadata.Destination.Port}
 	metadata.FakeIP = true
 	return true
 }
 
-var errStaleFakeIP = upstream.NewError("fkbrain: stale fake-ip address (unknown to the brain)")
+var errStaleFakeIP = up.NewError("fkbrain: stale fake-ip address (unknown to the brain)")
 
 func rejectError(action uint16) error {
 	if action == ActionRejectDrop {
-		return &upstream.RejectedError{Cause: upstream.ErrDrop}
+		return &up.RejectedError{Cause: up.ErrDrop}
 	}
-	return &upstream.RejectedError{Cause: upstream.ErrReset}
+	return &up.RejectedError{Cause: up.ErrReset}
 }
 
-func (b *Brain) NewConnection(ctx context.Context, conn net.Conn, metadata upstream.InboundContext, onClose upstream.CloseHandlerFunc) {
+func (b *Brain) NewConnection(ctx context.Context, conn net.Conn, metadata up.InboundContext, onClose up.CloseHandlerFunc) {
 	counters.connectionsTCP.Add(1)
-	onClose = upstream.AppendClose(onClose, func(error) { counters.connectionsTCP.Add(-1) })
+	onClose = up.AppendClose(onClose, func(error) { counters.connectionsTCP.Add(-1) })
 	if !unfake(&metadata) {
 		counters.rejected.Add(1)
-		upstream.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
+		up.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
 		return
 	}
-	if metadata.Protocol == "" && !upstream.Skip(&metadata) {
-		sniffBuffer := upstream.NewPacket()
-		_ = upstream.PeekStream(ctx, &metadata, conn, nil, sniffBuffer, upstream.ReadPayloadTimeout, streamSniffers...)
+	if metadata.Protocol == "" && !up.Skip(&metadata) {
+		sniffBuffer := up.NewPacket()
+		_ = up.PeekStream(ctx, &metadata, conn, nil, sniffBuffer, up.ReadPayloadTimeout, streamSniffers...)
 		if !sniffBuffer.IsEmpty() {
-			conn = upstream.NewCachedConn(conn, sniffBuffer)
+			conn = up.NewCachedConn(conn, sniffBuffer)
 		} else {
 			sniffBuffer.Release()
 		}
 	}
 	// DNS to port 53 is the brain's DNS (mihomo dns-hijack any:53, the
 	// Android service's hijack-dns today); the rules decide everything else.
-	if metadata.Protocol == upstream.ProtocolDNS && metadata.Destination.Port == 53 {
+	if metadata.Protocol == up.ProtocolDNS && metadata.Destination.Port == 53 {
 		b.hijackStream(ctx, conn, metadata, onClose)
 		return
 	}
@@ -234,61 +234,61 @@ func (b *Brain) NewConnection(ctx context.Context, conn net.Conn, metadata upstr
 		if result.err != nil {
 			b.logger.ErrorContext(ctx, result.err)
 		}
-		upstream.CloseOnHandshakeFailure(conn, onClose, rejectError(result.action))
+		up.CloseOnHandshakeFailure(conn, onClose, rejectError(result.action))
 		return
 	}
 	counters.routed(result.outbound.Tag())
 	metadata.Outbound = result.outbound.Tag()
-	conn = upstream.NewInt64CounterConn(conn, []*atomic.Int64{&counters.uplink}, []*atomic.Int64{&counters.downlink})
-	if handler, isHandler := result.outbound.(upstream.ConnectionHandler); isHandler {
+	conn = up.NewInt64CounterConn(conn, []*atomic.Int64{&counters.uplink}, []*atomic.Int64{&counters.downlink})
+	if handler, isHandler := result.outbound.(up.ConnectionHandler); isHandler {
 		handler.NewConnection(ctx, conn, metadata, onClose)
 		return
 	}
 	b.connections.NewConnection(ctx, result.outbound, conn, metadata, onClose)
 }
 
-func (b *Brain) hijackStream(ctx context.Context, conn net.Conn, metadata upstream.InboundContext, onClose upstream.CloseHandlerFunc) {
+func (b *Brain) hijackStream(ctx context.Context, conn net.Conn, metadata up.InboundContext, onClose up.CloseHandlerFunc) {
 	counters.dnsHijacked.Add(1)
 	ctx = withClientQuery(ctx)
-	metadata.Destination = upstream.Socksaddr{}
-	err := upstream.ReportConnHandshakeSuccess(conn, conn)
+	metadata.Destination = up.Socksaddr{}
+	err := up.ReportConnHandshakeSuccess(conn, conn)
 	if err != nil {
-		upstream.CloseOnHandshakeFailure(conn, onClose, upstream.Cause(err, "report handshake success"))
+		up.CloseOnHandshakeFailure(conn, onClose, up.Cause(err, "report handshake success"))
 		return
 	}
 	for {
-		_ = conn.SetReadDeadline(time.Now().Add(upstream.DNSTimeout))
-		err = upstream.HandleStreamDNSRequest(ctx, b.dnsRouter, conn, metadata)
+		_ = conn.SetReadDeadline(time.Now().Add(up.DNSTimeout))
+		err = up.HandleStreamDNSRequest(ctx, b.dnsRouter, conn, metadata)
 		if err != nil {
 			break
 		}
 	}
 	conn.Close()
-	if upstream.IsClosedOrCanceled(err) {
+	if up.IsClosedOrCanceled(err) {
 		err = nil
 	}
 	onClose(err)
 }
 
-func (b *Brain) NewPacketConnection(ctx context.Context, conn upstream.PacketConn, metadata upstream.InboundContext, onClose upstream.CloseHandlerFunc) {
+func (b *Brain) NewPacketConnection(ctx context.Context, conn up.PacketConn, metadata up.InboundContext, onClose up.CloseHandlerFunc) {
 	counters.connectionsUDP.Add(1)
-	onClose = upstream.AppendClose(onClose, func(error) { counters.connectionsUDP.Add(-1) })
+	onClose = up.AppendClose(onClose, func(error) { counters.connectionsUDP.Add(-1) })
 	if !unfake(&metadata) {
 		counters.rejected.Add(1)
-		upstream.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
+		up.CloseOnHandshakeFailure(conn, onClose, errStaleFakeIP)
 		return
 	}
-	var packets []*upstream.PacketBuffer
+	var packets []*up.PacketBuffer
 	if metadata.Protocol == "" {
 		var err error
 		packets, err = b.sniffPackets(ctx, conn, &metadata)
 		if err != nil {
-			upstream.ReleaseMultiPacketBuffer(packets)
-			upstream.CloseOnHandshakeFailure(conn, onClose, err)
+			up.ReleaseMultiPacketBuffer(packets)
+			up.CloseOnHandshakeFailure(conn, onClose, err)
 			return
 		}
 	}
-	if metadata.Protocol == upstream.ProtocolDNS && metadata.Destination.Port == 53 {
+	if metadata.Protocol == up.ProtocolDNS && metadata.Destination.Port == 53 {
 		b.hijackPacket(ctx, conn, packets, metadata, onClose)
 		return
 	}
@@ -302,18 +302,18 @@ func (b *Brain) NewPacketConnection(ctx context.Context, conn upstream.PacketCon
 		if result.err != nil {
 			b.logger.ErrorContext(ctx, result.err)
 		}
-		upstream.ReleaseMultiPacketBuffer(packets)
-		upstream.CloseOnHandshakeFailure(conn, onClose, rejectError(result.action))
+		up.ReleaseMultiPacketBuffer(packets)
+		up.CloseOnHandshakeFailure(conn, onClose, rejectError(result.action))
 		return
 	}
 	counters.routed(result.outbound.Tag())
 	metadata.Outbound = result.outbound.Tag()
 	for _, packet := range slices.Backward(packets) {
-		conn = upstream.NewCachedPacketConn(conn, packet.Buffer, packet.Destination)
-		upstream.PutPacketBuffer(packet)
+		conn = up.NewCachedPacketConn(conn, packet.Buffer, packet.Destination)
+		up.PutPacketBuffer(packet)
 	}
-	conn = upstream.NewInt64CounterPacketConn(conn, []*atomic.Int64{&counters.uplink}, nil, []*atomic.Int64{&counters.downlink}, nil)
-	if handler, isHandler := result.outbound.(upstream.PacketConnectionHandler); isHandler {
+	conn = up.NewInt64CounterPacketConn(conn, []*atomic.Int64{&counters.uplink}, nil, []*atomic.Int64{&counters.downlink}, nil)
+	if handler, isHandler := result.outbound.(up.PacketConnectionHandler); isHandler {
 		handler.NewPacketConnection(ctx, conn, metadata, onClose)
 		return
 	}
@@ -322,69 +322,69 @@ func (b *Brain) NewPacketConnection(ctx context.Context, conn upstream.PacketCon
 
 // sniffPackets reads the first packet (more for a fragmented QUIC hello)
 // within sing-box's payload timeout; no packet in time is not an error.
-func (b *Brain) sniffPackets(ctx context.Context, conn upstream.PacketConn, metadata *upstream.InboundContext) ([]*upstream.PacketBuffer, error) {
-	var packets []*upstream.PacketBuffer
+func (b *Brain) sniffPackets(ctx context.Context, conn up.PacketConn, metadata *up.InboundContext) ([]*up.PacketBuffer, error) {
+	var packets []*up.PacketBuffer
 	for len(packets) < maxSniffPackets {
-		buffer := upstream.NewPacket()
-		_ = conn.SetReadDeadline(time.Now().Add(upstream.ReadPayloadTimeout))
+		buffer := up.NewPacket()
+		_ = conn.SetReadDeadline(time.Now().Add(up.ReadPayloadTimeout))
 		destination, err := conn.ReadPacket(buffer)
 		_ = conn.SetReadDeadline(time.Time{})
 		if err != nil {
 			buffer.Release()
-			if upstream.IsTimeout(err) {
+			if up.IsTimeout(err) {
 				return packets, nil
 			}
 			return packets, err
 		}
-		packet := upstream.NewPacketBuffer()
-		*packet = upstream.PacketBuffer{Buffer: buffer, Destination: destination}
+		packet := up.NewPacketBuffer()
+		*packet = up.PacketBuffer{Buffer: buffer, Destination: destination}
 		packets = append(packets, packet)
 		var sniffErr error
 		if len(packets) > 1 {
-			sniffErr = upstream.PeekPacket(ctx, metadata, buffer.Bytes(), upstream.QUICClientHello)
+			sniffErr = up.PeekPacket(ctx, metadata, buffer.Bytes(), up.QUICClientHello)
 		} else {
-			sniffErr = upstream.PeekPacket(ctx, metadata, buffer.Bytes(), packetSniffers...)
+			sniffErr = up.PeekPacket(ctx, metadata, buffer.Bytes(), packetSniffers...)
 		}
-		if !errors.Is(sniffErr, upstream.ErrNeedMoreData) {
+		if !errors.Is(sniffErr, up.ErrNeedMoreData) {
 			return packets, nil
 		}
 	}
 	return packets, nil
 }
 
-func (b *Brain) hijackPacket(ctx context.Context, conn upstream.PacketConn, packets []*upstream.PacketBuffer, metadata upstream.InboundContext, onClose upstream.CloseHandlerFunc) {
+func (b *Brain) hijackPacket(ctx context.Context, conn up.PacketConn, packets []*up.PacketBuffer, metadata up.InboundContext, onClose up.CloseHandlerFunc) {
 	counters.dnsHijacked.Add(1)
 	ctx = withClientQuery(ctx)
-	err := upstream.ReportPacketConnHandshakeSuccess(conn, nil)
+	err := up.ReportPacketConnHandshakeSuccess(conn, nil)
 	if err != nil {
-		upstream.ReleaseMultiPacketBuffer(packets)
-		err = upstream.Cause(err, "report handshake success")
+		up.ReleaseMultiPacketBuffer(packets)
+		err = up.Cause(err, "report handshake success")
 	} else {
-		err = upstream.NewDNSPacketConnection(ctx, b.dnsRouter, conn, packets, metadata)
+		err = up.NewDNSPacketConnection(ctx, b.dnsRouter, conn, packets, metadata)
 	}
-	if err != nil && upstream.IsClosedOrCanceled(err) {
+	if err != nil && up.IsClosedOrCanceled(err) {
 		err = nil
 	}
-	upstream.CloseOnHandshakeFailure(conn, onClose, err)
+	up.CloseOnHandshakeFailure(conn, onClose, err)
 }
 
 // DialContext / ListenPacket serve callers that dial fkbrain directly
 // (nothing in the generated configuration does): decide on the destination
 // alone, no sniffing.
-func (b *Brain) DialContext(ctx context.Context, network string, destination upstream.Socksaddr) (net.Conn, error) {
-	metadata := upstream.InboundContext{Network: upstream.NetworkName(network), Destination: destination}
+func (b *Brain) DialContext(ctx context.Context, network string, destination up.Socksaddr) (net.Conn, error) {
+	metadata := up.InboundContext{Network: up.NetworkName(network), Destination: destination}
 	result := b.decide(&metadata)
 	if result.action != ActionRoute {
-		return nil, upstream.Errors(result.err, rejectError(result.action))
+		return nil, up.Errors(result.err, rejectError(result.action))
 	}
 	return result.outbound.DialContext(ctx, network, destination)
 }
 
-func (b *Brain) ListenPacket(ctx context.Context, destination upstream.Socksaddr) (net.PacketConn, error) {
-	metadata := upstream.InboundContext{Network: upstream.NetworkUDP, Destination: destination}
+func (b *Brain) ListenPacket(ctx context.Context, destination up.Socksaddr) (net.PacketConn, error) {
+	metadata := up.InboundContext{Network: up.NetworkUDP, Destination: destination}
 	result := b.decide(&metadata)
 	if result.action != ActionRoute {
-		return nil, upstream.Errors(result.err, rejectError(result.action))
+		return nil, up.Errors(result.err, rejectError(result.action))
 	}
 	return result.outbound.ListenPacket(ctx, destination)
 }

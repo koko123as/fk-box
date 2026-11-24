@@ -38,7 +38,7 @@ def main():
             problems.append(f"{rel}: imports {module}")
     for problem in problems:
         print(f"::error file=apps/android/fkhost/{problem.split(':')[0]}::{problem}; "
-              "use (or add to) apps/android/fkhost/upstream instead")
+              "use (or add to) apps/android/fkhost/upstream (imported as up) instead")
     if problems:
         return 1
     print(f"{checked} product Go files of fkhost import upstream modules only through ./upstream")

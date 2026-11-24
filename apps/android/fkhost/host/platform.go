@@ -12,7 +12,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // Bridge is what the Android shell provides (through the JNI bridge in
@@ -30,14 +30,14 @@ type Bridge interface {
 // OwnerFinder is ConnectivityManager.getConnectionOwnerUid + the package
 // names of that uid (Android 10+).
 type OwnerFinder interface {
-	FindConnectionOwner(request *upstream.FindConnectionOwnerRequest) (*upstream.ConnectionOwner, error)
+	FindConnectionOwner(request *up.FindConnectionOwnerRequest) (*up.ConnectionOwner, error)
 }
 
 // NetworkSource reports the device's interfaces and default network
 // (ConnectivityManager callbacks). Without it sing-box watches the system
 // itself (netlink; restricted for apps on Android 11+).
 type NetworkSource interface {
-	NetworkInterfaces() ([]upstream.NetworkInterface, error)
+	NetworkInterfaces() ([]up.NetworkInterface, error)
 	// StartDefaultInterfaceMonitor begins calling update with the default
 	// network's interface (index -1: none) until Close.
 	StartDefaultInterfaceMonitor(update func(interfaceName string, interfaceIndex int32)) error
@@ -62,13 +62,13 @@ type TunRequest struct {
 // uses none of them).
 type Platform struct {
 	bridge         Bridge
-	networkManager upstream.NetworkManager
+	networkManager up.NetworkManager
 	protected      atomic.Int64
 	access         sync.Mutex
 	tunAddresses   []netip.Addr
 }
 
-var _ upstream.PlatformInterface = (*Platform)(nil)
+var _ up.PlatformInterface = (*Platform)(nil)
 
 func NewPlatform(bridge Bridge) *Platform {
 	return &Platform{bridge: bridge}
@@ -78,7 +78,7 @@ func NewPlatform(bridge Bridge) *Platform {
 // socket with auto_detect_interface, plugin dialers included).
 func (p *Platform) Protected() int64 { return p.protected.Load() }
 
-func (p *Platform) Initialize(networkManager upstream.NetworkManager) error {
+func (p *Platform) Initialize(networkManager up.NetworkManager) error {
 	p.networkManager = networkManager
 	return nil
 }
@@ -92,9 +92,9 @@ func (p *Platform) AutoDetectInterfaceControl(fd int) error {
 
 func (p *Platform) UsePlatformInterface() bool { return true }
 
-func (p *Platform) OpenInterface(options *upstream.TunOptions, platformOptions upstream.TunPlatformOptions) (upstream.Tun, error) {
+func (p *Platform) OpenInterface(options *up.TunOptions, platformOptions up.TunPlatformOptions) (up.Tun, error) {
 	if len(options.IncludeUID) > 0 || len(options.ExcludeUID) > 0 {
-		return nil, upstream.NewError("platform: unsupported uid options")
+		return nil, up.NewError("platform: unsupported uid options")
 	}
 	routes, err := options.BuildAutoRouteRanges(true)
 	if err != nil {
@@ -111,11 +111,11 @@ func (p *Platform) OpenInterface(options *upstream.TunOptions, platformOptions u
 		ExcludePackage: options.ExcludePackage,
 	})
 	if err != nil {
-		return nil, upstream.Cause(err, "open tun")
+		return nil, up.Cause(err, "open tun")
 	}
 	name, err := tunName(fd)
 	if err != nil {
-		return nil, upstream.Cause(err, "query tun name")
+		return nil, up.Cause(err, "query tun name")
 	}
 	options.Name = name
 	if options.InterfaceMonitor != nil {
@@ -123,7 +123,7 @@ func (p *Platform) OpenInterface(options *upstream.TunOptions, platformOptions u
 	}
 	dupFd, err := syscall.Dup(fd)
 	if err != nil {
-		return nil, upstream.Cause(err, "dup tun descriptor")
+		return nil, up.Cause(err, "dup tun descriptor")
 	}
 	options.FileDescriptor = dupFd
 	var addresses []netip.Addr
@@ -136,7 +136,7 @@ func (p *Platform) OpenInterface(options *upstream.TunOptions, platformOptions u
 	p.access.Lock()
 	p.tunAddresses = addresses
 	p.access.Unlock()
-	return upstream.NewTun(*options)
+	return up.NewTun(*options)
 }
 
 func tunName(fd int) (string, error) {
@@ -148,7 +148,7 @@ func tunName(fd int) (string, error) {
 	return unix.ByteSliceToString(ifr[:]), nil
 }
 
-func (p *Platform) ProcessPlatformOptions(options upstream.TunPlatformOptions) error { return nil }
+func (p *Platform) ProcessPlatformOptions(options up.TunPlatformOptions) error { return nil }
 
 func (p *Platform) MyInterfaceAddress() []netip.Addr {
 	p.access.Lock()
@@ -161,7 +161,7 @@ func (p *Platform) UsePlatformDefaultInterfaceMonitor() bool {
 	return ok
 }
 
-func (p *Platform) CreateDefaultInterfaceMonitor(logger upstream.Logger) upstream.DefaultInterfaceMonitor {
+func (p *Platform) CreateDefaultInterfaceMonitor(logger up.Logger) up.DefaultInterfaceMonitor {
 	return &defaultInterfaceMonitor{platform: p, source: p.bridge.(NetworkSource), logger: logger}
 }
 
@@ -170,7 +170,7 @@ func (p *Platform) UsePlatformNetworkInterfaces() bool {
 	return ok
 }
 
-func (p *Platform) NetworkInterfaces() ([]upstream.NetworkInterface, error) {
+func (p *Platform) NetworkInterfaces() ([]up.NetworkInterface, error) {
 	source, ok := p.bridge.(NetworkSource)
 	if !ok {
 		return nil, os.ErrInvalid
@@ -186,8 +186,8 @@ func (p *Platform) ClearDNSCache() {}
 
 func (p *Platform) RequestPermissionForWIFIState() error { return nil }
 
-func (p *Platform) ReadWIFIState(ctx context.Context) upstream.WIFIState {
-	return upstream.WIFIState{}
+func (p *Platform) ReadWIFIState(ctx context.Context) up.WIFIState {
+	return up.WIFIState{}
 }
 
 func (p *Platform) UsePlatformConnectionOwnerFinder() bool {
@@ -195,7 +195,7 @@ func (p *Platform) UsePlatformConnectionOwnerFinder() bool {
 	return ok
 }
 
-func (p *Platform) FindConnectionOwner(request *upstream.FindConnectionOwnerRequest) (*upstream.ConnectionOwner, error) {
+func (p *Platform) FindConnectionOwner(request *up.FindConnectionOwnerRequest) (*up.ConnectionOwner, error) {
 	finder, ok := p.bridge.(OwnerFinder)
 	if !ok {
 		return nil, os.ErrInvalid
@@ -207,27 +207,27 @@ func (p *Platform) UsePlatformWIFIMonitor() bool { return false }
 
 func (p *Platform) UsePlatformNotification() bool { return false }
 
-func (p *Platform) SendNotification(notification *upstream.Notification) error { return nil }
+func (p *Platform) SendNotification(notification *up.Notification) error { return nil }
 
 func (p *Platform) CancelNotification(identifier string, typeID int32) error { return nil }
 
 func (p *Platform) UsePlatformNeighborResolver() bool { return false }
 
-func (p *Platform) StartNeighborMonitor(listener upstream.NeighborUpdateListener) error {
+func (p *Platform) StartNeighborMonitor(listener up.NeighborUpdateListener) error {
 	return os.ErrInvalid
 }
 
-func (p *Platform) CloseNeighborMonitor(listener upstream.NeighborUpdateListener) error { return nil }
+func (p *Platform) CloseNeighborMonitor(listener up.NeighborUpdateListener) error { return nil }
 
 func (p *Platform) UsePlatformShell() bool { return false }
 
 func (p *Platform) CheckPlatformShell() error { return os.ErrInvalid }
 
-func (p *Platform) OpenShellSession(user *upstream.PlatformUser, command string, env []string, term string, rows int32, cols int32) (upstream.ShellSession, error) {
+func (p *Platform) OpenShellSession(user *up.PlatformUser, command string, env []string, term string, rows int32, cols int32) (up.ShellSession, error) {
 	return nil, os.ErrInvalid
 }
 
-func (p *Platform) LookupUser(username string) (*upstream.PlatformUser, error) {
+func (p *Platform) LookupUser(username string) (*up.PlatformUser, error) {
 	return nil, os.ErrInvalid
 }
 
@@ -239,13 +239,13 @@ func (p *Platform) TailscaleHostname() string { return "" }
 
 func (p *Platform) UsePlatformBridge() bool { return false }
 
-func (p *Platform) CreateBridge(options upstream.BridgeOptions) (upstream.BridgeSession, error) {
+func (p *Platform) CreateBridge(options up.BridgeOptions) (up.BridgeSession, error) {
 	return nil, os.ErrInvalid
 }
 
 func (p *Platform) UsePlatformAutoRedirect() bool { return false }
 
-func (p *Platform) CreateAutoRedirect(options upstream.AutoRedirectOptions) (upstream.AutoRedirectSession, error) {
+func (p *Platform) CreateAutoRedirect(options up.AutoRedirectOptions) (up.AutoRedirectSession, error) {
 	return nil, os.ErrInvalid
 }
 
@@ -255,15 +255,15 @@ func (p *Platform) CreateAutoRedirect(options upstream.AutoRedirectOptions) (ups
 type defaultInterfaceMonitor struct {
 	platform     *Platform
 	source       NetworkSource
-	logger       upstream.Logger
+	logger       up.Logger
 	access       sync.Mutex
-	callbacks    upstream.List[upstream.DefaultInterfaceUpdateCallback]
-	current      *upstream.Interface
+	callbacks    up.List[up.DefaultInterfaceUpdateCallback]
+	current      *up.Interface
 	initialized  bool
 	myInterfaces []string
 }
 
-var _ upstream.DefaultInterfaceMonitor = (*defaultInterfaceMonitor)(nil)
+var _ up.DefaultInterfaceMonitor = (*defaultInterfaceMonitor)(nil)
 
 func (m *defaultInterfaceMonitor) Start() error {
 	return m.source.StartDefaultInterfaceMonitor(m.update)
@@ -276,7 +276,7 @@ func (m *defaultInterfaceMonitor) Close() error {
 func (m *defaultInterfaceMonitor) update(interfaceName string, interfaceIndex int32) {
 	if networkManager := m.platform.networkManager; networkManager != nil {
 		if err := networkManager.UpdateInterfaces(); err != nil {
-			m.logger.Error(upstream.Cause(err, "update interfaces"))
+			m.logger.Error(up.Cause(err, "update interfaces"))
 		}
 	}
 	m.access.Lock()
@@ -297,7 +297,7 @@ func (m *defaultInterfaceMonitor) update(interfaceName string, interfaceIndex in
 	updated, err := m.platform.networkManager.InterfaceFinder().ByIndex(int(interfaceIndex))
 	if err != nil {
 		m.access.Unlock()
-		m.logger.Error(upstream.Cause(err, "find updated interface: ", interfaceName))
+		m.logger.Error(up.Cause(err, "find updated interface: ", interfaceName))
 		return
 	}
 	previous := m.current
@@ -314,7 +314,7 @@ func (m *defaultInterfaceMonitor) update(interfaceName string, interfaceIndex in
 	}
 }
 
-func (m *defaultInterfaceMonitor) DefaultInterface() *upstream.Interface {
+func (m *defaultInterfaceMonitor) DefaultInterface() *up.Interface {
 	m.access.Lock()
 	defer m.access.Unlock()
 	return m.current
@@ -324,13 +324,13 @@ func (m *defaultInterfaceMonitor) OverrideAndroidVPN() bool { return false }
 
 func (m *defaultInterfaceMonitor) AndroidVPNEnabled() bool { return false }
 
-func (m *defaultInterfaceMonitor) RegisterCallback(callback upstream.DefaultInterfaceUpdateCallback) *upstream.Element[upstream.DefaultInterfaceUpdateCallback] {
+func (m *defaultInterfaceMonitor) RegisterCallback(callback up.DefaultInterfaceUpdateCallback) *up.Element[up.DefaultInterfaceUpdateCallback] {
 	m.access.Lock()
 	defer m.access.Unlock()
 	return m.callbacks.PushBack(callback)
 }
 
-func (m *defaultInterfaceMonitor) UnregisterCallback(element *upstream.Element[upstream.DefaultInterfaceUpdateCallback]) {
+func (m *defaultInterfaceMonitor) UnregisterCallback(element *up.Element[up.DefaultInterfaceUpdateCallback]) {
 	m.access.Lock()
 	defer m.access.Unlock()
 	m.callbacks.Remove(element)

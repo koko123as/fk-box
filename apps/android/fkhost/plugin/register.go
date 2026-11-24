@@ -7,7 +7,7 @@
 package plugin
 
 import (
-	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
+	up "github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // Type names in the sing-box configuration ("type": "...").
@@ -19,13 +19,13 @@ const (
 )
 
 // RegisterOutbounds adds fkbrain, mihomo and xray to an outbound registry.
-func RegisterOutbounds(registry *upstream.Registry) {
-	upstream.Register[BrainOptions](registry, TypeBrain, NewBrain)
-	upstream.Register[MihomoOptions](registry, TypeMihomo, NewMihomo)
-	upstream.Register[XrayOptions](registry, TypeXray, NewXray)
+func RegisterOutbounds(registry *up.Registry) {
+	up.Register[BrainOptions](registry, TypeBrain, NewBrain)
+	up.Register[MihomoOptions](registry, TypeMihomo, NewMihomo)
+	up.Register[XrayOptions](registry, TypeXray, NewXray)
 }
 
 // RegisterDNSTransports adds fkdns to a DNS transport registry.
-func RegisterDNSTransports(registry *upstream.TransportRegistry) {
-	upstream.RegisterTransport[FKDNSOptions](registry, TypeFKDNS, NewFKDNS)
+func RegisterDNSTransports(registry *up.TransportRegistry) {
+	up.RegisterTransport[FKDNSOptions](registry, TypeFKDNS, NewFKDNS)
 }
