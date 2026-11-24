@@ -22,6 +22,7 @@ on:
       - '.github/actions/build-fkhost/**'
       - 'scripts/sync_core_versions.py'
       - 'scripts/check_upstream_imports.py'
+      - 'scripts/deps_report.py'
   push:
     branches: ['arch/**']
     paths:
@@ -35,6 +36,7 @@ on:
       - '.github/actions/build-fkhost/**'
       - 'scripts/sync_core_versions.py'
       - 'scripts/check_upstream_imports.py'
+      - 'scripts/deps_report.py'
   # ref: stacked arch/* branches are tested by dispatching with ref, and the
   # Core upgrade workflow calls this one on the branch it pushed (its pushes
   # use GITHUB_TOKEN, which starts no push runs).
@@ -127,6 +129,23 @@ jobs:
         continue-on-error: true
         working-directory: apps/android/fkhost
         run: go vet -tags "$GO_TAGS" ./...
+
+      # Stage 7: which shared modules the three cores ask for in different
+      # versions (MVS raised them) and which parallel forks are linked.
+      - name: Dependency report (informational)
+        continue-on-error: true
+        working-directory: apps/android/fkhost
+        run: |
+          mods="$RUNNER_TEMP/gomods"
+          mkdir -p "$mods"
+          for module in github.com/sagernet/sing-box github.com/xtls/xray-core github.com/metacubex/mihomo; do
+            version=$(go list -m -f '{{.Version}}' "$module")
+            file=$(go mod download -json "$module@$version" | python3 -c 'import json, sys; print(json.load(sys.stdin)["GoMod"])')
+            cp "$file" "$mods/${module##*/}.go.mod"
+          done
+          go list -m all > "$mods/fkhost-mods.txt"
+          python3 ../../../scripts/deps_report.py "$mods/sing-box.go.mod" "$mods/xray-core.go.mod" "$mods/mihomo.go.mod" "$mods/fkhost-mods.txt" | tee "$RUNNER_TEMP/deps-report.md"
+          cat "$RUNNER_TEMP/deps-report.md" >> "$GITHUB_STEP_SUMMARY"
 
       # The end-to-end test attaches to this device the way VpnService hands
       # over its descriptor; 198.18.99.0/24 (addresses and the hijacked DNS
