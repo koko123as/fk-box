@@ -1,0 +1,144 @@
+name: Build the fk-box kernel (fkhost.aar)
+description: >-
+  Stage 6 of the single-kernel design (docs/architecture/brain-android.md):
+  the Rust brain (crates/brain-ffi, libfkbox_brain_ffi.a for aarch64-linux-android)
+  linked by cgo into the Go host (apps/android/fkhost), bound by gomobile into
+  apps/android/app/libs/fkhost.aar (Java package io.fkbox.mobile,
+  jni/arm64-v8a/libfkhost.so). It replaces the three-core libbox.aar
+  (build-libbox). arm64-v8a only.
+
+outputs:
+  version:
+    description: The app version (VERSION_NAME), as build-libbox gave it.
+    value: ${{ steps.inputs.outputs.version }}
+  cache-hit:
+    description: '"true" when fkhost.aar came from the Actions cache.'
+    value: ${{ steps.aar.outputs.cache-hit }}
+
+runs:
+  using: composite
+  steps:
+    # fkhost.aar depends on the host module, the brain and the client-core
+    # import it links, the Cargo lock, the pins in version.properties and this
+    # action; the app's VERSION_NAME/CODE are not part of it.
+    - id: inputs
+      name: Key the fkhost inputs
+      shell: bash
+      run: |
+        version=$(sed -n 's/^VERSION_NAME=//p' version.properties | tr -d '\r')
+        core_version=$(sed -n 's/^CORE_VERSION=//p' version.properties | tr -d '\r')
+        go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')
+        deps=$(printf 'core=%s\n' "$core_version"; grep -E '^(GO_VERSION|XRAY_VERSION|XRAY_MODULE_VERSION|MIHOMO_VERSION)=' version.properties | tr -d '\r' | sort)
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "core_version=$core_version" >> "$GITHUB_OUTPUT"
+        echo "go_version=$go_version" >> "$GITHUB_OUTPUT"
+        echo "deps_key=$(printf '%s' "$deps" | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+    - id: aar
+      uses: actions/cache/restore@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: apps/android/app/libs/fkhost.aar
+        key: fkhost-aar-arm64-${{ steps.inputs.outputs.deps_key }}-${{ hashFiles('apps/android/fkhost/**', 'crates/brain-ffi/**', 'crates/client-core/**', 'Cargo.lock', 'Cargo.toml', '.github/actions/build-fkhost/action.yml') }}
+    # gomobile's Java side wants OpenJDK 17, as the libbox builder did.
+    - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+      with:
+        distribution: temurin
+        java-version: '17'
+    - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      with:
+        log-accepted-android-sdk-licenses: false
+        packages: >-
+          platform-tools
+          platforms;android-36
+          platforms;android-37.1
+          build-tools;36.0.0
+          build-tools;37.0.0
+          ndk;28.0.13004108
+          ndk;30.0.16248370
+    - if: steps.aar.outputs.cache-hit != 'true'
+      uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      with:
+        go-version: ${{ steps.inputs.outputs.go_version }}
+        cache-dependency-path: apps/android/fkhost/go.sum
+    # The brain as a static library for aarch64-linux-android (API 24, the
+    # app's minSdk), built with the same NDK gomobile links with.
+    - name: Rust brain for Android (libfkbox_brain_ffi.a)
+      if: steps.aar.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        rustup toolchain install stable --profile minimal --target aarch64-linux-android
+        rustup default stable
+        command -v cargo-ndk >/dev/null || cargo install cargo-ndk --version 4.1.2 --locked
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+        cargo ndk -t arm64-v8a -P 24 build --locked --release -p fkbox-brain-ffi --lib
+        lib="$GITHUB_WORKSPACE/target/aarch64-linux-android/release"
+        ls -l "$lib/libfkbox_brain_ffi.a"
+        echo "FKHOST_BRAIN_LIB=$lib" >> "$GITHUB_ENV"
+    # Build tags: only what the protocols of the stage 2 mapping need
+    # (docs/architecture/brain-android.md "Build tags"): with_quic
+    # (Hysteria/Hysteria2/TUIC, QUIC sniffing, DoQ/DoH3 off), with_utls
+    # (uTLS fingerprints, REALITY), with_wireguard (WireGuard outbound),
+    # with_gvisor (the TUN gVisor/mixed stack). No with_clash_api, no
+    # with_tailscale, no with_naive_outbound, no with_acme, no with_dhcp.
+    - name: Bind fkhost.aar (gomobile)
+      if: steps.aar.outputs.cache-hit != 'true'
+      shell: bash
+      working-directory: apps/android/fkhost
+      env:
+        CORE_VERSION: ${{ steps.inputs.outputs.core_version }}
+        GOFLAGS: -mod=mod
+        FKHOST_TAGS: with_quic,with_wireguard,with_utls,with_gvisor
+      run: |
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+        export CGO_LDFLAGS="-L$FKHOST_BRAIN_LIB"
+        GOFLAGS= go install github.com/sagernet/gomobile/cmd/gomobile@v0.1.13
+        GOFLAGS= go install github.com/sagernet/gomobile/cmd/gobind@v0.1.13
+        export PATH="$PATH:$(go env GOPATH)/bin"
+        # gomobile bind needs its bind packages in the module being bound.
+        go get github.com/sagernet/gomobile@v0.1.13
+        git diff --stat -- go.mod go.sum || true
+        mkdir -p ../app/libs
+        gomobile bind -v -target android/arm64 -androidapi 24 \
+          -javapkg=io.fkbox -libname=fkhost \
+          -tags "$FKHOST_TAGS" -trimpath -buildvcs=false \
+          -ldflags "-checklinkname=0 -s -w -buildid= -X github.com/sagernet/sing-box/constant.Version=$CORE_VERSION" \
+          -o ../app/libs/fkhost.aar ./mobile
+        git checkout -- go.mod go.sum
+        test ! -e ../app/libs/libbox.aar
+        size=$(stat -c %s ../app/libs/fkhost.aar)
+        so=$(unzip -l ../app/libs/fkhost.aar | awk '/jni\/arm64-v8a\/libfkhost\.so/ {print $1}')
+        test -n "$so"
+        unzip -l ../app/libs/fkhost.aar | grep -E 'classes.jar|jni/'
+        echo "fkhost.aar: $size bytes, jni/arm64-v8a/libfkhost.so: $so bytes"
+        {
+          echo "### fkhost (one sing-box kernel + Rust brain)"
+          echo "- tags: $FKHOST_TAGS"
+          echo "- fkhost.aar: $size bytes"
+          echo "- libfkhost.so (arm64-v8a): $so bytes"
+        } >> "$GITHUB_STEP_SUMMARY"
+    # Saved right after the build, so a later app failure still keeps it.
+    - if: steps.aar.outputs.cache-hit != 'true'
+      uses: actions/cache/save@caa296126883cff596d87d8935842f9db880ef25 # v5
+      with:
+        path: apps/android/app/libs/fkhost.aar
+        key: ${{ steps.aar.outputs.cache-primary-key }}
+    - name: Report the cached fkhost
+      if: steps.aar.outputs.cache-hit == 'true'
+      shell: bash
+      run: |
+        size=$(stat -c %s apps/android/app/libs/fkhost.aar)
+        so=$(unzip -l apps/android/app/libs/fkhost.aar | awk '/libfkhost\.so/ {print $1}')
+        echo "fkhost.aar from cache ${{ steps.aar.outputs.cache-matched-key }}: $size bytes, libfkhost.so: $so bytes"
+        {
+          echo "### fkhost (one sing-box kernel + Rust brain), cached"
+          echo "- key: ${{ steps.aar.outputs.cache-matched-key }}"
+          echo "- fkhost.aar: $size bytes"
+          echo "- libfkhost.so (arm64-v8a): $so bytes"
+        } >> "$GITHUB_STEP_SUMMARY"
+    # The Rust + Slint UI (libfkui.so) links Slint 1.19's prebuilt Skia, built
+    # with NDK r30 (see build-libbox); apps/android/app/build.gradle.kts gives
+    # FKUI_NDK_HOME to cargo-ndk.
+    - name: Select the NDK for the Slint UI
+      shell: bash
+      run: |
+        test -d "$ANDROID_HOME/ndk/30.0.16248370"
+        echo "FKUI_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"

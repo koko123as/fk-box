@@ -9,9 +9,10 @@ from pathlib import Path
 from zipfile import ZipFile
 
 
-# The libraries every ABI directory must carry: the core (libbox.so) and the
+# The libraries every ABI directory must carry: the kernel (libfkhost.so, one
+# sing-box + the Rust brain, stage 6) and the
 # Rust + Slint UI (libfkui.so), each an ELF shared object for that ABI.
-REQUIRED_LIBRARIES = ('libbox.so', 'libfkui.so')
+REQUIRED_LIBRARIES = ('libfkhost.so', 'libfkui.so')
 ELF_MACHINES = {'arm64-v8a': 183, 'armeabi-v7a': 40, 'x86_64': 62, 'x86': 3}
 
 
@@ -91,6 +92,8 @@ def main():
                 if name.startswith('lib/') and name.endswith('.so')}
         if any(name.endswith('/libbbox_capture.so') for name in names):
             raise SystemExit('Retired capture collector was packaged')
+        if any(name.endswith('/libbox.so') for name in names):
+            raise SystemExit('The three-core libbox.so was packaged beside libfkhost.so (stage 6)')
         for source in Path('apps/android/app/src/main/assets/mitm-ca').rglob('*'):
             if not source.is_file():
                 continue
