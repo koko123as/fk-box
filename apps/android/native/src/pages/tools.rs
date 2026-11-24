@@ -2,7 +2,9 @@
 //! network quality and STUN tests, crash/memory/power reports, remote
 //! control, the endpoints (Tailscale with Taildrop, OpenVPN, OpenConnect,
 //! USB/IP), their peers, authentication and the Android share page. All are
-//! Rust-built rows (src/rows.rs).
+//! Rust-built rows (src/rows.rs). Since stage 6 only reports, resources,
+//! logs, settings and about are reachable; the rest stays for saved data.
+#![allow(dead_code)]
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -58,13 +60,6 @@ fn error_row(error: &str, retry: Option<Rc<dyn Fn()>>) -> Vec<Row> {
 
 fn tools_page() -> Page {
     let sidebar = !nav::mobile();
-    let endpoints: Vec<&'static str> = data(|d| {
-        if d.running() {
-            ENDPOINT_KINDS.into_iter().filter(|k| d.tool_state.get(*k).map(|v| !list(v).is_empty()).unwrap_or(false)).collect()
-        } else {
-            Vec::new()
-        }
-    });
     let mut rows = Vec::new();
     if !sidebar {
         rows.push(Row::open(&tr("Requests"), Some("requests"), || {
@@ -77,11 +72,10 @@ fn tools_page() -> Page {
             nav::push("logs", "");
         }));
     }
-    for kind in endpoints {
-        rows.push(Row::open(&endpoint_name(kind), Some("devices"), move || open_endpoints(kind)));
-    }
-    rows.push(Row::open(&tr("Terminal"), Some("code"), || crate::pages::terminal::open(None, None, None)));
-    rows.push(Row::open(&tr("Remote control"), Some("proxies"), open_remote));
+    // Stage 6 (single sing-box kernel, docs/architecture/brain-android.md): the
+    // Tailscale/OpenVPN/OpenConnect/USB-IP endpoints, the terminal (Tailscale
+    // SSH), remote control, network quality and STUN were libbox services and
+    // have no entry here; their saved data is kept.
     // Theme, access, routing rules, backup, general (fk-box follows the system language).
     rows.push(Row::section(&tr("Settings")));
     rows.push(Row::open(&tr("Appearance"), Some("paintbrush"), crate::pages::appearance::open));
@@ -90,8 +84,6 @@ fn tools_page() -> Page {
     rows.push(Row::open(&tr("Backup and restore"), Some("cloud-sync"), crate::pages::settings::open_backup));
     rows.push(Row::open(&tr("General"), Some("settings"), crate::pages::settings::open_general));
     rows.push(Row::section(&tr("Other")));
-    rows.push(Row::open(&tr("Network quality"), Some("speed"), || open_diagnostics(true)));
-    rows.push(Row::open(&tr("STUN test"), Some("proxies"), || open_diagnostics(false)));
     for kind in REPORT_KINDS {
         rows.push(Row::open(&tr(report_title(kind)), Some("profiles"), move || open_reports(kind)));
     }

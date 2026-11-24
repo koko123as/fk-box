@@ -395,10 +395,10 @@ fn feed_label(feed: &str) -> &'static str {
     }
 }
 
+/// HTTP capture and MITM are not on the single-kernel path (stage 6): the
+/// captured feed is never offered; saved captures and settings are kept.
 fn capture_available() -> bool {
-    data(|d| {
-        d.selected_profile().map(|p| p.get("resolvedCore").and_then(Value::as_str).unwrap_or("sing-box") == "sing-box").unwrap_or(true)
-    })
+    false
 }
 
 struct Requests {
@@ -432,6 +432,7 @@ fn requests_builder(initial_feed: Option<String>, alive: Rc<dyn Fn() -> bool>) -
         let title_menu: Rc<dyn Fn() -> Vec<MenuEntry>> = Rc::new(move || {
             FEEDS
                 .iter()
+                .filter(|item| **item != "captured" || capture_available())
                 .map(|item| {
                     let unavailable = *item == "captured" && !capture_available();
                     let b = a.clone();

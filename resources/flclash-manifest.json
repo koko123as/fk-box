@@ -170,11 +170,8 @@
           "source": "android/app/src/main/kotlin/com/follow/clash/SystemCaStore.kt",
           "sourceSHA256": "3279a91d13be99ee0c76495384c626cad6cdd88d408eb38259555bf53fe4aeac",
           "usage": "design",
-          "localPaths": [
-            "apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificate.kt",
-            "apps/android/app/src/main/java/io/nekohasekai/sfa/bridge/MitmCertificateModule.kt"
-          ],
-          "changes": "Reference for Android CA identity, hash names, store/namespace limitations and public module export. B-box implements non-exportable Keystore signing, revision checks and AtomicFile persistence; no automatic root command or private-key export."
+          "localPaths": [],
+          "changes": "Stage 6 (single sing-box kernel): MitmCertificate.kt and MitmCertificateModule.kt were removed with capture/MITM; the Keystore CA entries and files on devices are left untouched. Reference for Android CA identity, hash names, store/namespace limitations and public module export. B-box implements non-exportable Keystore signing, revision checks and AtomicFile persistence; no automatic root command or private-key export."
         },
         {
           "source": "lib/common/mitm_trust.dart",

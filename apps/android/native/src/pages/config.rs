@@ -260,8 +260,8 @@ pub fn open(profile: crate::app::Json, resources: bool) {
         }));
         let a = st.clone();
         out.push(Row::open(&tr("Log settings"), Some("logs"), move || log_page(&a)));
-        let a = st.clone();
-        out.push(Row::open(&tr("HTTP rewriting"), Some("code"), move || http_rewrite_page(&a)));
+        // HTTP rewriting is not on the single-kernel path (stage 6): no entry,
+        // the profile's experimental.http_rewrite is kept as written.
         out.push(Row::footer(&name));
         out.push(Row::gap());
         let a = st.clone();
@@ -432,6 +432,7 @@ fn hr(rest: &[&'static str]) -> Vec<&'static str> {
     v
 }
 
+#[allow(dead_code)]
 fn http_rewrite_page(store: &StoreRef) {
     let st = store.clone();
     rows::push(move || {

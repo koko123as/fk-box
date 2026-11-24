@@ -14,7 +14,8 @@ errors = []
 # the QR camera analyzer; the Jetpack Compose UI and the Flutter module are gone.
 if (ROOT / "flutter").exists():
     errors.append("flutter/ must stay removed; the UI lives in crates/client-ui/")
-for name in ("MainActivity", "ShareActivity"):
+# ShareActivity (the Taildrop share target) went with libbox in stage 6.
+for name in ("MainActivity",):
     source = (compose / f"{name}.kt").read_text()
     if f"class {name} : BoxActivity()" not in source:
         errors.append(f"{name} must enter BoxActivity")
@@ -22,7 +23,7 @@ if "GameActivity()" not in (native / "bridge/BoxActivity.kt").read_text():
     errors.append("BoxActivity must host the Slint UI (GameActivity)")
 if not (ROOT / "crates/client-ui/ui/app.slint").is_file():
     errors.append("crates/client-ui/ui/app.slint: the Slint UI is missing")
-allowed = {"MainActivity.kt", "ShareActivity.kt"}
+allowed = {"MainActivity.kt"}
 for path in compose.rglob("*.kt"):
     rel = path.relative_to(compose)
     if rel.parts[0] != "qr" and path.name not in allowed:
