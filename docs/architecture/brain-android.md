@@ -24,7 +24,8 @@ Stage 6b removes the old kernels' code that 6a leaves unused.
 - Workflows on the new kernel: Build APK on push, Build Debug APK, Build
   Release APK (dispatched on stacked branches with `publish_release=false`),
   Android regression and smoke. *Core and source validation*
-  (`newui.yml`) still tests the old three-core sources until 6b deletes them.
+  (`newui.yml`) runs the source guards and, since 6b, the kept sing-tun
+  patch's test (below) instead of the deleted three-core sources.
 
 ### Build tags
 
@@ -90,6 +91,47 @@ fails when the kernel starts ("not included in this build").
 
 Wherever a choice could lose user data, the data is kept and only the entry
 point is removed.
+
+## Stage 6b: what was deleted
+
+- The three-core libbox Go adapter (`apps/android/core/`: sing-box `experimental/libbox`
+  additions, Xray and mihomo kernel start-up, Go rules/DNS/groups glue, Clash API
+  use, HTTP capture/rewrite runtime `httpdebug`), its CI (`setup-core`,
+  `build-libbox`) and patches/scripts: `libbox-no-legacy.patch`,
+  `patch_multicore.py`, `patch_httpdebug.py`, `patch_dns_count.py`,
+  `verify_multicore.py`, `verify_httpdebug.py`. `core_profile.go` (with its
+  obfs parameter name bug) went with it.
+- The kernel switch: Settings › Core shows the one kernel's version; the
+  per-core switches and the per-profile core menu are gone. Their stored values
+  (`core_*_enabled`, the profile's `core` column) are kept, so a downgrade
+  still reads them. The Traffic routing page (app rules libbox compiled per
+  core) is hidden; saved rules are kept.
+
+### Migration of old profiles
+
+`client-core` `config::brain::singbox::strip_retired` removes
+`experimental.http_rewrite`, `experimental.http_debug` and
+`experimental.clash_api` from what the brain imports (and `experimental`
+when nothing else is left), with an `IgnoredSettings` notice. Only the
+imported copy changes: the saved profile keeps them (no data loss; a
+downgrade still runs them).
+
+### sing-tun patch
+
+`apps/android/core/sing-tun-android-ingress.patch` is the only patch left and
+is kept on purpose. sing-tun's `redirect_ingress_discard_android.go:73` (at
+the pinned `v0.9.7-0.20261023115453-611d83b7a57b`) checks the value size of
+netd's ingress-discard BPF map and only accepts the 8-byte (two-interface)
+AOSP layout; vendor builds with the 4-byte (one-interface) value make
+auto-redirect fail. The patch accepts 4 and 8 bytes and keeps the interface
+ownership check and the restore of the original value. Auto-redirect needs
+root and is not wired on the single-kernel path, so `fkhost.aar` is built
+without it; *Core and source validation* applies it to a scratch copy of the
+module pinned by fkhost (`scripts/patch_sing_tun.py`, the replace is never
+committed) and runs `TestAndroidIngressDiscard*`, so it stays ready when
+auto-redirect returns. The script runs `git apply` inside that copy with
+repository discovery stopped there: run from `apps/android/fkhost`, git would
+take the patch paths relative to the fk-box top level and skip them.
 
 ## Not verified (stage 6a)
 
