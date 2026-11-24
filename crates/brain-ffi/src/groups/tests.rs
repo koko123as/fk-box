@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use fkbox_client_core::config::brain::{import, Loaders};
 use fkbox_client_core::rules::engine::import_clash::{self, ClashOptions, ProviderRef};
-use fkbox_client_core::rules::engine::{compile, Action, Conn, Env, Router};
+use fkbox_client_core::rules::engine::{compile, Action, Conn, Env, Router, Target};
 
 use super::*;
 use crate::brain::{Brain, Routing};
@@ -43,9 +43,11 @@ fn group_set() -> Arc<GroupSet> {
 }
 
 fn router(set: &GroupSet) -> Router {
-    let ir =
+    let mut ir =
         import_clash::import(RULES, &|_: &ProviderRef| -> Result<Vec<u8>, String> { Err("no files".into()) }, &ClashOptions::default())
             .unwrap();
+    // The Clash import's own final target is DIRECT; profile.rs maps it to fk-direct.
+    ir.final_target = Some(Target::Outbound("fk-direct".into()));
     let targets = set.target_names();
     let inbounds = vec!["fk-tun".to_string()];
     compile(&ir, &Env { outbounds: &targets, inbounds: &inbounds, geosite: None, geoip: None, mmdb: None, default_final: None }).unwrap()
