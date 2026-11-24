@@ -62,9 +62,9 @@ and not part of the new path (to be decided in stage 6).
   `fkb_brain_reload_profile` / `fkb_brain_stop`. The brain imports the
   subscription (`config::brain::import`), generates the configuration,
   compiles the rules against fkbrain's table and calls the host's
-  `start`/`reload`. Until groups run in the brain (stage 5) a rule naming a
-  group goes to the group's selector `default`, else its first member
-  (followed through nested groups); a link list sends everything to its
+  `start`/`reload`. A rule naming a group compiles to a virtual index the
+  brain follows to the group's current member per decision (stage 5,
+  [brain-groups.md](brain-groups.md)); a link list sends everything to its
   first node. `route.find_process` is set when the rules read the process,
   package or uid.
 
@@ -228,5 +228,5 @@ server's freedom sockets.
 
 Not covered: a device (real `VpnService`, `protect`, Android network
 callbacks), the JNI bridge (stage 6), DNS through the brain (stage 4),
-groups (stage 5), mihomo protocols other than mieru/ss at run time, Xray
+mihomo protocols other than mieru/ss at run time, Xray
 REALITY/TLS/h3 at run time.

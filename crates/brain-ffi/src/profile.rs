@@ -6,13 +6,15 @@
 //! per-connection path: its C entry points take the options as a small JSON
 //! object. `decide` stays fixed structs only.
 //!
-//! Until the brain runs groups (stage 5), a rule naming a group is pointed at
-//! the group's current member as the import leaves it: the sing-box selector
-//! `default`, else the first member, followed through nested groups. Groups
-//! never become sing-box `selector`/`urltest` outbounds.
+//! Groups never become sing-box `selector`/`urltest` outbounds: the rules
+//! are compiled against fkbrain's outbound table followed by the group
+//! names, and the brain follows a group to its current member per decision
+//! (`crate::groups`, stage 5).
 
-use std::collections::{BTreeSet, HashSet};
+use std::collections::HashSet;
 use std::panic::{catch_unwind, AssertUnwindSafe};
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use fkbox_client_core::config::brain::generate::{self, GenerateOptions, TunOptions};
 use fkbox_client_core::config::brain::{import, ImportResult, Loaders};
@@ -23,6 +25,7 @@ use crate::abi::*;
 use crate::brain::Routing;
 use crate::dns::settings::DnsSettings;
 use crate::global;
+use crate::groups::GroupSet;
 
 /// Options of one start/reload; every field has the Android default.
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -36,6 +39,9 @@ pub struct ProfileOptions {
     pub log_level: Option<String>,
     /// The brain's DNS settings (`dns` object; defaults when absent).
     pub dns: DnsSettings,
+    /// Where select groups' manual choices are kept (a file the brain
+    /// rewrites); absent: in memory only.
+    pub group_store: Option<PathBuf>,
 }
 
 impl ProfileOptions {
@@ -64,6 +70,11 @@ impl ProfileOptions {
                 }
                 "log_level" => options.log_level = Some(item.as_str().ok_or("profile options: log_level is not a string")?.to_string()),
                 "dns" => options.dns = DnsSettings::from_value(item)?,
+                "group_store" => match item {
+                    Value::Null => options.group_store = None,
+                    Value::String(path) if !path.is_empty() => options.group_store = Some(PathBuf::from(path)),
+                    _ => return Err("profile options: group_store is not a path".into()),
+                },
                 other => return Err(format!("profile options: unknown key {other:?}")),
             }
         }
@@ -92,11 +103,13 @@ pub struct Plan {
     pub router: Router,
     /// The nodes' server names (resolved through the direct upstreams).
     pub node_servers: HashSet<String>,
+    /// The proxy groups (the router's indices from `outbounds.len()` on).
+    pub groups: Arc<GroupSet>,
 }
 
 impl Plan {
     fn routing(&self) -> Routing {
-        Routing { outbounds: self.outbounds.clone(), node_servers: self.node_servers.clone() }
+        Routing { outbounds: self.outbounds.clone(), node_servers: self.node_servers.clone(), groups: self.groups.clone() }
     }
 }
 
@@ -114,37 +127,22 @@ fn ir_reads_process(ir: &RouterIr) -> bool {
         || ir.rule_sets.values().any(|s| s.rules.iter().any(reads_process))
 }
 
-/// The outbound a rule target name stands for: a node, `DIRECT`, or a
-/// group's current member (followed through nested groups).
+/// The outbound a rule target name stands for: a node, a group (run by
+/// the brain), or a built-in.
 fn resolve_name(result: &ImportResult, name: &str) -> Result<Target, String> {
-    let mut seen = BTreeSet::new();
-    let mut current = name.to_string();
-    loop {
-        match current.as_str() {
-            "DIRECT" => return Ok(Target::Outbound(generate::TAG_DIRECT.to_string())),
-            "REJECT" => return Ok(Target::Reject),
-            "REJECT-DROP" => return Ok(Target::RejectDrop),
-            "PASS" => return Ok(Target::Pass),
-            // mihomo's COMPATIBLE is what an empty group falls back to: direct.
-            "COMPATIBLE" => return Ok(Target::Outbound(generate::TAG_DIRECT.to_string())),
-            _ => {}
-        }
-        if result.node(&current).is_some() {
-            return Ok(Target::Outbound(current));
-        }
-        let Some(group) = result.group(&current) else {
-            return Err(format!("rule target {name:?}: unknown outbound {current:?}"));
-        };
-        if !seen.insert(current.clone()) {
-            return Err(format!("rule target {name:?}: group loop at {current:?}"));
-        }
-        let next = group.params.default.clone().or_else(|| group.members.first().cloned());
-        match next {
-            Some(member) => current = member,
-            // An empty group is reported at import (EmptyGroup); mihomo uses COMPATIBLE.
-            None => return Ok(Target::Outbound(generate::TAG_DIRECT.to_string())),
-        }
+    match name {
+        "DIRECT" => return Ok(Target::Outbound(generate::TAG_DIRECT.to_string())),
+        "REJECT" => return Ok(Target::Reject),
+        "REJECT-DROP" => return Ok(Target::RejectDrop),
+        "PASS" => return Ok(Target::Pass),
+        // mihomo's COMPATIBLE is what an empty group falls back to: direct.
+        "COMPATIBLE" => return Ok(Target::Outbound(generate::TAG_DIRECT.to_string())),
+        _ => {}
     }
+    if result.node(name).is_some() || result.group(name).is_some() {
+        return Ok(Target::Outbound(name.to_string()));
+    }
+    Err(format!("rule target {name:?}: unknown outbound"))
 }
 
 fn map_target(result: &ImportResult, target: &Target) -> Result<Target, String> {
@@ -186,11 +184,12 @@ pub fn plan(content: &str, options: &ProfileOptions) -> Result<Plan, String> {
     let result = import(content, &Loaders::none()).map_err(|e| e.to_string())?;
     let ir = router_ir(&result)?;
     let generated = generate::generate(&result, &options.generate_options(ir_reads_process(&ir)))?;
+    let groups = GroupSet::build(&result.groups, &generated.outbounds, generate::TAG_DIRECT)?;
     let inbounds = vec![generate::TAG_TUN.to_string()];
-    let router = compile(
-        &ir,
-        &Env { outbounds: &generated.outbounds, inbounds: &inbounds, geosite: None, geoip: None, mmdb: None, default_final: None },
-    )?;
+    // Rule targets: the outbounds, then the groups (virtual indices the brain follows).
+    let targets = groups.target_names();
+    let router =
+        compile(&ir, &Env { outbounds: &targets, inbounds: &inbounds, geosite: None, geoip: None, mmdb: None, default_final: None })?;
     let config_json = serde_json::to_string(&generated.config).map_err(|e| e.to_string())?;
     let node_servers = result
         .nodes
@@ -198,7 +197,7 @@ pub fn plan(content: &str, options: &ProfileOptions) -> Result<Plan, String> {
         .filter(|n| !n.server.is_empty() && n.server.trim_matches(['[', ']']).parse::<std::net::IpAddr>().is_err())
         .filter_map(|n| fkbox_client_core::rules::engine::domain::normalize(&n.server).map(|d| d.into_owned()))
         .collect();
-    Ok(Plan { config_json, outbounds: generated.outbounds, router, node_servers })
+    Ok(Plan { config_json, outbounds: generated.outbounds, router, node_servers, groups: Arc::new(groups) })
 }
 
 fn write_error(err: *mut FkbBuf, message: &str) {
@@ -234,6 +233,7 @@ fn run(profile: FkbStr, options: FkbStr, err: *mut FkbBuf, reload: bool) -> i32 
         let options = ProfileOptions::from_json(options).map_err(|e| (FKB_E_INVALID, e))?;
         let plan = plan(content, &options).map_err(|e| (FKB_E_INVALID, e))?;
         let brain = global();
+        brain.groups().set_store(options.group_store.clone());
         // The settings go in first (the host may resolve while it starts); a
         // failed start or reload puts the previous ones back.
         let previous = brain.dns_state().settings();
@@ -340,7 +340,8 @@ rules:
     }
 
     fn outbound(plan: &Plan, domain: &'static str) -> Action {
-        plan.router.decide(&conn(domain), &NoDns).action
+        let table = crate::groups::Groups::default().install(plan.groups.clone());
+        table.resolve(plan.router.decide(&conn(domain), &NoDns).action, &conn(domain))
     }
 
     fn index(plan: &Plan, tag: &str) -> u32 {
@@ -354,7 +355,7 @@ rules:
         assert_eq!(plan.outbounds, ["ss-a", "mieru-b", "fk-direct", "fk-block"]);
         assert!(plan.node_servers.is_empty(), "both servers are addresses");
         assert_eq!(outbound(&plan, "a.ss.test"), Action::Outbound(index(&plan, "ss-a")));
-        // Outer -> Proxy -> first member mieru-b (groups run in the brain from stage 5).
+        // Outer -> Proxy -> first member mieru-b (the select groups' starting members).
         assert_eq!(outbound(&plan, "x.group.test"), Action::Outbound(index(&plan, "mieru-b")));
         assert_eq!(outbound(&plan, "block.test"), Action::Reject);
         assert_eq!(outbound(&plan, "other.example"), Action::Outbound(index(&plan, "fk-direct")));
@@ -386,8 +387,13 @@ rules:
     fn unknown_targets_and_group_loops_fail() {
         let mut result = import(YAML, &Loaders::none()).unwrap();
         assert!(resolve_name(&result, "nope").is_err());
+        assert_eq!(resolve_name(&result, "Outer").unwrap(), Target::Outbound("Outer".into()));
         result.groups[0].members = vec!["Outer".into()];
-        assert!(resolve_name(&result, "Outer").unwrap_err().contains("loop"));
+        let outbounds: Vec<String> = ["ss-a", "mieru-b", "fk-direct", "fk-block"].iter().map(|s| s.to_string()).collect();
+        assert!(GroupSet::build(&result.groups, &outbounds, "fk-direct").unwrap_err().contains("loop"));
+        let with_group = ProfileOptions::from_json(r#"{"group_store": "/data/fk/groups.json"}"#).unwrap();
+        assert_eq!(with_group.group_store, Some(PathBuf::from("/data/fk/groups.json")));
+        assert!(ProfileOptions::from_json(r#"{"group_store": 1}"#).is_err());
     }
 
     #[test]

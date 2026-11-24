@@ -369,6 +369,33 @@ fn setup_router_only(geo_dir: Option<&str>, use_mmdb: bool) -> (Router, ()) {
     (s.router, ())
 }
 
+/// Following a rule's group to a real outbound (`GroupTable::resolve`,
+/// what decide adds per connection that names a group).
+fn groups_bench(table: &mut String) {
+    use fkbox_brain_ffi::groups::{GroupSet, Groups};
+    use fkbox_client_core::config::brain::{import, Loaders};
+    use fkbox_client_core::rules::engine::Action;
+    let yaml = "proxies:\n  - {name: a, type: ss, server: 127.0.0.1, port: 1001, cipher: aes-128-gcm, password: pw}\n  - {name: b, type: ss, server: 127.0.0.1, port: 1002, cipher: aes-128-gcm, password: pw}\n  - {name: c, type: ss, server: 127.0.0.1, port: 1003, cipher: aes-128-gcm, password: pw}\nproxy-groups:\n  - {name: Auto, type: url-test, proxies: [a, b, c]}\n  - {name: Pick, type: select, proxies: [Auto, a]}\n  - {name: LB, type: load-balance, proxies: [a, b, c], strategy: consistent-hashing}\n";
+    let result = import(yaml, &Loaders::none()).expect("groups yaml");
+    let outbounds: Vec<String> = ["a", "b", "c", "fk-direct", "fk-block"].iter().map(|s| s.to_string()).collect();
+    let set = Arc::new(GroupSet::build(&result.groups, &outbounds, "fk-direct").expect("group set"));
+    let groups = Groups::default();
+    let resolved = groups.install(set.clone());
+    let names: Vec<String> = (0..1024).map(|i| format!("www.site{i}.example")).collect();
+    let conns: Vec<Conn> = names.iter().map(|n| Conn { domain: Some(n.as_str()), ..Conn::default() }).collect();
+    const N: usize = 2_000_000;
+    let _ = writeln!(table, "\n### group resolution (per decision that names a group)\n\n| path | mean ns |\n| --- | --- |");
+    for (label, name) in [("select -> url-test -> node (2 hops)", "Pick"), ("load-balance consistent-hashing", "LB")] {
+        let action = Action::Outbound(outbounds.len() as u32 + set.group(name).expect("group"));
+        let started = Instant::now();
+        for c in conns.iter().cycle().take(N) {
+            std::hint::black_box(resolved.resolve(std::hint::black_box(action), c));
+        }
+        let mean = started.elapsed().as_nanos() as f64 / N as f64;
+        let _ = writeln!(table, "| {label} | {mean:.1} |");
+    }
+}
+
 fn main() {
     // `cargo bench` passes --bench; nothing else is read from the arguments.
     let geo_dir = std::env::var("FKBOX_GEO_DIR").ok();
@@ -386,6 +413,7 @@ fn main() {
         }
         None => run(None, false, &mut table),
     }
+    groups_bench(&mut table);
     let cpus = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(0);
     let note = format!(
         "\n{} CPUs, {}. Per-call numbers time each call with `Instant` (the timer column is the cost of an empty timed section, included in each sample); means are tight loops over 10k recorded connections. C-call = `fkb_brain_api.decide` (metadata conversion + snapshot load + rules); engine = `Router::decide` alone.\n",

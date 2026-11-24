@@ -304,7 +304,7 @@ impl Brain {
                 return Some(TAG_DIRECT.to_string());
             }
             let conn = Conn { domain: Some(name), ..Conn::default() };
-            match snapshot.router.decide(&conn, &NoDns).action {
+            match snapshot.decide(&conn, &NoDns).0 {
                 Action::Outbound(i) => {
                     let tag = snapshot.outbounds.get(i as usize).cloned().unwrap_or_else(|| TAG_DIRECT.to_string());
                     (tag != TAG_BLOCK).then_some(tag)

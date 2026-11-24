@@ -60,7 +60,7 @@ jobs:
       - name: Format of the new Rust sources
         run: |
           rustfmt --edition 2021 --check \
-            crates/brain-ffi/src/*.rs crates/brain-ffi/src/dns/*.rs crates/brain-ffi/benches/*.rs \
+            crates/brain-ffi/src/*.rs crates/brain-ffi/src/dns/*.rs crates/brain-ffi/src/groups/*.rs crates/brain-ffi/benches/*.rs \
             crates/client-core/src/rules/engine/*.rs \
             crates/client-core/src/config/brain/*.rs
 

@@ -111,8 +111,10 @@ mihomo `dialer-proxy` and sing-box `detour` become `Node.detour`; the
 generator writes it as the sing-box `detour` of the native outbound, of the
 endpoint, or of the `mihomo`/`xray` plugin outbound (whose dialer is the
 sing-box dialer, so the chain stays inside sing-box). A detour naming a
-group is an error until the brain runs groups (stage 5); `DIRECT`, an unknown
-name and loops (`a -> b -> a`) are errors.
+group stays an error now that the brain runs groups (stage 5): a sing-box
+`detour` is fixed when the instance starts, so following a group would mean a
+reload per group change ([brain-groups.md](brain-groups.md)); `DIRECT`, an
+unknown name and loops (`a -> b -> a`) are errors.
 
 ## Generated configuration
 

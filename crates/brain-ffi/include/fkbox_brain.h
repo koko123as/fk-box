@@ -287,13 +287,34 @@ uint32_t fkb_struct_size(uint32_t which);
  * compiles its rules against fkbrain's outbound table and calls the host's
  * start (or reload) with it. `options` is empty or a JSON object with the
  * optional keys tun_address (list), tun_auto_route, tun_stack, tun_mtu,
- * log_level, dns (the brain's DNS settings, docs/architecture/brain-dns.md).
+ * log_level, dns (the brain's DNS settings, docs/architecture/brain-dns.md),
+ * group_store (where select groups' manual choices are kept).
  * On failure `err` (NULL or a caller buffer, truncated) holds the
  * reason and a reload keeps the previous configuration.
  */
 int32_t fkb_brain_start_profile(fkb_str profile, fkb_str options, fkb_buf *err);
 int32_t fkb_brain_reload_profile(fkb_str profile, fkb_str options, fkb_buf *err);
 int32_t fkb_brain_stop(fkb_buf *err);
+
+/*
+ * Proxy groups (stage 5; control path, replaces the Clash API). The brain
+ * runs select / url-test / fallback / load-balance itself: decide follows
+ * a group to its current member, health checks go through probe(), and a
+ * change swaps the decision snapshot without touching the host. Contract
+ * and the JSON format: docs/architecture/brain-groups.md. The options of
+ * start/reload take `group_store` (a file path) to persist manual choices.
+ *
+ * fkb_brain_groups: the groups, members, delays and current choices as a
+ * JSON document in `out` (FKB_E_BUFFER with len = size needed).
+ * fkb_brain_group_select: select `member` in a select group; FKB_E_INVALID
+ * for an automatic group (url-test, fallback, load-balance), FKB_E_NOT_FOUND
+ * for an unknown group or member.
+ * fkb_brain_group_test: test a group's members now (empty name: all
+ * groups); blocks until the round is done.
+ */
+int32_t fkb_brain_groups(fkb_buf *out);
+int32_t fkb_brain_group_select(fkb_str group, fkb_str member, fkb_buf *err);
+int32_t fkb_brain_group_test(fkb_str group, fkb_buf *err);
 
 /* Layout checks (C11): the Rust side asserts the same numbers. */
 #ifndef __cplusplus

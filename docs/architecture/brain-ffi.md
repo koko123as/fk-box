@@ -63,6 +63,13 @@ ABI 2 (stage 4) appended `dns_message` and `fakeip_reverse` to
 structure is unchanged, the version bump makes a host built against ABI 1
 refuse the library instead of reading past its table.
 
+Stage 5 adds the groups' control path (`fkb_brain_groups`,
+`fkb_brain_group_select`, `fkb_brain_group_test`, option `group_store`):
+exported functions with buffers like `fkb_brain_start_profile`, no change to
+any struct or to the function tables, so the ABI version stays 2. decide
+follows a rule's group through the snapshot's group table
+([brain-groups.md](brain-groups.md)); its structs are unchanged.
+
 ## Structures (ABI 2, 64-bit little-endian)
 
 Every struct is fixed; the header checks sizes and offsets with

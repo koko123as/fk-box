@@ -226,3 +226,72 @@ func Stop() error {
 	}
 	return nil
 }
+
+func newErrBuf(capacity int) (*C.fkb_buf, func() string, func()) {
+	bytes := (*C.uint8_t)(C.malloc(C.size_t(capacity)))
+	buf := (*C.fkb_buf)(C.calloc(1, C.size_t(unsafe.Sizeof(C.fkb_buf{}))))
+	buf.ptr = bytes
+	buf.cap = C.size_t(capacity)
+	message := func() string { return C.GoStringN((*C.char)(unsafe.Pointer(bytes)), C.int(buf.len)) }
+	release := func() {
+		C.free(unsafe.Pointer(bytes))
+		C.free(unsafe.Pointer(buf))
+	}
+	return buf, message, release
+}
+
+func cString(value string) (C.fkb_str, func()) {
+	text := C.CString(value)
+	return C.fkb_str{ptr: (*C.uint8_t)(unsafe.Pointer(text)), len: C.size_t(len(value))}, func() { C.free(unsafe.Pointer(text)) }
+}
+
+// Groups returns the brain's proxy groups as the JSON document
+// docs/architecture/brain-groups.md describes (fkb_brain_groups): the
+// members, their delays and each group's current choice.
+func Groups() (string, error) {
+	capacity := 16 * 1024
+	for range 3 {
+		out, _, release := newErrBuf(capacity)
+		code := C.fkb_brain_groups(out)
+		if code == C.FKB_OK {
+			text := C.GoStringN((*C.char)(unsafe.Pointer(out.ptr)), C.int(out.len))
+			release()
+			return text, nil
+		}
+		needed := int(out.len)
+		release()
+		if code != C.FKB_E_BUFFER || needed <= capacity {
+			return "", E.New("fkb_brain_groups: ", int32(code))
+		}
+		capacity = needed
+	}
+	return "", E.New("fkb_brain_groups: the list keeps growing")
+}
+
+// SelectGroup selects member in a select group (fkb_brain_group_select);
+// automatic groups refuse.
+func SelectGroup(group string, member string) error {
+	groupC, freeGroup := cString(group)
+	defer freeGroup()
+	memberC, freeMember := cString(member)
+	defer freeMember()
+	errBuf, message, release := newErrBuf(1024)
+	defer release()
+	if code := C.fkb_brain_group_select(groupC, memberC, errBuf); code != C.FKB_OK {
+		return E.New("brain error ", int32(code), ": ", message())
+	}
+	return nil
+}
+
+// TestGroup runs a delay test of a group now (empty: every group) and
+// waits for it (fkb_brain_group_test).
+func TestGroup(group string) error {
+	groupC, freeGroup := cString(group)
+	defer freeGroup()
+	errBuf, message, release := newErrBuf(1024)
+	defer release()
+	if code := C.fkb_brain_group_test(groupC, errBuf); code != C.FKB_OK {
+		return E.New("brain error ", int32(code), ": ", message())
+	}
+	return nil
+}

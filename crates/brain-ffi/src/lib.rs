@@ -20,6 +20,7 @@ pub mod abi;
 pub mod brain;
 pub mod dns;
 pub mod dns_cache;
+pub mod groups;
 pub mod host;
 pub mod profile;
 
@@ -85,6 +86,30 @@ pub fn start_prefetcher() {
     });
 }
 
+static GROUP_SCHEDULER: Once = Once::new();
+/// How often the scheduler looks for groups whose test is due.
+const GROUP_TICK: Duration = Duration::from_secs(1);
+
+/// Starts the global brain's group test scheduler (once): every tick it
+/// runs the due delay tests (untested groups, elapsed intervals, lazy
+/// groups only when used) through the host's probe, at most
+/// `groups::PROBE_CONCURRENCY` at a time, and publishes the new choices.
+pub fn start_group_scheduler() {
+    GROUP_SCHEDULER.call_once(|| {
+        let spawned = std::thread::Builder::new().name("fkb-groups".into()).spawn(|| loop {
+            std::thread::sleep(GROUP_TICK);
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                let brain = global();
+                if brain.generation().is_some() {
+                    let _ = brain.test_groups(groups::Force::Due);
+                }
+            }));
+        });
+        // Without the thread groups keep their starting members; a manual test still works.
+        drop(spawned);
+    });
+}
+
 /// # Safety
 /// `host` is NULL or points to a readable `fkb_host_api`; `brain` points to
 /// writable memory for an `fkb_brain_api`.
@@ -102,6 +127,7 @@ pub unsafe extern "C" fn fkb_brain_attach(host: *const FkbHostApi, brain: *mut F
                 Err(code) => return code,
             }
             start_prefetcher();
+            start_group_scheduler();
         }
         // SAFETY: checked non-null; the caller guarantees it is writable.
         unsafe { brain.write(brain_api()) };

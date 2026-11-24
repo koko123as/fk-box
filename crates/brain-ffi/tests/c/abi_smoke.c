@@ -91,6 +91,18 @@ int main(void) {
 	/* No fake-ip pool configured from C: nothing is a fake address. */
 	CHECK(brain.fakeip_reverse(ip, 4, &reversed) == FKB_OK && reversed.len == 0);
 
+	/* Groups (control path): no profile running from C, so the list is empty. */
+	uint8_t groups_json[256];
+	fkb_buf groups = {groups_json, sizeof groups_json, 0};
+	CHECK(fkb_brain_groups(&groups) == FKB_OK && groups.len > 0 && groups_json[0] == '{');
+	fkb_buf tiny = {groups_json, 1, 0};
+	CHECK(fkb_brain_groups(&tiny) == FKB_E_BUFFER && tiny.len == groups.len);
+	const char *group_name = "Proxy";
+	fkb_str group_str = {(const uint8_t *)group_name, strlen(group_name)};
+	uint8_t group_err[128];
+	fkb_buf group_errbuf = {group_err, sizeof group_err, 0};
+	CHECK(fkb_brain_group_select(group_str, group_str, &group_errbuf) == FKB_E_NOT_FOUND && group_errbuf.len > 0);
+
 	if (failures) {
 		fprintf(stderr, "%d check(s) failed\n", failures);
 		return 1;

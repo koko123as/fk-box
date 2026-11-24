@@ -94,7 +94,8 @@ fn brain_with(settings: serde_json::Value, failing: Vec<&'static str>) -> (Brain
     brain.dns_state().apply(DnsSettings::from_value(&settings).unwrap()).unwrap();
     // DIRECT: the Clash import's own final target (MATCH is a rule before it).
     let outbounds: Vec<String> = ["proxy", "fk-direct", "fk-block", "DIRECT"].iter().map(|s| s.to_string()).collect();
-    let routing = Routing { outbounds: outbounds.clone(), node_servers: ["node.proxy.test".to_string()].into_iter().collect() };
+    let routing =
+        Routing { outbounds: outbounds.clone(), node_servers: ["node.proxy.test".to_string()].into_iter().collect(), ..Routing::default() };
     brain.install_with(1, router(RULES, &outbounds), routing);
     (brain, up)
 }
