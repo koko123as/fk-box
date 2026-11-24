@@ -161,7 +161,7 @@ fn sizes_match_the_header() {
         (FKB_STRUCT_RESOLVE_RESULT, 288),
         (FKB_STRUCT_PROBE_RESULT, 16),
         (FKB_STRUCT_STATS, 56),
-        (FKB_STRUCT_BRAIN_API, 24),
+        (FKB_STRUCT_BRAIN_API, 40),
         (FKB_STRUCT_HOST_API, 64),
     ];
     for (which, size) in sizes {

@@ -14,7 +14,6 @@ use fkbox_client_core::rules::engine::{compile, Env, Router};
 use serde_json::json;
 
 use super::settings::DnsSettings;
-use super::wire::*;
 use super::*;
 use crate::brain::Routing;
 use crate::host::HostApi;
@@ -93,7 +92,8 @@ fn brain_with(settings: serde_json::Value, failing: Vec<&'static str>) -> (Brain
     let brain = Brain::new();
     brain.set_host(HostApi::from_raw(table).unwrap());
     brain.dns_state().apply(DnsSettings::from_value(&settings).unwrap()).unwrap();
-    let outbounds: Vec<String> = ["proxy", "fk-direct", "fk-block"].iter().map(|s| s.to_string()).collect();
+    // DIRECT: the Clash import's own final target (MATCH is a rule before it).
+    let outbounds: Vec<String> = ["proxy", "fk-direct", "fk-block", "DIRECT"].iter().map(|s| s.to_string()).collect();
     let routing = Routing { outbounds: outbounds.clone(), node_servers: ["node.proxy.test".to_string()].into_iter().collect() };
     brain.install_with(1, router(RULES, &outbounds), routing);
     (brain, up)

@@ -131,8 +131,11 @@ rules:
 	if plugin.MihomoFQDNPackets() <= fqdnPackets {
 		t.Fatal("mihomo UDP to a domain did not resolve through the brain")
 	}
-	if plugin.MihomoLookups.Load() <= lookupsBefore || dnsServer.Queries() == 0 {
-		t.Fatalf("node server name: mihomo lookups %d, fixture queries %d", plugin.MihomoLookups.Load()-lookupsBefore, dnsServer.Queries())
+	// The mieru server is addressed by name: mihomo dials it through the
+	// injected sing-box dialer (or its resolver hook), both ending in fkdns
+	// and the brain, whose only upstream is the fixture.
+	if dnsServer.Queries() == 0 {
+		t.Fatalf("node server name not resolved through the brain: mihomo lookups %d, fixture queries %d", plugin.MihomoLookups.Load()-lookupsBefore, dnsServer.Queries())
 	}
 
 	// 3. First packet: lookup + connect + first echo, fresh names each time.
@@ -181,7 +184,7 @@ rules:
 	t.Logf("E2E DNS_MISS ratio: cold %d/%d (%.0f%%), after prefetch %d/%d (%.0f%%); all decisions so far %d/%d",
 		coldMiss, names, 100*float64(coldMiss)/names, warmMiss, names, 100*float64(warmMiss)/names,
 		warmDone.DNSMiss-before.DNSMiss, warmDone.Decided-before.Decided)
-	t.Logf("E2E DNS resolver: mihomo node lookups %d, mihomo UDP to a domain %d, fixture queries %d, protected %d",
+	t.Logf("E2E DNS resolver: mihomo resolver-hook lookups %d, mihomo UDP to a domain %d, fixture queries %d, protected %d",
 		plugin.MihomoLookups.Load()-lookupsBefore, plugin.MihomoFQDNPackets()-fqdnPackets, dnsServer.Queries(), h.Platform().Protected()-protectedBefore)
 
 	// 5. Reload to an Xray node addressed by name (resolved by the brain);
