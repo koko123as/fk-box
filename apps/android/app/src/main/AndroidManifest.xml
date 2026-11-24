@@ -111,45 +111,11 @@
             </intent-filter>
 
         </activity>
-        <!-- The native pages the Slint UI opens through JNI (bridge/NativePages.kt). -->
+        <!-- The native page the Slint UI opens through JNI (bridge/NativePages.kt). -->
         <activity
             android:name=".bridge.ScanActivity"
             android:exported="false"
             android:theme="@style/AppTheme" />
-        <activity
-            android:name=".bridge.TerminalActivity"
-            android:exported="false"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/AppTheme" />
-        <activity
-            android:name=".bridge.BrowserActivity"
-            android:exported="false"
-            android:theme="@style/AppTheme" />
-
-        <activity
-            android:name=".compose.ShareActivity"
-            android:excludeFromRecents="true"
-            android:exported="true"
-            android:label="@string/taildrop"
-            android:taskAffinity=""
-            android:hardwareAccelerated="true"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:windowSoftInputMode="adjustResize"
-            android:theme="@style/AppTheme">
-            <meta-data
-                android:name="android.app.lib_name"
-                android:value="fkui" />
-
-            <intent-filter>
-                <action android:name="android.intent.action.SEND" />
-                <action android:name="android.intent.action.SEND_MULTIPLE" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-
-                <data android:mimeType="*/*" />
-            </intent-filter>
-        </activity>
 
         <service
             android:name=".bg.TileService"
@@ -182,22 +148,6 @@
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="proxy" />
-        </service>
-        <service
-            android:name=".bg.USBIPService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="usbip" />
-        </service>
-        <service
-            android:name=".bg.TaildropSendService"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="taildrop" />
         </service>
 
         <receiver

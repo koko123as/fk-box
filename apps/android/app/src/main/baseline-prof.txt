@@ -35,9 +35,6 @@ HSPLio/nekohasekai/sfa/bridge/VisiblePolling**;->**(**)**
 # State models and command clients
 HSPLio/nekohasekai/sfa/backend/base/**;->**(**)**
 HSPLio/nekohasekai/sfa/backend/model/**;->**(**)**
-HSPLio/nekohasekai/sfa/utils/CommandClient**;->**(**)**
-HSPLio/nekohasekai/sfa/utils/CommandTarget**;->**(**)**
-HSPLio/nekohasekai/sfa/utils/RemoteControlManager**;->**(**)**
 HSPLio/nekohasekai/sfa/utils/CommandSessions**;->**(**)**
 HSPLio/nekohasekai/sfa/database/ProfileManager**;->**(**)**
 

@@ -11,10 +11,8 @@ import android.provider.OpenableColumns
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
-import androidx.core.content.IntentCompat
 import androidx.lifecycle.lifecycleScope
 import com.google.androidgamesdk.GameActivity
-import io.nekohasekai.libbox.Libbox
 import io.nekohasekai.sfa.Application
 import io.nekohasekai.sfa.R
 import io.nekohasekai.sfa.bg.BoxService
@@ -168,8 +166,9 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     reply(true, SlintHost.wire(text))
                     return@launch
                 }
-                // The native pages over the Slint UI (NativePages.kt); each answers this call when it closes.
-                "scanQrCode", "openTerminalView", "openConnectBrowser" -> {
+                // The native page over the Slint UI (NativePages.kt); it answers this call when it closes.
+                // The terminal and OpenConnect sign-in pages went with libbox (stage 6).
+                "scanQrCode" -> {
                     val values = org.json.JSONObject(args)
                     val extras = Bundle()
                     val texts = Bundle()
@@ -182,19 +181,9 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
                     }
                     extras.putBundle("texts", texts)
                     extras.putBundle("keys", texts)
-                    val type = when (method) {
-                        "scanQrCode" -> ScanActivity::class.java
-                        "openTerminalView" -> TerminalActivity::class.java
-                        else -> BrowserActivity::class.java
-                    }
                     // The page answers this call itself when it closes.
                     replied.set(true)
-                    NativePages.launch(this@BoxActivity, type, id, extras)
-                    return@launch
-                }
-                "closeBrowser" -> {
-                    NativePages.browser?.get()?.finish()
-                    reply(true, SlintHost.wire(null))
+                    NativePages.launch(this@BoxActivity, ScanActivity::class.java, id, extras)
                     return@launch
                 }
                 "appIcon" -> {
@@ -452,11 +441,9 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
 
     private fun handleIntent(intent: Intent?) {
         if (intent == null) return
-        val value = if (intent.action in listOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE)) {
-            val token = java.util.UUID.randomUUID().toString()
-            shares[token] = Intent(intent)
-            "bbox-share:" + token
-        } else {
+        // Shares (ACTION_SEND) only fed Taildrop, removed with libbox in stage 6.
+        if (intent.action in listOf(Intent.ACTION_SEND, Intent.ACTION_SEND_MULTIPLE)) return
+        val value = run {
             val uri = intent.data ?: return
             if (intent.action == Action.OPEN_URL) {
                 runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }.onFailure { bridge?.reportError(it.message.orEmpty()) }
@@ -469,24 +456,6 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
     }
 
     fun takeIntent(): String? = pendingIntents.removeFirstOrNull()
-
-    fun discardShare(token: String) { shares.remove(token) }
-
-    fun openShare(token: String): List<io.nekohasekai.sfa.backend.tools.TaildropSendFile> {
-        val shared = shares[token] ?: error("Shared content no longer exists")
-        val uris = if (shared.action == Intent.ACTION_SEND_MULTIPLE) {
-            IntentCompat.getParcelableArrayListExtra(shared, Intent.EXTRA_STREAM, Uri::class.java).orEmpty()
-        } else listOfNotNull(IntentCompat.getParcelableExtra(shared, Intent.EXTRA_STREAM, Uri::class.java))
-        val files = if (uris.isNotEmpty()) {
-            io.nekohasekai.sfa.backend.tools.TaildropSendManager.openURIs(uris)
-        } else {
-            val text = shared.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()?.takeIf { it.isNotBlank() }
-                ?: error("No shared content")
-            listOf(io.nekohasekai.sfa.backend.tools.TaildropSendManager.createTextFile("shared.txt", text))
-        }
-        shares.remove(token)
-        return files
-    }
 
     fun reconnect() = connection.reconnect()
 
@@ -504,7 +473,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
         val generation = startGeneration
         lifecycleScope.launch {
             runCatching {
-                Application.application.setupLibbox()
+                Application.application.setupHost()
                 Settings.dataStore.initialize()
                 require(Settings.selectedProfile != -1L) { getString(R.string.error_empty_configuration) }
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !SystemNotifications.checkPermission()) {
@@ -574,7 +543,7 @@ open class BoxActivity : GameActivity(), ServiceConnection.Callback {
             return
         }
         if (!restart && !recover && serviceStatus.value == Status.Started && Settings.detectServiceMode() == Settings.serviceMode) {
-            withContext(Dispatchers.IO) { Libbox.newStandaloneCommandClient().serviceReload() }
+            withContext(Dispatchers.IO) { BoxService.reloadRunning() }
         } else {
             stopService()
             withTimeout(15000) { serviceStatus.first { it == Status.Stopped } }

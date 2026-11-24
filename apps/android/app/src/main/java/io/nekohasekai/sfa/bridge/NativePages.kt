@@ -2,7 +2,6 @@ package io.nekohasekai.sfa.bridge
 
 import android.Manifest
 import android.app.Activity
-import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
@@ -12,7 +11,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.FrameLayout
-import android.widget.HorizontalScrollView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -35,17 +33,14 @@ import java.util.concurrent.Executors
 
 /**
  * The native pages the Slint UI opens over itself through JNI (BoxActivity.slintCall):
- * the QR scanner (CameraX + ZXing, formerly the Compose ScanPage), the Ghostty
- * terminal surface (formerly GhosttySurface in TerminalPage) and the OpenConnect
- * sign-in browser (formerly AuthBrowser). Each one answers its pending call id
- * itself, with null when it is closed without a result.
+ * the QR scanner (CameraX + ZXing, formerly the Compose ScanPage). It answers its
+ * pending call id itself, with null when it is closed without a result. The
+ * terminal (Tailscale SSH) and OpenConnect sign-in pages went with the
+ * three-core libbox in stage 6 (docs/architecture/brain-android.md).
  */
 internal object NativePages {
     /** The bridge of the running BoxActivity; the pages run in its process and task. */
     @Volatile var bridge: WeakReference<BoxBridge>? = null
-
-    /** The open sign-in browser, closed when its challenge completes. */
-    @Volatile var browser: WeakReference<Activity>? = null
 
     const val EXTRA_CALL = "call"
 
@@ -237,95 +232,6 @@ internal class ScanActivity : NativePage() {
     override fun onDestroy() {
         if (isFinishing) bridge?.closeProfileScan(session)
         analyzerExecutor.shutdown()
-        super.onDestroy()
-    }
-}
-
-/** GhosttySurface: the session's terminal view and its extra keys. */
-internal class TerminalActivity : NativePage() {
-    private var surface: TerminalSurface? = null
-    private val keyButtons = mutableMapOf<String, Button>()
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val preview = intent.getBooleanExtra("preview", false)
-        val sessionId = intent.getStringExtra("id") ?: if (preview) "" else return finish()
-        val terminal = TerminalSurface(this, 0, mapOf("id" to sessionId, "dark" to dark, "preview" to preview), object : TerminalChannel {
-            override fun request(method: String, value: Any?, respond: (Any?) -> Unit) {
-                val text = intent.getBundleExtra("texts")
-                fun t(key: String) = text?.getString(key) ?: key
-                when (method) {
-                    "unsafePaste" -> AlertDialog.Builder(this@TerminalActivity).setTitle(t("Paste multiple lines?")).setMessage(t("Pasted text may execute commands in this terminal."))
-                        .setPositiveButton(t("Paste")) { _, _ -> respond(true) }.setNegativeButton(t("Cancel")) { _, _ -> respond(false) }.setOnCancelListener { respond(false) }.show()
-                    "clipboardRead" -> AlertDialog.Builder(this@TerminalActivity).setTitle(t("Allow terminal to read clipboard?"))
-                        .setPositiveButton(t("Allow")) { _, _ -> respond(true) }.setNegativeButton(t("Cancel")) { _, _ -> respond(false) }.setOnCancelListener { respond(false) }.show()
-                    "link" -> AlertDialog.Builder(this@TerminalActivity).setTitle(t("Link")).setMessage(value?.toString())
-                        .setPositiveButton(t("Open")) { _, _ -> respond("open") }.setNeutralButton(t("Copy")) { _, _ -> respond("copy") }
-                        .setNegativeButton(t("Cancel")) { _, _ -> respond(null) }.setOnCancelListener { respond(null) }.show()
-                    else -> respond(null)
-                }
-            }
-
-            override fun notify(method: String, value: Any?) {
-                if (method != "modifiers") return
-                val states = value as? Map<*, *> ?: return
-                for ((key, button) in keyButtons) {
-                    val state = states[key.lowercase()] as? String ?: continue
-                    button.alpha = if (state == "ARMED" || state == "LOCKED") 1f else 0.7f
-                    button.text = key + if (state == "LOCKED") " •" else ""
-                }
-            }
-        })
-        surface = terminal
-        val column = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        column.addView(terminal.getView(), LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        val keys = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
-        val labels = intent.getBundleExtra("keys")
-        for (key in listOf("Esc", "Tab", "Ctrl", "Alt", "↑", "↓", "←", "→", "Home", "End", "PgUp", "PgDn", "Paste", "Keyboard")) {
-            val button = Button(this, null, android.R.attr.borderlessButtonStyle).apply {
-                text = labels?.getString(key) ?: key
-                setTextColor(fgColor)
-                isAllCaps = false
-                alpha = if (key == "Ctrl" || key == "Alt") 0.7f else 1f
-                setOnClickListener {
-                    try {
-                        terminal.invoke("key", mapOf("key" to key))
-                    } catch (failure: Exception) {
-                        bridge?.reportError(failure.message.orEmpty())
-                    }
-                }
-            }
-            if (key == "Ctrl" || key == "Alt") keyButtons[key] = button
-            keys.addView(button)
-        }
-        if (!preview) column.addView(HorizontalScrollView(this).apply { addView(keys) })
-        content.addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-    }
-
-    override fun onDestroy() {
-        surface?.dispose()
-        surface = null
-        super.onDestroy()
-    }
-}
-
-/** AuthBrowser: the OpenConnect sign-in WebView; closes itself when the challenge completes. */
-internal class BrowserActivity : NativePage() {
-    private var view: PlatformView? = null
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val bridge = bridge ?: return finish()
-        val page = BoxBrowserFactory(bridge).create(this, 0, mapOf("endpoint" to intent.getStringExtra("endpoint"), "challenge" to intent.getStringExtra("challenge")))
-        view = page
-        content.addView(page.getView(), FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        NativePages.browser = WeakReference(this)
-    }
-
-    override fun onDestroy() {
-        if (NativePages.browser?.get() === this) NativePages.browser = null
-        view?.dispose()
-        view = null
         super.onDestroy()
     }
 }
