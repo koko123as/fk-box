@@ -68,16 +68,6 @@ internal object ServiceSettings {
     fun normalizeRouting(value: Map<String, Any?>): Map<String, Any?> =
         plainMap(CoreStore.call("routing.normalize") { put("value", element(value)) })
 
-    /**
-     * The rule set libbox compiles for [core]: of [draft] when given (the
-     * preview of unsaved rules), else the saved one. "" when the core has no
-     * rules; throws when the rules cannot be read.
-     */
-    fun routingCoreJson(core: String, draft: Map<String, Any?>? = null): String = CoreStore.call("routing.coreJson") {
-        put("core", core)
-        if (draft != null) put("value", element(draft))
-    }.jsonPrimitive.content
-
     private fun decodePlan(element: JsonElement): Plan {
         val plan = element.jsonObject
         return Plan(

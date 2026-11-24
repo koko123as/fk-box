@@ -648,3 +648,34 @@ fn chained_proxies_generate_detours() {
     assert!(exit["proxy"].get("dialer-proxy").is_none(), "dialer-proxy must move to the plugin's detour");
     write_out("chain", &g.config);
 }
+
+#[test]
+fn singbox_stage6_strips_retired_experimental_options() {
+    let saved = json!({
+        "outbounds": [{"type": "direct", "tag": "out"}],
+        "experimental": {
+            "http_rewrite": {"enabled": true, "mitm": {"enabled": true, "hosts": ["a.test"]}},
+            "http_debug": {"scripts": []},
+            "clash_api": {"default_mode": "rule"}
+        }
+    });
+    let (stripped, removed) = singbox::strip_retired(&saved);
+    assert_eq!(removed, ["http_rewrite", "http_debug", "clash_api"]);
+    assert!(stripped.get("experimental").is_none(), "{stripped}");
+    // The saved value itself is untouched.
+    assert!(saved["experimental"]["http_rewrite"]["enabled"].as_bool().unwrap());
+
+    let kept = json!({"outbounds": [], "experimental": {"http_rewrite": {}, "cache_file": {"enabled": true}}});
+    let (stripped, removed) = singbox::strip_retired(&kept);
+    assert_eq!(removed, ["http_rewrite"]);
+    assert_eq!(stripped["experimental"], json!({"cache_file": {"enabled": true}}));
+    assert_eq!(singbox::strip_retired(&json!({"outbounds": []})).1.len(), 0);
+
+    let r = import_text(&saved.to_string()).unwrap();
+    let retired: Vec<&Notice> = r.notices.iter().filter(|n| n.at == "experimental").collect();
+    assert_eq!(retired.len(), 1, "{:?}", r.notices);
+    assert!(retired[0].message.contains("experimental.http_rewrite"), "{:?}", retired[0]);
+    assert!(!r.notices.iter().any(|n| n.at == "config" && n.message.contains("experimental")), "{:?}", r.notices);
+    assert_eq!(r.nodes.len(), 1);
+    generate(&r, &GenerateOptions::default()).unwrap();
+}

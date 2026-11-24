@@ -59,7 +59,8 @@ fn runs_sing_box(p: &Json) -> bool {
     core.is_empty() || core == "sing-box"
 }
 
-/// coreLabels(): the cores a profile can run on, "auto" first.
+/// coreLabels(): the cores a profile could run on before stage 6, "auto" first.
+#[allow(dead_code)]
 fn core_labels() -> Vec<(&'static str, String)> {
     vec![("auto", tr("Automatic")), ("sing-box", "sing-box".into()), ("xray", "Xray".into()), ("mihomo", "mihomo".into())]
 }
@@ -590,22 +591,8 @@ fn form_page(form: &Rc<RefCell<Form>>) -> Page {
     rows.push(Row::field(&tr("Name"), &f.name, &tr("Required"), move |v| a.borrow_mut().name = v).key("name").invalid(bad("name")));
     let a = form.clone();
     rows.push(Row::switch(&tr("Remote"), f.remote, move |v| a.borrow_mut().remote = v).key("remote"));
-    let a = form.clone();
-    let current_core = core_labels().into_iter().find(|(k, _)| *k == f.core).map(|(_, l)| l).unwrap_or_else(|| f.core.clone());
-    rows.push(Row::item(&tr("Core")).value(&current_core).key("core").on(|_| {}).menu(move || {
-        let current = a.borrow().core.clone();
-        core_labels()
-            .into_iter()
-            .map(|(value, label)| {
-                let b = a.clone();
-                MenuEntry::plain(&label, move || {
-                    b.borrow_mut().core = value.to_string();
-                    mark(Mark::ROWS);
-                })
-                .checked(current == value)
-            })
-            .collect()
-    }));
+    // Stage 6: one kernel runs every profile; the per-profile core choice is
+    // no longer offered (the stored value is kept as it is).
     if f.remote {
         let a = form.clone();
         rows.push(Row::field(&tr("URL"), &f.url, &tr("Required"), move |v| a.borrow_mut().url = v).key("url").invalid(bad("url")).mono());

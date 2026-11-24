@@ -66,22 +66,11 @@ fn parse_memory_limit(text: &str) -> Option<i64> {
 
 fn open_core() {
     rows::push(|| {
-        let (busy, versions) =
-            data(|d| (d.service_settings_changing, [d.core_version.clone(), d.xray_version.clone(), d.mihomo_version.clone()]));
-        // One switch per linked core, with its version; a core that is off is
-        // skipped by auto and refuses to start. The last one cannot go off.
-        let cores = [("sing-box", "singBoxEnabled"), ("Xray", "xrayEnabled"), ("mihomo", "mihomoEnabled")];
-        let on_count = cores.iter().filter(|(_, k)| setting(k) != Value::Bool(false)).count();
+        // Stage 6: one kernel (sing-box + the Rust brain) runs every profile;
+        // the per-core switches are gone (their stored values are kept).
+        let version = data(|d| d.core_version.clone());
         let mut rows = vec![Row::first_section(&tr("Cores"))];
-        for (i, (name, key)) in cores.into_iter().enumerate() {
-            let on = setting(key) != Value::Bool(false);
-            let last_on = on && on_count == 1;
-            let mut r = Row::switch(name, on, move |v| app::set_setting(key, json!(v), false, false)).key(key).enabled(!busy && !last_on);
-            if !versions[i].is_empty() {
-                r = r.subtitle(&versions[i]);
-            }
-            rows.push(r);
-        }
+        rows.push(Row::item("sing-box").subtitle(if version.is_empty() { "—" } else { version.as_str() }));
         rows.push(Row::gap());
         rows.push(native_toggle("Disable deprecation warnings", "disableDeprecatedWarnings", false, false));
         rows.push(native_toggle("Enable memory protection", "oomKillerEnabled", true, false));

@@ -27,37 +27,9 @@ object Settings {
     var killSwitch by dataStore.boolean(SettingsKey.KILL_SWITCH) { false }
     var disableDeprecatedWarnings by dataStore.boolean(SettingsKey.DISABLE_DEPRECATED_WARNINGS) { false }
 
-    // Cores the user left on (Settings › Core). All three stay linked into
-    // libbox; a core that is off is skipped by auto and refuses to start.
-    var singBoxEnabled by dataStore.boolean(SettingsKey.CORE_SING_BOX_ENABLED) { true }
-    var xrayEnabled by dataStore.boolean(SettingsKey.CORE_XRAY_ENABLED) { true }
-    var mihomoEnabled by dataStore.boolean(SettingsKey.CORE_MIHOMO_ENABLED) { true }
-
-    fun coreEnabled(core: String): Boolean = when (core) {
-        TypedProfile.CORE_XRAY -> xrayEnabled
-        TypedProfile.CORE_MIHOMO -> mihomoEnabled
-        else -> singBoxEnabled
-    }
-
-    fun enabledCores(): String = listOf(TypedProfile.CORE_SING_BOX, TypedProfile.CORE_XRAY, TypedProfile.CORE_MIHOMO)
-        .filter { coreEnabled(it) }.joinToString(",")
-
-    /** The core an auto profile's subscription is fetched for. */
-    fun autoFetchCore(): String = when {
-        singBoxEnabled -> TypedProfile.CORE_SING_BOX
-        mihomoEnabled -> TypedProfile.CORE_MIHOMO
-        else -> TypedProfile.CORE_XRAY
-    }
-
-    fun requireCoreEnabled(core: String) {
-        require(coreEnabled(core)) { "The ${coreLabel(core)} core is turned off. Turn it on in Settings › General › Core, or pick another core for this profile." }
-    }
-
-    fun coreLabel(core: String): String = when (core) {
-        TypedProfile.CORE_XRAY -> "Xray"
-        TypedProfile.CORE_MIHOMO -> "mihomo"
-        else -> "sing-box"
-    }
+    // The per-core switches (SettingsKey.CORE_*_ENABLED) went with the
+    // three-core libbox in stage 6: one kernel runs every profile. The stored
+    // values are left as they are (a downgrade still reads them).
 
     // Geo resources (SettingsKey.GEO_*) and the per-core routing rules
     // (SettingsKey.ROUTING_RULES) are read and written by client-core

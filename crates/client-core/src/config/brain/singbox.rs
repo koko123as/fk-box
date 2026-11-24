@@ -174,9 +174,47 @@ fn group(kind: &str, tag: String, object: &Map<String, Value>) -> Result<Group, 
     Ok(Group { name: tag, kind, members, params })
 }
 
+/// `experimental` options of profiles saved by the three-core build that have
+/// no place on the single-kernel path (stage 6, docs/architecture/brain-android.md).
+pub const RETIRED_EXPERIMENTAL: [&str; 3] = ["http_rewrite", "http_debug", "clash_api"];
+
+/// The stage 6 migration of a sing-box profile saved by the three-core build:
+/// strips HTTP rewriting / capture (`experimental.http_rewrite`,
+/// `experimental.http_debug`) and the Clash API (`experimental.clash_api`)
+/// from what the brain imports, and `experimental` itself when nothing else is
+/// left in it. Only the imported copy changes: the saved profile keeps them
+/// (no user data is deleted, and a downgrade still reads them). Returns the
+/// stripped configuration and the keys it removed.
+pub fn strip_retired(config: &Value) -> (Value, Vec<&'static str>) {
+    let mut config = config.clone();
+    let mut removed = Vec::new();
+    if let Some(map) = config.as_object_mut() {
+        if let Some(Value::Object(experimental)) = map.get_mut("experimental") {
+            for key in RETIRED_EXPERIMENTAL {
+                if experimental.remove(key).is_some() {
+                    removed.push(key);
+                }
+            }
+            if experimental.is_empty() && !removed.is_empty() {
+                map.remove("experimental");
+            }
+        }
+    }
+    (config, removed)
+}
+
 pub fn import_value(config: &Value, loader: &dyn RuleSetLoader) -> Result<ImportResult, ImportError> {
+    let (config, retired) = strip_retired(config);
     let map = config.as_object().ok_or_else(|| ImportError::new("config", "not an object"))?;
     let mut notices = Vec::new();
+    if !retired.is_empty() {
+        let keys: Vec<String> = retired.iter().map(|k| format!("experimental.{k}")).collect();
+        notices.push(Notice::new(
+            NoticeKind::IgnoredSettings,
+            "experimental",
+            format!("not on the single-kernel path (kept in the saved profile): {}", keys.join(", ")),
+        ));
+    }
     if map.contains_key("dns") {
         notices.push(Notice::new(NoticeKind::IgnoredDns, "dns", IGNORED_DNS));
     }
@@ -242,7 +280,7 @@ pub fn import_value(config: &Value, loader: &dyn RuleSetLoader) -> Result<Import
         }
         nodes.push(node(&kind, tag, object, true, &mut notices)?);
     }
-    let imported = import_singbox::import_value(config, loader)?;
+    let imported = import_singbox::import_value(&config, loader)?;
     for directive in &imported.host {
         let HostDirective::Sniff { index, .. } = directive;
         notices.push(Notice::new(

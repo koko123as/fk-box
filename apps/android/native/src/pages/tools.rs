@@ -80,7 +80,8 @@ fn tools_page() -> Page {
     rows.push(Row::section(&tr("Settings")));
     rows.push(Row::open(&tr("Appearance"), Some("paintbrush"), crate::pages::appearance::open));
     rows.push(Row::open(&tr("Access control"), Some("apps-list"), crate::pages::settings::open_access));
-    rows.push(Row::open(&tr("Traffic routing"), Some("rules"), crate::pages::routing::open));
+    // Traffic routing (the app's own rules, compiled per core by libbox) is not
+    // merged into the brain on the single-kernel path (stage 6b); saved rules are kept.
     rows.push(Row::open(&tr("Backup and restore"), Some("cloud-sync"), crate::pages::settings::open_backup));
     rows.push(Row::open(&tr("General"), Some("settings"), crate::pages::settings::open_general));
     rows.push(Row::section(&tr("Other")));
