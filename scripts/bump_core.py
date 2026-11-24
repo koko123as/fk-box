@@ -4,7 +4,6 @@
     python3 scripts/bump_core.py sing-box 1.15.0-alpha.14
     python3 scripts/bump_core.py xray 26.8.1
     python3 scripts/bump_core.py mihomo 1.19.34
-    python3 scripts/bump_core.py libxray v1.260801.0
     python3 scripts/bump_core.py ... --dry-run     # only report
 
 Checks before writing: the tag exists, the module resolves on the Go proxy
@@ -93,12 +92,8 @@ def main(argv):
         version = version.removeprefix("v")
         mod = proxy("github.com/metacubex/mihomo", f"v{version}.mod")
         changes["MIHOMO_VERSION"] = version
-    elif core == "libxray":
-        version = "v" + version.removeprefix("v")
-        mod = proxy("github.com/xtls/libxray", f"{version}.mod")
-        changes["LIBXRAY_MODULE_VERSION"] = version
     else:
-        print(f"unknown core {core}; use sing-box, xray, mihomo or libxray")
+        print(f"unknown core {core}; use sing-box, xray or mihomo")
         return 2
     needs = go_directive(mod)
     print(f"{core} {version}: go.mod needs go {needs}; build uses go {go_version}")
@@ -108,9 +103,6 @@ def main(argv):
         print("Refusing: the new version needs a newer Go than GO_VERSION. "
               "Raise GO_VERSION on its own first (all three cores must build with it).")
         return 1
-    if core == "xray":
-        print("Also check libXray: its go.mod must accept this xray-core "
-              "(python3 scripts/bump_core.py libxray <version> if it needs a newer one).")
     if dry:
         print("dry run: nothing written")
         return 0
