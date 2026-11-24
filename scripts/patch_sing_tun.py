@@ -15,6 +15,7 @@ The shared Go module cache is never modified.
 
 import argparse
 import json
+import os
 import shutil
 import stat
 import subprocess
@@ -45,11 +46,19 @@ def main():
         path.chmod(path.stat().st_mode | stat.S_IWUSR)
 
     patch = ROOT / "apps/android/core/sing-tun-android-ingress.patch"
+    # Apply inside the scratch copy with repository discovery stopped there.
+    # Run from a directory of the fk-box checkout (apps/android/fkhost), git apply
+    # takes patch paths relative to the fk-box top level and silently skips every
+    # path outside the current directory, so nothing was patched. The old
+    # setup-core ran this on .core, a separate sing-box checkout, where it worked.
+    environment = dict(os.environ, GIT_CEILING_DIRECTORIES=str(target.parent))
     for arguments in (["--check"], []):
         subprocess.run(
-            ["git", "apply", "--directory=.b-box/sing-tun", *arguments, str(patch)],
-            cwd=core, check=True,
+            ["git", "apply", "--verbose", *arguments, str(patch)],
+            cwd=target, env=environment, check=True,
         )
+    if not (target / "redirect_ingress_discard_value_linux.go").is_file():
+        raise SystemExit("sing-tun-android-ingress.patch was not applied")
     shutil.copyfile(
         ROOT / "apps/android/core/sing-tun/redirect_ingress_discard_linux_test.go",
         target / "redirect_ingress_discard_value_linux_test.go",
