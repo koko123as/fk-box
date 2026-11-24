@@ -39,6 +39,7 @@
 | `apps/android/app/` | Kotlin 宿主（Gradle 模块 `:app`，包名/namespace `io.nekohasekai.sfa`，安装 ID `io.fkbox.app`） |
 | `apps/android/baselineprofile/` | Baseline Profile 生成模块（`:baselineprofile`） |
 | `apps/android/core/` | libbox 的 Go 多内核适配与补丁（由 `.github/actions/setup-core` 和 `scripts/patch_*.py` 叠加到 sing-box 源码） |
+| `apps/android/fkhost/` | 单内核架构阶段 3 的 Go 宿主（独立 Go 模块，做法 A：自建 `box.Context` + `daemon.NewStartedService` + Android `PlatformInterface`）与 fkbrain/fkdns/mihomo/xray 插件、链接 Rust 大脑的 cgo 桥（`brainffi`）；不打补丁、无本地监听，暂未接入应用。见 [brain-host.md](docs/architecture/brain-host.md) |
 | `vendor/` | 带 fk-box 补丁的 Slint crate（`FKBOX-PATCH.md`），经根 `Cargo.toml` 的 `[patch.crates-io]` 使用 |
 | `scripts/` | 构建、核心补丁、发布与源码检查脚本（`python3 scripts/<名称>.py`，在仓库根目录运行） |
 | `resources/` | 非代码资源：`config/`（detekt 配置）、`licenses/`（组件许可文本）、`flclash-manifest.json`（FlClash 来源清单） |
@@ -64,5 +65,5 @@ Gradle 根是 `apps/android/`（`settings.gradle.kts`、`build.gradle.kts`、`gr
 - 更新核心时核对 legacy 补丁、所有 `apps/android/core/ui_*.go` 扩展及生成的绑定，并同步检查 Release、源码验证和 Android smoke 工作流。官方原版 AAR 缺少 fk-box（继承自 B-box）新增绑定，不能仅凭版本相同直接替换。
 - 更新 FlClash 布局参考时核对页面布局、信息组织及动效时序（[flclash.md](docs/flclash.md#动效)），不迁入其控件、字形或特效；同步更新来源清单与许可。
 - 按受影响范围验证。本机可运行 `git diff --check` 和 `python3 scripts/verify_newui.py`；文档变更还应检查链接和旧引用。后者仅检查源码约束，不证明运行行为。
-- [.github/workflows/brain.yml](.github/workflows/brain.yml) 负责规则引擎、配置生成与大脑 C ABI（`crates/client-core` 的 `rules::engine` 与 `config::brain`、`crates/brain-ffi`）的单元测试、头文件与静态库 C 链接检查、真实 geo 数据格式检查、decide 基准，以及生成的配置经 sing-box 解析与 `box.New`（`probes/stage2`）（ubuntu-24.04-arm；目标为 `main` 或 `arch/**` 的 PR 及 `arch/**` 分支推送）；[.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及 Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
+- [.github/workflows/brain.yml](.github/workflows/brain.yml) 负责规则引擎、配置生成与大脑 C ABI（`crates/client-core` 的 `rules::engine` 与 `config::brain`、`crates/brain-ffi`）的单元测试、头文件与静态库 C 链接检查、真实 geo 数据格式检查、decide 基准，以及生成的配置经 sing-box 解析与 `box.New`（`probes/stage2`）（ubuntu-24.04-arm；目标为 `main` 或 `arch/**` 的 PR 及 `arch/**` 分支推送）；[.github/workflows/fkhost.yml](.github/workflows/fkhost.yml) 负责 `apps/android/fkhost` 的编译、各插件 TCP/UDP 连通（本地回环测试夹具）与 protect 计数、经真实 TUN 设备的端到端测试（sing-box → fkbrain → Rust decide → 出站）（触发条件同上）；[.github/workflows/newui.yml](.github/workflows/newui.yml) 负责 Go 扩展测试及 Compose 源码检查；[newui-android.yml](.github/workflows/newui-android.yml) 负责 JVM、Android 编译和 API 31/35 smoke；[build-release.yml](.github/workflows/build-release.yml) 负责签名 ARM64 Release 和产物校验。
 - 验证记录应说明源码 SHA、实际运行的检查、Actions 链接及未覆盖范围。已有 Release、旧提交的成功构建或测试代码的存在，都不等于当前源码已通过验收。仅构建下载产物时注意 Release 工作流的 `publish_release` 默认开启，具体发布规则见 [app.md](docs/app.md)。

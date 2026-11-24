@@ -517,8 +517,10 @@ fn generated_config_is_minimal() {
     let custom = GenerateOptions {
         tun: generate::TunOptions { mtu: Some(1500), strict_route: true, stack: Some("gvisor".into()), ..Default::default() },
         log_level: Some("warn".into()),
+        find_process: true,
     };
     let g = generate(&r, &custom).unwrap();
+    assert_eq!(g.config["route"]["find_process"], true);
     assert_eq!(g.config["inbounds"][0]["mtu"], 1500);
     assert_eq!(g.config["inbounds"][0]["strict_route"], true);
     assert_eq!(g.config["inbounds"][0]["stack"], "gvisor");

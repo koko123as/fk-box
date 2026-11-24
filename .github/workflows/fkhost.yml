@@ -1,0 +1,126 @@
+name: Go host and plugins (fkbrain, fkdns, mihomo, xray)
+
+# Stage 3 of the single-kernel design (docs/architecture/brain-host.md):
+# the Go host in apps/android/fkhost (own box.Context +
+# daemon.NewStartedService + Android PlatformInterface) and its four
+# plugins, built against sing-box / mihomo / Xray at the versions of
+# version.properties, with the Rust brain (crates/brain-ffi) linked in.
+# Per-plugin TCP+UDP connectivity against loopback fixtures, protect-call
+# counts, and an end-to-end run through a real TUN device on arm64.
+
+on:
+  pull_request:
+    branches: [main, 'arch/**']
+    paths:
+      - 'apps/android/fkhost/**'
+      - 'crates/brain-ffi/**'
+      - 'crates/client-core/**'
+      - 'version.properties'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/fkhost.yml'
+  push:
+    branches: ['arch/**']
+    paths:
+      - 'apps/android/fkhost/**'
+      - 'crates/brain-ffi/**'
+      - 'crates/client-core/**'
+      - 'version.properties'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
+      - '.github/workflows/fkhost.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fkhost-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fkhost:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 50
+    env:
+      GOTOOLCHAIN: local
+      GO_TAGS: with_quic,with_wireguard,with_utls,with_gvisor
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Set up Rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustc --version
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2
+        with:
+          workspaces: .
+          key: fkhost
+
+      - name: Rust brain static library
+        run: |
+          cargo build --locked --release -p fkbox-brain-ffi --lib
+          ls -l target/release/libfkbox_brain_ffi.a
+          echo "CGO_LDFLAGS=-L$GITHUB_WORKSPACE/target/release" >> "$GITHUB_ENV"
+
+      - name: Read Go version
+        id: versions
+        run: echo "go_version=$(sed -n 's/^GO_VERSION=go//p' version.properties | tr -d '\r')" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+        with:
+          go-version: ${{ steps.versions.outputs.go_version }}
+          cache-dependency-path: apps/android/fkhost/go.sum
+
+      # Every compile error of the host's own packages at once.
+      - name: Build
+        working-directory: apps/android/fkhost
+        run: |
+          go version
+          go build -tags "$GO_TAGS" -ldflags=-checklinkname=0 -gcflags=-e ./...
+          go test -tags "$GO_TAGS" -ldflags=-checklinkname=0 -gcflags=-e -run '^$' ./... > /dev/null
+
+      - name: go vet (informational)
+        continue-on-error: true
+        working-directory: apps/android/fkhost
+        run: go vet -tags "$GO_TAGS" ./...
+
+      # The end-to-end test attaches to this device the way VpnService hands
+      # over its descriptor; 198.18.99.0/24 is routed into it.
+      - name: TUN device for the end-to-end test
+        run: |
+          sudo ip tuntap add dev fkt0 mode tun user "$(id -u)"
+          sudo ip addr add 172.19.0.1/30 dev fkt0
+          sudo ip link set fkt0 up
+          sudo ip route add 198.18.99.0/24 dev fkt0
+          ip addr show fkt0
+          ip route get 198.18.99.1
+
+      - name: Tests (plugins, host, end to end)
+        working-directory: apps/android/fkhost
+        env:
+          FKHOST_E2E_TUN: fkt0
+        run: |
+          set -o pipefail
+          go test -count=1 -p 1 -timeout 20m -v -tags "$GO_TAGS" -ldflags=-checklinkname=0 ./... 2>&1 | tee "$RUNNER_TEMP/fkhost-test.log"
+
+      - name: Test summary
+        if: always()
+        run: |
+          {
+            echo "### Go host and plugins"
+            echo
+            echo '```'
+            grep -E 'STAGE3 |E2E |^(ok|FAIL|---|PASS)' "$RUNNER_TEMP/fkhost-test.log" || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: fkhost-test-log
+          path: ${{ runner.temp }}/fkhost-test.log
+          if-no-files-found: warn

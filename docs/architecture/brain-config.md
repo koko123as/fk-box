@@ -57,7 +57,7 @@ without an equivalent moves the whole node to the `mihomo` plugin, with a
 | http | `http` | mihomo | TLS, `headers` |
 | ssh | `ssh` | mihomo | `private-key` as PEM content; a file path → mihomo |
 | direct, reject | `direct`, `block` | — | dial fields only |
-| snell, mieru, sudoku, shadowquic, gost-relay, masque, trusttunnel | — | mihomo | always (stage 3 checks each for mihomo tunnel/global state) |
+| snell, mieru, sudoku, shadowquic, gost-relay, masque, trusttunnel | — | mihomo | always (stage 3 review: none depends on mihomo's tunnel; see [brain-host.md](brain-host.md#mihomo-plugin)) |
 | tailscale, openvpn, zerotier, easytier | — | — | **import error** (decided 2026-11-24) |
 | dns, rematch, relay | — | — | **import error** (mihomo DNS tunnel / rule re-run / removed) |
 
@@ -139,6 +139,10 @@ name and loops (`a -> b -> a`) are errors.
 - `auto_detect_interface` switches on the platform's
   `AutoDetectInterfaceControl` (VpnService.protect) for every dialer,
   plugin dialers included.
+- `find_process: true` only when the rules read the process, package or
+  uid (`GenerateOptions.find_process`, set by the brain's profile plan):
+  sing-box then fills the connection owner through the platform before
+  fkbrain asks `decide`.
 - `default_domain_resolver: fkdns`: with only `fkdns` in `dns.servers`, a
   dialer without a resolver would fall back to the default transport
   (`common/dialer/dialer.go`).
@@ -154,7 +158,7 @@ probe did. sing-box decodes their options strictly (unknown keys fail).
 | Type | Kind | Options |
 | --- | --- | --- |
 | `fkbrain` | outbound | `outbounds`: `[]string`, the table `decide` indexes into (`fkb_decision.outbound`); nodes in import order, then `fk-direct`, `fk-block`. Non-empty, no duplicates. It implements `adapter.ConnectionHandler` and is `route.final`. |
-| `fkdns` | DNS transport | none in this contract (stage 4 adds what the brain's resolver needs). |
+| `fkdns` | DNS transport | none in the generated configuration; the stage 3 placeholder takes `upstream` (`udp://` / `tcp://` with an IP, default `udp://1.1.1.1:53`) until the brain resolves (stage 4). |
 | `mihomo` | outbound | sing-box `DialerOptions` (`detour`, bind/mark/TFO fields) + `proxy`: the mihomo proxy map (`name`, `type`, …; never `dialer-proxy`). |
 | `xray` | outbound | sing-box `DialerOptions` + `outbound`: an Xray outbound object (`protocol`, `settings` in the simplified form `address`/`port`/`id`/`encryption`/`flow`, `streamSettings` with `network`, `security`, `tlsSettings`/`realitySettings`, `xhttpSettings` (link `extra` kept whole), `wsSettings`, `httpupgradeSettings`, `grpcSettings`). Never `allowInsecure` (Xray 26 refuses it). |
 
@@ -185,5 +189,5 @@ configuration to a directory; `probes/stage2` (own `go.mod`, the stage 0
 module graph) registers `fkbrain`/`fkdns`/`mihomo`/`xray` as option-only
 placeholders and runs sing-box 1.15.0-alpha.13's parser and `box.New` on each
 (tags `with_quic,with_wireguard,with_utls,with_gvisor`). Not covered: naive
-(needs cronet), running the plugins (stage 3), mihomo/Xray accepting their
-maps (stage 3 builds them with `adapter.ParseProxy` / Xray `infra/conf`).
+(needs cronet). Running the plugins is stage 3
+([brain-host.md](brain-host.md), `.github/workflows/fkhost.yml`).

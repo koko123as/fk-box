@@ -257,6 +257,20 @@ uint32_t fkb_brain_abi_version(void);
 /* The brain's size of a struct (FKB_STRUCT_*), 0 for an unknown selector. */
 uint32_t fkb_struct_size(uint32_t which);
 
+/*
+ * Control path (stage 3): once per configuration change, never per
+ * connection. The brain imports `profile` (Clash/mihomo YAML, sing-box JSON,
+ * share links or Base64 of them), generates the sing-box configuration,
+ * compiles its rules against fkbrain's outbound table and calls the host's
+ * start (or reload) with it. `options` is empty or a JSON object with the
+ * optional keys tun_address (list), tun_auto_route, tun_stack, tun_mtu,
+ * log_level. On failure `err` (NULL or a caller buffer, truncated) holds the
+ * reason and a reload keeps the previous configuration.
+ */
+int32_t fkb_brain_start_profile(fkb_str profile, fkb_str options, fkb_buf *err);
+int32_t fkb_brain_reload_profile(fkb_str profile, fkb_str options, fkb_buf *err);
+int32_t fkb_brain_stop(fkb_buf *err);
+
 /* Layout checks (C11): the Rust side asserts the same numbers. */
 #ifndef __cplusplus
 _Static_assert(sizeof(void *) == 8, "fkb ABI: 64-bit targets only");

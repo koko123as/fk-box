@@ -20,6 +20,7 @@ pub mod abi;
 pub mod brain;
 pub mod dns_cache;
 pub mod host;
+pub mod profile;
 
 #[cfg(test)]
 mod tests;

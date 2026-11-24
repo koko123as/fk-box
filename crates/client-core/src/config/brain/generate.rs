@@ -44,6 +44,10 @@ pub struct GenerateOptions {
     pub tun: TunOptions,
     /// sing-box `log.level`; no `log` block when `None`.
     pub log_level: Option<String>,
+    /// `route.find_process`: sing-box looks up the connection owner (Android
+    /// uid and package through the platform) before fkbrain asks `decide`.
+    /// The brain sets it when its rules read the process, package or uid.
+    pub find_process: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -144,16 +148,17 @@ pub fn generate(result: &ImportResult, options: &GenerateOptions) -> Result<Gene
         config.insert("endpoints".into(), Value::Array(endpoints));
     }
     config.insert("outbounds".into(), Value::Array(outbounds));
-    config.insert(
-        "route".into(),
-        json!({
-            "final": TAG_BRAIN,
-            // VpnService.protect for every dialer goes through the platform's
-            // AutoDetectInterfaceControl, which this switches on.
-            "auto_detect_interface": true,
-            "default_domain_resolver": TAG_DNS
-        }),
-    );
+    let mut route = json!({
+        "final": TAG_BRAIN,
+        // VpnService.protect for every dialer goes through the platform's
+        // AutoDetectInterfaceControl, which this switches on.
+        "auto_detect_interface": true,
+        "default_domain_resolver": TAG_DNS
+    });
+    if options.find_process {
+        route["find_process"] = json!(true);
+    }
+    config.insert("route".into(), route);
     let table = {
         let mut t: Vec<String> = result.nodes.iter().map(|n| n.tag.clone()).collect();
         t.push(TAG_DIRECT.to_string());

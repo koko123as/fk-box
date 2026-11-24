@@ -175,6 +175,11 @@ can add a request id.
 
 ## Host prerequisites
 
+- Implemented in stage 3: [brain-host.md](brain-host.md) (Go host, the
+  four plugins, the cgo bridge, the control exports
+  `fkb_brain_start_profile` / `fkb_brain_reload_profile` /
+  `fkb_brain_stop`). A failed `decide` rejects the connection (fail
+  closed); the host keeps the last three generations' tables.
 - fkbrain sniffs before `decide`, itself. The generated configuration has no
   `route.rules` ([brain-config.md](brain-config.md)), and without route rules
   sing-box neither sniffs nor hijacks DNS, so fkbrain calls the public
