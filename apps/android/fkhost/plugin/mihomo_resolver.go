@@ -79,6 +79,19 @@ func currentDNSRouter() (up.DNSRouter, error) {
 }
 
 func (singBoxResolver) lookup(ctx context.Context, host string, keep func(netip.Addr) bool) ([]netip.Addr, error) {
+	// mihomo's LookupIPWithResolver hands IP literals to the resolver too
+	// (component/resolver/resolver.go: it parses them only when no resolver
+	// is set), and mihomo's own DNS answers them itself. sing-box's DNS
+	// router does not, so a node addressed by IP (QUIC protocols and UDP
+	// relays dial through this path) would be queried as a name. Found by
+	// the stage 7 protocol tests.
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil {
+		address = address.Unmap()
+		if keep != nil && !keep(address) {
+			return nil, up.NewError("mihomo: ", host, " is not of the requested IP version")
+		}
+		return []netip.Addr{address}, nil
+	}
 	router, err := currentDNSRouter()
 	if err != nil {
 		return nil, err
