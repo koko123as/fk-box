@@ -7,9 +7,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // The Go mirror of crates/brain-ffi/include/fkbox_brain.h (ABI 2). Meta and
@@ -146,25 +144,25 @@ var metaPool = sync.Pool{New: func() any { return new(Meta) }}
 
 func protocolCode(protocol string) uint8 {
 	switch protocol {
-	case C.ProtocolHTTP:
+	case upstream.ProtocolHTTP:
 		return ProtoHTTP
-	case C.ProtocolTLS:
+	case upstream.ProtocolTLS:
 		return ProtoTLS
-	case C.ProtocolQUIC:
+	case upstream.ProtocolQUIC:
 		return ProtoQUIC
-	case C.ProtocolDNS:
+	case upstream.ProtocolDNS:
 		return ProtoDNS
-	case C.ProtocolBitTorrent:
+	case upstream.ProtocolBitTorrent:
 		return ProtoBitTorrent
-	case C.ProtocolSTUN:
+	case upstream.ProtocolSTUN:
 		return ProtoSTUN
-	case C.ProtocolDTLS:
+	case upstream.ProtocolDTLS:
 		return ProtoDTLS
-	case C.ProtocolSSH:
+	case upstream.ProtocolSSH:
 		return ProtoSSH
-	case C.ProtocolRDP:
+	case upstream.ProtocolRDP:
 		return ProtoRDP
-	case C.ProtocolNTP:
+	case upstream.ProtocolNTP:
 		return ProtoNTP
 	default:
 		return ProtoNone
@@ -189,14 +187,14 @@ func putAddr(dst *[16]byte, addr netip.Addr) uint8 {
 // fill writes the record for one connection. Strings longer than their
 // array are cut (package/process, flagged) or left out (a domain: a cut
 // name would match the wrong rules).
-func (m *Meta) fill(metadata *adapter.InboundContext, inboundIndex uint32) {
+func (m *Meta) fill(metadata *upstream.InboundContext, inboundIndex uint32) {
 	*m = Meta{}
 	m.ABIVersion = ABIVersion
 	m.Size = uint32(metaSize)
 	switch metadata.Network {
-	case N.NetworkTCP:
+	case upstream.NetworkTCP:
 		m.Network = NetTCP
-	case N.NetworkUDP:
+	case upstream.NetworkUDP:
 		m.Network = NetUDP
 	}
 	m.Protocol = protocolCode(metadata.Protocol)

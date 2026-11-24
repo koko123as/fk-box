@@ -8,13 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/dns"
-	"github.com/sagernet/sing-box/log"
-	E "github.com/sagernet/sing/common/exceptions"
-
 	mDNS "github.com/miekg/dns"
+
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // FKDNSOptions: the stage 2 contract has none (the brain's DNS settings
@@ -29,18 +25,18 @@ type FKDNSOptions struct{}
 // fkdns itself opens no socket and never falls back to the system
 // resolver: without a brain a query fails.
 type FKDNS struct {
-	dns.TransportAdapter
+	upstream.TransportAdapter
 	queries atomic.Int64
 	clients atomic.Int64
 }
 
-var _ adapter.DNSTransport = (*FKDNS)(nil)
+var _ upstream.DNSTransport = (*FKDNS)(nil)
 
-func NewFKDNS(ctx context.Context, logger log.ContextLogger, tag string, options FKDNSOptions) (adapter.DNSTransport, error) {
-	return &FKDNS{TransportAdapter: dns.NewTransportAdapter(TypeFKDNS, tag, nil)}, nil
+func NewFKDNS(ctx context.Context, logger upstream.ContextLogger, tag string, options FKDNSOptions) (upstream.DNSTransport, error) {
+	return &FKDNS{TransportAdapter: upstream.NewTransportAdapter(TypeFKDNS, tag, nil)}, nil
 }
 
-func (t *FKDNS) Start(stage adapter.StartStage, scope *adapter.Scope) error { return nil }
+func (t *FKDNS) Start(stage upstream.StartStage, scope *upstream.Scope) error { return nil }
 
 func (t *FKDNS) Reset() {}
 
@@ -52,7 +48,7 @@ func (t *FKDNS) ClientQueries() int64 { return t.clients.Load() }
 func (t *FKDNS) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
 	brain := dnsBrain()
 	if brain == nil {
-		return nil, E.New("fkdns: no brain attached")
+		return nil, upstream.NewError("fkdns: no brain attached")
 	}
 	t.queries.Add(1)
 	client := isClientQuery(ctx)
@@ -65,16 +61,16 @@ func (t *FKDNS) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, err
 	}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, C.DNSTimeout)
+		ctx, cancel = context.WithTimeout(ctx, upstream.DNSTimeout)
 		defer cancel()
 	}
 	reply, err := brain.Exchange(ctx, request, client)
 	if err != nil {
-		return nil, E.Cause(err, "fkdns")
+		return nil, upstream.Cause(err, "fkdns")
 	}
 	var response mDNS.Msg
 	if err = response.Unpack(reply); err != nil {
-		return nil, E.Cause(err, "fkdns: brain reply")
+		return nil, upstream.Cause(err, "fkdns: brain reply")
 	}
 	return &response, nil
 }
@@ -88,12 +84,12 @@ func (t *FKDNS) ExchangeAsync(ctx context.Context, message *mDNS.Msg, callback f
 // another ID are skipped).
 func ExchangeMessage(ctx context.Context, conn net.Conn, stream bool, request []byte) ([]byte, error) {
 	if len(request) < 2 {
-		return nil, E.New("short DNS message")
+		return nil, upstream.NewError("short DNS message")
 	}
 	if deadline, ok := ctx.Deadline(); ok {
 		_ = conn.SetDeadline(deadline)
 	} else {
-		_ = conn.SetDeadline(time.Now().Add(C.DNSTimeout))
+		_ = conn.SetDeadline(time.Now().Add(upstream.DNSTimeout))
 	}
 	if stream {
 		framed := make([]byte, 2+len(request))

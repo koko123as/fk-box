@@ -8,11 +8,7 @@ import (
 	"syscall"
 
 	"github.com/koko123as/fk-box/apps/android/fkhost/host"
-
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing/common/control"
-	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // Platform is what the Android VpnService gives the kernel. Every method
@@ -139,7 +135,7 @@ func (b *platformBridge) current() (Platform, error) {
 	b.access.RLock()
 	defer b.access.RUnlock()
 	if b.platform == nil {
-		return nil, E.New("android: no platform (service not running)")
+		return nil, upstream.NewError("android: no platform (service not running)")
 	}
 	return b.platform, nil
 }
@@ -164,7 +160,7 @@ func (b *platformBridge) OpenTun(request *host.TunRequest) (int, error) {
 	return int(fd), nil
 }
 
-func (b *platformBridge) FindConnectionOwner(request *adapter.FindConnectionOwnerRequest) (*adapter.ConnectionOwner, error) {
+func (b *platformBridge) FindConnectionOwner(request *upstream.FindConnectionOwnerRequest) (*upstream.ConnectionOwner, error) {
 	platform, err := b.current()
 	if err != nil {
 		return nil, err
@@ -174,10 +170,10 @@ func (b *platformBridge) FindConnectionOwner(request *adapter.FindConnectionOwne
 		return nil, err
 	}
 	if owner == nil {
-		return nil, E.New("android: connection owner not found")
+		return nil, upstream.NewError("android: connection owner not found")
 	}
 	packages := splitLines(owner.Packages)
-	result := &adapter.ConnectionOwner{UserId: owner.Uid, PackageNames: packages}
+	result := &upstream.ConnectionOwner{UserId: owner.Uid, PackageNames: packages}
 	if len(packages) > 0 {
 		result.UserName = packages[0]
 	}
@@ -220,7 +216,7 @@ func linkFlags(raw uint32) net.Flags {
 	return flags
 }
 
-func (b *platformBridge) NetworkInterfaces() ([]adapter.NetworkInterface, error) {
+func (b *platformBridge) NetworkInterfaces() ([]upstream.NetworkInterface, error) {
 	platform, err := b.current()
 	if err != nil {
 		return nil, err
@@ -231,10 +227,10 @@ func (b *platformBridge) NetworkInterfaces() ([]adapter.NetworkInterface, error)
 	}
 	var list []networkInterface
 	if err := json.Unmarshal([]byte(text), &list); err != nil {
-		return nil, E.Cause(err, "android: network interfaces")
+		return nil, upstream.Cause(err, "android: network interfaces")
 	}
 	seen := make(map[string]bool)
-	var interfaces []adapter.NetworkInterface
+	var interfaces []upstream.NetworkInterface
 	for _, item := range list {
 		if item.Name == "" || seen[item.Name] {
 			continue
@@ -252,15 +248,15 @@ func (b *platformBridge) NetworkInterfaces() ([]adapter.NetworkInterface, error)
 				gateways = append(gateways, addr.Unmap().WithZone(""))
 			}
 		}
-		interfaces = append(interfaces, adapter.NetworkInterface{
-			Interface: control.Interface{
+		interfaces = append(interfaces, upstream.NetworkInterface{
+			Interface: upstream.Interface{
 				Index:     item.Index,
 				MTU:       item.MTU,
 				Name:      item.Name,
 				Addresses: addresses,
 				Flags:     linkFlags(item.Flags),
 			},
-			Type:             C.InterfaceType(item.Type),
+			Type:             upstream.InterfaceType(item.Type),
 			DNSServers:       item.DNS,
 			DNSSearchDomains: item.Domains,
 			Gateways:         gateways,

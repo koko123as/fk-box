@@ -9,25 +9,13 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/bufio"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-	"github.com/sagernet/sing/service"
-
-	mihomoAdapter "github.com/metacubex/mihomo/adapter"
-	mihomoC "github.com/metacubex/mihomo/constant"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // MihomoOptions: sing-box dial fields (detour, bind, mark, TFO) plus one
 // mihomo proxy map, as a Clash `proxies:` entry decodes it.
 type MihomoOptions struct {
-	option.DialerOptions
+	upstream.DialerOptions
 	Proxy map[string]any `json:"proxy"`
 }
 
@@ -58,90 +46,90 @@ var mihomoRefused = map[string]string{
 // built at start (sing-box 1.15 closes outbounds through the start scope
 // only, so nothing that needs closing is made in the constructor).
 type Mihomo struct {
-	outbound.Adapter
+	upstream.Adapter
 	ctx       context.Context
-	logger    log.ContextLogger
+	logger    upstream.ContextLogger
 	mapping   map[string]any
 	dialer    *mihomoDialer
-	dnsRouter adapter.DNSRouter
+	dnsRouter upstream.DNSRouter
 	access    sync.RWMutex
-	proxy     mihomoC.Proxy
+	proxy     upstream.MihomoProxy
 }
 
 // mihomoDialer adapts a sing-box N.Dialer to mihomo's C.Dialer and counts.
 type mihomoDialer struct {
-	upstream N.Dialer
+	upstream upstream.Dialer
 	dials    atomic.Int64
 	packets  atomic.Int64
 }
 
-var _ mihomoC.Dialer = (*mihomoDialer)(nil)
+var _ upstream.MihomoDialer = (*mihomoDialer)(nil)
 
 func (d *mihomoDialer) DialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	d.dials.Add(1)
-	return d.upstream.DialContext(ctx, N.NetworkName(network), M.ParseSocksaddr(address))
+	return d.upstream.DialContext(ctx, upstream.NetworkName(network), upstream.ParseSocksaddr(address))
 }
 
 func (d *mihomoDialer) ListenPacket(ctx context.Context, network, address string, rAddrPort netip.AddrPort) (net.PacketConn, error) {
 	d.packets.Add(1)
 	if !rAddrPort.IsValid() {
-		return nil, E.New("mihomo: packet dial without a remote address")
+		return nil, upstream.NewError("mihomo: packet dial without a remote address")
 	}
-	return d.upstream.ListenPacket(ctx, M.SocksaddrFromNetIP(rAddrPort))
+	return d.upstream.ListenPacket(ctx, upstream.SocksaddrFromNetIP(rAddrPort))
 }
 
-func NewMihomo(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options MihomoOptions) (adapter.Outbound, error) {
+func NewMihomo(ctx context.Context, router upstream.Router, logger upstream.ContextLogger, tag string, options MihomoOptions) (upstream.Outbound, error) {
 	if len(options.Proxy) == 0 {
-		return nil, E.New("mihomo: missing proxy")
+		return nil, upstream.NewError("mihomo: missing proxy")
 	}
 	mapping := normalizeJSONNumbers(options.Proxy).(map[string]any)
 	kind, _ := mapping["type"].(string)
 	if kind == "" {
-		return nil, E.New("mihomo: proxy map without type")
+		return nil, upstream.NewError("mihomo: proxy map without type")
 	}
 	if reason, refused := mihomoRefused[strings.ToLower(kind)]; refused {
-		return nil, E.New("mihomo: type ", kind, " is not supported in the plugin: ", reason)
+		return nil, upstream.NewError("mihomo: type ", kind, " is not supported in the plugin: ", reason)
 	}
 	if _, exists := mapping["dialer-proxy"]; exists {
-		return nil, E.New("mihomo: dialer-proxy must be the outbound's detour")
+		return nil, upstream.NewError("mihomo: dialer-proxy must be the outbound's detour")
 	}
 	if name, _ := mapping["name"].(string); name == "" {
 		mapping["name"] = tag
 	}
-	upstream, err := dialer.NewWithOptions(dialer.Options{
+	upstream, err := upstream.NewWithOptions(upstream.DialerConfig{
 		Context:        ctx,
 		Options:        options.DialerOptions,
 		RemoteIsDomain: true,
 	})
 	if err != nil {
-		return nil, E.Cause(err, "mihomo: create sing-box dialer")
+		return nil, upstream.Cause(err, "mihomo: create sing-box dialer")
 	}
 	adapterDialer := &mihomoDialer{upstream: upstream}
 	// Check the map now (configuration errors surface at check/creation),
 	// then let go of what mihomo built; Start builds the proxy for real.
-	checked, err := mihomoAdapter.ParseProxy(copyMapping(mapping), mihomoAdapter.WithDialerForAPI(adapterDialer))
+	checked, err := upstream.MihomoParseProxy(copyMapping(mapping), upstream.MihomoWithDialerForAPI(adapterDialer))
 	if err != nil {
-		return nil, E.Cause(err, "mihomo: parse proxy")
+		return nil, upstream.Cause(err, "mihomo: parse proxy")
 	}
 	_ = checked.Close()
 	return &Mihomo{
-		Adapter:   outbound.NewAdapterWithDialerOptions(TypeMihomo, tag, []string{N.NetworkTCP, N.NetworkUDP}, options.DialerOptions),
+		Adapter:   upstream.NewAdapterWithDialerOptions(TypeMihomo, tag, []string{upstream.NetworkTCP, upstream.NetworkUDP}, options.DialerOptions),
 		ctx:       ctx,
 		logger:    logger,
 		mapping:   mapping,
 		dialer:    adapterDialer,
-		dnsRouter: service.FromContext[adapter.DNSRouter](ctx),
+		dnsRouter: upstream.FromContext[upstream.DNSRouter](ctx),
 	}, nil
 }
 
-func (m *Mihomo) Start(stage adapter.StartStage, scope *adapter.Scope) error {
-	if stage != adapter.StartStateInitialize {
+func (m *Mihomo) Start(stage upstream.StartStage, scope *upstream.Scope) error {
+	if stage != upstream.StartStateInitialize {
 		return nil
 	}
 	installMihomoResolver(m.dnsRouter)
-	proxy, err := mihomoAdapter.ParseProxy(copyMapping(m.mapping), mihomoAdapter.WithDialerForAPI(m.dialer))
+	proxy, err := upstream.MihomoParseProxy(copyMapping(m.mapping), upstream.MihomoWithDialerForAPI(m.dialer))
 	if err != nil {
-		return E.Cause(err, "mihomo: build proxy")
+		return upstream.Cause(err, "mihomo: build proxy")
 	}
 	m.access.Lock()
 	m.proxy = proxy
@@ -157,11 +145,11 @@ func (m *Mihomo) Start(stage adapter.StartStage, scope *adapter.Scope) error {
 	return nil
 }
 
-func (m *Mihomo) current() (mihomoC.Proxy, error) {
+func (m *Mihomo) current() (upstream.MihomoProxy, error) {
 	m.access.RLock()
 	defer m.access.RUnlock()
 	if m.proxy == nil {
-		return nil, E.New("mihomo: outbound ", m.Tag(), " is not started")
+		return nil, upstream.NewError("mihomo: outbound ", m.Tag(), " is not started")
 	}
 	return m.proxy, nil
 }
@@ -179,8 +167,8 @@ func (m *Mihomo) ProxyType() string {
 	return proxy.Type().String()
 }
 
-func mihomoMetadata(network mihomoC.NetWork, destination M.Socksaddr) *mihomoC.Metadata {
-	metadata := &mihomoC.Metadata{NetWork: network, DstPort: destination.Port}
+func mihomoMetadata(network upstream.MihomoNetWork, destination upstream.Socksaddr) *upstream.MihomoMetadata {
+	metadata := &upstream.MihomoMetadata{NetWork: network, DstPort: destination.Port}
 	if destination.IsFqdn() {
 		metadata.Host = destination.Fqdn
 	} else {
@@ -189,30 +177,30 @@ func mihomoMetadata(network mihomoC.NetWork, destination M.Socksaddr) *mihomoC.M
 	return metadata
 }
 
-func (m *Mihomo) DialContext(ctx context.Context, network string, destination M.Socksaddr) (net.Conn, error) {
+func (m *Mihomo) DialContext(ctx context.Context, network string, destination upstream.Socksaddr) (net.Conn, error) {
 	proxy, err := m.current()
 	if err != nil {
 		return nil, err
 	}
-	switch N.NetworkName(network) {
-	case N.NetworkTCP:
-		return proxy.DialContext(ctx, mihomoMetadata(mihomoC.TCP, destination))
-	case N.NetworkUDP:
+	switch upstream.NetworkName(network) {
+	case upstream.NetworkTCP:
+		return proxy.DialContext(ctx, mihomoMetadata(upstream.MihomoTCP, destination))
+	case upstream.NetworkUDP:
 		packetConn, address, err := m.ListenPacketWithDestination(ctx, destination)
 		if err != nil {
 			return nil, err
 		}
 		target := destination
 		if address.IsValid() {
-			target = M.SocksaddrFrom(address, destination.Port)
+			target = upstream.SocksaddrFrom(address, destination.Port)
 		}
-		return bufio.NewBindPacketConn(packetConn, target.UDPAddr()), nil
+		return upstream.NewBindPacketConn(packetConn, target.UDPAddr()), nil
 	default:
-		return nil, E.New("mihomo: unsupported network ", network)
+		return nil, upstream.NewError("mihomo: unsupported network ", network)
 	}
 }
 
-func (m *Mihomo) ListenPacket(ctx context.Context, destination M.Socksaddr) (net.PacketConn, error) {
+func (m *Mihomo) ListenPacket(ctx context.Context, destination upstream.Socksaddr) (net.PacketConn, error) {
 	proxy, err := m.current()
 	if err != nil {
 		return nil, err
@@ -228,7 +216,7 @@ func (m *Mihomo) ListenPacket(ctx context.Context, destination M.Socksaddr) (net
 // the name), and the relay opened to that address. The returned address
 // lets sing-box's connection manager translate between it and the
 // address the app used (bufio.NewNATPacketConn).
-func (m *Mihomo) ListenPacketWithDestination(ctx context.Context, destination M.Socksaddr) (net.PacketConn, netip.Addr, error) {
+func (m *Mihomo) ListenPacketWithDestination(ctx context.Context, destination upstream.Socksaddr) (net.PacketConn, netip.Addr, error) {
 	proxy, err := m.current()
 	if err != nil {
 		return nil, netip.Addr{}, err
@@ -238,14 +226,14 @@ func (m *Mihomo) ListenPacketWithDestination(ctx context.Context, destination M.
 		return packetConn, netip.Addr{}, err
 	}
 	if m.dnsRouter == nil {
-		return nil, netip.Addr{}, E.New("mihomo: no DNS router to resolve ", destination.Fqdn)
+		return nil, netip.Addr{}, upstream.NewError("mihomo: no DNS router to resolve ", destination.Fqdn)
 	}
-	addresses, err := m.dnsRouter.Lookup(ctx, destination.Fqdn, adapter.DNSQueryOptions{})
+	addresses, err := m.dnsRouter.Lookup(ctx, destination.Fqdn, upstream.DNSQueryOptions{})
 	if err != nil {
-		return nil, netip.Addr{}, E.Cause(err, "mihomo: resolve ", destination.Fqdn)
+		return nil, netip.Addr{}, upstream.Cause(err, "mihomo: resolve ", destination.Fqdn)
 	}
 	if len(addresses) == 0 {
-		return nil, netip.Addr{}, E.New("mihomo: no address for ", destination.Fqdn)
+		return nil, netip.Addr{}, upstream.NewError("mihomo: no address for ", destination.Fqdn)
 	}
 	address := addresses[0].Unmap()
 	for _, candidate := range addresses {
@@ -255,25 +243,25 @@ func (m *Mihomo) ListenPacketWithDestination(ctx context.Context, destination M.
 		}
 	}
 	mihomoFQDNPackets.Add(1)
-	packetConn, err := m.listenPacket(ctx, proxy, M.SocksaddrFrom(address, destination.Port))
+	packetConn, err := m.listenPacket(ctx, proxy, upstream.SocksaddrFrom(address, destination.Port))
 	if err != nil {
 		return nil, netip.Addr{}, err
 	}
 	return packetConn, address, nil
 }
 
-var _ dialer.PacketDialerWithDestination = (*Mihomo)(nil)
+var _ upstream.PacketDialerWithDestination = (*Mihomo)(nil)
 
 // MihomoFQDNPackets counts UDP relays opened for a domain destination.
 func MihomoFQDNPackets() int64 { return mihomoFQDNPackets.Load() }
 
 var mihomoFQDNPackets atomic.Int64
 
-func (m *Mihomo) listenPacket(ctx context.Context, proxy mihomoC.Proxy, destination M.Socksaddr) (net.PacketConn, error) {
+func (m *Mihomo) listenPacket(ctx context.Context, proxy upstream.MihomoProxy, destination upstream.Socksaddr) (net.PacketConn, error) {
 	if !proxy.SupportUDP() {
-		return nil, E.New("mihomo: ", m.Tag(), " (", proxy.Type().String(), ") does not relay UDP")
+		return nil, upstream.NewError("mihomo: ", m.Tag(), " (", proxy.Type().String(), ") does not relay UDP")
 	}
-	return proxy.ListenPacketContext(ctx, mihomoMetadata(mihomoC.UDP, destination))
+	return proxy.ListenPacketContext(ctx, mihomoMetadata(upstream.MihomoUDP, destination))
 }
 
 func copyMapping(mapping map[string]any) map[string]any {

@@ -7,8 +7,7 @@
 package plugin
 
 import (
-	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/dns"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // Type names in the sing-box configuration ("type": "...").
@@ -20,13 +19,13 @@ const (
 )
 
 // RegisterOutbounds adds fkbrain, mihomo and xray to an outbound registry.
-func RegisterOutbounds(registry *outbound.Registry) {
-	outbound.Register[BrainOptions](registry, TypeBrain, NewBrain)
-	outbound.Register[MihomoOptions](registry, TypeMihomo, NewMihomo)
-	outbound.Register[XrayOptions](registry, TypeXray, NewXray)
+func RegisterOutbounds(registry *upstream.Registry) {
+	upstream.Register[BrainOptions](registry, TypeBrain, NewBrain)
+	upstream.Register[MihomoOptions](registry, TypeMihomo, NewMihomo)
+	upstream.Register[XrayOptions](registry, TypeXray, NewXray)
 }
 
 // RegisterDNSTransports adds fkdns to a DNS transport registry.
-func RegisterDNSTransports(registry *dns.TransportRegistry) {
-	dns.RegisterTransport[FKDNSOptions](registry, TypeFKDNS, NewFKDNS)
+func RegisterDNSTransports(registry *upstream.TransportRegistry) {
+	upstream.RegisterTransport[FKDNSOptions](registry, TypeFKDNS, NewFKDNS)
 }

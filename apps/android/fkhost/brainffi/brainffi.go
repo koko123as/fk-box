@@ -28,8 +28,7 @@ import (
 
 	"github.com/koko123as/fk-box/apps/android/fkhost/host"
 	"github.com/koko123as/fk-box/apps/android/fkhost/plugin"
-
-	E "github.com/sagernet/sing/common/exceptions"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 type rustDecider struct {
@@ -52,7 +51,7 @@ const defaultDNSTimeout = 5 * time.Second
 
 func (d rustDNS) Exchange(ctx context.Context, message []byte, client bool) ([]byte, error) {
 	if len(message) == 0 {
-		return nil, E.New("brain dns_message: empty message")
+		return nil, upstream.NewError("brain dns_message: empty message")
 	}
 	timeout := defaultDNSTimeout
 	if deadline, ok := ctx.Deadline(); ok {
@@ -79,9 +78,9 @@ func (d rustDNS) Exchange(ctx context.Context, message []byte, client bool) ([]b
 				continue
 			}
 		}
-		return nil, E.New("brain dns_message: error ", int32(code))
+		return nil, upstream.NewError("brain dns_message: error ", int32(code))
 	}
-	return nil, E.New("brain dns_message: reply does not fit")
+	return nil, upstream.NewError("brain dns_message: reply does not fit")
 }
 
 func (d rustDNS) Reverse(addr netip.Addr) (string, bool) {
@@ -135,11 +134,11 @@ func CheckLayout() error {
 	}
 	for _, check := range checks {
 		if got := uintptr(C.fkb_struct_size(check.which)); got != check.size {
-			return E.New("brain ABI: ", check.name, " is ", got, " bytes in the brain, ", check.size, " here")
+			return upstream.NewError("brain ABI: ", check.name, " is ", got, " bytes in the brain, ", check.size, " here")
 		}
 	}
 	if version := uint32(C.fkb_brain_abi_version()); version != plugin.ABIVersion {
-		return E.New("brain ABI version ", version, ", host ", plugin.ABIVersion)
+		return upstream.NewError("brain ABI version ", version, ", host ", plugin.ABIVersion)
 	}
 	return nil
 }
@@ -161,11 +160,11 @@ func Attach(h *host.Host) error {
 	C.fkhost_fill_host_api(hostAPI, C.uintptr_t(handle))
 	if code := C.fkb_brain_attach(hostAPI, brainAPI); code != C.FKB_OK {
 		handle.Delete()
-		return E.New("fkb_brain_attach: ", int32(code))
+		return upstream.NewError("fkb_brain_attach: ", int32(code))
 	}
 	if brainAPI.abi_version != C.FKB_ABI_VERSION || uintptr(brainAPI.size) != unsafe.Sizeof(C.fkb_brain_api{}) || brainAPI.decide == nil {
 		handle.Delete()
-		return E.New("fkb_brain_attach: unexpected brain table")
+		return upstream.NewError("fkb_brain_attach: unexpected brain table")
 	}
 	if attached != 0 {
 		attached.Delete()
@@ -197,7 +196,7 @@ func control(call func(profile, options C.fkb_str, err *C.fkb_buf) C.int32_t, pr
 	)
 	if code != C.FKB_OK {
 		message := C.GoStringN((*C.char)(unsafe.Pointer(errBytes)), C.int(errBuf.len))
-		return E.New("brain error ", int32(code), ": ", message)
+		return upstream.NewError("brain error ", int32(code), ": ", message)
 	}
 	return nil
 }
@@ -224,7 +223,7 @@ func Stop() error {
 	errBuf.ptr = errBytes
 	errBuf.cap = errCap
 	if code := C.fkb_brain_stop(errBuf); code != C.FKB_OK {
-		return E.New("brain error ", int32(code), ": ", C.GoStringN((*C.char)(unsafe.Pointer(errBytes)), C.int(errBuf.len)))
+		return upstream.NewError("brain error ", int32(code), ": ", C.GoStringN((*C.char)(unsafe.Pointer(errBytes)), C.int(errBuf.len)))
 	}
 	return nil
 }
@@ -263,11 +262,11 @@ func Groups() (string, error) {
 		needed := int(out.len)
 		release()
 		if code != C.FKB_E_BUFFER || needed <= capacity {
-			return "", E.New("fkb_brain_groups: ", int32(code))
+			return "", upstream.NewError("fkb_brain_groups: ", int32(code))
 		}
 		capacity = needed
 	}
-	return "", E.New("fkb_brain_groups: the list keeps growing")
+	return "", upstream.NewError("fkb_brain_groups: the list keeps growing")
 }
 
 // SelectGroup selects member in a select group (fkb_brain_group_select);
@@ -280,7 +279,7 @@ func SelectGroup(group string, member string) error {
 	errBuf, message, release := newErrBuf(1024)
 	defer release()
 	if code := C.fkb_brain_group_select(groupC, memberC, errBuf); code != C.FKB_OK {
-		return E.New("brain error ", int32(code), ": ", message())
+		return upstream.NewError("brain error ", int32(code), ": ", message())
 	}
 	return nil
 }
@@ -293,7 +292,7 @@ func TestGroup(group string) error {
 	errBuf, message, release := newErrBuf(1024)
 	defer release()
 	if code := C.fkb_brain_group_test(groupC, errBuf); code != C.FKB_OK {
-		return E.New("brain error ", int32(code), ": ", message())
+		return upstream.NewError("brain error ", int32(code), ": ", message())
 	}
 	return nil
 }

@@ -14,12 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing/common/bufio"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // DNSBrain is the brain's DNS (crates/brain-ffi, stage 4): it answers whole
@@ -84,7 +79,7 @@ func isClientQuery(ctx context.Context) bool {
 // the certificate's server name with ?sni=.
 type Upstream struct {
 	Scheme     string
-	Server     M.Socksaddr
+	Server     upstream.Socksaddr
 	ServerName string
 	Path       string
 }
@@ -93,7 +88,7 @@ type Upstream struct {
 func ParseUpstream(upstream string) (Upstream, error) {
 	parsed, err := url.Parse(upstream)
 	if err != nil {
-		return Upstream{}, E.Cause(err, "upstream ", upstream)
+		return Upstream{}, upstream.Cause(err, "upstream ", upstream)
 	}
 	result := Upstream{Scheme: parsed.Scheme}
 	var port uint16
@@ -109,11 +104,11 @@ func ParseUpstream(upstream string) (Upstream, error) {
 			result.Path = "/dns-query"
 		}
 	default:
-		return Upstream{}, E.New("upstream ", upstream, ": the scheme must be udp, tcp, tls or https")
+		return Upstream{}, upstream.NewError("upstream ", upstream, ": the scheme must be udp, tcp, tls or https")
 	}
-	result.Server = M.ParseSocksaddrHostPortStr(parsed.Hostname(), parsed.Port())
+	result.Server = upstream.ParseSocksaddrHostPortStr(parsed.Hostname(), parsed.Port())
 	if !result.Server.IsIP() {
-		return Upstream{}, E.New("upstream ", upstream, ": the address must be an IP")
+		return Upstream{}, upstream.NewError("upstream ", upstream, ": the address must be an IP")
 	}
 	if result.Server.Port == 0 {
 		result.Server.Port = port
@@ -128,14 +123,14 @@ func ParseUpstream(upstream string) (Upstream, error) {
 // ExchangeVia sends one DNS message to upstream through outbound (whose
 // dialer is the protected one) and returns the reply. DoH clients are kept
 // per outbound and upstream in clients (nil: one per call).
-func ExchangeVia(ctx context.Context, outbound adapter.Outbound, upstream string, message []byte, clients *DoHClients) ([]byte, error) {
+func ExchangeVia(ctx context.Context, outbound upstream.Outbound, upstream string, message []byte, clients *DoHClients) ([]byte, error) {
 	parsed, err := ParseUpstream(upstream)
 	if err != nil {
 		return nil, err
 	}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, C.DNSTimeout)
+		ctx, cancel = context.WithTimeout(ctx, upstream.DNSTimeout)
 		defer cancel()
 	}
 	switch parsed.Scheme {
@@ -144,25 +139,25 @@ func ExchangeVia(ctx context.Context, outbound adapter.Outbound, upstream string
 		if err != nil {
 			return nil, err
 		}
-		conn := bufio.NewBindPacketConn(packetConn, parsed.Server.UDPAddr())
+		conn := upstream.NewBindPacketConn(packetConn, parsed.Server.UDPAddr())
 		defer conn.Close()
 		return ExchangeMessage(ctx, conn, false, message)
 	case "tcp":
-		conn, err := outbound.DialContext(ctx, N.NetworkTCP, parsed.Server)
+		conn, err := outbound.DialContext(ctx, upstream.NetworkTCP, parsed.Server)
 		if err != nil {
 			return nil, err
 		}
 		defer conn.Close()
 		return ExchangeMessage(ctx, conn, true, message)
 	case "tls":
-		conn, err := outbound.DialContext(ctx, N.NetworkTCP, parsed.Server)
+		conn, err := outbound.DialContext(ctx, upstream.NetworkTCP, parsed.Server)
 		if err != nil {
 			return nil, err
 		}
 		tlsConn := tls.Client(conn, upstreamTLS(parsed.ServerName))
 		defer tlsConn.Close()
 		if err = tlsConn.HandshakeContext(ctx); err != nil {
-			return nil, E.Cause(err, "tls handshake with ", parsed.Server)
+			return nil, upstream.Cause(err, "tls handshake with ", parsed.Server)
 		}
 		return ExchangeMessage(ctx, tlsConn, true, message)
 	default:
@@ -177,10 +172,10 @@ func ExchangeVia(ctx context.Context, outbound adapter.Outbound, upstream string
 	}
 }
 
-func newDoHClient(outbound adapter.Outbound, upstream Upstream) *http.Client {
+func newDoHClient(outbound upstream.Outbound, upstream Upstream) *http.Client {
 	return &http.Client{Transport: &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return outbound.DialContext(ctx, N.NetworkTCP, upstream.Server)
+			return outbound.DialContext(ctx, upstream.NetworkTCP, upstream.Server)
 		},
 		TLSClientConfig:     upstreamTLS(upstream.ServerName),
 		ForceAttemptHTTP2:   true,
@@ -204,7 +199,7 @@ func exchangeHTTPS(ctx context.Context, client *http.Client, upstream Upstream, 
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return nil, E.New("DoH ", endpoint, ": HTTP ", response.StatusCode)
+		return nil, upstream.NewError("DoH ", endpoint, ": HTTP ", response.StatusCode)
 	}
 	return io.ReadAll(io.LimitReader(response.Body, 65535))
 }
@@ -218,11 +213,11 @@ type DoHClients struct {
 }
 
 type dohKey struct {
-	outbound adapter.Outbound
+	outbound upstream.Outbound
 	upstream Upstream
 }
 
-func (c *DoHClients) get(outbound adapter.Outbound, upstream Upstream) *http.Client {
+func (c *DoHClients) get(outbound upstream.Outbound, upstream Upstream) *http.Client {
 	c.access.Lock()
 	defer c.access.Unlock()
 	if c.clients == nil {

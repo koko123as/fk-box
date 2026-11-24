@@ -17,28 +17,21 @@ import (
 	"time"
 
 	"github.com/koko123as/fk-box/apps/android/fkhost/plugin"
-
-	box "github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/daemon"
-	"github.com/sagernet/sing-box/include"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	"github.com/sagernet/sing/service"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // NewContext builds the box context: the upstream include registries plus
 // fkbrain/fkdns/mihomo/xray (public outbound.Register /
 // dns.RegisterTransport / box.Context), with platform registered.
-func NewContext(platform adapter.PlatformInterface) context.Context {
-	ctx := service.ContextWithDefaultRegistry(context.Background())
-	outboundRegistry := include.OutboundRegistry()
+func NewContext(platform upstream.PlatformInterface) context.Context {
+	ctx := upstream.ContextWithDefaultRegistry(context.Background())
+	outboundRegistry := upstream.OutboundRegistry()
 	plugin.RegisterOutbounds(outboundRegistry)
-	dnsRegistry := include.DNSTransportRegistry()
+	dnsRegistry := upstream.DNSTransportRegistry()
 	plugin.RegisterDNSTransports(dnsRegistry)
-	ctx = box.Context(ctx, include.InboundRegistry(), outboundRegistry, include.EndpointRegistry(), dnsRegistry, include.ServiceRegistry(), include.CertificateProviderRegistry())
+	ctx = upstream.Context(ctx, upstream.InboundRegistry(), outboundRegistry, upstream.EndpointRegistry(), dnsRegistry, upstream.ServiceRegistry(), upstream.CertificateProviderRegistry())
 	if platform != nil {
-		service.MustRegister[adapter.PlatformInterface](ctx, platform)
+		upstream.MustRegister[upstream.PlatformInterface](ctx, platform)
 	}
 	return ctx
 }
@@ -54,7 +47,7 @@ type Options struct {
 type Host struct {
 	ctx       context.Context
 	platform  *Platform
-	service   *daemon.StartedService
+	service   *upstream.StartedService
 	lifecycle sync.Mutex
 
 	statsAccess sync.Mutex
@@ -69,11 +62,11 @@ type platformHandler struct{}
 
 func (platformHandler) WriteDebugMessage(message string) {}
 
-func (platformHandler) ConnectSSHAgent() (int32, error) { return -1, E.New("no SSH agent") }
+func (platformHandler) ConnectSSHAgent() (int32, error) { return -1, upstream.NewError("no SSH agent") }
 
 func New(options Options) (*Host, error) {
 	if options.Bridge == nil {
-		return nil, E.New("host: no platform bridge")
+		return nil, upstream.NewError("host: no platform bridge")
 	}
 	if options.LogMaxLines == 0 {
 		options.LogMaxLines = 3000
@@ -83,7 +76,7 @@ func New(options Options) (*Host, error) {
 	return &Host{
 		ctx:      ctx,
 		platform: platform,
-		service: daemon.NewStartedService(daemon.ServiceOptions{
+		service: upstream.NewStartedService(upstream.ServiceOptions{
 			Context:     ctx,
 			Handler:     platformHandler{},
 			Debug:       options.Debug,
@@ -94,7 +87,7 @@ func New(options Options) (*Host, error) {
 
 func (h *Host) Context() context.Context        { return h.ctx }
 func (h *Host) Platform() *Platform             { return h.platform }
-func (h *Host) Service() *daemon.StartedService { return h.service }
+func (h *Host) Service() *upstream.StartedService { return h.service }
 
 // Start runs config as generation (fkbrain registers its outbound table
 // under it). The configuration is checked first (parsed and created, then
@@ -104,7 +97,7 @@ func (h *Host) Start(config string, generation uint32) error {
 	defer h.lifecycle.Unlock()
 	plugin.SetPendingGeneration(generation)
 	if err := h.service.CheckConfig(h.ctx, config); err != nil {
-		return E.Cause(err, "check configuration")
+		return upstream.Cause(err, "check configuration")
 	}
 	plugin.SetPendingGeneration(generation)
 	h.dohClients.Reset()
@@ -128,7 +121,7 @@ func (h *Host) Stop() error {
 }
 
 // Box is the running sing-box instance, nil when stopped.
-func (h *Host) Box() *box.Box {
+func (h *Host) Box() *upstream.Box {
 	instance := h.service.Instance()
 	if instance == nil {
 		return nil
@@ -136,10 +129,10 @@ func (h *Host) Box() *box.Box {
 	return instance.Box()
 }
 
-func (h *Host) outbound(tag string) (adapter.Outbound, error) {
+func (h *Host) outbound(tag string) (upstream.Outbound, error) {
 	instance := h.Box()
 	if instance == nil {
-		return nil, E.New("not running")
+		return nil, upstream.NewError("not running")
 	}
 	outbound, loaded := instance.Outbound().Outbound(tag)
 	if !loaded {
@@ -168,7 +161,7 @@ func (h *Host) Probe(ctx context.Context, tag string, url string) (int, time.Dur
 	}
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return outbound.DialContext(ctx, network, M.ParseSocksaddr(address))
+			return outbound.DialContext(ctx, network, upstream.ParseSocksaddr(address))
 		},
 		DisableKeepAlives: true,
 		ForceAttemptHTTP2: true,

@@ -6,11 +6,9 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sagernet/sing-box/adapter"
-	E "github.com/sagernet/sing/common/exceptions"
-
-	"github.com/metacubex/mihomo/component/resolver"
 	"github.com/miekg/dns"
+
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // mihomo resolves proxy server names itself in places that do not go
@@ -28,11 +26,11 @@ import (
 
 type singBoxResolver struct{}
 
-var _ resolver.Resolver = singBoxResolver{}
+var _ upstream.MihomoResolver = singBoxResolver{}
 
 var mihomoDNS struct {
 	sync.Mutex
-	current adapter.DNSRouter
+	current upstream.DNSRouter
 	refs    int
 }
 
@@ -40,12 +38,12 @@ var mihomoDNS struct {
 var MihomoLookups atomic.Int64
 
 func init() {
-	resolver.DefaultResolver = singBoxResolver{}
-	resolver.ProxyServerHostResolver = singBoxResolver{}
-	resolver.DirectHostResolver = singBoxResolver{}
+	upstream.SetMihomoDefaultResolver(singBoxResolver{})
+	upstream.SetMihomoProxyServerHostResolver(singBoxResolver{})
+	upstream.SetMihomoDirectHostResolver(singBoxResolver{})
 }
 
-func installMihomoResolver(router adapter.DNSRouter) {
+func installMihomoResolver(router upstream.DNSRouter) {
 	if router == nil {
 		return
 	}
@@ -58,7 +56,7 @@ func installMihomoResolver(router adapter.DNSRouter) {
 	mihomoDNS.refs++
 }
 
-func releaseMihomoResolver(router adapter.DNSRouter) {
+func releaseMihomoResolver(router upstream.DNSRouter) {
 	mihomoDNS.Lock()
 	defer mihomoDNS.Unlock()
 	if mihomoDNS.current != router {
@@ -71,11 +69,11 @@ func releaseMihomoResolver(router adapter.DNSRouter) {
 	}
 }
 
-func currentDNSRouter() (adapter.DNSRouter, error) {
+func currentDNSRouter() (upstream.DNSRouter, error) {
 	mihomoDNS.Lock()
 	defer mihomoDNS.Unlock()
 	if mihomoDNS.current == nil {
-		return nil, E.New("mihomo: no running configuration to resolve with")
+		return nil, upstream.NewError("mihomo: no running configuration to resolve with")
 	}
 	return mihomoDNS.current, nil
 }
@@ -86,7 +84,7 @@ func (singBoxResolver) lookup(ctx context.Context, host string, keep func(netip.
 		return nil, err
 	}
 	MihomoLookups.Add(1)
-	addresses, err := router.Lookup(ctx, host, adapter.DNSQueryOptions{})
+	addresses, err := router.Lookup(ctx, host, upstream.DNSQueryOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +96,7 @@ func (singBoxResolver) lookup(ctx context.Context, host string, keep func(netip.
 		}
 	}
 	if len(kept) == 0 {
-		return nil, E.New("mihomo: no address for ", host)
+		return nil, upstream.NewError("mihomo: no address for ", host)
 	}
 	return kept, nil
 }
@@ -136,7 +134,7 @@ func (r singBoxResolver) ResolveECH(ctx context.Context, host string) ([]byte, e
 			}
 		}
 	}
-	return nil, E.New("mihomo: no ECH configuration for ", host)
+	return nil, upstream.NewError("mihomo: no ECH configuration for ", host)
 }
 
 func (singBoxResolver) ExchangeContext(ctx context.Context, message *dns.Msg) (*dns.Msg, error) {
@@ -144,7 +142,7 @@ func (singBoxResolver) ExchangeContext(ctx context.Context, message *dns.Msg) (*
 	if err != nil {
 		return nil, err
 	}
-	return router.Exchange(ctx, message, adapter.DNSQueryOptions{})
+	return router.Exchange(ctx, message, upstream.DNSQueryOptions{})
 }
 
 // Invalid reports a usable resolver (mihomo's name for it).

@@ -19,6 +19,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/fkhost.yml'
+      - '.github/actions/build-fkhost/**'
+      - 'scripts/sync_core_versions.py'
+      - 'scripts/check_upstream_imports.py'
   push:
     branches: ['arch/**']
     paths:
@@ -29,6 +32,9 @@ on:
       - 'Cargo.toml'
       - 'Cargo.lock'
       - '.github/workflows/fkhost.yml'
+      - '.github/actions/build-fkhost/**'
+      - 'scripts/sync_core_versions.py'
+      - 'scripts/check_upstream_imports.py'
   # ref: stacked arch/* branches are tested by dispatching with ref, and the
   # Core upgrade workflow calls this one on the branch it pushed (its pushes
   # use GITHUB_TOKEN, which starts no push runs).
@@ -72,6 +78,9 @@ jobs:
       - name: version.properties and fkhost go.mod agree
         run: python3 scripts/sync_core_versions.py --check
 
+      - name: Product code reaches upstream only through ./upstream
+        run: python3 scripts/check_upstream_imports.py
+
       - name: Set up Rust
         run: |
           rustup toolchain install stable --profile minimal
@@ -98,6 +107,13 @@ jobs:
         with:
           go-version: ${{ steps.versions.outputs.go_version }}
           cache-dependency-path: apps/android/fkhost/go.sum
+
+      # Stage 7: the wrapper first. An upstream API change (sing-box, mihomo,
+      # Xray after a version.properties bump) fails here, naming the moved
+      # symbol in apps/android/fkhost/upstream, before the host and plugins.
+      - name: Build the upstream wrapper
+        working-directory: apps/android/fkhost
+        run: go build -tags "$GO_TAGS" -ldflags=-checklinkname=0 -gcflags=-e ./upstream
 
       # Every compile error of the host's own packages at once.
       - name: Build

@@ -7,14 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/common/bufio"
-	E "github.com/sagernet/sing/common/exceptions"
-	M "github.com/sagernet/sing/common/metadata"
-	N "github.com/sagernet/sing/common/network"
-
-	xnet "github.com/xtls/xray-core/common/net"
-	"github.com/xtls/xray-core/transport/internet"
+	"github.com/koko123as/fk-box/apps/android/fkhost/upstream"
 )
 
 // Xray opens every outbound socket through internet.DialSystem, whose
@@ -40,7 +33,7 @@ import (
 type xrayUpstreamKey struct{}
 
 type xrayUpstream struct {
-	dialer N.Dialer
+	dialer upstream.Dialer
 	key    string
 	tag    string
 }
@@ -74,11 +67,11 @@ func XrayDialerStats() XrayDialStats {
 
 func installXrayDialer() {
 	xrayDialerOnce.Do(func() {
-		internet.UseAlternativeSystemDialer(singBoxSystemDialer{})
+		upstream.XrayUseAlternativeSystemDialer(singBoxSystemDialer{})
 	})
 }
 
-func dialerKey(options option.DialerOptions) string {
+func dialerKey(options upstream.DialerOptions) string {
 	encoded, err := stdjson.Marshal(options)
 	if err != nil {
 		return options.Detour
@@ -131,18 +124,18 @@ func upstreamForDestination(server string) (*xrayUpstream, error) {
 	byKey := xrayRoutes[server]
 	switch len(byKey) {
 	case 0:
-		return nil, E.New("xray: no running xray outbound connects to ", server)
+		return nil, upstream.NewError("xray: no running xray outbound connects to ", server)
 	case 1:
 		for _, route := range byKey {
 			return route.upstream, nil
 		}
 	}
-	return nil, E.New("xray: ", len(byKey), " xray outbounds with different dial settings connect to ", server, " and the dial carries no outbound")
+	return nil, upstream.NewError("xray: ", len(byKey), " xray outbounds with different dial settings connect to ", server, " and the dial carries no outbound")
 }
 
 type singBoxSystemDialer struct{}
 
-func (singBoxSystemDialer) Dial(ctx context.Context, source xnet.Address, destination xnet.Destination, sockopt *internet.SocketConfig) (net.Conn, error) {
+func (singBoxSystemDialer) Dial(ctx context.Context, source upstream.XrayAddress, destination upstream.XrayDestination, sockopt *upstream.XraySocketConfig) (net.Conn, error) {
 	upstream, fromContext := ctx.Value(xrayUpstreamKey{}).(*xrayUpstream)
 	if fromContext {
 		xrayFromCtx.Add(1)
@@ -155,15 +148,15 @@ func (singBoxSystemDialer) Dial(ctx context.Context, source xnet.Address, destin
 		}
 		xrayFromDest.Add(1)
 	}
-	target := M.ParseSocksaddr(destination.NetAddr())
-	if destination.Network == xnet.Network_UDP {
-		conn, err := upstream.dialer.DialContext(ctx, N.NetworkUDP, target)
+	target := upstream.ParseSocksaddr(destination.NetAddr())
+	if destination.Network == upstream.XrayNetwork_UDP {
+		conn, err := upstream.dialer.DialContext(ctx, upstream.NetworkUDP, target)
 		if err != nil {
 			return nil, err
 		}
-		return &xnet.PacketConnWrapper{PacketConn: bufio.NewUnbindPacketConn(conn), Dest: conn.RemoteAddr()}, nil
+		return &upstream.XrayPacketConnWrapper{PacketConn: upstream.NewUnbindPacketConn(conn), Dest: conn.RemoteAddr()}, nil
 	}
-	return upstream.dialer.DialContext(ctx, N.NetworkTCP, target)
+	return upstream.dialer.DialContext(ctx, upstream.NetworkTCP, target)
 }
 
 func (singBoxSystemDialer) DestIpAddress() net.IP { return nil }
